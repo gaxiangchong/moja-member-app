@@ -9,6 +9,7 @@ import { HealthController } from './health/health.controller';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RewardsModule } from './rewards/rewards.module';
+import { AdminDashboardController } from './ui/admin-dashboard.controller';
 
 @Module({
   imports: [
@@ -28,6 +29,6 @@ import { RewardsModule } from './rewards/rewards.module';
     AdminModule,
     RewardsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, AdminDashboardController],
 })
 export class AppModule {}

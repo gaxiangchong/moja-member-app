@@ -60,6 +60,25 @@ export class AdminController {
     return this.admin.listVoucherDefinitions();
   }
 
+  @Get('loyalty-ledger')
+  listLoyaltyLedger(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    return this.admin.listLoyaltyLedger(limit);
+  }
+
+  @Get('audit-logs')
+  listAuditLogs(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    return this.admin.listAuditLogs(limit);
+  }
+
+  @Get('overview')
+  getOverview() {
+    return this.admin.getOverviewStats();
+  }
+
   @Post('voucher-definitions')
   createVoucherDefinition(
     @Body() dto: CreateVoucherDefinitionDto,

@@ -114,6 +114,63 @@ export class AdminService {
     });
   }
 
+  async listLoyaltyLedger(limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 200);
+    const entries = await this.prisma.loyaltyLedgerEntry.findMany({
+      take,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            phoneE164: true,
+          },
+        },
+      },
+    });
+    return entries.map((entry) => ({
+      id: entry.id,
+      customerId: entry.customerId,
+      customerPhone: entry.customer.phoneE164,
+      deltaPoints: entry.deltaPoints,
+      balanceAfter: entry.balanceAfter,
+      reason: entry.reason,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      createdAt: entry.createdAt,
+    }));
+  }
+
+  async listAuditLogs(limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 200);
+    return this.prisma.auditLog.findMany({
+      take,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getOverviewStats() {
+    const [members, activeVouchers, pointsAgg, otpStats] =
+      await this.prisma.$transaction([
+        this.prisma.customer.count(),
+        this.prisma.customerVoucher.count({ where: { status: 'ISSUED' } }),
+        this.prisma.loyaltyLedgerEntry.aggregate({
+          _sum: { deltaPoints: true },
+        }),
+        this.prisma.otpChallenge.aggregate({
+          _count: { id: true },
+          where: { usedAt: { not: null } },
+        }),
+      ]);
+
+    return {
+      members,
+      activeVouchers,
+      pointsIssued: Math.max(pointsAgg._sum.deltaPoints ?? 0, 0),
+      otpVerifiedCount: otpStats._count.id,
+    };
+  }
+
   async createVoucherDefinition(
     dto: CreateVoucherDefinitionDto,
     adminKeyHint: string,
