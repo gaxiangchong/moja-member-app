@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +15,7 @@ import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AccessTokenJwtPayload } from './types/jwt-payload.type';
+import { WhatsappOtpService } from './whatsapp-otp.service';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +26,7 @@ export class AuthService {
     private readonly phoneNormalizer: PhoneNormalizerService,
     private readonly customers: CustomersService,
     private readonly audit: AuditService,
+    private readonly whatsappOtp: WhatsappOtpService,
   ) {}
 
   async requestOtp(phoneRaw: string, ipAddress?: string | null) {
@@ -92,11 +95,27 @@ export class AuthService {
       metadata: { phoneE164, ipAddress: ipAddress ?? null },
     });
 
-    const devReturnCode =
-      this.config.get<string>('NODE_ENV', 'development') !== 'production';
+    const isProduction =
+      this.config.get<string>('NODE_ENV', 'development') === 'production';
+    const waConfigured = this.whatsappOtp.isConfigured();
+
+    if (isProduction && !waConfigured) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_DELIVERY_NOT_CONFIGURED',
+        message:
+          'WhatsApp OTP is not configured. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
+      });
+    }
+
+    if (waConfigured) {
+      await this.whatsappOtp.sendOtp(phoneE164, code);
+    }
+
+    const devReturnCode = !isProduction && !waConfigured;
 
     return {
       sent: true,
+      channel: waConfigured ? 'whatsapp' : 'dev',
       expiresAt: expiresAt.toISOString(),
       ...(devReturnCode ? { _devCode: code } : {}),
     };

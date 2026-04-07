@@ -57,6 +57,75 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## WhatsApp OTP setup guide
+
+This project supports phone login with OTP delivered via WhatsApp (Meta WhatsApp Cloud API).
+
+### 1) Configure environment variables
+
+Set these in `.env`:
+
+```env
+# Required for production WhatsApp delivery
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+
+# Optional (defaults shown)
+WHATSAPP_GRAPH_API_VERSION=v21.0
+WHATSAPP_OTP_TEMPLATE_NAME=
+WHATSAPP_OTP_TEMPLATE_LANG=en
+
+# CORS for client web app
+CLIENT_WEB_ORIGIN=http://localhost:5173
+```
+
+Notes:
+- If `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are present, OTP is sent to WhatsApp.
+- In production, if WhatsApp is not configured, OTP request returns `OTP_DELIVERY_NOT_CONFIGURED` (503).
+- In development without WhatsApp config, API returns `_devCode` for testing.
+
+### 2) Meta WhatsApp Cloud API prerequisites
+
+In Meta Developer console:
+- Create/select an app with WhatsApp product enabled.
+- Get a permanent `WHATSAPP_ACCESS_TOKEN`.
+- Copy your `WHATSAPP_PHONE_NUMBER_ID`.
+- Add recipient numbers to allowed/test recipients (if still in test mode).
+- (Recommended for production) create and approve a message template for OTP.
+
+### 3) Template vs plain text behavior
+
+The service supports two modes:
+- **Template mode**: set `WHATSAPP_OTP_TEMPLATE_NAME`. The OTP code is injected as body parameter `{{1}}`.
+- **Text mode**: if template name is empty, service sends plain text message.
+
+For production accounts, template mode is usually required by WhatsApp policy.
+
+### 4) Test flow
+
+1. Start API:
+   ```bash
+   npm run start:dev
+   ```
+2. Request OTP:
+   - `POST /auth/otp/request`
+   - body: `{ "phone": "+65XXXXXXXX" }`
+3. Verify OTP:
+   - `POST /auth/otp/verify`
+   - body: `{ "phone": "+65XXXXXXXX", "code": "123456" }`
+
+### 5) Troubleshooting
+
+- **No message received**
+  - Confirm `WHATSAPP_ACCESS_TOKEN` is valid and not expired.
+  - Confirm phone is in correct international format.
+  - Confirm recipient is allowed (sandbox/test mode).
+- **API error from WhatsApp**
+  - Check server logs (`WhatsappOtpService`) for response details.
+  - Verify API version and phone number ID.
+- **Frontend blocked by CORS**
+  - Add your web origin to `CLIENT_WEB_ORIGIN` (comma-separated supported).
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
