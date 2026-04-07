@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CustomerStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+enum VoucherStatus {
+  ISSUED
+  REDEEMED
+  EXPIRED
+  VOID
+}
+
+model Customer {
+  id          String         @id @default(uuid()) @db.Uuid
+  phoneE164   String         @unique @map("phone_e164")
+  status      CustomerStatus @default(DRAFT)
+  displayName String?        @map("display_name")
+  email       String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  wallet         LoyaltyWallet?
+  ledgerEntries  LoyaltyLedgerEntry[]
+  vouchers       CustomerVoucher[]
+  otpChallenges  OtpChallenge[]
+
+  @@map("customers")
+}
+
+model OtpChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  phoneE164  String    @map("phone_e164")
+  otpHash    String    @map("otp_hash")
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  customerId String?   @map("customer_id") @db.Uuid
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([phoneE164, createdAt])
+  @@map("otp_challenges")
+}
+
+model OtpRequestLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  phoneE164 String   @map("phone_e164")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([phoneE164, createdAt])
+  @@map("otp_request_logs")
+}
+
+model LoyaltyWallet {
+  id           String   @id @default(uuid()) @db.Uuid
+  customerId   String   @unique @map("customer_id") @db.Uuid
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  pointsCached Int      @default(0) @map("points_cached")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("loyalty_wallets")
+}
+
+model LoyaltyLedgerEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  customerId     String   @map("customer_id") @db.Uuid
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deltaPoints    Int      @map("delta_points")
+  balanceAfter   Int      @map("balance_after")
+  referenceType  String?  @map("reference_type")
+  referenceId    String?  @map("reference_id") @db.Uuid
+  reason         String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("loyalty_ledger_entries")
+}
+
+model VoucherDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  title       String
+  description String?
+  pointsCost  Int?     @map("points_cost")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  instances CustomerVoucher[]
+
+  @@map("voucher_definitions")
+}
+
+model CustomerVoucher {
+  id           String            @id @default(uuid()) @db.Uuid
+  customerId   String            @map("customer_id") @db.Uuid
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  definitionId String            @map("definition_id") @db.Uuid
+  definition   VoucherDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  status       VoucherStatus     @default(ISSUED)
+  issuedAt     DateTime          @default(now()) @map("issued_at")
+  redeemedAt   DateTime?         @map("redeemed_at")
+  expiresAt    DateTime?         @map("expires_at")
+  referenceType String?          @map("reference_type")
+  referenceId   String?         @map("reference_id") @db.Uuid
+
+  @@index([customerId, status])
+  @@map("customer_vouchers")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
