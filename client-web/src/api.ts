@@ -98,6 +98,8 @@ export type MemberProfile = {
   status: string;
   displayName: string | null;
   email: string | null;
+  birthday: string | null;
+  memberTier: string | null;
   loyalty: { pointsBalance: number; walletId: string | null };
   createdAt: string;
   updatedAt: string;
@@ -116,4 +118,68 @@ export async function fetchMe(): Promise<MemberProfile> {
     );
   }
   return data as MemberProfile;
+}
+
+export async function updateMe(input: {
+  displayName?: string;
+  email?: string;
+  birthday?: string;
+}): Promise<MemberProfile> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/customers/me`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+  const data = await parseJson<MemberProfile & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to update profile',
+    );
+  }
+  return data as MemberProfile;
+}
+
+export type MemberRewardsPayload = {
+  wallet: { pointsBalance: number };
+  vouchers: Array<{
+    id: string;
+    status: string;
+    issuedAt: string;
+    expiresAt: string | null;
+    definition: {
+      id: string;
+      code: string;
+      title: string;
+      description: string | null;
+      pointsCost: number | null;
+    };
+  }>;
+  rewards: Array<{
+    id: string;
+    code: string;
+    title: string;
+    description: string | null;
+    pointsCost: number | null;
+    isActive: boolean;
+  }>;
+};
+
+export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/customers/me/rewards`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await parseJson<MemberRewardsPayload & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to load rewards',
+    );
+  }
+  return data as MemberRewardsPayload;
 }

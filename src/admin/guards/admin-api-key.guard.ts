@@ -14,11 +14,12 @@ export class AdminApiKeyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
     const header = req.headers['x-admin-api-key'];
-    const key = Array.isArray(header) ? header[0] : header;
+    const keyRaw = Array.isArray(header) ? header[0] : header;
+    const key = (keyRaw ?? '').trim().replace(/^['"]|['"]$/g, '');
     const raw = this.config.get<string>('ADMIN_API_KEYS', '');
     const allowed = raw
       .split(',')
-      .map((s) => s.trim())
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
       .filter(Boolean);
     if (!allowed.length) {
       throw new UnauthorizedException({

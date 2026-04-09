@@ -66,7 +66,12 @@ export class AuthService {
       );
     }
 
-    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const mode = this.resolveOtpMode();
+    const fixedCode = this.config.get<string>('OTP_MOCK_FIXED_CODE')?.trim();
+    const code =
+      mode === 'mock' && fixedCode
+        ? fixedCode
+        : String(randomInt(0, 1_000_000)).padStart(6, '0');
     const otpHash = await bcrypt.hash(code, 12);
     const ttlMinutes = this.config.get<number>('OTP_TTL_MINUTES', 10);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
@@ -95,29 +100,28 @@ export class AuthService {
       metadata: { phoneE164, ipAddress: ipAddress ?? null },
     });
 
-    const isProduction =
-      this.config.get<string>('NODE_ENV', 'development') === 'production';
     const waConfigured = this.whatsappOtp.isConfigured();
 
-    if (isProduction && !waConfigured) {
+    if (mode === 'whatsapp' && !waConfigured) {
       throw new ServiceUnavailableException({
         code: 'OTP_DELIVERY_NOT_CONFIGURED',
         message:
-          'WhatsApp OTP is not configured. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
+          'OTP mode is whatsapp but WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
       });
     }
 
-    if (waConfigured) {
+    if (mode !== 'mock' && waConfigured) {
       await this.whatsappOtp.sendOtp(phoneE164, code);
     }
 
-    const devReturnCode = !isProduction && !waConfigured;
+    const channel = mode === 'mock' ? 'mock' : waConfigured ? 'whatsapp' : 'dev';
+    const returnCode = channel !== 'whatsapp';
 
     return {
       sent: true,
-      channel: waConfigured ? 'whatsapp' : 'dev',
+      channel,
       expiresAt: expiresAt.toISOString(),
-      ...(devReturnCode ? { _devCode: code } : {}),
+      ...(returnCode ? { _devCode: code } : {}),
     };
   }
 
@@ -160,6 +164,7 @@ export class AuthService {
     });
 
     const customer = await this.customers.ensureCustomerForPhone(phoneE164);
+    await this.customers.touchLastLogin(customer.id);
 
     await this.audit.log({
       actorType: 'customer',
@@ -183,5 +188,13 @@ export class AuthService {
       customerId: customer.id,
       status: customer.status,
     };
+  }
+
+  private resolveOtpMode(): 'mock' | 'whatsapp' | 'auto' {
+    const raw = this.config.get<string>('OTP_DELIVERY_MODE', 'auto').toLowerCase();
+    if (raw === 'mock' || raw === 'whatsapp') {
+      return raw;
+    }
+    return 'auto';
   }
 }

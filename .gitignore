@@ -11,6 +11,9 @@ build/
 .env.*
 !.env.example
 
+# Local import/export files
+data/
+
 # Logs & runtime
 logs/
 *.log

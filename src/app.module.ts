@@ -10,6 +10,11 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { AdminDashboardController } from './ui/admin-dashboard.controller';
+import { WalletModule } from './wallet/wallet.module';
+import { SegmentationModule } from './segmentation/segmentation.module';
+import { ImportExportModule } from './import-export/import-export.module';
+import { MasterDataModule } from './master-data/master-data.module';
+import { AdminAuthModule } from './admin-auth/admin-auth.module';
 
 @Module({
   imports: [
@@ -22,12 +27,17 @@ import { AdminDashboardController } from './ui/admin-dashboard.controller';
       },
     ]),
     PrismaModule,
+    AdminAuthModule,
     AuditModule,
     LoyaltyModule,
     CustomersModule,
     AuthModule,
     AdminModule,
     RewardsModule,
+    WalletModule,
+    SegmentationModule,
+    ImportExportModule,
+    MasterDataModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

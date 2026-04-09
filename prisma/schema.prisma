@@ -20,20 +20,115 @@ enum VoucherStatus {
   VOID
 }
 
+enum WalletTxnType {
+  TOPUP
+  SPEND
+  REFUND
+  MANUAL_ADJUSTMENT
+  PROMOTIONAL_BONUS
+  REVERSAL
+}
+
+enum MasterEntryCategory {
+  MEMBER_TIER
+  STORE
+  SOURCE_CHANNEL
+  NOTE_CATEGORY
+  TAG_VOCAB
+}
+
+enum BusinessRuleKind {
+  WALLET_BONUS
+  LOYALTY_EARN
+  LOYALTY_REDEEM
+  LOYALTY_EXPIRY
+}
+
+enum ImportBatchKind {
+  CUSTOMER_MASTER
+  WALLET_ADJUSTMENT
+  LOYALTY_ADJUSTMENT
+  VOUCHER_ASSIGNMENT
+  TAGS
+}
+
+enum ImportBatchStatus {
+  PREVIEW
+  COMMITTED
+  FAILED
+}
+
+enum ExportJobStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ExportFormat {
+  CSV
+  XLSX
+}
+
+enum ExportJobKind {
+  CUSTOMERS
+  WALLET_LEDGER
+  POINTS_LEDGER
+  VOUCHERS_ISSUED
+  VOUCHERS_REDEEMED
+  AUDIT_LOGS
+  IMPORT_BATCHES
+  SEGMENT_AUDIENCE
+}
+
+enum AdminRoleCode {
+  SUPER_ADMIN
+  CRM_ADMIN
+  MARKETING_ADMIN
+  FINANCE_ADMIN
+  SUPPORT_ADMIN
+  READONLY_ANALYST
+  STORE_MANAGER
+}
+
+enum ApprovalRequestKind {
+  WALLET_REVERSAL
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Customer {
   id          String         @id @default(uuid()) @db.Uuid
   phoneE164   String         @unique @map("phone_e164")
   status      CustomerStatus @default(DRAFT)
   displayName String?        @map("display_name")
   email       String?
+  birthday    DateTime?      @db.Date
+  gender      String?        @map("gender")
+  preferredStore String?     @map("preferred_store")
+  signupSource String        @default("otp") @map("signup_source")
+  memberTier  String         @default("standard") @map("member_tier")
+  marketingConsent Boolean   @default(false) @map("marketing_consent")
+  notes       String?        @map("notes")
+  tags        String[]       @default([]) @map("tags")
+  lastLoginAt DateTime?      @map("last_login_at")
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
   wallet         LoyaltyWallet?
+  storedWallet   StoredWallet?
   ledgerEntries  LoyaltyLedgerEntry[]
+  storedWalletLedgerEntries StoredWalletLedgerEntry[]
   vouchers       CustomerVoucher[]
   otpChallenges  OtpChallenge[]
 
+  @@index([displayName])
+  @@index([email])
+  @@index([signupSource])
+  @@index([memberTier])
   @@map("customers")
 }
 
@@ -87,6 +182,48 @@ model LoyaltyLedgerEntry {
   @@map("loyalty_ledger_entries")
 }
 
+model StoredWallet {
+  id                     String   @id @default(uuid()) @db.Uuid
+  customerId             String   @unique @map("customer_id") @db.Uuid
+  customer               Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  balanceCents           Int      @default(0) @map("balance_cents")
+  lifetimeTopUpCents     Int      @default(0) @map("lifetime_top_up_cents")
+  lifetimeSpentCents     Int      @default(0) @map("lifetime_spent_cents")
+  manualAdjustmentCents  Int      @default(0) @map("manual_adjustment_cents")
+  promotionalCreditCents Int      @default(0) @map("promotional_credit_cents")
+  pendingCreditCents     Int      @default(0) @map("pending_credit_cents")
+  isFrozen               Boolean  @default(false) @map("is_frozen")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  entries StoredWalletLedgerEntry[]
+
+  @@map("stored_wallets")
+}
+
+model StoredWalletLedgerEntry {
+  id              String      @id @default(uuid()) @db.Uuid
+  walletId         String      @map("wallet_id") @db.Uuid
+  wallet           StoredWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  customerId       String      @map("customer_id") @db.Uuid
+  customer         Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type             WalletTxnType
+  amountCents      Int         @map("amount_cents")
+  balanceBefore    Int         @map("balance_before")
+  balanceAfter     Int         @map("balance_after")
+  reason           String
+  createdByType    String      @map("created_by_type")
+  createdBy        String?     @map("created_by")
+  reversedByTxnId  String?     @map("reversed_by_txn_id") @db.Uuid
+  metadata         Json?
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([walletId, createdAt])
+  @@index([type, createdAt])
+  @@index([reversedByTxnId])
+  @@map("stored_wallet_ledger_entries")
+}
+
 model VoucherDefinition {
   id          String   @id @default(uuid()) @db.Uuid
   code        String   @unique
@@ -114,22 +251,166 @@ model CustomerVoucher {
   expiresAt    DateTime?         @map("expires_at")
   referenceType String?          @map("reference_type")
   referenceId   String?         @map("reference_id") @db.Uuid
+  updatedAt    DateTime         @updatedAt @map("updated_at")
 
   @@index([customerId, status])
+  @@index([updatedAt])
   @@map("customer_vouchers")
 }
 
 model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  actorType  String   @map("actor_type")
-  actorId    String?  @map("actor_id")
-  action     String
-  entityType String   @map("entity_type")
-  entityId   String?  @map("entity_id") @db.Uuid
-  metadata   Json?
-  createdAt  DateTime @default(now()) @map("created_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  actorType    String    @map("actor_type")
+  actorId      String?   @map("actor_id")
+  action       String
+  entityType   String    @map("entity_type")
+  entityId     String?   @map("entity_id") @db.Uuid
+  metadata     Json?
+  adminUserId  String?   @map("admin_user_id") @db.Uuid
+  adminUser    AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  adminRole    String?   @map("admin_role")
+  ipAddress    String?   @map("ip_address")
+  reason       String?
+  beforeValue  Json?     @map("before_value")
+  afterValue   Json?     @map("after_value")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([adminUserId, createdAt])
+  @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+model AdminUser {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  displayName  String?      @map("display_name")
+  role         AdminRoleCode @map("role")
+  isActive     Boolean      @default(true) @map("is_active")
+  lastLoginAt  DateTime?    @map("last_login_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  auditLogs         AuditLog[]
+  approvalsRequested ApprovalRequest[] @relation("ApprovalRequester")
+  approvalsReviewed  ApprovalRequest[] @relation("ApprovalReviewer")
+
+  @@map("admin_users")
+}
+
+model ApprovalRequest {
+  id          String                @id @default(uuid()) @db.Uuid
+  kind        ApprovalRequestKind
+  status      ApprovalRequestStatus @default(PENDING)
+  payload     Json
+  requesterId String                @map("requester_id") @db.Uuid
+  requester   AdminUser             @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  reviewerId  String?               @map("reviewer_id") @db.Uuid
+  reviewer    AdminUser?            @relation("ApprovalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewNote  String?               @map("review_note")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  reviewedAt  DateTime?             @map("reviewed_at")
+
+  @@index([status, createdAt])
+  @@index([requesterId])
+  @@map("approval_requests")
+}
+
+model SegmentAudience {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  filters     Json     @map("filters")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  campaignRuns CampaignRun[]
+
+  @@map("segment_audiences")
+}
+
+model CampaignRun {
+  id                 String           @id @default(uuid()) @db.Uuid
+  segmentAudienceId  String?          @map("segment_audience_id") @db.Uuid
+  segmentAudience    SegmentAudience? @relation(fields: [segmentAudienceId], references: [id], onDelete: SetNull)
+  filtersSnapshot    Json?            @map("filters_snapshot")
+  action             String
+  payload            Json
+  createdBy          String           @map("created_by")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  customerMatched    Int              @default(0) @map("customer_matched")
+  customerSucceeded  Int              @default(0) @map("customer_succeeded")
+  customerFailed     Int              @default(0) @map("customer_failed")
+  errors             Json?
+
+  @@index([createdAt])
+  @@map("campaign_runs")
+}
+
+model ImportBatch {
+  id           String            @id @default(uuid()) @db.Uuid
+  kind         ImportBatchKind
+  fileName     String            @map("file_name")
+  fileStoragePath String?        @map("file_storage_path")
+  uploadedBy   String            @map("uploaded_by")
+  uploadedAt   DateTime          @default(now()) @map("uploaded_at")
+  status       ImportBatchStatus @default(PREVIEW)
+  totalRows    Int               @default(0) @map("total_rows")
+  successRows  Int               @default(0) @map("success_rows")
+  failedRows   Int               @default(0) @map("failed_rows")
+  previewRows  Json?             @map("preview_rows")
+  rowErrors    Json?             @map("row_errors")
+  summary      Json?
+
+  @@index([kind, uploadedAt])
+  @@map("import_batches")
+}
+
+model ExportJob {
+  id           String          @id @default(uuid()) @db.Uuid
+  kind         ExportJobKind
+  format       ExportFormat
+  status       ExportJobStatus @default(PENDING)
+  params       Json?
+  rowCount     Int?            @map("row_count")
+  fileName     String?         @map("file_name")
+  storagePath  String?         @map("storage_path")
+  errorMessage String?         @map("error_message")
+  createdBy    String          @map("created_by")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  completedAt  DateTime?       @map("completed_at")
+
+  @@index([createdAt])
+  @@map("export_jobs")
+}
+
+model MasterEntry {
+  id        String              @id @default(uuid()) @db.Uuid
+  category  MasterEntryCategory
+  code      String
+  label     String
+  sortOrder Int                 @default(0) @map("sort_order")
+  isActive  Boolean             @default(true) @map("is_active")
+  metadata  Json?
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  @@unique([category, code])
+  @@index([category, isActive])
+  @@map("master_entries")
+}
+
+model BusinessRule {
+  id        String           @id @default(uuid()) @db.Uuid
+  kind      BusinessRuleKind
+  name      String
+  config    Json
+  isActive  Boolean          @default(true) @map("is_active")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@index([kind, isActive])
+  @@map("business_rules")
 }

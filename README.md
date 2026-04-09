@@ -77,12 +77,37 @@ WHATSAPP_OTP_TEMPLATE_LANG=en
 
 # CORS for client web app
 CLIENT_WEB_ORIGIN=http://localhost:5173
+
+# OTP delivery mode: auto | mock | whatsapp
+OTP_DELIVERY_MODE=mock
+# Optional fixed code for mock mode
+OTP_MOCK_FIXED_CODE=123456
 ```
 
 Notes:
 - If `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are present, OTP is sent to WhatsApp.
 - In production, if WhatsApp is not configured, OTP request returns `OTP_DELIVERY_NOT_CONFIGURED` (503).
 - In development without WhatsApp config, API returns `_devCode` for testing.
+- `OTP_DELIVERY_MODE=mock` always returns `_devCode` and does not call WhatsApp.
+- `OTP_DELIVERY_MODE=whatsapp` enforces WhatsApp config and fails fast if not configured.
+- `OTP_DELIVERY_MODE=auto` uses WhatsApp when available, otherwise falls back to dev/mock response.
+
+### 1.1) Local PostgreSQL (recommended for dev)
+
+Use local DB in `.env`:
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/moja_member?schema=public"
+```
+
+Then run:
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+If migration succeeds, your local DB is ready.
 
 ### 2) Meta WhatsApp Cloud API prerequisites
 
@@ -125,6 +150,133 @@ For production accounts, template mode is usually required by WhatsApp policy.
   - Verify API version and phone number ID.
 - **Frontend blocked by CORS**
   - Add your web origin to `CLIENT_WEB_ORIGIN` (comma-separated supported).
+
+## Back-office admin system (design)
+
+This section describes the target architecture for the F&B member **admin / back-office**. The API is NestJS + Prisma; the embedded UI is at `GET /admin-dashboard` (Phase 1-style shell; full SPA can replace it later).
+
+### Design principles
+
+1. **Wallet credit and loyalty points are separate**  
+   - **Stored wallet credit** (money-like, cents): balance + lifetime aggregates on `stored_wallets`, **append-only** ledger on `stored_wallet_ledger_entries` (`WalletTxnType`: top-up, spend, refund, manual adjustment, promotional bonus, reversal).  
+   - **Loyalty points**: balance cache on `loyalty_wallets`, ledger on `loyalty_ledger_entries`. No mixing of cents and points in one ledger.
+
+2. **Ledger-first money and points**  
+   Every change is a new row (balance before/after for wallet). Reversals are **compensating entries**, not silent edits.
+
+3. **Audit everything sensitive**  
+   Customer PII changes, wallet/points adjustments, imports/exports, campaign runs, and admin-driven voucher pushes should emit `audit_logs` (actor, action, entity, metadata).
+
+4. **Imports are batched and reviewable**  
+   Upload → validate → **preview** → **commit**; persist batch metadata, row-level errors, and optional stored upload file under `data/imports/`.
+
+5. **Segmentation drives campaigns**  
+   Filters are JSON (saved audiences + ad-hoc preview). Campaign execution records a `campaign_run` and applies actions in bulk (voucher push, wallet bonus, points bonus). Delivery channels (WhatsApp/SMS/email/in-app) are **outbound adapters** to add later.
+
+### Logical architecture
+
+```mermaid
+flowchart TB
+  subgraph admin_ui [Admin UI]
+    Dash[Dashboards and reports]
+    CRM[Customer CRM]
+    Vouchers[Voucher ops]
+    Wallet[Wallet ops]
+    Points[Points ops]
+    ImpExp[Import / Export]
+    Seg[Segments and campaigns]
+    Master[Master data]
+  end
+
+  subgraph api [Nest API]
+    AdminCtrl["/admin/*"]
+    SegCtrl["/admin/segments/*"]
+    IO["/admin/import/* /admin/export/*"]
+    MasterCtrl["/admin/master/*"]
+  end
+
+  subgraph core [Domain services]
+    Customers[Customers]
+    WalletSvc[WalletService]
+    LoyaltySvc[LoyaltyService]
+    SegSvc[SegmentationService]
+    IOSvc[ImportExportService]
+  end
+
+  subgraph data [PostgreSQL]
+    C[(customers)]
+    SW[(stored_wallets + ledger)]
+    LW[(loyalty_wallets + ledger)]
+    CV[(customer_vouchers)]
+    VD[(voucher_definitions)]
+    Aud[(audit_logs)]
+    SegA[(segment_audiences)]
+    Camp[(campaign_runs)]
+    Imp[(import_batches)]
+    Exp[(export_jobs)]
+    Mas[(master_entries + business_rules)]
+  end
+
+  admin_ui --> api
+  api --> core
+  core --> data
+```
+
+### Role-based access control (target)
+
+**Today:** admin routes are protected by **`x-admin-api-key`** (`AdminApiKeyGuard`). Optional env: `ADMIN_ALLOW_PHONE_CHANGE` for stricter phone edits.
+
+**Target:** replace or supplement API keys with **admin JWT** (or SSO) and a permission matrix, for example:
+
+| Permission | Examples |
+|------------|----------|
+| `customers.read` | List/search profile, audit read |
+| `customers.write` | Edit profile, tags, status |
+| `customers.phone_change` | Change phone (higher risk) |
+| `wallet.read` / `wallet.adjust` / `wallet.freeze` | View ledger, manual credit/debit, freeze |
+| `loyalty.read` / `loyalty.adjust` | Ledger view, manual points |
+| `vouchers.define` / `vouchers.assign` | Definitions vs issue to member |
+| `segments.manage` / `campaigns.run` | Saved audiences vs execute campaigns |
+| `import.export` | Upload, commit import, run export |
+| `master.manage` | Tiers, stores, rules |
+| `reports.view` | Dashboards and exports |
+
+Implement as Nest **guards** + decorators checking claims; map roles (e.g. `support`, `marketing`, `finance`, `superadmin`) to permission sets.
+
+### Module map (API surface)
+
+| Area | Responsibility | Main routes (prefix `admin` unless noted) |
+|------|------------------|-------------------------------------------|
+| **CRM** | Search, profile, tags, audit trail | `GET/PATCH /admin/customers…`, `GET …/audit-logs` |
+| **Wallet** | Credit separate from points, freeze, reversal | `GET …/wallet`, `POST …/wallet/adjustments`, `POST …/wallet/reverse/:txn`, freeze/unfreeze |
+| **Loyalty** | Points ledger and adjustments | `POST …/loyalty/adjustments`, `GET /admin/loyalty-ledger` |
+| **Vouchers** | Definitions + issue (single/campaign/import) | `GET/POST /admin/voucher-definitions`, assignments via campaign/import |
+| **Segmentation & campaigns** | Filters, saved audiences, bulk actions | `/admin/segments/*`, `POST …/campaigns/run` |
+| **Import / export** | CSV/XLSX, preview, commit, jobs | `/admin/import/*`, `/admin/export/*` |
+| **Master data** | Tiers, stores, channels, rules | `/admin/master/*`, `POST …/seed` |
+| **Reporting** | KPIs and activity feeds | `GET /admin/overview`, ledger endpoints, export jobs |
+
+### Reporting dashboards
+
+- **Operational:** member counts, signups, points issued/redeemed, wallet top-ups (from wallet ledger), voucher statuses, recent registrations / voucher / wallet activity (`/admin/overview`).  
+- **Deep-dive:** filtered exports and segment counts; future: scheduled reports, reconciliation (wallet sum vs ledger), campaign funnel.
+
+### Campaign delivery (future)
+
+Keep **campaign execution** (who gets what) in the core service; add a **delivery queue** and channel workers (WhatsApp, SMS, email, push) that consume `campaign_run` or notification jobs. Template rendering and consent flags live next to channel adapters.
+
+### Environment (admin-related)
+
+```env
+ADMIN_API_KEYS=comma-separated-keys
+ADMIN_ALLOW_PHONE_CHANGE=false
+```
+
+Local import/export files default under `data/` (gitignored).
+
+---
+
+For implementation details and client integration, trace controllers under `src/admin/`, `src/segmentation/`, `src/import-export/`, `src/master-data/`, and `src/ui/admin-dashboard.controller.ts`.
 
 ## Deployment
 

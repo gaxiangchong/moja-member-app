@@ -15,6 +15,12 @@ export class AuditService {
     entityType: string;
     entityId?: string | null;
     metadata?: Prisma.InputJsonValue;
+    adminUserId?: string | null;
+    adminRole?: string | null;
+    ipAddress?: string | null;
+    reason?: string | null;
+    beforeValue?: Prisma.InputJsonValue;
+    afterValue?: Prisma.InputJsonValue;
   }): Promise<void> {
     await this.prisma.auditLog.create({
       data: {
@@ -24,6 +30,12 @@ export class AuditService {
         entityType: params.entityType,
         entityId: params.entityId ?? null,
         metadata: params.metadata ?? undefined,
+        adminUserId: params.adminUserId ?? undefined,
+        adminRole: params.adminRole ?? undefined,
+        ipAddress: params.ipAddress ?? undefined,
+        reason: params.reason ?? undefined,
+        beforeValue: params.beforeValue ?? undefined,
+        afterValue: params.afterValue ?? undefined,
       },
     });
   }
