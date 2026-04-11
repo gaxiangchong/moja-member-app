@@ -1,9 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CustomerStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { CustomerStatus, Prisma } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
 import { WalletService } from '../wallet/wallet.service';
+import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
+
+function fulfillmentSummaryLinesFromJson(
+  raw: Prisma.JsonValue | null,
+): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((x): x is string => typeof x === 'string');
+  }
+  return [];
+}
 
 @Injectable()
 export class CustomersService {
@@ -30,21 +46,67 @@ export class CustomersService {
     return this.prisma.customer.findUnique({ where: { phoneE164 } });
   }
 
+  private async generateUniqueReferralCode(): Promise<string> {
+    for (let i = 0; i < 12; i += 1) {
+      const code = randomBytes(4).toString('hex').toUpperCase();
+      const clash = await this.prisma.customer.findUnique({
+        where: { referralCode: code },
+        select: { id: true },
+      });
+      if (!clash) return code;
+    }
+    throw new Error('REFERRAL_CODE_GENERATION_FAILED');
+  }
+
+  private async resolveReferrerId(
+    code: string | null | undefined,
+  ): Promise<string | null> {
+    const normalized = String(code ?? '')
+      .trim()
+      .toUpperCase();
+    if (!normalized) return null;
+    const ref = await this.prisma.customer.findFirst({
+      where: { referralCode: { equals: normalized, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    return ref?.id ?? null;
+  }
+
   /**
    * Creates a draft member keyed by normalized phone (first successful OTP verify).
+   * Optional `referralCode` attributes signup to an existing member (first signup only).
    */
-  async ensureCustomerForPhone(phoneE164: string) {
+  async ensureCustomerForPhone(
+    phoneE164: string,
+    opts?: { referralCode?: string | null },
+  ) {
     const existing = await this.findByPhoneE164(phoneE164);
     if (existing) {
       await this.loyalty.ensureWallet(existing.id);
       await this.wallet.ensureWallet(existing.id);
+      if (!existing.referralCode) {
+        const code = await this.generateUniqueReferralCode();
+        return this.prisma.customer.update({
+          where: { id: existing.id },
+          data: { referralCode: code },
+        });
+      }
       return existing;
     }
+
+    let referredById: string | null = null;
+    if (opts?.referralCode) {
+      referredById = await this.resolveReferrerId(opts.referralCode);
+    }
+
+    const referralCode = await this.generateUniqueReferralCode();
 
     const customer = await this.prisma.customer.create({
       data: {
         phoneE164,
         status: CustomerStatus.DRAFT,
+        referralCode,
+        referredByCustomerId: referredById,
       },
     });
     await this.loyalty.ensureWallet(customer.id);
@@ -56,6 +118,32 @@ export class CustomersService {
     const customer = await this.findByIdOrThrow(customerId);
     const loyalty = await this.loyalty.getWalletSummary(customerId);
     const storedWallet = await this.wallet.getSummary(customerId);
+    const [referralCount, favorites] = await Promise.all([
+      this.prisma.customer.count({
+        where: { referredByCustomerId: customerId },
+      }),
+      this.prisma.$queryRaw<
+        { product_id: string; name: string; total_qty: bigint }[]
+      >`
+        SELECT l.product_id AS product_id, MAX(l.name) AS name, SUM(l.qty)::bigint AS total_qty
+        FROM customer_order_lines l
+        INNER JOIN customer_orders o ON o.id = l.order_id
+        WHERE o.customer_id = ${customerId}::uuid
+        GROUP BY l.product_id
+        ORDER BY total_qty DESC
+        LIMIT 5
+      `,
+    ]);
+
+    let referralCode = customer.referralCode;
+    if (!referralCode) {
+      referralCode = await this.generateUniqueReferralCode();
+      await this.prisma.customer.update({
+        where: { id: customerId },
+        data: { referralCode },
+      });
+    }
+
     return {
       id: customer.id,
       phoneE164: customer.phoneE164,
@@ -69,6 +157,13 @@ export class CustomersService {
       memberTier: customer.memberTier,
       marketingConsent: customer.marketingConsent,
       lastLoginAt: customer.lastLoginAt,
+      referralCode,
+      referralCount,
+      favoriteProducts: favorites.map((r) => ({
+        productId: r.product_id,
+        name: r.name,
+        totalQty: Number(r.total_qty),
+      })),
       loyalty: {
         pointsBalance: loyalty.pointsBalance,
         walletId: loyalty.walletId || null,
@@ -176,6 +271,78 @@ export class CustomersService {
       summary,
       transactions: entries,
     };
+  }
+
+  async listMemberOrders(customerId: string, limit = 40) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const rows = await this.prisma.customerOrder.findMany({
+      where: { customerId },
+      orderBy: { placedAt: 'desc' },
+      take,
+      include: { lines: { orderBy: { id: 'asc' } } },
+    });
+    return {
+      orders: rows.map((o) => ({
+        id: o.id,
+        placedAt: o.placedAt.toISOString(),
+        completedAt: o.completedAt?.toISOString() ?? null,
+        totalCents: o.totalCents,
+        status: o.status,
+        fulfillmentSummary: fulfillmentSummaryLinesFromJson(o.fulfillmentSummary),
+        lines: o.lines.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          name: l.name,
+          variantLabel: l.variantLabel,
+          unitPriceCents: l.unitPriceCents,
+          qty: l.qty,
+          imageUrl: l.imageUrl,
+        })),
+      })),
+    };
+  }
+
+  async submitMemberOrder(customerId: string, dto: SubmitMemberOrderDto) {
+    const computed = dto.lines.reduce(
+      (acc, l) => acc + l.unitPriceCents * l.qty,
+      0,
+    );
+    if (computed !== dto.totalCents) {
+      throw new BadRequestException({
+        code: 'ORDER_TOTAL_MISMATCH',
+        message: 'Order total does not match line items',
+      });
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.customerOrder.create({
+        data: {
+          customerId,
+          totalCents: dto.totalCents,
+          status: 'placed',
+          fulfillmentSummary:
+            dto.fulfillmentSummary == null
+              ? Prisma.JsonNull
+              : (dto.fulfillmentSummary as Prisma.InputJsonValue),
+          lines: {
+            create: dto.lines.map((l) => ({
+              productId: l.productId,
+              name: l.name,
+              variantLabel: l.variantLabel ?? null,
+              unitPriceCents: l.unitPriceCents,
+              qty: l.qty,
+              imageUrl: l.imageUrl ?? null,
+            })),
+          },
+        },
+        include: { lines: true },
+      });
+      await tx.storedWallet.upsert({
+        where: { customerId },
+        create: { customerId, lifetimeSpentCents: dto.totalCents },
+        update: { lifetimeSpentCents: { increment: dto.totalCents } },
+      });
+      return created;
+    });
   }
 
   async topUpMyWallet(

@@ -63,11 +63,15 @@ export async function requestOtp(phone: string): Promise<{
 export async function verifyOtp(
   phone: string,
   code: string,
+  opts?: { referralCode?: string | null },
 ): Promise<{ accessToken: string; customerId: string; status: string }> {
+  const body: { phone: string; code: string; referralCode?: string } = { phone, code };
+  const ref = opts?.referralCode?.trim();
+  if (ref) body.referralCode = ref;
   const res = await fetch(`${base}/auth/otp/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, code }),
+    body: JSON.stringify(body),
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -103,6 +107,16 @@ export type MemberProfile = {
   loyalty: { pointsBalance: number; walletId: string | null };
   createdAt: string;
   updatedAt: string;
+  referralCode?: string | null;
+  referralCount?: number;
+  lastLoginAt?: string | null;
+  favoriteProducts?: Array<{ productId: string; name: string; totalQty: number }>;
+  storedWallet?: {
+    walletId: string;
+    currentWalletBalance: number;
+    lifetimeSpentAmount: number;
+    lifetimeTopUpAmount: number;
+  } | null;
 };
 
 export async function fetchMe(): Promise<MemberProfile> {
@@ -235,6 +249,98 @@ export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
     );
   }
   return data as MemberRewardsPayload;
+}
+
+export type SubmitMemberOrderLine = {
+  productId: string;
+  name: string;
+  unitPriceCents: number;
+  qty: number;
+  variantLabel?: string | null;
+  imageUrl?: string | null;
+};
+
+export type SubmitMemberOrderResult = {
+  id: string;
+  placedAt: string;
+  totalCents: number;
+  status: string;
+  lines: Array<{
+    id: string;
+    productId: string;
+    name: string;
+    variantLabel: string | null;
+    unitPriceCents: number;
+    qty: number;
+    imageUrl: string | null;
+  }>;
+};
+
+export type MemberOrderRow = {
+  id: string;
+  placedAt: string;
+  completedAt: string | null;
+  totalCents: number;
+  status: string;
+  fulfillmentSummary: string[];
+  lines: Array<{
+    id: string;
+    productId: string;
+    name: string;
+    variantLabel: string | null;
+    unitPriceCents: number;
+    qty: number;
+    imageUrl: string | null;
+  }>;
+};
+
+export async function fetchMemberOrders(limit = 40): Promise<{ orders: MemberOrderRow[] }> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/customers/me/orders?limit=${encodeURIComponent(String(limit))}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await parseJson<{ orders?: MemberOrderRow[]; message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Orders failed (${res.status})`);
+  }
+  return { orders: Array.isArray(data.orders) ? data.orders : [] };
+}
+
+export async function submitMemberOrder(payload: {
+  totalCents: number;
+  lines: SubmitMemberOrderLine[];
+  fulfillmentSummary?: string[] | null;
+}): Promise<SubmitMemberOrderResult> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/customers/me/orders`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<SubmitMemberOrderResult & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Order failed (${res.status})`);
+  }
+  return data as SubmitMemberOrderResult;
 }
 
 export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> {

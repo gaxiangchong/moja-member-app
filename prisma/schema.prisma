@@ -131,6 +131,11 @@ model Customer {
   notes       String?        @map("notes")
   tags        String[]       @default([]) @map("tags")
   lastLoginAt DateTime?      @map("last_login_at")
+  /// Shareable code for referral attribution (set on first login / create).
+  referralCode          String?   @unique @map("referral_code") @db.VarChar(20)
+  referredByCustomerId  String?   @map("referred_by_customer_id") @db.Uuid
+  referredBy            Customer? @relation("CustomerReferrer", fields: [referredByCustomerId], references: [id], onDelete: SetNull)
+  referredMembers       Customer[] @relation("CustomerReferrer")
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
@@ -141,12 +146,47 @@ model Customer {
   vouchers          CustomerVoucher[]
   otpChallenges     OtpChallenge[]
   shopHandoffJtis   ShopHandoffJti[]
+  orders            CustomerOrder[]
 
   @@index([displayName])
   @@index([email])
   @@index([signupSource])
   @@index([memberTier])
+  @@index([referredByCustomerId])
   @@map("customers")
+}
+
+model CustomerOrder {
+  id                 String    @id @default(uuid()) @db.Uuid
+  customerId         String    @map("customer_id") @db.Uuid
+  customer           Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  totalCents         Int       @map("total_cents")
+  status             String    @default("placed") @db.VarChar(32)
+  fulfillmentSummary Json?     @map("fulfillment_summary")
+  placedAt           DateTime  @default(now()) @map("placed_at")
+  completedAt        DateTime? @map("completed_at")
+
+  lines CustomerOrderLine[]
+
+  @@index([customerId, placedAt])
+  @@index([status, placedAt])
+  @@map("customer_orders")
+}
+
+model CustomerOrderLine {
+  id             String        @id @default(uuid()) @db.Uuid
+  orderId        String        @map("order_id") @db.Uuid
+  order          CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String        @map("product_id")
+  name           String
+  variantLabel   String?       @map("variant_label")
+  unitPriceCents Int           @map("unit_price_cents")
+  qty            Int
+  imageUrl       String?       @map("image_url")
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("customer_order_lines")
 }
 
 model OtpChallenge {

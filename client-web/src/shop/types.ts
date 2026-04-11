@@ -28,7 +28,7 @@ export type CartLine = {
   notes?: string;
 };
 
-export type FulfillmentMethod = 'pickup' | 'delivery';
+export type FulfillmentMethod = 'pickup' | 'delivery' | 'in_store';
 
 export type MockVoucher = {
   id: string;

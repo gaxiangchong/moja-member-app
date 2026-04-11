@@ -12,7 +12,7 @@ import { formatRm, MOCK_REWARDS, MOCK_VOUCHERS } from './data/mockCatalog';
 import { fulfillmentSummaryLines, validateCheckout } from './lib/checkoutValidation';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
 import { useShopStore } from './store/useShopStore';
-import { fetchShopCatalogProducts } from '../api';
+import { fetchShopCatalogProducts, submitMemberOrder } from '../api';
 
 const PICKUP_TIMES = [
   '10:00',
@@ -48,6 +48,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [placingOrder, setPlacingOrder] = useState(false);
 
   const cart = useShopStore((s) => s.cart);
   const addToCart = useShopStore((s) => s.addToCart);
@@ -133,7 +134,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     setCheckoutErrors(null);
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     const draft = {
       cart,
       fulfillmentMethod,
@@ -156,23 +157,47 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
       draft.deliveryCompany,
       draft.deliveryPickupTime,
     );
-    useOrderHistoryStore.getState().addOrder({
-      lines: cart.map((l) => ({
-        productId: l.productId,
-        name: l.name,
-        imageUrl: l.imageUrl,
-        unitPriceCents: l.unitPriceCents,
-        qty: l.qty,
-        variantLabel: l.variantLabel,
-      })),
-      totalCents: total,
-      fulfillmentSummary: lines,
-    });
-    window.alert(
-      `Order placed (demo)\n\nTotal: ${formatRm(total)}\n${lines.join('\n')}\n\nPayment step would follow in production.`,
-    );
-    resetAfterOrder();
-    goBrowse();
+    const linePayload = cart.map((l) => ({
+      productId: l.productId,
+      name: l.name,
+      imageUrl: l.imageUrl,
+      unitPriceCents: l.unitPriceCents,
+      qty: l.qty,
+      variantLabel: l.variantLabel ?? null,
+    }));
+    setPlacingOrder(true);
+    try {
+      const order = await submitMemberOrder({
+        totalCents: total,
+        fulfillmentSummary: lines,
+        lines: linePayload,
+      });
+      useOrderHistoryStore.getState().addOrder({
+        id: order.id,
+        placedAt: order.placedAt,
+        status: order.status,
+        completedAt: null,
+        lines: linePayload.map((l) => ({
+          productId: l.productId,
+          name: l.name,
+          imageUrl: l.imageUrl ?? '',
+          unitPriceCents: l.unitPriceCents,
+          qty: l.qty,
+          variantLabel: l.variantLabel ?? undefined,
+        })),
+        totalCents: order.totalCents,
+        fulfillmentSummary: lines,
+      });
+      window.alert(
+        `Order placed\n\nTotal: ${formatRm(order.totalCents)}\n${lines.join('\n')}`,
+      );
+      resetAfterOrder();
+      goBrowse();
+    } catch (err) {
+      setCheckoutErrors([err instanceof Error ? err.message : 'Order could not be saved.']);
+    } finally {
+      setPlacingOrder(false);
+    }
   };
 
   const selectDeliveryPreset = (p: (typeof DELIVERY_PRESETS)[number]) => {
@@ -311,6 +336,13 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
             <div className="shopFulfillmentRow">
               <button
                 type="button"
+                className={fulfillmentMethod === 'in_store' ? 'chip active shopFulfillmentChip' : 'chip shopFulfillmentChip'}
+                onClick={() => setFulfillmentMethod('in_store')}
+              >
+                In store · now
+              </button>
+              <button
+                type="button"
                 className={fulfillmentMethod === 'pickup' ? 'chip active shopFulfillmentChip' : 'chip shopFulfillmentChip'}
                 onClick={() => setFulfillmentMethod('pickup')}
               >
@@ -326,6 +358,11 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
                 Delivery
               </button>
             </div>
+            {fulfillmentMethod === 'in_store' ? (
+              <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+                We will prepare this order right away at the counter. Show your order QR when you collect.
+              </p>
+            ) : null}
             {fulfillmentMethod === 'pickup' ? (
               <div className="shopFieldGrid">
                 <label htmlFor="pickupDate">Pickup date</label>
@@ -473,8 +510,8 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
               </div>
             </div>
             <p className="caption">Payment is a placeholder in this demo build.</p>
-            <button type="button" onClick={handlePlaceOrder}>
-              Place order
+            <button type="button" onClick={() => void handlePlaceOrder()} disabled={placingOrder}>
+              {placingOrder ? 'Placing…' : 'Place order'}
             </button>
           </section>
         </>

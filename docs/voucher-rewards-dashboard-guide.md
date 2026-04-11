@@ -230,3 +230,21 @@ That means:
 2. Add a voucher-push evaluator service (idempotent and auditable).
 3. Add a scheduler for time-based triggers (`BIRTHDAY`, `REENGAGEMENT`).
 4. Add execution logs in dashboard (rule run count, success/fail/skipped).
+
+## Dashboard menu visibility (`admin-dashboard.config.json`)
+
+The embedded admin dashboard loads `GET /admin-dashboard/config.json`, which reads the repo file `admin-dashboard.config.json` (if present).
+
+- **`menuGroups.<key>.showGroup`**: when `false`, the whole sidebar section (summary + items) is hidden.
+- **`menuGroups.<key>.showSubmenu`**: when `false`, submenu rows are hidden (useful if you keep the group header only — typically pair with `showGroup` as you prefer).
+- **`menuViews`**: optional whitelist. If the object has **any** keys, only views with **`"viewId": true`** stay visible; all other `data-view` entries are hidden.
+
+Keys for `menuGroups` match `data-menu-group` on each `<details>`: `dashboard`, `customers`, `wallet`, `loyalty`, `vouchers`, `campaigns`, `data-tools`, `reports`, `settings`, `audit`.
+
+## Shopping catalog (member app Shop)
+
+Products shown in **client-web → Shop** come from the public API:
+
+- `GET /shop/catalog/products`
+
+Admins manage the catalog under **Settings → Shopping catalog** in the dashboard (backed by `GET/POST/PATCH /admin/shop-catalog/products`). Data is stored in `data/shop-catalog.products.json` (created on first use; the `data/` folder is gitignored).

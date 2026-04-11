@@ -13,13 +13,14 @@ import {
   type MemberProfile,
   type MemberRewardsPayload,
 } from './api';
-import { useOrderHistoryStore, type PastOrder } from './shop/store/useOrderHistoryStore';
-import { useShopStore } from './shop/store/useShopStore';
+
+const PENDING_REFERRAL_KEY = 'moja_pending_referral';
+import { OrdersTab } from './orders/OrdersTab';
 import { ShopFlow } from './shop/ShopFlow';
 
 type Step = 'phone' | 'code' | 'member';
-type MemberTab = 'home' | 'vouchers' | 'rewards' | 'account' | 'shop';
-type AccountSubpage = 'main' | 'orders';
+type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
+type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
 type RewardFilter = 'all' | 'food' | 'drinks';
 
@@ -52,10 +53,6 @@ function SectionHeader({
       ) : null}
     </div>
   );
-}
-
-function formatRm(cents: number): string {
-  return `RM ${(Number(cents || 0) / 100).toFixed(2)}`;
 }
 
 function VoucherCard({
@@ -92,66 +89,6 @@ function VoucherCard({
         Use Now
       </button>
     </article>
-  );
-}
-
-function OrderHistorySection({ onGoToShop }: { onGoToShop: () => void }) {
-  const orders = useOrderHistoryStore((s) => s.orders);
-
-  const handleReorder = (order: PastOrder) => {
-    const add = useShopStore.getState().addToCart;
-    for (const line of order.lines) {
-      add({
-        productId: line.productId,
-        name: line.name,
-        imageUrl: line.imageUrl,
-        unitPriceCents: line.unitPriceCents,
-        qty: line.qty,
-        variantLabel: line.variantLabel,
-      });
-    }
-    onGoToShop();
-  };
-
-  if (!orders.length) {
-    return (
-      <p className="caption" style={{ margin: 0 }}>
-        No orders yet. Open Shop to place your first order.
-      </p>
-    );
-  }
-
-  return (
-    <div className="orderHistoryList">
-      {orders.map((order) => {
-        const placed = new Date(order.placedAt);
-        const when = Number.isNaN(placed.getTime())
-          ? order.placedAt
-          : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-        const linePreview = order.lines
-          .slice(0, 2)
-          .map((l) => `${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} × ${l.qty}`)
-          .join(' · ');
-        const more = order.lines.length > 2 ? ` +${order.lines.length - 2} more` : '';
-        return (
-          <article key={order.id} className="orderHistoryCard">
-            <div className="orderHistoryHead">
-              <strong>{when}</strong>
-              <span className="orderHistoryTotal">{formatRm(order.totalCents)}</span>
-            </div>
-            <p className="caption orderHistoryLines">{linePreview}
-              {more}
-            </p>
-            {order.fulfillmentSummary.length ? (
-              <p className="caption orderHistoryFulfill">{order.fulfillmentSummary.join(' · ')}</p>
-            ) : null}
-            <button type="button" className="ghost orderHistoryReorder" onClick={() => handleReorder(order)}>
-              Reorder
-            </button>
-          </article>
-        );
-      })}
-    </div>
   );
 }
 
@@ -206,7 +143,7 @@ function App() {
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
-  const [accountSubpage, setAccountSubpage] = useState<AccountSubpage>('main');
+  const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formBirthday, setFormBirthday] = useState('');
@@ -233,6 +170,16 @@ function App() {
       });
     }
   }, [loadMemberData]);
+
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      const ref = u.searchParams.get('ref')?.trim();
+      if (ref) sessionStorage.setItem(PENDING_REFERRAL_KEY, ref);
+    } catch {
+      /* ignore invalid URL */
+    }
+  }, []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,7 +210,11 @@ function App() {
     setError(null);
     setLoading(true);
     try {
-      const { accessToken } = await verifyOtp(phone, code);
+      const pendingRef = sessionStorage.getItem(PENDING_REFERRAL_KEY)?.trim();
+      const { accessToken } = await verifyOtp(phone, code, {
+        referralCode: pendingRef || undefined,
+      });
+      if (pendingRef) sessionStorage.removeItem(PENDING_REFERRAL_KEY);
       setToken(accessToken);
       await loadMemberData();
       setCode('');
@@ -293,9 +244,15 @@ function App() {
     }
   };
 
+  const buildInviteUrl = useCallback(() => {
+    const code = profile?.referralCode?.trim();
+    const base = `${window.location.origin}${window.location.pathname}`;
+    return code ? `${base}?ref=${encodeURIComponent(code)}` : base;
+  }, [profile?.referralCode]);
+
   const handleShare = async () => {
     const shareText = 'Join me on Moja Member app for rewards and vouchers!';
-    const shareUrl = window.location.origin;
+    const shareUrl = buildInviteUrl();
     try {
       if (navigator.share) {
         await navigator.share({
@@ -305,7 +262,7 @@ function App() {
         });
       } else {
         await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-        setProfileMsg('Share link copied to clipboard.');
+        setProfileMsg('Invite link copied to clipboard.');
         setShareOpen(true);
       }
     } catch {
@@ -323,7 +280,6 @@ function App() {
     setHint(null);
     setError(null);
     setTab('home');
-    setAccountSubpage('main');
     setShareOpen(false);
   };
 
@@ -392,12 +348,6 @@ function App() {
     };
   }, [profile?.phoneE164]);
 
-  useEffect(() => {
-    if (tab !== 'account') {
-      setAccountSubpage('main');
-    }
-  }, [tab]);
-
   return (
     <div className="app">
       {(step === 'phone' || step === 'code') && (
@@ -409,6 +359,11 @@ function App() {
                 Register and login with phone OTP. We send your code to WhatsApp.
               </p>
               <form onSubmit={handleSendCode}>
+                {sessionStorage.getItem(PENDING_REFERRAL_KEY) ? (
+                  <p className="hint" style={{ marginTop: 0 }}>
+                    You opened an invite link — your first sign-up will credit your friend after OTP verification.
+                  </p>
+                ) : null}
                 <label htmlFor="phone">Phone number</label>
                 <input
                   id="phone"
@@ -515,7 +470,14 @@ function App() {
                     )}
                   </div>
                   <div className="homeSectionFooter">
-                    <button type="button" className="textAction" onClick={() => setTab('vouchers')}>
+                    <button
+                      type="button"
+                      className="textAction"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                    >
                       View All
                     </button>
                   </div>
@@ -538,7 +500,14 @@ function App() {
                     )}
                   </div>
                   <div className="homeSectionFooter">
-                    <button type="button" className="textAction" onClick={() => setTab('rewards')}>
+                    <button
+                      type="button"
+                      className="textAction"
+                      onClick={() => {
+                        setPerksSub('rewards');
+                        setTab('perks');
+                      }}
+                    >
                       View All
                     </button>
                   </div>
@@ -551,110 +520,109 @@ function App() {
               </>
             )}
 
-            {tab === 'vouchers' && (
+            {tab === 'perks' && (
               <>
                 <header className="pmTopBar">
-                  <h2>My Voucher</h2>
+                  <h2>Perks</h2>
                 </header>
                 <div className="tabsRow">
-                  {(['ACTIVE', 'USED', 'EXPIRED'] as VoucherTab[]).map((vt) => (
-                    <button
-                      key={vt}
-                      type="button"
-                      className={voucherTab === vt ? 'chip active' : 'chip'}
-                      onClick={() => setVoucherTab(vt)}
-                    >
-                      {vt === 'ACTIVE' ? 'Active' : vt === 'USED' ? 'Used' : 'Expired'}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    className={perksSub === 'vouchers' ? 'chip active' : 'chip'}
+                    onClick={() => setPerksSub('vouchers')}
+                  >
+                    Vouchers
+                  </button>
+                  <button
+                    type="button"
+                    className={perksSub === 'rewards' ? 'chip active' : 'chip'}
+                    onClick={() => setPerksSub('rewards')}
+                  >
+                    Rewards
+                  </button>
                 </div>
-                <div className="voucherList">
-                  {visibleVouchers.map((v) => (
-                    <VoucherCard
-                      key={v.id}
-                      title={v.definition.title}
-                      conditions={v.definition.description || v.definition.code}
-                      expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
-                      status={v.status}
-                    />
-                  ))}
-                  {!visibleVouchers.length && (
+                {perksSub === 'vouchers' ? (
+                  <>
+                    <div className="tabsRow" style={{ marginTop: 8 }}>
+                      {(['ACTIVE', 'USED', 'EXPIRED'] as VoucherTab[]).map((vt) => (
+                        <button
+                          key={vt}
+                          type="button"
+                          className={voucherTab === vt ? 'chip active' : 'chip'}
+                          onClick={() => setVoucherTab(vt)}
+                        >
+                          {vt === 'ACTIVE' ? 'Active' : vt === 'USED' ? 'Used' : 'Expired'}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="voucherList">
+                      {visibleVouchers.map((v) => (
+                        <VoucherCard
+                          key={v.id}
+                          title={v.definition.title}
+                          conditions={v.definition.description || v.definition.code}
+                          expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
+                          status={v.status}
+                        />
+                      ))}
+                      {!visibleVouchers.length && (
+                        <Card>
+                          <p className="caption">No vouchers in this section.</p>
+                        </Card>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
                     <Card>
-                      <p className="caption">No vouchers in this section.</p>
+                      <input
+                        className="searchInput"
+                        placeholder="Search rewards"
+                        value={rewardQuery}
+                        onChange={(e) => setRewardQuery(e.target.value)}
+                      />
+                      <div className="chips">
+                        {(['all', 'food', 'drinks'] as RewardFilter[]).map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            className={rewardFilter === f ? 'chip active' : 'chip'}
+                            onClick={() => setRewardFilter(f)}
+                          >
+                            {f === 'all' ? 'All' : f === 'food' ? 'Food' : 'Drinks'}
+                          </button>
+                        ))}
+                      </div>
                     </Card>
-                  )}
-                </div>
-              </>
-            )}
-
-            {tab === 'rewards' && (
-              <>
-                <header className="pmTopBar">
-                  <h2>Rewards Catalog</h2>
-                </header>
-                <Card>
-                  <input
-                    className="searchInput"
-                    placeholder="Search rewards"
-                    value={rewardQuery}
-                    onChange={(e) => setRewardQuery(e.target.value)}
-                  />
-                  <div className="chips">
-                    {(['all', 'food', 'drinks'] as RewardFilter[]).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        className={rewardFilter === f ? 'chip active' : 'chip'}
-                        onClick={() => setRewardFilter(f)}
-                      >
-                        {f === 'all' ? 'All' : f === 'food' ? 'Food' : 'Drinks'}
-                      </button>
-                    ))}
-                  </div>
-                </Card>
-                <div className="rewardsGrid">
-                  {filteredRewards.map((r) => (
-                    <RewardCard
-                      key={r.id}
-                      title={r.title}
-                      description={r.description || r.code}
-                      points={r.pointsCost ?? 0}
-                      category={r.category}
-                      imageUrl={r.imageUrl}
-                    />
-                  ))}
-                  {!filteredRewards.length && (
-                    <Card>
-                      <p className="caption">No rewards match your search.</p>
-                    </Card>
-                  )}
-                </div>
+                    <div className="rewardsGrid">
+                      {filteredRewards.map((r) => (
+                        <RewardCard
+                          key={r.id}
+                          title={r.title}
+                          description={r.description || r.code}
+                          points={r.pointsCost ?? 0}
+                          category={r.category}
+                          imageUrl={r.imageUrl}
+                        />
+                      ))}
+                      {!filteredRewards.length && (
+                        <Card>
+                          <p className="caption">No rewards match your search.</p>
+                        </Card>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
             {tab === 'shop' && <ShopFlow pointsBalance={pointsBalance} />}
 
-            {tab === 'account' && accountSubpage === 'orders' && (
-              <>
-                <header className="pmTopBar accountOrdersTopBar">
-                  <button
-                    type="button"
-                    className="textAction accountOrdersBack"
-                    onClick={() => setAccountSubpage('main')}
-                    aria-label="Back to account"
-                  >
-                    ← Back
-                  </button>
-                  <h2 className="accountOrdersTitle">Orders</h2>
-                  <span className="accountOrdersTopSpacer" aria-hidden />
-                </header>
-                <Card>
-                  <OrderHistorySection onGoToShop={() => setTab('shop')} />
-                </Card>
-              </>
+            {tab === 'orders' && (
+              <OrdersTab active={tab === 'orders'} onGoToShop={() => setTab('shop')} />
             )}
 
-            {tab === 'account' && accountSubpage === 'main' && (
+            {tab === 'account' && (
               <>
                 <header className="pmTopBar">
                   <h2>Account</h2>
@@ -677,13 +645,54 @@ function App() {
                   </form>
                 </Card>
                 <Card>
+                  <SectionHeader title="Invite & favourites" />
+                  <p className="caption" style={{ marginTop: 0 }}>
+                    Your code:{' '}
+                    <strong>{profile.referralCode?.trim() || '—'}</strong>
+                    {' · '}
+                    Friends joined: <strong>{profile.referralCount ?? 0}</strong>
+                  </p>
+                  <p className="caption" style={{ marginTop: 8 }}>
+                    Share your link so visits count toward referral rewards. Open “Share App” from Home or here.
+                  </p>
+                  <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>
+                    Copy invite link
+                  </button>
+                  {(profile.favoriteProducts?.length ?? 0) > 0 ? (
+                    <div style={{ marginTop: 12 }}>
+                      <p className="caption" style={{ margin: '0 0 6px' }}>
+                        Top picks (from your orders)
+                      </p>
+                      <ul className="caption" style={{ margin: 0, paddingLeft: 18 }}>
+                        {(profile.favoriteProducts ?? []).map((f) => (
+                          <li key={f.productId}>
+                            {f.name} × {f.totalQty}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="caption" style={{ marginTop: 12 }}>
+                      Favourites appear after you place shop orders — we group what you buy most.
+                    </p>
+                  )}
+                </Card>
+                <Card>
                   <SectionHeader title="Activity" />
                   <div className="profileActions">
-                    <button type="button" className="rowAction" onClick={() => setAccountSubpage('orders')}>
+                    <button type="button" className="rowAction" onClick={() => setTab('orders')}>
                       Orders
                     </button>
-                    <button type="button" className="rowAction" onClick={() => setTab('vouchers')}>My Vouchers</button>
-                    <button type="button" className="rowAction" onClick={() => setTab('rewards')}>Rewards History</button>
+                    <button
+                      type="button"
+                      className="rowAction"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                    >
+                      Vouchers &amp; rewards
+                    </button>
                   </div>
                 </Card>
                 <Card>
@@ -707,9 +716,9 @@ function App() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 22v-7h6v7"/></svg>
               <span>Home</span>
             </button>
-            <button type="button" className={tab === 'vouchers' ? 'active' : ''} onClick={() => setTab('vouchers')} aria-label="Vouchers">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><path d="M7 12h.01M17 12h.01"/></svg>
-              <span>Vouchers</span>
+            <button type="button" className={tab === 'perks' ? 'active' : ''} onClick={() => setTab('perks')} aria-label="Perks">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><circle cx="12" cy="16" r="2"/></svg>
+              <span>Perks</span>
             </button>
             <button
               type="button"
@@ -720,9 +729,9 @@ function App() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h12l1.5 4H4.5z"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 11h6"/></svg>
               <span>Shop</span>
             </button>
-            <button type="button" className={tab === 'rewards' ? 'active' : ''} onClick={() => setTab('rewards')} aria-label="Rewards">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3"/><path d="M8 14h8l-1 8-3-2-3 2z"/></svg>
-              <span>Rewards</span>
+            <button type="button" className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')} aria-label="Orders">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>
+              <span>Orders</span>
             </button>
             <button type="button" className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')} aria-label="Account">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
@@ -736,8 +745,11 @@ function App() {
                 <SectionHeader title="Invite Friends" />
                 <p className="caption">Invite your friends to join Moja and enjoy bakery rewards together.</p>
                 <Card className="shareCodeCard">
-                  <p className="caption">Referral Code</p>
-                  <h3>JAX123</h3>
+                  <p className="caption">Referral code</p>
+                  <h3>{profile.referralCode?.trim() || '—'}</h3>
+                  <p className="caption" style={{ marginTop: 8 }}>
+                    Friends joined: {profile.referralCount ?? 0}
+                  </p>
                 </Card>
                 {phoneQrUrl ? (
                   <div className="shareQr">
@@ -746,9 +758,21 @@ function App() {
                   </div>
                 ) : null}
                 <div className="shareActions">
-                  <button type="button" onClick={handleShare}>Copy Link</button>
-                  <button type="button" className="ghost" onClick={handleShare}>Share WhatsApp</button>
-                  <button type="button" className="ghost" onClick={handleShare}>Share Instagram</button>
+                  <button type="button" onClick={handleShare}>Copy invite link</button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      const u = encodeURIComponent(buildInviteUrl());
+                      const t = encodeURIComponent('Join me on Moja Member!');
+                      window.open(`https://wa.me/?text=${t}%20${u}`, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    Share WhatsApp
+                  </button>
+                  <button type="button" className="ghost" onClick={handleShare}>
+                    System share
+                  </button>
                 </div>
                 <button type="button" className="textAction" onClick={() => setShareOpen(false)}>Close</button>
               </div>

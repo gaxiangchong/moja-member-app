@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -61,4 +62,12 @@ export class AdminListCustomersQueryDto {
   })
   @IsBoolean()
   hasActiveVoucher?: boolean;
+
+  @IsOptional()
+  @IsIn(['createdAt', 'lastLoginAt', 'points', 'spent', 'name', 'referrals'])
+  sortBy?: 'createdAt' | 'lastLoginAt' | 'points' | 'spent' | 'name' | 'referrals';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 }

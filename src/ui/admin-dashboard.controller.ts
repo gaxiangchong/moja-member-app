@@ -16,6 +16,8 @@ const DEFAULT_DASHBOARD_CONFIG = {
     audit: { showGroup: false, showSubmenu: true },
   },
   menuViews: {
+    'dashboard-overview': true,
+    'dashboard-activity': true,
     'customers-list': true,
     'customers-profile': true,
     'loyalty-rewards-catalog': true,
@@ -40,9 +42,20 @@ export class AdminDashboardController {
     try {
       const raw = readFileSync(path, 'utf-8');
       const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return DEFAULT_DASHBOARD_CONFIG;
+      const pg =
+        parsed.menuGroups && typeof parsed.menuGroups === 'object'
+          ? parsed.menuGroups
+          : {};
+      const pv =
+        parsed.menuViews && typeof parsed.menuViews === 'object'
+          ? parsed.menuViews
+          : {};
       return {
         ...DEFAULT_DASHBOARD_CONFIG,
-        ...(parsed && typeof parsed === 'object' ? parsed : {}),
+        ...parsed,
+        menuGroups: { ...DEFAULT_DASHBOARD_CONFIG.menuGroups, ...pg },
+        menuViews: { ...DEFAULT_DASHBOARD_CONFIG.menuViews, ...pv },
       };
     } catch {
       return DEFAULT_DASHBOARD_CONFIG;
@@ -495,6 +508,42 @@ export class AdminDashboardController {
     .hidden { display: none !important; }
     .tab-panel { margin-top: 0; }
     .muted-box { padding: 16px 20px; color: var(--text-muted); font-size: 13px; }
+    .mk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 20px; }
+    .mk-span-2 { grid-column: 1 / -1; }
+    @media (max-width: 1100px) { .mk-grid { grid-template-columns: 1fr; } }
+    .mk-chart-wrap { min-height: 140px; }
+    .mk-chart-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .mk-chart { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding: 4px 0 22px; border-bottom: 1px solid var(--border); }
+    .mk-chart.mk-chart-signups { height: 168px; }
+    .mk-bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+    .mk-bar { width: 100%; max-width: 14px; min-height: 2px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius: 3px 3px 0 0; transition: height 0.2s; }
+    .mk-legend { display: flex; flex-wrap: wrap; gap: 14px 18px; font-size: 12px; color: var(--text-muted); margin: 0 0 8px; align-items: center; }
+    .mk-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .mk-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .mk-swatch.ref { background: #059669; }
+    .mk-swatch.org { background: #3b82f6; }
+    .mk-stack-tower {
+      display: flex; flex-direction: column-reverse; width: 100%; max-width: 16px;
+      min-height: 4px; margin: 0 auto 20px; border-radius: 4px; overflow: hidden; align-self: flex-end;
+    }
+    .mk-stack-seg { min-height: 1px; width: 100%; }
+    .mk-stack-seg.org { background: #3b82f6; }
+    .mk-stack-seg.ref { background: #059669; }
+    .mk-spender-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .mk-spender-head select { padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); font-size: 13px; }
+    .mk-hbar-panel { padding: 4px 0 12px; min-height: 100px; }
+    .mk-hbar-row { display: grid; grid-template-columns: minmax(72px, 1fr) 2.2fr minmax(56px, auto); gap: 8px; align-items: center; margin-bottom: 7px; font-size: 12px; }
+    .mk-hbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .mk-hbar-track { height: 11px; background: #e2e8f0; border-radius: 6px; overflow: hidden; }
+    .mk-hbar-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #7c3aed); border-radius: 6px; min-width: 2px; transition: width 0.2s; }
+    .mk-hbar-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+    .mk-bar-lbl { font-size: 9px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; transform: rotate(-55deg); transform-origin: top center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .mk-mini-table { font-size: 13px; }
+    .mk-mini-table th { text-align: left; font-size: 11px; color: var(--text-muted); }
+    .mk-mini-table td { padding: 4px 8px 4px 0; border-top: 1px solid #e2e8f0; }
+    .customer-sort-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 0 20px 12px; }
+    .customer-sort-bar label { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+    .customer-sort-bar select { padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); }
     @media (max-width: 960px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { border-right: none; border-bottom: 1px solid var(--sidebar-border); }
@@ -806,8 +855,52 @@ export class AdminDashboardController {
               </div>
             </div>
             <div class="sheet">
-              <div class="sheet-head"><h2>Member sales contribution</h2></div>
-              <div class="muted-box">Not tracked yet (orders / POS). Reserved for future channel reporting.</div>
+              <div class="sheet-head"><h2>Shop orders &amp; growth (30 days)</h2></div>
+              <div class="kpi-row" style="padding:16px 20px 0">
+                <div class="kpi">
+                  <div class="kpi-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h12l1.5 4H4.5z"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div>
+                  <div><div class="kpi-label">Orders (30d)</div><div class="kpi-value" id="ovOrders30">-</div></div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+                  <div><div class="kpi-label">GMV (30d, stored value)</div><div class="kpi-value" id="ovGmv30">-</div><div class="kpi-hint">Sum of member-submitted order totals</div></div>
+                </div>
+              </div>
+              <div class="mk-grid">
+                <div class="mk-chart-wrap mk-span-2">
+                  <div class="mk-chart-title">New members per day (UTC) — stacked: referral vs direct</div>
+                  <div class="mk-legend" aria-hidden="true">
+                    <span class="mk-legend-item"><span class="mk-swatch org"></span> Direct / other</span>
+                    <span class="mk-legend-item"><span class="mk-swatch ref"></span> Joined via referral</span>
+                  </div>
+                  <div class="mk-chart mk-chart-signups" id="mkDashSignupBars" aria-label="Signups stacked chart"></div>
+                </div>
+                <div class="mk-chart-wrap mk-span-2">
+                  <div class="mk-spender-head">
+                    <div class="mk-chart-title" style="margin:0">Top spenders (order totals)</div>
+                    <div>
+                      <label for="mkDashSpenderPeriod" class="muted-hint" style="margin-right:8px;font-size:12px">Period</label>
+                      <select id="mkDashSpenderPeriod" aria-label="Top spenders period">
+                        <option value="day">Today (UTC)</option>
+                        <option value="month">This month (UTC)</option>
+                        <option value="year">This year (UTC)</option>
+                        <option value="all">All time</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p class="field-hint" style="margin:0 0 8px">Ranked by sum of stored member-app orders in the selected window.</p>
+                  <div id="mkDashSpenderBars" class="mk-hbar-panel" aria-label="Top spenders chart"></div>
+                  <table class="data mk-mini-table"><thead><tr><th>Member</th><th>Spent</th></tr></thead><tbody id="mkDashSpenderPeriodBody"></tbody></table>
+                </div>
+                <div>
+                  <div class="mk-chart-title">Top referrers</div>
+                  <table class="data mk-mini-table"><thead><tr><th>Member</th><th>Referrals</th></tr></thead><tbody id="mkDashTopReferrersBody"></tbody></table>
+                </div>
+                <div>
+                  <div class="mk-chart-title">Top products (30d qty)</div>
+                  <table class="data mk-mini-table"><thead><tr><th>Product</th><th>Qty</th></tr></thead><tbody id="mkDashTopProductsBody"></tbody></table>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -852,9 +945,29 @@ export class AdminDashboardController {
                 <button type="button" class="btn-outline" id="refreshCustomersBtn">Refresh list</button>
               </div>
             </div>
+            <div class="customer-sort-bar">
+              <span>
+                <label for="customerSortBy">Sort by</label>
+                <select id="customerSortBy">
+                  <option value="createdAt">Joined</option>
+                  <option value="lastLoginAt">Last visit</option>
+                  <option value="points">Points</option>
+                  <option value="spent">Lifetime spent</option>
+                  <option value="referrals">Referrals made</option>
+                  <option value="name">Name</option>
+                </select>
+              </span>
+              <span>
+                <label for="customerSortDir">Direction</label>
+                <select id="customerSortDir">
+                  <option value="desc">High → low / New first</option>
+                  <option value="asc">Low → high / Old first</option>
+                </select>
+              </span>
+            </div>
             <div class="table-wrap">
               <table class="data">
-                <thead><tr><th>Phone</th><th>Name</th><th>Email</th><th>Tier</th><th>Source</th><th>Vouchers</th><th>Status</th><th>Points</th><th>Updated</th><th>Edit</th></tr></thead>
+                <thead><tr><th>Phone</th><th>Name</th><th>Email</th><th>Tier</th><th>Source</th><th>Birthday in</th><th>Vouchers</th><th>Status</th><th>Points</th><th>Spent</th><th>Refs</th><th>Last visit</th><th>Edit</th></tr></thead>
                 <tbody id="customersBody"></tbody>
               </table>
             </div>
@@ -1398,6 +1511,45 @@ export class AdminDashboardController {
               </table>
             </div>
           </div>
+          <div class="sheet">
+            <div class="sheet-head"><h2>Marketing &amp; advocacy (30 days)</h2></div>
+            <p class="muted-hint" style="margin:0 20px 8px">Same signals as the dashboard overview: signups trend, top spenders, referrers, and best-selling SKUs from stored member orders.</p>
+            <div class="mk-grid">
+              <div class="mk-chart-wrap mk-span-2">
+                <div class="mk-chart-title">New members per day (UTC) — stacked: referral vs direct</div>
+                <div class="mk-legend" aria-hidden="true">
+                  <span class="mk-legend-item"><span class="mk-swatch org"></span> Direct / other</span>
+                  <span class="mk-legend-item"><span class="mk-swatch ref"></span> Joined via referral</span>
+                </div>
+                <div class="mk-chart mk-chart-signups" id="mkRpSignupBars" aria-label="Signups stacked chart reports"></div>
+              </div>
+              <div class="mk-chart-wrap mk-span-2">
+                <div class="mk-spender-head">
+                  <div class="mk-chart-title" style="margin:0">Top spenders (order totals)</div>
+                  <div>
+                    <label for="mkRpSpenderPeriod" class="muted-hint" style="margin-right:8px;font-size:12px">Period</label>
+                    <select id="mkRpSpenderPeriod" aria-label="Top spenders period reports">
+                      <option value="day">Today (UTC)</option>
+                      <option value="month">This month (UTC)</option>
+                      <option value="year">This year (UTC)</option>
+                      <option value="all">All time</option>
+                    </select>
+                  </div>
+                </div>
+                <p class="field-hint" style="margin:0 0 8px">Ranked by sum of stored member-app orders in the selected window.</p>
+                <div id="mkRpSpenderBars" class="mk-hbar-panel" aria-label="Top spenders chart reports"></div>
+                <table class="data mk-mini-table"><thead><tr><th>Member</th><th>Spent</th></tr></thead><tbody id="mkRpSpenderPeriodBody"></tbody></table>
+              </div>
+              <div>
+                <div class="mk-chart-title">Top referrers</div>
+                <table class="data mk-mini-table"><thead><tr><th>Member</th><th>Referrals</th></tr></thead><tbody id="mkRpTopReferrersBody"></tbody></table>
+              </div>
+              <div>
+                <div class="mk-chart-title">Top products (30d qty)</div>
+                <table class="data mk-mini-table"><thead><tr><th>Product</th><th>Qty</th></tr></thead><tbody id="mkRpTopProductsBody"></tbody></table>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="reports-vouchers" class="tab-panel hidden">
@@ -1600,10 +1752,35 @@ export class AdminDashboardController {
             <p class="field-hint">Read-only. You can copy this value.</p>
           </div>
           <div class="form-section">
-            <label for="emUpdatedAt">Updated at</label>
+            <label for="emUpdatedAt">Record updated</label>
             <input type="text" id="emUpdatedAt" readonly />
-            <p class="field-hint">Read-only timestamp from server.</p>
+            <p class="field-hint">Server <code>updatedAt</code> (profile edits). Use <strong>Last visit</strong> for engagement.</p>
           </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-section">
+            <label for="emLastVisit">Last visit</label>
+            <input type="text" id="emLastVisit" readonly />
+            <p class="field-hint">Last successful member login.</p>
+          </div>
+          <div class="form-section">
+            <label for="emReferralCode">Referral code</label>
+            <input type="text" id="emReferralCode" readonly />
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-section">
+            <label for="emReferralsMade">Referrals (signed up)</label>
+            <input type="text" id="emReferralsMade" readonly />
+          </div>
+          <div class="form-section">
+            <label for="emLifetimeSpent">Lifetime spent (cents)</label>
+            <input type="text" id="emLifetimeSpent" readonly />
+          </div>
+        </div>
+        <div class="form-section" style="margin-top:8px">
+          <label>Recent orders (stored)</label>
+          <div id="emOrdersWrap" class="muted-box" style="max-height:200px;overflow:auto;margin-top:6px">—</div>
         </div>
         <div class="form-section">
           <label for="emPhone">Phone (E.164)</label>
@@ -1813,6 +1990,150 @@ export class AdminDashboardController {
     let lastShopCatalogProducts = [];
 
     const fmt = (value) => value === null || value === undefined || value === '' ? '-' : value;
+    const moneyFromCents = (cents) => {
+      const n = Number(cents);
+      if (!Number.isFinite(n)) return '-';
+      return (n / 100).toFixed(2);
+    };
+    const birthdayCountLabel = (d) => {
+      if (d === null || d === undefined) return '-';
+      if (d === 0) return 'Today';
+      if (d === 1) return '1d';
+      return String(d) + 'd';
+    };
+    let lastDashMarketing = null;
+    let lastRpMarketing = null;
+
+    function paintSpenderPeriod(scope, m, period) {
+      const map = {
+        all: 'topSpenders',
+        day: 'topSpendersToday',
+        month: 'topSpendersThisMonth',
+        year: 'topSpendersThisYear',
+      };
+      const key = map[period] || 'topSpenders';
+      const list = (m && m[key]) || [];
+      const wrap = document.getElementById(scope + 'SpenderBars');
+      const tb = document.getElementById(scope + 'SpenderPeriodBody');
+      if (!wrap || !tb) return;
+      const max = Math.max(1, ...list.map((x) => Number(x.lifetimeSpentCents) || 0));
+      wrap.innerHTML = list.length
+        ? list
+            .map((r) => {
+              const v = Number(r.lifetimeSpentCents) || 0;
+              const w = Math.max(2, Math.round((v / max) * 100));
+              return (
+                '<div class="mk-hbar-row" title="' +
+                moneyFromCents(v) +
+                '">' +
+                '<span class="mk-hbar-name">' +
+                fmt(r.displayName || r.phoneE164) +
+                '</span>' +
+                '<div class="mk-hbar-track"><div class="mk-hbar-fill" style="width:' +
+                w +
+                '%"></div></div>' +
+                '<span class="mk-hbar-val">' +
+                moneyFromCents(v) +
+                '</span></div>'
+              );
+            })
+            .join('')
+        : '<p class="muted-hint" style="margin:0">No orders in this window.</p>';
+      tb.innerHTML = list.length
+        ? list
+            .map(
+              (r) =>
+                '<tr><td>' +
+                fmt(r.displayName || r.phoneE164) +
+                '</td><td>' +
+                moneyFromCents(r.lifetimeSpentCents) +
+                '</td></tr>',
+            )
+            .join('')
+        : '<tr><td colspan="2">—</td></tr>';
+    }
+
+    function paintMarketing(m, scope) {
+      const chart = document.getElementById(scope + 'SignupBars');
+      const tbR = document.getElementById(scope + 'TopReferrersBody');
+      const tbP = document.getElementById(scope + 'TopProductsBody');
+      if (!chart || !tbR || !tbP) return;
+      const series = (m && m.signupsByDay) || [];
+      const max = Math.max(
+        1,
+        ...series.map((s) => {
+          const ref = Number(s.referredSignups) || 0;
+          let org = Number(s.organicSignups);
+          if (!Number.isFinite(org)) org = Math.max(0, (Number(s.newMembers) || 0) - ref);
+          return ref + org || Number(s.newMembers) || 0;
+        }),
+      );
+      chart.innerHTML = series.length
+        ? series
+            .map((s) => {
+              const ref = Number(s.referredSignups) || 0;
+              let org = Number(s.organicSignups);
+              if (!Number.isFinite(org)) org = Math.max(0, (Number(s.newMembers) || 0) - ref);
+              const total = ref + org || Number(s.newMembers) || 0;
+              const colH = total ? Math.max(6, Math.round((total / max) * 100)) : 0;
+              const oFlex = total ? Math.max(org, 0.0001) : 0.0001;
+              const rFlex = total ? Math.max(ref, 0.0001) : 0.0001;
+              const lbl = String(s.date || '').slice(5);
+              const tip =
+                fmt(s.date) +
+                ': ' +
+                total +
+                ' (referral ' +
+                ref +
+                ', direct ' +
+                org +
+                ')';
+              return (
+                '<div class="mk-bar-col" title="' +
+                tip +
+                '">' +
+                '<div class="mk-stack-tower" style="height:' +
+                colH +
+                '%">' +
+                '<div class="mk-stack-seg org" style="flex:' +
+                oFlex +
+                '"></div>' +
+                '<div class="mk-stack-seg ref" style="flex:' +
+                rFlex +
+                '"></div>' +
+                '</div>' +
+                '<span class="mk-bar-lbl">' +
+                lbl +
+                '</span></div>'
+              );
+            })
+            .join('')
+        : '<span class="muted-hint">No signups in range</span>';
+      const refs = (m && m.topReferrers) || [];
+      tbR.innerHTML = refs.length
+        ? refs
+            .map(
+              (r) =>
+                '<tr><td>' +
+                fmt(r.displayName || r.phoneE164) +
+                '<br/><code style="font-size:11px">' +
+                fmt(r.referralCode) +
+                '</code></td><td>' +
+                fmt(r.referralsSignedUp) +
+                '</td></tr>',
+            )
+            .join('')
+        : '<tr><td colspan="2">No referrals yet</td></tr>';
+      const prods = (m && m.topProducts) || [];
+      tbP.innerHTML = prods.length
+        ? prods
+            .map(
+              (p) =>
+                '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.qtySold) + '</td></tr>',
+            )
+            .join('')
+        : '<tr><td colspan="2">No orders in range</td></tr>';
+    }
     const dateFmt = (iso) => {
       if (!iso) return '-';
       const d = new Date(iso);
@@ -1974,11 +2295,26 @@ export class AdminDashboardController {
       if (!id) return;
       document.getElementById('emId').value = id;
       statusPanel.textContent = 'Loading member…';
-      api('/admin/customers/' + encodeURIComponent(id))
-        .then((c) => {
+      Promise.all([
+        api('/admin/customers/' + encodeURIComponent(id)),
+        api('/admin/customers/' + encodeURIComponent(id) + '/orders').catch(function () {
+          return [];
+        }),
+      ])
+        .then(function (pair) {
+          const c = pair[0];
+          const orders = pair[1];
           editMemberInitial = c;
           document.getElementById('emId').value = c.id || id;
           document.getElementById('emUpdatedAt').value = dateFmt(c.updatedAt);
+          document.getElementById('emLastVisit').value = dateFmt(c.lastLoginAt);
+          document.getElementById('emReferralCode').value = fmt(c.referralCode);
+          document.getElementById('emReferralsMade').value = fmt(
+            c._count != null ? c._count.referredMembers : '—',
+          );
+          document.getElementById('emLifetimeSpent').value = fmt(
+            c.storedWallet != null ? c.storedWallet.lifetimeSpentCents : '—',
+          );
           document.getElementById('emPhone').value = c.phoneE164 || '';
           document.getElementById('emDisplayName').value = c.displayName || '';
           document.getElementById('emEmail').value = c.email || '';
@@ -1997,12 +2333,46 @@ export class AdminDashboardController {
           document.getElementById('emMarketingConsent').checked = !!c.marketingConsent;
           document.getElementById('emTags').value = Array.isArray(c.tags) ? c.tags.join(', ') : '';
           document.getElementById('emNotes').value = c.notes || '';
+          const ow = document.getElementById('emOrdersWrap');
+          if (ow) {
+            if (!Array.isArray(orders) || !orders.length) {
+              ow.textContent = 'No stored orders yet.';
+            } else {
+              ow.innerHTML =
+                '<table class="data mk-mini-table" style="width:100%"><thead><tr><th>When</th><th>Status</th><th>Total</th><th>Lines</th></tr></thead><tbody>' +
+                orders
+                  .map(function (o) {
+                    const linePreview = (o.lines || [])
+                      .map(function (l) {
+                        return l.name + ' ×' + l.qty;
+                      })
+                      .slice(0, 4)
+                      .join(', ');
+                    var rawSt = (o.status || '').toString().toLowerCase();
+                    var statusLabel =
+                      rawSt === 'completed' ? 'Collected' : rawSt === 'placed' ? 'Open' : fmt(o.status);
+                    return (
+                      '<tr><td>' +
+                      dateFmt(o.placedAt) +
+                      '</td><td>' +
+                      statusLabel +
+                      '</td><td>' +
+                      moneyFromCents(o.totalCents) +
+                      '</td><td>' +
+                      fmt(linePreview) +
+                      '</td></tr>'
+                    );
+                  })
+                  .join('') +
+                '</tbody></table>';
+            }
+          }
           document.getElementById('editMemberBackdrop').classList.remove('hidden');
           document.getElementById('editMemberModal').classList.remove('hidden');
           statusPanel.textContent =
             'Editing member — save changes or cancel. Requires profile/identity permissions for your admin role.';
         })
-        .catch((e) => {
+        .catch(function (e) {
           statusPanel.textContent = e.message || String(e);
         });
     }
@@ -2049,6 +2419,12 @@ export class AdminDashboardController {
 
     async function loadOverview() {
       const data = await api('/admin/overview');
+      let rep = {};
+      try {
+        rep = await api('/admin/reports/dashboard');
+      } catch (_) {
+        /* optional: reporting endpoint may be forbidden on some roles */
+      }
       document.getElementById('ovMembers').textContent = fmt(data.members);
       document.getElementById('ovActive').textContent = fmt(data.activeMembers);
       document.getElementById('ovNewToday').textContent = fmt(data.newMembers?.today);
@@ -2065,6 +2441,14 @@ export class AdminDashboardController {
       const rate = data.vouchers?.redemptionRate;
       document.getElementById('ovVRate').textContent = rate != null ? (Math.round(rate * 10000) / 100) + '%' : '-';
       document.getElementById('ovBirthdays').textContent = fmt(data.birthdayMembersThisMonth);
+      const o30 = document.getElementById('ovOrders30');
+      if (o30) o30.textContent = fmt(data.commerce?.ordersLast30Days);
+      const g30 = document.getElementById('ovGmv30');
+      if (g30) g30.textContent = moneyFromCents(data.commerce?.gmvLast30DaysCents);
+      lastDashMarketing = rep.marketing || null;
+      paintMarketing(lastDashMarketing, 'mkDash');
+      const dashSp = document.getElementById('mkDashSpenderPeriod');
+      paintSpenderPeriod('mkDash', lastDashMarketing, dashSp ? dashSp.value : 'all');
 
       const regRows = (data.recentRegistrations || []).map((r) =>
         '<tr><td>' + fmt(r.phoneE164) + '</td><td>' + fmt(r.displayName) + '</td><td>' + statusPill(fmt(r.status)) + '</td><td>' + dateFmt(r.createdAt) + '</td></tr>'
@@ -2108,13 +2492,57 @@ export class AdminDashboardController {
       ).join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
+    let customerSortBy = 'createdAt';
+    let customerSortDir = 'desc';
+
     async function loadCustomers() {
-      const data = await api('/admin/customers?page=1&pageSize=20');
+      const sortBy = document.getElementById('customerSortBy')
+        ? document.getElementById('customerSortBy').value
+        : customerSortBy;
+      const sortDir = document.getElementById('customerSortDir')
+        ? document.getElementById('customerSortDir').value
+        : customerSortDir;
+      customerSortBy = sortBy;
+      customerSortDir = sortDir;
+      const q =
+        '/admin/customers?page=1&pageSize=20&sortBy=' +
+        encodeURIComponent(sortBy) +
+        '&sortDir=' +
+        encodeURIComponent(sortDir);
+      const data = await api(q);
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       const rows = (data.items || []).map((c) =>
-        '<tr><td>' + fmt(c.phoneE164) + '</td><td>' + fmt(c.displayName) + '</td><td>' + fmt(c.email) + '</td><td>' + fmt(c.memberTier) + '</td><td>' + fmt(c.signupSource) + '</td><td>' + fmt(c.activeVoucherCount) + '</td><td>' + statusPill(fmt(c.status)) + '</td><td>' + fmt(c.pointsBalance) + '</td><td>' + dateFmt(c.updatedAt) + '</td><td class="td-actions"><button type="button" class="icon-btn edit-member-btn" data-id="' + c.id + '" title="Edit member">' + editSvg + '</button></td></tr>'
+        '<tr><td>' +
+        fmt(c.phoneE164) +
+        '</td><td>' +
+        fmt(c.displayName) +
+        '</td><td>' +
+        fmt(c.email) +
+        '</td><td>' +
+        fmt(c.memberTier) +
+        '</td><td>' +
+        fmt(c.signupSource) +
+        '</td><td>' +
+        birthdayCountLabel(c.birthdayDaysUntil) +
+        '</td><td>' +
+        fmt(c.activeVoucherCount) +
+        '</td><td>' +
+        statusPill(fmt(c.status)) +
+        '</td><td>' +
+        fmt(c.pointsBalance) +
+        '</td><td>' +
+        moneyFromCents(c.lifetimeSpentCents) +
+        '</td><td>' +
+        fmt(c.referralsMade) +
+        '</td><td>' +
+        dateFmt(c.lastVisitAt) +
+        '</td><td class="td-actions"><button type="button" class="icon-btn edit-member-btn" data-id="' +
+        c.id +
+        '" title="Edit member">' +
+        editSvg +
+        '</button></td></tr>'
       );
-      document.getElementById('customersBody').innerHTML = rows.join('') || '<tr><td colspan="10">No data</td></tr>';
+      document.getElementById('customersBody').innerHTML = rows.join('') || '<tr><td colspan="13">No data</td></tr>';
     }
 
     async function loadLoyalty() {
@@ -2341,6 +2769,10 @@ export class AdminDashboardController {
       document.getElementById('rpImport30').textContent = fmt(data.last30Days?.importCommits);
       document.getElementById('rpExport30').textContent = fmt(data.last30Days?.exportRuns);
       document.getElementById('rpAdjust30').textContent = fmt(data.last30Days?.manualWalletOrLoyaltyAdjustments);
+      lastRpMarketing = data.marketing || null;
+      paintMarketing(lastRpMarketing, 'mkRp');
+      const rpSp = document.getElementById('mkRpSpenderPeriod');
+      paintSpenderPeriod('mkRp', lastRpMarketing, rpSp ? rpSp.value : 'all');
     }
 
     async function loadAdminUsers() {
@@ -2437,20 +2869,19 @@ export class AdminDashboardController {
           groupEl.classList.toggle('hidden', !showGroup);
           if (!navItems) return;
           navItems.classList.toggle('hidden', !showSubmenu || !showGroup);
-          if (!showSubmenu || !showGroup) {
-            navItems.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
-              var v = btn.getAttribute('data-view');
-              if (v) hidden.add(v);
-            });
-          }
         });
+        var whitelistKeys = Object.keys(menuViews);
+        var useWhitelist = whitelistKeys.length > 0;
         document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
           var v = btn.getAttribute('data-view');
           if (!v) return;
-          if (Object.prototype.hasOwnProperty.call(menuViews, v) && menuViews[v] === false) {
-            btn.classList.add('hidden');
-            hidden.add(v);
-          } else if (Object.keys(menuViews).length && !menuViews[v]) {
+          var groupEl = btn.closest('.nav-group[data-menu-group]');
+          var gKey = groupEl ? groupEl.getAttribute('data-menu-group') : '';
+          var gCfg = gKey ? groups[gKey] || {} : {};
+          var groupOk = gCfg.showGroup !== false && gCfg.showSubmenu !== false;
+          var viewOk = !useWhitelist || menuViews[v] === true;
+          var hideBtn = !groupOk || !viewOk;
+          if (hideBtn) {
             btn.classList.add('hidden');
             hidden.add(v);
           } else {
@@ -2572,6 +3003,23 @@ export class AdminDashboardController {
       }
     });
     document.getElementById('refreshCustomersBtn').addEventListener('click', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    const customerSortByEl = document.getElementById('customerSortBy');
+    const customerSortDirEl = document.getElementById('customerSortDir');
+    if (customerSortByEl) {
+      customerSortByEl.addEventListener('change', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    }
+    if (customerSortDirEl) {
+      customerSortDirEl.addEventListener('change', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    }
+    ;['mkDashSpenderPeriod', 'mkRpSpenderPeriod'].forEach(function (sid) {
+      const sel = document.getElementById(sid);
+      if (!sel) return;
+      sel.addEventListener('change', function () {
+        const scope = sid === 'mkDashSpenderPeriod' ? 'mkDash' : 'mkRp';
+        const m = scope === 'mkDash' ? lastDashMarketing : lastRpMarketing;
+        paintSpenderPeriod(scope, m, sel.value);
+      });
+    });
     document.getElementById('refreshLoyaltyBtn').addEventListener('click', () => loadLoyalty().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshVouchersBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshVoucherTemplatesBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));

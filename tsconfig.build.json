@@ -5,6 +5,7 @@
     "test",
     "dist",
     "client-web",
+    "ops-queue-web",
     "mobile",
     "**/*spec.ts"
   ]

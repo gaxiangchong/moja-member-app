@@ -13,6 +13,8 @@ export type OrderLineSnapshot = {
 export type PastOrder = {
   id: string;
   placedAt: string;
+  completedAt?: string | null;
+  status?: string;
   totalCents: number;
   fulfillmentSummary: string[];
   lines: OrderLineSnapshot[];
@@ -24,7 +26,12 @@ type OrderHistoryState = {
     lines: OrderLineSnapshot[];
     totalCents: number;
     fulfillmentSummary: string[];
+    id?: string;
+    placedAt?: string;
+    status?: string;
+    completedAt?: string | null;
   }) => void;
+  setOrdersFromApi: (orders: PastOrder[]) => void;
 };
 
 function newOrderId(): string {
@@ -37,14 +44,17 @@ export const useOrderHistoryStore = create<OrderHistoryState>()(
       orders: [],
       addOrder: (input) => {
         const entry: PastOrder = {
-          id: newOrderId(),
-          placedAt: new Date().toISOString(),
+          id: input.id ?? newOrderId(),
+          placedAt: input.placedAt ?? new Date().toISOString(),
+          completedAt: input.completedAt ?? null,
+          status: input.status ?? 'placed',
           totalCents: input.totalCents,
           fulfillmentSummary: input.fulfillmentSummary,
           lines: input.lines,
         };
         set((s) => ({ orders: [entry, ...s.orders] }));
       },
+      setOrdersFromApi: (orders) => set({ orders }),
     }),
     { name: 'moja-member-order-history' },
   ),

@@ -115,7 +115,16 @@ export const useShopStore = create<ShopState>((set, get) => ({
       fulfillmentMethod: m,
       ...(m === 'pickup'
         ? { deliveryCompany: null, deliveryPickupTime: null }
-        : { pickupDate: null, pickupTime: null }),
+        : m === 'delivery'
+          ? { pickupDate: null, pickupTime: null }
+          : m === 'in_store'
+            ? {
+                pickupDate: null,
+                pickupTime: null,
+                deliveryCompany: null,
+                deliveryPickupTime: null,
+              }
+            : {}),
     }),
 
   setPickupDate: (d) => set({ pickupDate: d }),

@@ -436,6 +436,38 @@
   margin-top: 2px;
 }
 
+.ordersActiveList {
+  display: grid;
+  gap: 14px;
+}
+
+.orderActiveCard {
+  border: 1px solid #e4d7c9;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fffefb;
+  display: grid;
+  gap: 10px;
+}
+
+.orderActiveHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.orderQrBlock {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.orderQrImg {
+  border-radius: 12px;
+  border: 1px solid #e4d7c9;
+}
+
 .profileActions {
   display: grid;
   gap: 8px;

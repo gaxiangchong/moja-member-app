@@ -22,7 +22,11 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   }
 
   if (!state.fulfillmentMethod) {
-    errors.push('Choose Self Pickup or Delivery.');
+    errors.push('Choose Self Pickup, In store, or Delivery.');
+  }
+
+  if (state.fulfillmentMethod === 'in_store') {
+    return { valid: errors.length === 0, errors };
   }
 
   if (state.fulfillmentMethod === 'pickup') {
@@ -46,6 +50,9 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   return { valid: errors.length === 0, errors };
 }
 
+/** First line must stay stable — ops queue treats this as expedite / in-store. */
+export const IN_STORE_FULFILLMENT_HEAD = 'In store · prepare now';
+
 export function fulfillmentSummaryLines(
   method: FulfillmentMethod | null,
   pickupDate: string | null,
@@ -54,6 +61,9 @@ export function fulfillmentSummaryLines(
   deliveryPickupTime: string | null,
 ): string[] {
   if (!method) return ['Not selected'];
+  if (method === 'in_store') {
+    return [IN_STORE_FULFILLMENT_HEAD];
+  }
   if (method === 'pickup') {
     const d = pickupDate ?? '—';
     const t = pickupTime ?? '—';

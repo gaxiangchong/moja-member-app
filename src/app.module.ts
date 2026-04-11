@@ -17,6 +17,7 @@ import { MasterDataModule } from './master-data/master-data.module';
 import { AdminAuthModule } from './admin-auth/admin-auth.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
+import { OpsQueueModule } from './ops-queue/ops-queue.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
     ImportExportModule,
     MasterDataModule,
     ShopCatalogModule,
+    OpsQueueModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

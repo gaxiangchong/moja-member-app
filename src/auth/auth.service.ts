@@ -129,7 +129,7 @@ export class AuthService {
     };
   }
 
-  async verifyOtp(phoneRaw: string, code: string) {
+  async verifyOtp(phoneRaw: string, code: string, referralCode?: string) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
 
     const challenge = await this.prisma.otpChallenge.findFirst({
@@ -167,7 +167,9 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
-    const customer = await this.customers.ensureCustomerForPhone(phoneE164);
+    const customer = await this.customers.ensureCustomerForPhone(phoneE164, {
+      referralCode: referralCode?.trim() || undefined,
+    });
     await this.customers.touchLastLogin(customer.id);
 
     await this.audit.log({

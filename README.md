@@ -286,6 +286,8 @@ See `docs/voucher-rewards-dashboard-guide.md` for:
 - How to configure voucher push entitlement rules (newcomer/top-up/referral/etc.).
 - How rewards appear in the client app.
 
+Sidebar visibility and the member **Shop** product list are documented there as well (`admin-dashboard.config.json`, `GET /shop/catalog/products`).
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

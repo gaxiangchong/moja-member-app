@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -121,12 +121,15 @@ export class ShopCatalogService {
   updateProduct(id: string, input: Partial<ShopCatalogProduct>): ShopCatalogProduct {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new Error('SHOP_PRODUCT_NOT_FOUND');
+    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
     const cur = all[idx];
     const next: ShopCatalogProduct = {
       ...cur,
-      ...input,
       id: cur.id,
+      category:
+        input.category != null
+          ? (input.category as ShopCatalogProduct['category'])
+          : cur.category,
       name: input.name != null ? String(input.name).trim() : cur.name,
       shortDescription:
         input.shortDescription != null
@@ -135,6 +138,16 @@ export class ShopCatalogService {
       description:
         input.description != null ? String(input.description).trim() : cur.description,
       imageUrl: input.imageUrl != null ? String(input.imageUrl).trim() : cur.imageUrl,
+      basePriceCents:
+        input.basePriceCents != null && Number.isFinite(Number(input.basePriceCents))
+          ? Number(input.basePriceCents)
+          : cur.basePriceCents,
+      sortOrder:
+        input.sortOrder != null && Number.isFinite(Number(input.sortOrder))
+          ? Number(input.sortOrder)
+          : cur.sortOrder,
+      isActive: input.isActive != null ? Boolean(input.isActive) : cur.isActive,
+      variants: input.variants != null ? input.variants : cur.variants,
     };
     all[idx] = next;
     this.writeAll(all);

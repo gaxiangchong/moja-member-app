@@ -55,6 +55,24 @@ function startOfLocalMonth(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
 
+function daysUntilBirthdayUtc(birthday: Date | null): number | null {
+  if (!birthday) return null;
+  const now = new Date();
+  const m = birthday.getUTCMonth();
+  const d = birthday.getUTCDate();
+  const y = now.getUTCFullYear();
+  let next = Date.UTC(y, m, d);
+  const todayUtc = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  if (next < todayUtc) {
+    next = Date.UTC(y + 1, m, d);
+  }
+  return Math.round((next - todayUtc) / (24 * 60 * 60 * 1000));
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -115,19 +133,42 @@ export class AdminService {
     const take = Math.min(Math.max(pageSize, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const where = this.buildCustomerWhere(query);
+    const dir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: dir };
+    switch (query.sortBy) {
+      case 'lastLoginAt':
+        orderBy = { lastLoginAt: dir };
+        break;
+      case 'points':
+        orderBy = { wallet: { pointsCached: dir } };
+        break;
+      case 'spent':
+        orderBy = { storedWallet: { lifetimeSpentCents: dir } };
+        break;
+      case 'name':
+        orderBy = { displayName: dir };
+        break;
+      case 'referrals':
+        orderBy = { referredMembers: { _count: dir } };
+        break;
+      default:
+        orderBy = { createdAt: dir };
+    }
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           wallet: true,
+          storedWallet: { select: { lifetimeSpentCents: true } },
           vouchers: {
             where: { status: 'ISSUED' },
             select: { id: true },
           },
+          _count: { select: { referredMembers: true } },
         },
       }),
       this.prisma.customer.count({ where }),
@@ -148,7 +189,11 @@ export class AdminService {
         marketingConsent: c.marketingConsent,
         tags: c.tags,
         lastLoginAt: c.lastLoginAt,
+        lastVisitAt: c.lastLoginAt,
+        birthdayDaysUntil: daysUntilBirthdayUtc(c.birthday),
         pointsBalance: c.wallet?.pointsCached ?? 0,
+        lifetimeSpentCents: c.storedWallet?.lifetimeSpentCents ?? 0,
+        referralsMade: c._count.referredMembers,
         activeVoucherCount: c.vouchers.length,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
@@ -159,17 +204,30 @@ export class AdminService {
     };
   }
 
+  async listCustomerOrders(customerId: string, limit = 40) {
+    await this.getCustomer(customerId);
+    const take = Math.min(Math.max(limit, 1), 100);
+    return this.prisma.customerOrder.findMany({
+      where: { customerId },
+      orderBy: { placedAt: 'desc' },
+      take,
+      include: { lines: true },
+    });
+  }
+
   async getCustomer(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
         wallet: true,
+        storedWallet: { select: { lifetimeSpentCents: true } },
         ledgerEntries: { take: 20, orderBy: { createdAt: 'desc' } },
         vouchers: {
           take: 30,
           orderBy: { updatedAt: 'desc' },
           include: { definition: true },
         },
+        _count: { select: { referredMembers: true } },
       },
     });
     if (!customer) {
@@ -554,6 +612,8 @@ export class AdminService {
     const weekStart = startOfLocalWeekMonday(now);
     const monthStart = startOfLocalMonth(now);
     const monthNumber = now.getMonth() + 1;
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const [
       members,
@@ -570,6 +630,8 @@ export class AdminService {
       recentVouchers,
       recentLedger,
       birthdayThisMonth,
+      ordersLast30Days,
+      ordersGmv30,
     ] = await this.prisma.$transaction([
       this.prisma.customer.count(),
       this.prisma.customer.count({ where: { status: CustomerStatus.ACTIVE } }),
@@ -628,6 +690,13 @@ export class AdminService {
         WHERE birthday IS NOT NULL
         AND EXTRACT(MONTH FROM birthday::date) = ${monthNumber}
       `,
+      this.prisma.customerOrder.count({
+        where: { placedAt: { gte: thirtyDaysAgo } },
+      }),
+      this.prisma.customerOrder.aggregate({
+        where: { placedAt: { gte: thirtyDaysAgo } },
+        _sum: { totalCents: true },
+      }),
     ]);
 
     const voucherStats: Record<string, number> = {};
@@ -667,6 +736,10 @@ export class AdminService {
       },
       otpVerifiedCount: otpVerified._count.id,
       birthdayMembersThisMonth: Number(birthdayThisMonth[0]?.count ?? 0n),
+      commerce: {
+        ordersLast30Days: ordersLast30Days,
+        gmvLast30DaysCents: ordersGmv30._sum.totalCents ?? 0,
+      },
       memberSalesContribution: null,
       recentRegistrations: recentCustomers,
       recentVoucherActivity: recentVouchers.map((v) => ({
@@ -998,6 +1071,44 @@ export class AdminService {
     const monthAgo = new Date();
     monthAgo.setDate(monthAgo.getDate() - 30);
 
+    const now = new Date();
+    const utcDayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const utcDayEnd = new Date(utcDayStart);
+    utcDayEnd.setUTCDate(utcDayEnd.getUTCDate() + 1);
+    const utcMonthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const utcMonthEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
+    const utcYearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const utcYearEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+
+    const topSpenderSql = (
+      from: Date,
+      to: Date,
+    ) => this.prisma.$queryRaw<
+      {
+        customer_id: string;
+        phone_e164: string;
+        display_name: string | null;
+        spent_cents: bigint;
+      }[]
+    >`
+      SELECT o.customer_id AS customer_id,
+             MAX(c.phone_e164) AS phone_e164,
+             MAX(c.display_name) AS display_name,
+             SUM(o.total_cents)::bigint AS spent_cents
+      FROM customer_orders o
+      INNER JOIN customers c ON c.id = o.customer_id
+      WHERE o.placed_at >= ${from} AND o.placed_at < ${to}
+      GROUP BY o.customer_id
+      ORDER BY spent_cents DESC
+      LIMIT 10
+    `;
+
     const [
       overview,
       bySource,
@@ -1006,6 +1117,13 @@ export class AdminService {
       importCount,
       exportCount,
       adjCount,
+      signupsByDay,
+      topSpenders,
+      topSpendersToday,
+      topSpendersThisMonth,
+      topSpendersThisYear,
+      topReferrers,
+      topProducts,
     ] = await Promise.all([
       this.getOverviewStats(),
       this.prisma.customer.groupBy({
@@ -1038,6 +1156,69 @@ export class AdminService {
           createdAt: { gte: monthAgo },
         },
       }),
+      this.prisma.$queryRaw<
+        { day: Date; referred: bigint; organic: bigint }[]
+      >`
+        SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date AS day,
+               COUNT(*) FILTER (WHERE referred_by_customer_id IS NOT NULL)::bigint AS referred,
+               COUNT(*) FILTER (WHERE referred_by_customer_id IS NULL)::bigint AS organic
+        FROM customers
+        WHERE created_at >= ${monthAgo}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      this.prisma.$queryRaw<
+        {
+          customer_id: string;
+          phone_e164: string;
+          display_name: string | null;
+          spent_cents: bigint;
+        }[]
+      >`
+        SELECT o.customer_id AS customer_id,
+               MAX(c.phone_e164) AS phone_e164,
+               MAX(c.display_name) AS display_name,
+               SUM(o.total_cents)::bigint AS spent_cents
+        FROM customer_orders o
+        INNER JOIN customers c ON c.id = o.customer_id
+        GROUP BY o.customer_id
+        ORDER BY spent_cents DESC
+        LIMIT 10
+      `,
+      topSpenderSql(utcDayStart, utcDayEnd),
+      topSpenderSql(utcMonthStart, utcMonthEnd),
+      topSpenderSql(utcYearStart, utcYearEnd),
+      this.prisma.customer.findMany({
+        take: 10,
+        where: { referredMembers: { some: {} } },
+        orderBy: { referredMembers: { _count: 'desc' } },
+        select: {
+          id: true,
+          phoneE164: true,
+          displayName: true,
+          referralCode: true,
+          _count: { select: { referredMembers: true } },
+        },
+      }),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT l.product_id AS product_id,
+               MAX(l.name) AS name,
+               SUM(l.qty)::bigint AS qty_sold,
+               COUNT(DISTINCT o.id)::bigint AS order_count
+        FROM customer_order_lines l
+        INNER JOIN customer_orders o ON o.id = l.order_id
+        WHERE o.placed_at >= ${monthAgo}
+        GROUP BY l.product_id
+        ORDER BY qty_sold DESC
+        LIMIT 10
+      `,
     ]);
 
     return {
@@ -1057,6 +1238,55 @@ export class AdminService {
         importCommits: importCount,
         exportRuns: exportCount,
         manualWalletOrLoyaltyAdjustments: adjCount,
+      },
+      marketing: {
+        signupsByDay: signupsByDay.map((r) => {
+          const referred = Number(r.referred);
+          const organic = Number(r.organic);
+          return {
+            date: r.day.toISOString().slice(0, 10),
+            newMembers: referred + organic,
+            referredSignups: referred,
+            organicSignups: organic,
+          };
+        }),
+        topSpenders: topSpenders.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersToday: topSpendersToday.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersThisMonth: topSpendersThisMonth.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersThisYear: topSpendersThisYear.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topReferrers: topReferrers.map((c) => ({
+          id: c.id,
+          phoneE164: c.phoneE164,
+          displayName: c.displayName,
+          referralCode: c.referralCode,
+          referralsSignedUp: c._count.referredMembers,
+        })),
+        topProducts: topProducts.map((p) => ({
+          productId: p.product_id,
+          name: p.name,
+          qtySold: Number(p.qty_sold),
+          orders: Number(p.order_count),
+        })),
       },
     };
   }

@@ -1,6 +1,6 @@
 {
   "menuGroups": {
-    "dashboard": { "showGroup": false, "showSubmenu": true },
+    "dashboard": { "showGroup": true, "showSubmenu": true },
     "customers": { "showGroup": true, "showSubmenu": true },
     "wallet": { "showGroup": false, "showSubmenu": true },
     "loyalty": { "showGroup": true, "showSubmenu": true },
@@ -12,6 +12,8 @@
     "audit": { "showGroup": false, "showSubmenu": true }
   },
   "menuViews": {
+    "dashboard-overview": true,
+    "dashboard-activity": true,
     "customers-list": true,
     "customers-profile": true,
     "loyalty-rewards-catalog": true,

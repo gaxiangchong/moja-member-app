@@ -32,6 +32,8 @@ import { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
 import { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
+import { CreateShopCatalogProductDto } from './dto/create-shop-catalog-product.dto';
+import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 
 @Controller('admin')
@@ -56,6 +58,15 @@ export class AdminController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ) {
     return this.admin.listCustomerAuditLogs(id, limit);
+  }
+
+  @Get('customers/:id/orders')
+  @RequirePermissions(P.CUSTOMER_READ)
+  listCustomerOrders(
+    @Param('id') id: string,
+    @Query('limit', new DefaultValuePipe(40), ParseIntPipe) limit: number,
+  ) {
+    return this.admin.listCustomerOrders(id, limit);
   }
 
   @Get('customers/:id')
@@ -261,9 +272,7 @@ export class AdminController {
 
   @Post('shop-catalog/products')
   @RequirePermissions(P.VOUCHER_CREATE)
-  createShopCatalogProduct(
-    @Body() dto: Record<string, unknown>,
-  ) {
+  createShopCatalogProduct(@Body() dto: CreateShopCatalogProductDto) {
     return this.shopCatalog.createProduct(dto);
   }
 
@@ -271,7 +280,7 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateShopCatalogProduct(
     @Param('id') id: string,
-    @Body() dto: Record<string, unknown>,
+    @Body() dto: UpdateShopCatalogProductDto,
   ) {
     return this.shopCatalog.updateProduct(id, dto);
   }
