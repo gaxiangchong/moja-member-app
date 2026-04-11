@@ -100,6 +100,22 @@ enum ApprovalRequestStatus {
   REJECTED
 }
 
+enum CampaignRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// When to auto-issue a voucher (evaluation engine uses rules later).
+enum VoucherPushTriggerType {
+  NEWCOMER
+  TOPUP_THRESHOLD
+  REFERRAL
+  BIRTHDAY
+  REENGAGEMENT
+}
+
 model Customer {
   id          String         @id @default(uuid()) @db.Uuid
   phoneE164   String         @unique @map("phone_e164")
@@ -122,8 +138,9 @@ model Customer {
   storedWallet   StoredWallet?
   ledgerEntries  LoyaltyLedgerEntry[]
   storedWalletLedgerEntries StoredWalletLedgerEntry[]
-  vouchers       CustomerVoucher[]
-  otpChallenges  OtpChallenge[]
+  vouchers          CustomerVoucher[]
+  otpChallenges     OtpChallenge[]
+  shopHandoffJtis   ShopHandoffJti[]
 
   @@index([displayName])
   @@index([email])
@@ -231,12 +248,47 @@ model VoucherDefinition {
   description String?
   pointsCost  Int?     @map("points_cost")
   isActive    Boolean  @default(true) @map("is_active")
+  /// Image URL for member app rewards catalog (HTTPS recommended).
+  imageUrl              String?   @map("image_url")
+  /// Optional grouping in UI: food, drinks, other.
+  rewardCategory        String?   @map("reward_category")
+  /// Show in member app “Rewards” redeemable catalog.
+  showInRewardsCatalog  Boolean   @default(true) @map("show_in_rewards_catalog")
+  /// Catalog ordering (lower first).
+  rewardSortOrder       Int       @default(0) @map("reward_sort_order")
+  /// Redeemable / visible window in catalog (optional).
+  rewardValidFrom       DateTime? @map("reward_valid_from")
+  rewardValidUntil      DateTime? @map("reward_valid_until")
+  /// Optional cap on total issued vouchers from this definition (null = unlimited).
+  maxTotalIssued        Int?      @map("max_total_issued")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  instances CustomerVoucher[]
+  instances    CustomerVoucher[]
+  pushRules    VoucherPushRule[]
 
   @@map("voucher_definitions")
+}
+
+model VoucherPushRule {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  name                 String
+  description          String?
+  isActive             Boolean                @default(true) @map("is_active")
+  sortOrder            Int                    @default(0) @map("sort_order")
+  triggerType          VoucherPushTriggerType @map("trigger_type")
+  // JSON: withinDaysOfSignup, minLifetimeTopUpCents, minReferrals, inactiveDays, etc.
+  triggerConfig        Json                   @map("trigger_config")
+  voucherDefinitionId  String                 @map("voucher_definition_id") @db.Uuid
+  voucherDefinition    VoucherDefinition      @relation(fields: [voucherDefinitionId], references: [id], onDelete: Restrict)
+  maxGrantsPerCustomer Int?                   @map("max_grants_per_customer")
+  cooldownDays         Int?                   @map("cooldown_days")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@index([voucherDefinitionId])
+  @@map("voucher_push_rules")
 }
 
 model CustomerVoucher {
@@ -251,10 +303,13 @@ model CustomerVoucher {
   expiresAt    DateTime?         @map("expires_at")
   referenceType String?          @map("reference_type")
   referenceId   String?         @map("reference_id") @db.Uuid
+  campaignRunId String?          @map("campaign_run_id") @db.Uuid
+  campaignRun   CampaignRun?     @relation(fields: [campaignRunId], references: [id], onDelete: SetNull)
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
   @@index([customerId, status])
   @@index([updatedAt])
+  @@unique([customerId, definitionId, campaignRunId])
   @@map("customer_vouchers")
 }
 
@@ -332,21 +387,39 @@ model SegmentAudience {
 }
 
 model CampaignRun {
-  id                 String           @id @default(uuid()) @db.Uuid
-  segmentAudienceId  String?          @map("segment_audience_id") @db.Uuid
-  segmentAudience    SegmentAudience? @relation(fields: [segmentAudienceId], references: [id], onDelete: SetNull)
-  filtersSnapshot    Json?            @map("filters_snapshot")
+  id                 String             @id @default(uuid()) @db.Uuid
+  segmentAudienceId  String?            @map("segment_audience_id") @db.Uuid
+  segmentAudience    SegmentAudience?   @relation(fields: [segmentAudienceId], references: [id], onDelete: SetNull)
+  filtersSnapshot    Json?              @map("filters_snapshot")
   action             String
   payload            Json
-  createdBy          String           @map("created_by")
-  createdAt          DateTime         @default(now()) @map("created_at")
-  customerMatched    Int              @default(0) @map("customer_matched")
-  customerSucceeded  Int              @default(0) @map("customer_succeeded")
-  customerFailed     Int              @default(0) @map("customer_failed")
+  createdBy          String             @map("created_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  customerMatched    Int                @default(0) @map("customer_matched")
+  customerSucceeded  Int                @default(0) @map("customer_succeeded")
+  customerFailed     Int                @default(0) @map("customer_failed")
+  customerProcessed  Int                @default(0) @map("customer_processed")
   errors             Json?
+  status             CampaignRunStatus  @default(COMPLETED) @map("status")
+  startedAt          DateTime?          @map("started_at")
+  finishedAt         DateTime?          @map("finished_at")
+  duplicatesSkipped  Int                 @default(0) @map("duplicates_skipped")
+
+  voucherIssues CustomerVoucher[]
 
   @@index([createdAt])
   @@map("campaign_runs")
+}
+
+model ShopHandoffJti {
+  jti        String   @id
+  customerId String   @map("customer_id") @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("shop_handoff_jtis")
 }
 
 model ImportBatch {

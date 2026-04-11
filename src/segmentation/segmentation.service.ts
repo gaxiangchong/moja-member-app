@@ -3,10 +3,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CustomerStatus, Prisma, VoucherStatus, WalletTxnType } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+import {
+  CampaignRunStatus,
+  CustomerStatus,
+  Prisma,
+  VoucherStatus,
+  WalletTxnType,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { envFlagTrue } from '../config/env-flags';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { MetricsService } from '../metrics/metrics.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import type { SegmentFiltersDto } from './dto/segment-filters.dto';
 import type { SaveAudienceDto } from './dto/save-audience.dto';
@@ -35,6 +44,8 @@ export class SegmentationService {
     private readonly audit: AuditService,
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
+    private readonly config: ConfigService,
+    private readonly metrics: MetricsService,
   ) {}
 
   private buildWhereSql(f: SegmentFiltersDto): Prisma.Sql {
@@ -399,6 +410,8 @@ export class SegmentationService {
     }
 
     const matched = await this.countSegment(filters);
+    const asyncOn = envFlagTrue(this.config.get<string>('FEATURE_CAMPAIGN_ASYNC'));
+
     const run = await this.prisma.campaignRun.create({
       data: {
         segmentAudienceId: audienceId,
@@ -407,36 +420,66 @@ export class SegmentationService {
         payload: dto.payload as object,
         createdBy: adminHint,
         customerMatched: matched,
+        status: asyncOn ? CampaignRunStatus.PENDING : CampaignRunStatus.RUNNING,
+        startedAt: asyncOn ? null : new Date(),
       },
     });
 
-    const errors: { customerId: string; message: string }[] = [];
-    let succeeded = 0;
-    let failed = 0;
+    const payloadObj = dto.payload as Record<string, unknown>;
 
-    for await (const batch of this.iterateSegmentIds(filters, 200)) {
-      for (const customerId of batch) {
-        try {
-          await this.applyCampaignAction(customerId, dto.action, dto.payload);
-          succeeded++;
-        } catch (e) {
-          failed++;
-          errors.push({
-            customerId,
-            message: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
+    if (asyncOn) {
+      void this.runCampaignJob(
+        run.id,
+        dto.action,
+        payloadObj,
+        filters,
+        adminHint,
+        audienceId,
+        matched,
+      ).catch(async (e) => {
+        await this.prisma.campaignRun.update({
+          where: { id: run.id },
+          data: {
+            status: CampaignRunStatus.FAILED,
+            finishedAt: new Date(),
+            errors: [
+              {
+                message: e instanceof Error ? e.message : String(e),
+              },
+            ],
+          },
+        });
+        this.metrics.incCampaignRunFailed();
+      });
+      return {
+        runId: run.id,
+        matched,
+        status: CampaignRunStatus.PENDING,
+      };
     }
+
+    const batchResult = await this.processCampaignBatches(
+      run.id,
+      filters,
+      dto.action,
+      payloadObj,
+    );
 
     await this.prisma.campaignRun.update({
       where: { id: run.id },
       data: {
-        customerSucceeded: succeeded,
-        customerFailed: failed,
-        errors: errors.length ? errors.slice(0, 500) : undefined,
+        customerSucceeded: batchResult.succeeded,
+        customerFailed: batchResult.failed,
+        customerProcessed: batchResult.processed,
+        duplicatesSkipped: batchResult.duplicatesSkipped,
+        errors: batchResult.errors.length ? batchResult.errors.slice(0, 500) : undefined,
+        status: CampaignRunStatus.COMPLETED,
+        finishedAt: new Date(),
       },
     });
+
+    this.metrics.addCampaignDuplicatesSkipped(batchResult.duplicatesSkipped);
+    this.metrics.incCampaignRunCompleted();
 
     await this.audit.log({
       actorType: 'admin',
@@ -448,25 +491,158 @@ export class SegmentationService {
         action: dto.action,
         audienceId: audienceId,
         matched,
-        succeeded,
-        failed,
+        succeeded: batchResult.succeeded,
+        failed: batchResult.failed,
+        duplicatesSkipped: batchResult.duplicatesSkipped,
       },
     });
 
     return {
       runId: run.id,
       matched,
-      succeeded,
-      failed,
-      errorsPreview: errors.slice(0, 20),
+      succeeded: batchResult.succeeded,
+      failed: batchResult.failed,
+      duplicatesSkipped: batchResult.duplicatesSkipped,
+      status: CampaignRunStatus.COMPLETED,
+      errorsPreview: batchResult.errors.slice(0, 20),
     };
+  }
+
+  async getCampaignRunStatus(runId: string) {
+    const r = await this.prisma.campaignRun.findUnique({ where: { id: runId } });
+    if (!r) {
+      throw new NotFoundException({
+        code: 'CAMPAIGN_RUN_NOT_FOUND',
+        message: 'Campaign run not found',
+      });
+    }
+    return {
+      runId: r.id,
+      status: r.status,
+      matched: r.customerMatched,
+      processed: r.customerProcessed,
+      succeeded: r.customerSucceeded,
+      failed: r.customerFailed,
+      duplicatesSkipped: r.duplicatesSkipped,
+      startedAt: r.startedAt?.toISOString() ?? null,
+      finishedAt: r.finishedAt?.toISOString() ?? null,
+    };
+  }
+
+  private async runCampaignJob(
+    runId: string,
+    action: CampaignRunDto['action'],
+    payload: Record<string, unknown>,
+    filters: SegmentFiltersDto,
+    adminHint: string,
+    audienceId: string | null,
+    matched: number,
+  ) {
+    await this.prisma.campaignRun.update({
+      where: { id: runId },
+      data: {
+        status: CampaignRunStatus.RUNNING,
+        startedAt: new Date(),
+      },
+    });
+
+    const batchResult = await this.processCampaignBatches(
+      runId,
+      filters,
+      action,
+      payload,
+    );
+
+    await this.prisma.campaignRun.update({
+      where: { id: runId },
+      data: {
+        customerSucceeded: batchResult.succeeded,
+        customerFailed: batchResult.failed,
+        customerProcessed: batchResult.processed,
+        duplicatesSkipped: batchResult.duplicatesSkipped,
+        errors: batchResult.errors.length ? batchResult.errors.slice(0, 500) : undefined,
+        status: CampaignRunStatus.COMPLETED,
+        finishedAt: new Date(),
+      },
+    });
+
+    this.metrics.addCampaignDuplicatesSkipped(batchResult.duplicatesSkipped);
+    this.metrics.incCampaignRunCompleted();
+
+    await this.audit.log({
+      actorType: 'admin',
+      actorId: adminHint,
+      action: 'campaign.run',
+      entityType: 'campaign_run',
+      entityId: runId,
+      metadata: {
+        action,
+        audienceId: audienceId,
+        matched,
+        succeeded: batchResult.succeeded,
+        failed: batchResult.failed,
+        duplicatesSkipped: batchResult.duplicatesSkipped,
+        async: true,
+      },
+    });
+  }
+
+  private async processCampaignBatches(
+    runId: string,
+    filters: SegmentFiltersDto,
+    action: CampaignRunDto['action'],
+    payload: Record<string, unknown>,
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    duplicatesSkipped: number;
+    processed: number;
+    errors: { customerId: string; message: string }[];
+  }> {
+    const errors: { customerId: string; message: string }[] = [];
+    let succeeded = 0;
+    let failed = 0;
+    let duplicatesSkipped = 0;
+    let processed = 0;
+
+    for await (const batch of this.iterateSegmentIds(filters, 200)) {
+      for (const customerId of batch) {
+        processed++;
+        try {
+          const outcome = await this.applyCampaignAction(
+            customerId,
+            action,
+            payload,
+            runId,
+          );
+          if (outcome === 'duplicate_skipped') {
+            duplicatesSkipped++;
+          } else {
+            succeeded++;
+          }
+        } catch (e) {
+          failed++;
+          errors.push({
+            customerId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      await this.prisma.campaignRun.update({
+        where: { id: runId },
+        data: { customerProcessed: processed },
+      });
+    }
+
+    return { succeeded, failed, duplicatesSkipped, processed, errors };
   }
 
   private async applyCampaignAction(
     customerId: string,
     action: CampaignRunDto['action'],
     payload: Record<string, unknown>,
-  ) {
+    campaignRunId: string,
+  ): Promise<'ok' | 'duplicate_skipped'> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
     });
@@ -486,15 +662,26 @@ export class SegmentationService {
       if (!def || !def.isActive) {
         throw new Error('Unknown or inactive voucher code');
       }
-      await this.prisma.customerVoucher.create({
-        data: {
-          customerId,
-          definitionId: def.id,
-          status: VoucherStatus.ISSUED,
-          referenceType: 'campaign_push',
-        },
-      });
-      return;
+      try {
+        await this.prisma.customerVoucher.create({
+          data: {
+            customerId,
+            definitionId: def.id,
+            status: VoucherStatus.ISSUED,
+            referenceType: 'campaign_push',
+            campaignRunId,
+          },
+        });
+      } catch (e) {
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          return 'duplicate_skipped';
+        }
+        throw e;
+      }
+      return 'ok';
     }
 
     if (action === 'wallet_bonus') {
@@ -510,9 +697,9 @@ export class SegmentationService {
         reason,
         createdByType: 'system',
         createdBy: 'campaign',
-        metadata: { campaign: true },
+        metadata: { campaign: true, campaignRunId },
       });
-      return;
+      return 'ok';
     }
 
     if (action === 'points_bonus') {
@@ -526,7 +713,11 @@ export class SegmentationService {
         deltaPoints,
         reason,
         referenceType: 'campaign_points',
+        referenceId: campaignRunId,
       });
+      return 'ok';
     }
+
+    throw new Error(`Unknown campaign action: ${String(action)}`);
   }
 }

@@ -5,6 +5,7 @@
     "test",
     "dist",
     "client-web",
+    "mobile",
     "**/*spec.ts"
   ]
 }

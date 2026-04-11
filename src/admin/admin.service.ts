@@ -27,9 +27,11 @@ import type { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
+import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import type { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
+import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
 
 function dtoHas<T extends object>(dto: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(dto, key);
@@ -699,6 +701,17 @@ export class AdminService {
         title: dto.title,
         description: dto.description ?? null,
         pointsCost: dto.pointsCost ?? null,
+        imageUrl: dto.imageUrl?.trim() || null,
+        rewardCategory: dto.rewardCategory?.trim() || null,
+        showInRewardsCatalog: dto.showInRewardsCatalog ?? true,
+        rewardSortOrder: dto.rewardSortOrder ?? 0,
+        rewardValidFrom: dto.rewardValidFrom
+          ? new Date(dto.rewardValidFrom)
+          : null,
+        rewardValidUntil: dto.rewardValidUntil
+          ? new Date(dto.rewardValidUntil)
+          : null,
+        maxTotalIssued: dto.maxTotalIssued ?? null,
       },
     });
 
@@ -740,9 +753,41 @@ export class AdminService {
     }
     const data: Prisma.VoucherDefinitionUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
-    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.description !== undefined) {
+      data.description =
+        dto.description && String(dto.description).trim()
+          ? String(dto.description).trim()
+          : null;
+    }
     if (dto.pointsCost !== undefined) data.pointsCost = dto.pointsCost;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.imageUrl !== undefined) {
+      data.imageUrl = dto.imageUrl?.trim() ? dto.imageUrl.trim() : null;
+    }
+    if (dto.rewardCategory !== undefined) {
+      data.rewardCategory = dto.rewardCategory?.trim()
+        ? dto.rewardCategory.trim()
+        : null;
+    }
+    if (dto.showInRewardsCatalog !== undefined) {
+      data.showInRewardsCatalog = dto.showInRewardsCatalog;
+    }
+    if (dto.rewardSortOrder !== undefined) {
+      data.rewardSortOrder = dto.rewardSortOrder;
+    }
+    if (dto.rewardValidFrom !== undefined) {
+      data.rewardValidFrom = dto.rewardValidFrom
+        ? new Date(dto.rewardValidFrom)
+        : null;
+    }
+    if (dto.rewardValidUntil !== undefined) {
+      data.rewardValidUntil = dto.rewardValidUntil
+        ? new Date(dto.rewardValidUntil)
+        : null;
+    }
+    if (dto.maxTotalIssued !== undefined) {
+      data.maxTotalIssued = dto.maxTotalIssued;
+    }
     const updated = await this.prisma.voucherDefinition.update({
       where: { id },
       data,
@@ -753,6 +798,13 @@ export class AdminService {
       description: v.description,
       pointsCost: v.pointsCost,
       isActive: v.isActive,
+      imageUrl: v.imageUrl,
+      rewardCategory: v.rewardCategory,
+      showInRewardsCatalog: v.showInRewardsCatalog,
+      rewardSortOrder: v.rewardSortOrder,
+      rewardValidFrom: v.rewardValidFrom,
+      rewardValidUntil: v.rewardValidUntil,
+      maxTotalIssued: v.maxTotalIssued,
     });
     await this.audit.log({
       ...auditActorBase(auth),
@@ -1007,5 +1059,120 @@ export class AdminService {
         manualWalletOrLoyaltyAdjustments: adjCount,
       },
     };
+  }
+
+  listVoucherPushRules() {
+    return this.prisma.voucherPushRule.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        voucherDefinition: {
+          select: { id: true, code: true, title: true },
+        },
+      },
+    });
+  }
+
+  async createVoucherPushRule(
+    dto: CreateVoucherPushRuleDto,
+    auth: AdminAuthState,
+  ) {
+    await this.prisma.voucherDefinition.findUniqueOrThrow({
+      where: { id: dto.voucherDefinitionId },
+    });
+    const created = await this.prisma.voucherPushRule.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        isActive: dto.isActive ?? true,
+        sortOrder: dto.sortOrder ?? 0,
+        triggerType: dto.triggerType,
+        triggerConfig: dto.triggerConfig as Prisma.InputJsonValue,
+        voucherDefinitionId: dto.voucherDefinitionId,
+        maxGrantsPerCustomer: dto.maxGrantsPerCustomer ?? null,
+        cooldownDays: dto.cooldownDays ?? null,
+      },
+      include: {
+        voucherDefinition: {
+          select: { id: true, code: true, title: true },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher_push_rule.created',
+      entityType: 'voucher_push_rule',
+      entityId: created.id,
+      afterValue: { name: created.name, triggerType: created.triggerType } as object,
+    });
+    return created;
+  }
+
+  async updateVoucherPushRule(
+    id: string,
+    dto: UpdateVoucherPushRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const before = await this.prisma.voucherPushRule.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_PUSH_RULE_NOT_FOUND',
+        message: 'Voucher push rule not found',
+      });
+    }
+    if (dto.voucherDefinitionId) {
+      await this.prisma.voucherDefinition.findUniqueOrThrow({
+        where: { id: dto.voucherDefinitionId },
+      });
+    }
+    const data: Prisma.VoucherPushRuleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.description !== undefined) {
+      data.description = dto.description?.trim() || null;
+    }
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    if (dto.triggerType !== undefined) data.triggerType = dto.triggerType;
+    if (dto.triggerConfig !== undefined) {
+      data.triggerConfig = dto.triggerConfig as Prisma.InputJsonValue;
+    }
+    if (dto.voucherDefinitionId !== undefined) {
+      data.voucherDefinition = {
+        connect: { id: dto.voucherDefinitionId },
+      };
+    }
+    if (dto.maxGrantsPerCustomer !== undefined) {
+      data.maxGrantsPerCustomer = dto.maxGrantsPerCustomer;
+    }
+    if (dto.cooldownDays !== undefined) {
+      data.cooldownDays = dto.cooldownDays;
+    }
+    const updated = await this.prisma.voucherPushRule.update({
+      where: { id },
+      data,
+      include: {
+        voucherDefinition: {
+          select: { id: true, code: true, title: true },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher_push_rule.updated',
+      entityType: 'voucher_push_rule',
+      entityId: id,
+      beforeValue: {
+        name: before.name,
+        triggerType: before.triggerType,
+        isActive: before.isActive,
+      } as object,
+      afterValue: {
+        name: updated.name,
+        triggerType: updated.triggerType,
+        isActive: updated.isActive,
+      } as object,
+    });
+    return updated;
   }
 }

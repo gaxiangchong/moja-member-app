@@ -8,9 +8,10 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
+import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 
 @Module({
-  imports: [AdminAuthModule, LoyaltyModule, CustomersModule, WalletModule],
+  imports: [AdminAuthModule, LoyaltyModule, CustomersModule, WalletModule, ShopCatalogModule],
   controllers: [
     AdminController,
     AdminApprovalsController,

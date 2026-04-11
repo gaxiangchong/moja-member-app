@@ -1,0 +1,24 @@
+{
+  "menuGroups": {
+    "dashboard": { "showGroup": false, "showSubmenu": true },
+    "customers": { "showGroup": true, "showSubmenu": true },
+    "wallet": { "showGroup": false, "showSubmenu": true },
+    "loyalty": { "showGroup": true, "showSubmenu": true },
+    "vouchers": { "showGroup": true, "showSubmenu": true },
+    "campaigns": { "showGroup": false, "showSubmenu": true },
+    "data-tools": { "showGroup": false, "showSubmenu": true },
+    "reports": { "showGroup": false, "showSubmenu": true },
+    "settings": { "showGroup": true, "showSubmenu": true },
+    "audit": { "showGroup": false, "showSubmenu": true }
+  },
+  "menuViews": {
+    "customers-list": true,
+    "customers-profile": true,
+    "loyalty-rewards-catalog": true,
+    "loyalty-voucher-push-rules": true,
+    "vouchers-list": true,
+    "vouchers-create": true,
+    "settings-shopping-catalog": true,
+    "settings-system": true
+  }
+}

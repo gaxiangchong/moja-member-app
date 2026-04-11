@@ -22,7 +22,8 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
     "client:dev": "npm run dev --prefix client-web",
-    "client:build": "npm run build --prefix client-web"
+    "client:build": "npm run build --prefix client-web",
+    "mobile:start": "npm run start --prefix mobile"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

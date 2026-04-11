@@ -9,12 +9,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomInt } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { AuditService } from '../audit/audit.service';
+import { envFlagTrue } from '../config/env-flags';
 import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AccessTokenJwtPayload } from './types/jwt-payload.type';
+import type { ShopHandoffJwtPayload } from './types/shop-handoff-jwt-payload.type';
 import { WhatsappOtpService } from './whatsapp-otp.service';
 
 @Injectable()
@@ -27,6 +30,7 @@ export class AuthService {
     private readonly customers: CustomersService,
     private readonly audit: AuditService,
     private readonly whatsappOtp: WhatsappOtpService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async requestOtp(phoneRaw: string, ipAddress?: string | null) {
@@ -196,5 +200,100 @@ export class AuthService {
       return raw;
     }
     return 'auto';
+  }
+
+  async issueShopHandoff(customerId: string) {
+    if (!envFlagTrue(this.config.get<string>('FEATURE_SHOP_SSO'))) {
+      throw new ServiceUnavailableException({
+        code: 'FEATURE_DISABLED',
+        message: 'Shop SSO handoff is disabled (FEATURE_SHOP_SSO).',
+      });
+    }
+
+    this.metrics.incShopHandoffRequested();
+    await this.audit.log({
+      actorType: 'customer',
+      actorId: customerId,
+      action: 'shop.handoff.requested',
+      entityType: 'customer',
+      entityId: customerId,
+    });
+
+    const shopBase = this.config.get<string>('SHOP_WEB_BASE_URL')?.trim();
+    if (!shopBase) {
+      this.metrics.incShopHandoffIssueFailed();
+      throw new ServiceUnavailableException({
+        code: 'SHOP_HANDOFF_MISCONFIGURED',
+        message: 'SHOP_WEB_BASE_URL is not set on the member API.',
+      });
+    }
+
+    let consumeBase: URL;
+    try {
+      const shopOrigin = new URL(
+        shopBase.endsWith('/') ? shopBase : `${shopBase}/`,
+      ).origin;
+      consumeBase = new URL('/sso/consume', `${shopOrigin}/`);
+    } catch {
+      this.metrics.incShopHandoffIssueFailed();
+      throw new ServiceUnavailableException({
+        code: 'SHOP_HANDOFF_MISCONFIGURED',
+        message: 'SHOP_WEB_BASE_URL is not a valid URL.',
+      });
+    }
+
+    const ttlSec = Math.min(
+      Math.max(this.config.get<number>('SHOP_HANDOFF_TTL_SEC', 45), 15),
+      60,
+    );
+    const issuer =
+      this.config.get<string>('SHOP_HANDOFF_ISSUER')?.trim() ||
+      `http://localhost:${this.config.get<number>('PORT', 3153)}`;
+    const audience =
+      this.config.get<string>('SHOP_HANDOFF_AUDIENCE')?.trim() || 'shop';
+    const secret =
+      this.config.get<string>('SHOP_HANDOFF_JWT_SECRET')?.trim() ||
+      this.config.getOrThrow<string>('JWT_SECRET');
+
+    const jti = randomUUID();
+    const expiresAt = new Date(Date.now() + ttlSec * 1000);
+    const payload: ShopHandoffJwtPayload = {
+      sub: customerId,
+      aud: audience,
+      iss: issuer,
+      jti,
+    };
+
+    const handoffToken = await this.jwt.signAsync(payload, {
+      secret,
+      expiresIn: ttlSec,
+    });
+
+    await this.prisma.shopHandoffJti.create({
+      data: {
+        jti,
+        customerId,
+        expiresAt,
+      },
+    });
+
+    consumeBase.searchParams.set('handoff', handoffToken);
+    const consumeUrl = consumeBase.toString();
+
+    this.metrics.incShopHandoffIssued();
+    await this.audit.log({
+      actorType: 'customer',
+      actorId: customerId,
+      action: 'shop.handoff.issued',
+      entityType: 'customer',
+      entityId: customerId,
+      metadata: { jti, expiresInSec: ttlSec },
+    });
+
+    return {
+      handoffToken,
+      expiresInSec: ttlSec,
+      consumeUrl,
+    };
   }
 }

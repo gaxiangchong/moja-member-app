@@ -30,6 +30,9 @@ import { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import { RequestWalletReversalDto } from './dto/request-wallet-reversal.dto';
 import { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
+import { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
+import { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
+import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -37,6 +40,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly approvals: ApprovalsService,
+    private readonly shopCatalog: ShopCatalogService,
   ) {}
 
   @Get('customers')
@@ -222,5 +226,53 @@ export class AdminController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.updateVoucherDefinition(id, dto, auth);
+  }
+
+  @Get('voucher-push-rules')
+  @RequirePermissions(P.VOUCHER_READ)
+  listVoucherPushRules() {
+    return this.admin.listVoucherPushRules();
+  }
+
+  @Post('voucher-push-rules')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  createVoucherPushRule(
+    @Body() dto: CreateVoucherPushRuleDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.createVoucherPushRule(dto, auth);
+  }
+
+  @Patch('voucher-push-rules/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateVoucherPushRule(
+    @Param('id') id: string,
+    @Body() dto: UpdateVoucherPushRuleDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.updateVoucherPushRule(id, dto, auth);
+  }
+
+  @Get('shop-catalog/products')
+  @RequirePermissions(P.VOUCHER_READ)
+  listShopCatalogProducts() {
+    return this.shopCatalog.listAdminProducts();
+  }
+
+  @Post('shop-catalog/products')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  createShopCatalogProduct(
+    @Body() dto: Record<string, unknown>,
+  ) {
+    return this.shopCatalog.createProduct(dto);
+  }
+
+  @Patch('shop-catalog/products/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateShopCatalogProduct(
+    @Param('id') id: string,
+    @Body() dto: Record<string, unknown>,
+  ) {
+    return this.shopCatalog.updateProduct(id, dto);
   }
 }

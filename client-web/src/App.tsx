@@ -13,9 +13,13 @@ import {
   type MemberProfile,
   type MemberRewardsPayload,
 } from './api';
+import { useOrderHistoryStore, type PastOrder } from './shop/store/useOrderHistoryStore';
+import { useShopStore } from './shop/store/useShopStore';
+import { ShopFlow } from './shop/ShopFlow';
 
 type Step = 'phone' | 'code' | 'member';
-type MemberTab = 'overview' | 'vouchers' | 'rewards' | 'profile';
+type MemberTab = 'home' | 'vouchers' | 'rewards' | 'account' | 'shop';
+type AccountSubpage = 'main' | 'orders';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
 type RewardFilter = 'all' | 'food' | 'drinks';
 
@@ -50,6 +54,10 @@ function SectionHeader({
   );
 }
 
+function formatRm(cents: number): string {
+  return `RM ${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
 function VoucherCard({
   title,
   conditions,
@@ -62,12 +70,15 @@ function VoucherCard({
   status: string;
 }) {
   const normalized = String(status || 'ACTIVE').toUpperCase();
-  const isExpiring = normalized === 'ACTIVE' && expiry !== '-' && (() => {
+  let isExpiring = false;
+  if (normalized === 'ACTIVE' && expiry !== '-') {
     const d = new Date(expiry);
-    if (Number.isNaN(d.getTime())) return false;
-    const diff = d.getTime() - Date.now();
-    return diff > 0 && diff < 1000 * 60 * 60 * 24 * 7;
-  })();
+    if (!Number.isNaN(d.getTime())) {
+      // eslint-disable-next-line react-hooks/purity -- relative expiry for voucher badge
+      const diff = d.getTime() - Date.now();
+      isExpiring = diff > 0 && diff < 1000 * 60 * 60 * 24 * 7;
+    }
+  }
   const badgeLabel = normalized === 'EXPIRED' ? 'Expired' : normalized === 'USED' ? 'Used' : isExpiring ? 'Expiring soon' : 'Active';
   return (
     <article className="voucherTicket">
@@ -84,6 +95,66 @@ function VoucherCard({
   );
 }
 
+function OrderHistorySection({ onGoToShop }: { onGoToShop: () => void }) {
+  const orders = useOrderHistoryStore((s) => s.orders);
+
+  const handleReorder = (order: PastOrder) => {
+    const add = useShopStore.getState().addToCart;
+    for (const line of order.lines) {
+      add({
+        productId: line.productId,
+        name: line.name,
+        imageUrl: line.imageUrl,
+        unitPriceCents: line.unitPriceCents,
+        qty: line.qty,
+        variantLabel: line.variantLabel,
+      });
+    }
+    onGoToShop();
+  };
+
+  if (!orders.length) {
+    return (
+      <p className="caption" style={{ margin: 0 }}>
+        No orders yet. Open Shop to place your first order.
+      </p>
+    );
+  }
+
+  return (
+    <div className="orderHistoryList">
+      {orders.map((order) => {
+        const placed = new Date(order.placedAt);
+        const when = Number.isNaN(placed.getTime())
+          ? order.placedAt
+          : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        const linePreview = order.lines
+          .slice(0, 2)
+          .map((l) => `${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} × ${l.qty}`)
+          .join(' · ');
+        const more = order.lines.length > 2 ? ` +${order.lines.length - 2} more` : '';
+        return (
+          <article key={order.id} className="orderHistoryCard">
+            <div className="orderHistoryHead">
+              <strong>{when}</strong>
+              <span className="orderHistoryTotal">{formatRm(order.totalCents)}</span>
+            </div>
+            <p className="caption orderHistoryLines">{linePreview}
+              {more}
+            </p>
+            {order.fulfillmentSummary.length ? (
+              <p className="caption orderHistoryFulfill">{order.fulfillmentSummary.join(' · ')}</p>
+            ) : null}
+            <button type="button" className="ghost orderHistoryReorder" onClick={() => handleReorder(order)}>
+              Reorder
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function RewardCard({
   title,
   description,
@@ -97,11 +168,14 @@ function RewardCard({
   category: string;
   imageUrl: string;
 }) {
+  const imageStyle = imageUrl
+    ? { backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5)), url("${imageUrl}")` }
+    : { backgroundImage: 'linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5))' };
   return (
     <article className="rewardCard">
       <div
         className={`rewardImage ${category === 'drinks' ? 'drinks' : 'food'}`}
-        style={{ backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5)), url("${imageUrl}")` }}
+        style={imageStyle}
       />
       <div className="rewardBody">
         <strong>{title}</strong>
@@ -117,7 +191,7 @@ function RewardCard({
 
 function App() {
   const [step, setStep] = useState<Step>('phone');
-  const [tab, setTab] = useState<MemberTab>('overview');
+  const [tab, setTab] = useState<MemberTab>('home');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -132,7 +206,7 @@ function App() {
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
-
+  const [accountSubpage, setAccountSubpage] = useState<AccountSubpage>('main');
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formBirthday, setFormBirthday] = useState('');
@@ -248,7 +322,8 @@ function App() {
     setCode('');
     setHint(null);
     setError(null);
-    setTab('overview');
+    setTab('home');
+    setAccountSubpage('main');
     setShareOpen(false);
   };
 
@@ -256,28 +331,6 @@ function App() {
     () => profile?.displayName?.trim() || 'Member',
     [profile?.displayName],
   );
-  const shopWebUrl = useMemo(() => {
-    const raw = import.meta.env.VITE_SHOP_WEB_URL?.trim();
-    if (!raw) return '';
-    try {
-      const parsed = new URL(raw, window.location.origin);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-      return parsed.toString();
-    } catch {
-      return '';
-    }
-  }, []);
-
-  const openShopWebsite = useCallback(() => {
-    if (!shopWebUrl) {
-      setProfileMsg('Shop website is not configured. Set VITE_SHOP_WEB_URL in client-web env.');
-      return;
-    }
-    const w = window.open(shopWebUrl, '_blank', 'noopener,noreferrer');
-    if (!w) {
-      window.location.href = shopWebUrl;
-    }
-  }, [shopWebUrl]);
   const memberTier = profile?.memberTier || 'Gold';
 
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
@@ -286,35 +339,6 @@ function App() {
   const progressPct = Math.min(100, Math.max(0, (1 - pointsToNext / 500) * 100));
 
   const voucherItems = rewardsData?.vouchers ?? [];
-  const demoVouchers = [
-    {
-      id: 'demo-voucher-birthday',
-      status: 'ISSUED',
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10).toISOString(),
-      definition: {
-        id: 'demo-def-birthday',
-        code: 'DEMO_BDAY_10',
-        title: 'Demo: Birthday Cake Slice',
-        description: 'Free cake slice with any drink purchase.',
-        pointsCost: 0,
-      },
-    },
-    {
-      id: 'demo-voucher-reengage',
-      status: 'ISSUED',
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
-      definition: {
-        id: 'demo-def-reengage',
-        code: 'DEMO_WELCOME_BACK',
-        title: 'Demo: Welcome Back 15% OFF',
-        description: '15% off your next bakery purchase.',
-        pointsCost: 0,
-      },
-    },
-  ];
-  const voucherItemsWithDemo = [...demoVouchers, ...voucherItems];
   const visibleVouchers = voucherItems.filter((v) => {
     const status = String(v.status || '').toUpperCase();
     if (voucherTab === 'ACTIVE') return status === 'ISSUED' || status === 'ACTIVE';
@@ -323,56 +347,31 @@ function App() {
   });
 
   const normalizedRewards = (rewardsData?.rewards ?? []).map((r) => {
-    const s = `${r.title} ${r.description ?? ''}`.toLowerCase();
-    const category: RewardFilter = s.includes('coffee') || s.includes('latte') || s.includes('tea') ? 'drinks' : 'food';
-    const drinkImages = [
-      'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
-      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=900&q=80',
-      'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=900&q=80',
-    ];
-    const foodImages = [
-      'https://images.unsplash.com/photo-1483695028939-5bb13f8648b0?auto=format&fit=crop&w=900&q=80',
-      'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?auto=format&fit=crop&w=900&q=80',
-      'https://images.unsplash.com/photo-1558301211-0d8c8ddee6ec?auto=format&fit=crop&w=900&q=80',
-    ];
-    const hash = Math.abs(
-      [...`${r.id}${r.title}`].reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
-    );
-    const imageUrl =
-      category === 'drinks'
-        ? drinkImages[hash % drinkImages.length]
-        : foodImages[hash % foodImages.length];
-    return { ...r, category, imageUrl };
+    const rawCategory = String(r.rewardCategory || '').trim().toLowerCase();
+    const isDrinks = rawCategory.includes('drink') || rawCategory.includes('beverage');
+    const isFood = rawCategory.includes('food') || rawCategory.includes('cake') || rawCategory.includes('bakery');
+    const category: RewardFilter = isDrinks ? 'drinks' : isFood ? 'food' : 'food';
+    return { ...r, category, imageUrl: r.imageUrl || '' };
   });
-  const demoRewards = [
-    {
-      id: 'demo-reward-cake',
-      code: 'DEMO_RED_VELVET',
-      title: 'Demo: Red Velvet Cake',
-      description: 'Premium red velvet slice with cream cheese frosting.',
-      pointsCost: 240,
-      isActive: true,
-      category: 'food' as RewardFilter,
-      imageUrl: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
-    },
-    {
-      id: 'demo-reward-coffee',
-      code: 'DEMO_COFFEE',
-      title: 'Demo: Signature Coffee',
-      description: 'Handcrafted coffee reward for loyal members.',
-      pointsCost: 180,
-      isActive: true,
-      category: 'drinks' as RewardFilter,
-      imageUrl: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=900&q=80',
-    },
-  ];
-  const normalizedRewardsWithDemo = [...demoRewards, ...normalizedRewards];
-  const filteredRewards = normalizedRewardsWithDemo.filter((r) => {
+  const filteredRewards = normalizedRewards.filter((r) => {
     if (rewardFilter !== 'all' && r.category !== rewardFilter) return false;
     const q = rewardQuery.trim().toLowerCase();
     if (!q) return true;
-    return `${r.title} ${r.description ?? ''}`.toLowerCase().includes(q);
+    return `${r.title} ${r.description ?? ''} ${r.rewardCategory ?? ''}`.toLowerCase().includes(q);
   });
+
+  const latestHomeVoucher = useMemo(() => {
+    if (voucherItems.length === 0) return null;
+    return [...voucherItems].sort((a, b) => {
+      const ta = new Date(a.issuedAt || 0).getTime();
+      const tb = new Date(b.issuedAt || 0).getTime();
+      return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+    })[0];
+  }, [voucherItems]);
+
+  const latestHomeReward = useMemo(() => {
+    return normalizedRewards[0] ?? null;
+  }, [normalizedRewards]);
 
   useEffect(() => {
     let alive = true;
@@ -392,6 +391,12 @@ function App() {
       alive = false;
     };
   }, [profile?.phoneE164]);
+
+  useEffect(() => {
+    if (tab !== 'account') {
+      setAccountSubpage('main');
+    }
+  }, [tab]);
 
   return (
     <div className="app">
@@ -471,7 +476,7 @@ function App() {
       {step === 'member' && profile && (
         <div className="pmShell">
           <main className="pmContent">
-            {tab === 'overview' && (
+            {tab === 'home' && (
               <>
                 <header className="pmTopBar">
                   <h2>Hi {memberName}</h2>
@@ -485,7 +490,6 @@ function App() {
                     </svg>
                   </button>
                 </header>
-
                 <Card className="pointsCard">
                   <p className="caption">Available points</p>
                   <h1>{pointsBalance.toLocaleString()} pts</h1>
@@ -496,34 +500,47 @@ function App() {
                 </Card>
 
                 <Card>
-                  <SectionHeader title="My Voucher" actionLabel="View All" onAction={() => setTab('vouchers')} />
-                  <div className="hScroll">
-                    {(voucherItemsWithDemo.slice(0, 3)).map((v) => (
+                  <SectionHeader title="My Voucher" />
+                  <div className="voucherList">
+                    {latestHomeVoucher ? (
                       <VoucherCard
-                        key={v.id}
-                        title={v.definition.title}
-                        conditions={v.definition.description || v.definition.code}
-                        expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
-                        status={v.status}
+                        key={latestHomeVoucher.id}
+                        title={latestHomeVoucher.definition.title}
+                        conditions={latestHomeVoucher.definition.description || latestHomeVoucher.definition.code}
+                        expiry={latestHomeVoucher.expiresAt ? latestHomeVoucher.expiresAt.slice(0, 10) : '-'}
+                        status={latestHomeVoucher.status}
                       />
-                    ))}
-                    {!voucherItemsWithDemo.length && <p className="caption">No vouchers yet.</p>}
+                    ) : (
+                      <p className="caption">No vouchers yet.</p>
+                    )}
+                  </div>
+                  <div className="homeSectionFooter">
+                    <button type="button" className="textAction" onClick={() => setTab('vouchers')}>
+                      View All
+                    </button>
                   </div>
                 </Card>
 
                 <Card>
-                  <SectionHeader title="Featured Rewards" actionLabel="View All" onAction={() => setTab('rewards')} />
-                  <div className="hScroll rewardScroll">
-                    {normalizedRewardsWithDemo.slice(0, 4).map((r) => (
+                  <SectionHeader title="Featured Rewards" />
+                  <div className="rewardsGrid homeRewardsPreview">
+                    {latestHomeReward ? (
                       <RewardCard
-                        key={r.id}
-                        title={r.title}
-                        description={r.description || r.code}
-                        points={r.pointsCost ?? 0}
-                        category={r.category}
-                        imageUrl={r.imageUrl}
+                        key={latestHomeReward.id}
+                        title={latestHomeReward.title}
+                        description={latestHomeReward.description || latestHomeReward.code}
+                        points={latestHomeReward.pointsCost ?? 0}
+                        category={latestHomeReward.category}
+                        imageUrl={latestHomeReward.imageUrl}
                       />
-                    ))}
+                    ) : (
+                      <p className="caption">No rewards to show yet.</p>
+                    )}
+                  </div>
+                  <div className="homeSectionFooter">
+                    <button type="button" className="textAction" onClick={() => setTab('rewards')}>
+                      View All
+                    </button>
                   </div>
                 </Card>
 
@@ -552,7 +569,7 @@ function App() {
                   ))}
                 </div>
                 <div className="voucherList">
-                  {[...demoVouchers, ...visibleVouchers].map((v) => (
+                  {visibleVouchers.map((v) => (
                     <VoucherCard
                       key={v.id}
                       title={v.definition.title}
@@ -615,10 +632,32 @@ function App() {
               </>
             )}
 
-            {tab === 'profile' && (
+            {tab === 'shop' && <ShopFlow pointsBalance={pointsBalance} />}
+
+            {tab === 'account' && accountSubpage === 'orders' && (
+              <>
+                <header className="pmTopBar accountOrdersTopBar">
+                  <button
+                    type="button"
+                    className="textAction accountOrdersBack"
+                    onClick={() => setAccountSubpage('main')}
+                    aria-label="Back to account"
+                  >
+                    ← Back
+                  </button>
+                  <h2 className="accountOrdersTitle">Orders</h2>
+                  <span className="accountOrdersTopSpacer" aria-hidden />
+                </header>
+                <Card>
+                  <OrderHistorySection onGoToShop={() => setTab('shop')} />
+                </Card>
+              </>
+            )}
+
+            {tab === 'account' && accountSubpage === 'main' && (
               <>
                 <header className="pmTopBar">
-                  <h2>Profile</h2>
+                  <h2>Account</h2>
                 </header>
                 <Card>
                   <h3>{memberName}</h3>
@@ -640,6 +679,9 @@ function App() {
                 <Card>
                   <SectionHeader title="Activity" />
                   <div className="profileActions">
+                    <button type="button" className="rowAction" onClick={() => setAccountSubpage('orders')}>
+                      Orders
+                    </button>
                     <button type="button" className="rowAction" onClick={() => setTab('vouchers')}>My Vouchers</button>
                     <button type="button" className="rowAction" onClick={() => setTab('rewards')}>Rewards History</button>
                   </div>
@@ -661,15 +703,20 @@ function App() {
           </main>
 
           <nav className="bottomTabs">
-            <button type="button" className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')} aria-label="Overview">
+            <button type="button" className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')} aria-label="Home">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 22v-7h6v7"/></svg>
-              <span>Overview</span>
+              <span>Home</span>
             </button>
             <button type="button" className={tab === 'vouchers' ? 'active' : ''} onClick={() => setTab('vouchers')} aria-label="Vouchers">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><path d="M7 12h.01M17 12h.01"/></svg>
               <span>Vouchers</span>
             </button>
-            <button type="button" className="center" onClick={openShopWebsite} aria-label="Shop">
+            <button
+              type="button"
+              className={tab === 'shop' ? 'active' : ''}
+              onClick={() => setTab('shop')}
+              aria-label="Shop"
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h12l1.5 4H4.5z"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 11h6"/></svg>
               <span>Shop</span>
             </button>
@@ -677,9 +724,9 @@ function App() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3"/><path d="M8 14h8l-1 8-3-2-3 2z"/></svg>
               <span>Rewards</span>
             </button>
-            <button type="button" className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')} aria-label="Profile">
+            <button type="button" className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')} aria-label="Account">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-              <span>Profile</span>
+              <span>Account</span>
             </button>
           </nav>
 

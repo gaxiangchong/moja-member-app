@@ -81,6 +81,12 @@ export class SegmentationController {
     return this.segmentation.runCampaign(dto, auth.actorLabel);
   }
 
+  @Get('campaigns/run/:runId/status')
+  @RequirePermissions(P.CAMPAIGN_RUN)
+  campaignRunStatus(@Param('runId') runId: string) {
+    return this.segmentation.getCampaignRunStatus(runId);
+  }
+
   @Get('campaigns/insights')
   @RequirePermissions(P.SEGMENT_MANAGE)
   campaignInsights(@Query() query: CampaignInsightsQueryDto) {

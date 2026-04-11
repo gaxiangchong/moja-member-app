@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
 import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
@@ -136,7 +137,7 @@ export class CustomersService {
         orderBy: { issuedAt: 'desc' },
       }),
       this.prisma.voucherDefinition.findMany({
-        where: { isActive: true },
+        where: memberRewardsCatalogWhere(),
         select: {
           id: true,
           code: true,
@@ -144,8 +145,10 @@ export class CustomersService {
           description: true,
           pointsCost: true,
           isActive: true,
+          imageUrl: true,
+          rewardCategory: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ rewardSortOrder: 'asc' }, { createdAt: 'desc' }],
       }),
     ]);
 

@@ -1,7 +1,54 @@
 import { Controller, Get, Header } from '@nestjs/common';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const DEFAULT_DASHBOARD_CONFIG = {
+  menuGroups: {
+    dashboard: { showGroup: false, showSubmenu: true },
+    customers: { showGroup: true, showSubmenu: true },
+    wallet: { showGroup: false, showSubmenu: true },
+    loyalty: { showGroup: true, showSubmenu: true },
+    vouchers: { showGroup: true, showSubmenu: true },
+    campaigns: { showGroup: false, showSubmenu: true },
+    'data-tools': { showGroup: false, showSubmenu: true },
+    reports: { showGroup: false, showSubmenu: true },
+    settings: { showGroup: true, showSubmenu: true },
+    audit: { showGroup: false, showSubmenu: true },
+  },
+  menuViews: {
+    'customers-list': true,
+    'customers-profile': true,
+    'loyalty-rewards-catalog': true,
+    'loyalty-voucher-push-rules': true,
+    'vouchers-list': true,
+    'vouchers-create': true,
+    'settings-shopping-catalog': true,
+    'settings-system': true,
+  },
+};
 
 @Controller()
 export class AdminDashboardController {
+  @Get('admin-dashboard/config.json')
+  getDashboardConfig() {
+    return this.readDashboardConfig();
+  }
+
+  private readDashboardConfig() {
+    const path = resolve(process.cwd(), 'admin-dashboard.config.json');
+    if (!existsSync(path)) return DEFAULT_DASHBOARD_CONFIG;
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_DASHBOARD_CONFIG,
+        ...(parsed && typeof parsed === 'object' ? parsed : {}),
+      };
+    } catch {
+      return DEFAULT_DASHBOARD_CONFIG;
+    }
+  }
+
   @Get('admin-dashboard')
   @Header('Content-Type', 'text/html; charset=utf-8')
   getDashboard(): string {
@@ -463,7 +510,7 @@ export class AdminDashboardController {
     <aside class="sidebar">
       <div class="sidebar-brand">Moja <small>Member admin</small></div>
       <div class="nav-scroll">
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="dashboard" open>
           <summary>Dashboard</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub active" data-view="dashboard-overview">
@@ -476,7 +523,7 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="customers" open>
           <summary>Customers</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="customers-list">
@@ -497,7 +544,7 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="wallet" open>
           <summary>Wallet</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="wallet-balances">
@@ -518,8 +565,8 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
-          <summary>Loyalty</summary>
+        <details class="nav-group" data-menu-group="loyalty" open>
+          <summary>Loyalty &amp; rewards</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="loyalty-balances">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -537,9 +584,17 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
               Bonus campaigns
             </button>
+            <button type="button" class="nav-btn nav-sub" data-view="loyalty-rewards-catalog">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              Rewards catalog
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="loyalty-voucher-push-rules">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Voucher push rules
+            </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="vouchers" open>
           <summary>Vouchers</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="vouchers-list">
@@ -564,7 +619,7 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="campaigns" open>
           <summary>Campaigns</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="campaigns-segments">
@@ -589,7 +644,7 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="data-tools" open>
           <summary>Data Tools</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="data-import">
@@ -610,7 +665,7 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="reports" open>
           <summary>Reports</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="reports-customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>Customer reports</button>
@@ -620,16 +675,14 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="reports-admin-activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 10 14 13 19 8"/></svg>Admin activity reports</button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="settings" open>
           <summary>Settings</summary>
           <div class="nav-items">
-            <button type="button" class="nav-btn nav-sub" data-view="settings-roles">Roles &amp; permissions</button>
-            <button type="button" class="nav-btn nav-sub" data-view="settings-master-data">Master data</button>
-            <button type="button" class="nav-btn nav-sub" data-view="settings-notifications">Notification templates</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
           </div>
         </details>
-        <details class="nav-group" open>
+        <details class="nav-group" data-menu-group="audit" open>
           <summary>Audit</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="audit">
@@ -970,6 +1023,131 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="loyalty-rewards-catalog" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            Configure how items appear in the <strong>member app Rewards</strong> tab: image URL, points cost, category, visibility, date window, sort order, and optional max total issues.
+            New definitions: <strong>Vouchers → Create voucher</strong> or use the form fields in the editor below.
+          </div>
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Rewards catalog (voucher definitions)</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshLoyaltyRewardsBtn">Refresh</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Code</th><th>Title</th><th>Voucher ID</th><th>Image</th><th>Points</th><th>Category</th><th>Catalog</th><th>Valid</th><th>Sort</th><th>Max issued</th><th>Status</th><th>Edit</th></tr></thead>
+                <tbody id="loyaltyRewardsCatalogBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="rewardDefEditor" class="sheet hidden" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit catalog entry</h2><button type="button" class="btn-outline" id="rewardDefEditorCancel">Close</button></div>
+            <div style="padding:16px 20px;max-width:560px">
+              <input type="hidden" id="rdEditId" />
+              <div class="form-section"><label>Code</label><input type="text" id="rdCode" readonly /></div>
+              <div class="form-section"><label for="rdTitle">Title</label><input type="text" id="rdTitle" maxlength="200" /></div>
+              <div class="form-section"><label for="rdDescription">Description</label><textarea id="rdDescription" maxlength="2000"></textarea></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
+                <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
+              </div>
+              <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://…" /></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="rdValidFrom">Valid from (ISO date)</label><input type="date" id="rdValidFrom" /></div>
+                <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="rdSort">Sort order</label><input type="number" id="rdSort" step="1" value="0" /></div>
+                <div class="form-section"><label for="rdMaxIssued">Max total issued</label><input type="number" id="rdMaxIssued" min="1" step="1" placeholder="empty = unlimited" /></div>
+              </div>
+              <div class="form-section"><label><input type="checkbox" id="rdShowCatalog" style="width:auto;margin-right:8px" /> Show in member rewards catalog</label></div>
+              <div class="form-section"><label><input type="checkbox" id="rdActive" style="width:auto;margin-right:8px" /> Definition active</label></div>
+              <button type="button" class="btn-primary" id="rdSaveBtn">Save changes</button>
+              <p class="field-hint" id="rdSaveResult"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="loyalty-voucher-push-rules" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            <strong>Automated voucher entitlement rules</strong> (configuration). Execution can be wired to signup, wallet top-up, referral, or scheduled jobs.
+            Suggested <code>triggerConfig</code> keys: <code>withinDaysOfSignup</code> (newcomer), <code>minLifetimeTopUpCents</code> (top-up), <code>minReferrals</code> (referral), <code>inactiveDays</code> (re-engagement).
+            Use <strong>Campaigns → Push voucher</strong> for immediate bulk issue with filters.
+          </div>
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Voucher push rules</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshVoucherPushRulesBtn">Refresh</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Name</th><th>Trigger</th><th>Voucher</th><th>Active</th><th>Sort</th><th>Limits</th><th>Edit</th></tr></thead>
+                <tbody id="voucherPushRulesBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>New rule</h2></div>
+            <div style="padding:16px 20px;max-width:560px">
+              <div class="form-section"><label for="vprName">Name</label><input type="text" id="vprName" maxlength="200" /></div>
+              <div class="form-section"><label for="vprDesc">Description</label><textarea id="vprDesc" maxlength="2000"></textarea></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="vprTrigger">Trigger type</label>
+                  <select id="vprTrigger">
+                    <option value="NEWCOMER">Newcomer</option>
+                    <option value="TOPUP_THRESHOLD">Top-up threshold</option>
+                    <option value="REFERRAL">Referral</option>
+                    <option value="BIRTHDAY">Birthday</option>
+                    <option value="REENGAGEMENT">Re-engagement</option>
+                  </select>
+                </div>
+                <div class="form-section"><label for="vprVoucherDefId">Voucher definition ID</label><input type="text" id="vprVoucherDefId" placeholder="UUID from catalog" /></div>
+              </div>
+              <div class="form-section"><label for="vprConfigJson">Trigger config (JSON)</label><textarea id="vprConfigJson" rows="4" placeholder='{"withinDaysOfSignup":14}'></textarea></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="vprSort">Sort order</label><input type="number" id="vprSort" value="0" step="1" /></div>
+                <div class="form-section"><label for="vprMaxGrants">Max grants / customer</label><input type="number" id="vprMaxGrants" min="1" step="1" placeholder="optional" /></div>
+              </div>
+              <div class="form-section"><label for="vprCooldown">Cooldown (days)</label><input type="number" id="vprCooldown" min="0" step="1" placeholder="optional" /></div>
+              <button type="button" class="btn-primary" id="vprCreateBtn">Create rule</button>
+              <p class="field-hint" id="vprCreateResult"></p>
+            </div>
+          </div>
+          <div id="vprEditPanel" class="sheet hidden" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit rule</h2><button type="button" class="btn-outline" id="vprEditCancel">Close</button></div>
+            <div style="padding:16px 20px;max-width:560px">
+              <input type="hidden" id="vprEditId" />
+              <div class="form-section"><label for="vprEditName">Name</label><input type="text" id="vprEditName" maxlength="200" /></div>
+              <div class="form-section"><label for="vprEditDesc">Description</label><textarea id="vprEditDesc" maxlength="2000"></textarea></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="vprEditTrigger">Trigger</label>
+                  <select id="vprEditTrigger">
+                    <option value="NEWCOMER">Newcomer</option>
+                    <option value="TOPUP_THRESHOLD">Top-up threshold</option>
+                    <option value="REFERRAL">Referral</option>
+                    <option value="BIRTHDAY">Birthday</option>
+                    <option value="REENGAGEMENT">Re-engagement</option>
+                  </select>
+                </div>
+                <div class="form-section"><label for="vprEditVoucherId">Voucher definition ID</label><input type="text" id="vprEditVoucherId" /></div>
+              </div>
+              <div class="form-section"><label for="vprEditConfig">Config JSON</label><textarea id="vprEditConfig" rows="4"></textarea></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="vprEditSort">Sort</label><input type="number" id="vprEditSort" step="1" /></div>
+                <div class="form-section"><label for="vprEditMax">Max / customer</label><input type="number" id="vprEditMax" min="1" step="1" /></div>
+              </div>
+              <div class="form-section"><label for="vprEditCooldown">Cooldown days</label><input type="number" id="vprEditCooldown" min="0" step="1" /></div>
+              <div class="form-section"><label><input type="checkbox" id="vprEditActive" style="width:auto;margin-right:8px" /> Active</label></div>
+              <button type="button" class="btn-primary" id="vprSaveBtn">Save rule</button>
+              <p class="field-hint" id="vprSaveResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="vouchers-list" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Voucher list</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshVouchersBtn">Refresh</button></div></div>
@@ -1303,6 +1481,48 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="settings-shopping-catalog" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Shopping catalog</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshShopCatalogBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Name</th><th>Category</th><th>Price</th><th>Sort</th><th>Visible</th><th>Edit</th></tr></thead>
+                <tbody id="shopCatalogBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit product</h2></div>
+            <div style="padding:16px 20px;max-width:640px">
+              <input type="hidden" id="scId" />
+              <div class="form-row-2">
+                <div class="form-section"><label for="scName">Name</label><input type="text" id="scName" /></div>
+                <div class="form-section"><label for="scCategory">Category</label>
+                  <select id="scCategory">
+                    <option value="whole_cakes">whole_cakes</option>
+                    <option value="cake_slices">cake_slices</option>
+                    <option value="drinks">drinks</option>
+                    <option value="specials">specials</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
+              <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
+              <div class="form-section"><label for="scImageUrl">Image URL</label><input type="text" id="scImageUrl" placeholder="https://..." /></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
+                <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
+              </div>
+              <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in client app</label></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
+                <button type="button" class="btn-outline" id="scNewBtn">New product</button>
+              </div>
+              <p class="field-hint" id="scSaveResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="audit" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Audit activity</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAuditBtn">Refresh</button></div></div>
@@ -1461,13 +1681,15 @@ export class AdminDashboardController {
       'customers-list', 'customers-profile', 'customers-segments', 'customers-merge',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
+      'loyalty-rewards-catalog', 'loyalty-voucher-push-rules',
       'vouchers-list', 'vouchers-templates', 'vouchers-create', 'vouchers-assigned', 'vouchers-redemption',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-vouchers', 'reports-wallet', 'reports-loyalty', 'reports-admin-activity',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog',
       'audit', 'audit-logins',
     ];
+    let hiddenViews = new Set();
     const title = document.getElementById('title');
     const titleIcon = document.getElementById('titleIcon');
     const statusPanel = document.getElementById('statusPanel');
@@ -1512,6 +1734,8 @@ export class AdminDashboardController {
       'loyalty-transactions': iconLoyalty,
       'loyalty-rules': iconLoyalty,
       'loyalty-campaigns': iconLoyalty,
+      'loyalty-rewards-catalog': iconLoyalty,
+      'loyalty-voucher-push-rules': iconLoyalty,
       'vouchers-list': iconVoucher,
       'vouchers-templates': iconVoucher,
       'vouchers-create': iconVoucher,
@@ -1535,6 +1759,7 @@ export class AdminDashboardController {
       'settings-master-data': iconAudit,
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
+      'settings-shopping-catalog': iconVoucher,
       audit: iconAudit,
       'audit-logins': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
     };
@@ -1553,6 +1778,8 @@ export class AdminDashboardController {
       'loyalty-transactions': 'Loyalty · Transactions',
       'loyalty-rules': 'Loyalty · Points rules',
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
+      'loyalty-rewards-catalog': 'Loyalty · Rewards catalog',
+      'loyalty-voucher-push-rules': 'Loyalty · Voucher push rules',
       'vouchers-list': 'Vouchers · List',
       'vouchers-templates': 'Vouchers · Templates',
       'vouchers-create': 'Vouchers · Create',
@@ -1576,9 +1803,14 @@ export class AdminDashboardController {
       'settings-master-data': 'Settings · Master data',
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
+      'settings-shopping-catalog': 'Settings · Shopping catalog',
       audit: 'Audit · Audit logs',
       'audit-logins': 'Audit · Admin login logs',
     };
+
+    let lastVoucherDefinitions = [];
+    let lastPushRules = [];
+    let lastShopCatalogProducts = [];
 
     const fmt = (value) => value === null || value === undefined || value === '' ? '-' : value;
     const dateFmt = (iso) => {
@@ -1893,8 +2125,15 @@ export class AdminDashboardController {
       document.getElementById('loyaltyBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
+    function formatRewardWindow(v) {
+      var f = v.rewardValidFrom ? String(v.rewardValidFrom).slice(0, 10) : '—';
+      var u = v.rewardValidUntil ? String(v.rewardValidUntil).slice(0, 10) : '—';
+      return f + ' → ' + u;
+    }
+
     async function loadVouchers() {
       const data = await api('/admin/voucher-definitions');
+      lastVoucherDefinitions = data || [];
       const rows = (data || []).map((v) =>
         '<tr><td>' + fmt(v.code) + '</td><td>' + fmt(v.title) + '</td><td>' + fmt(v.pointsCost) + '</td><td>' + statusPill(v.isActive ? 'ACTIVE' : 'INACTIVE') + '</td></tr>'
       );
@@ -1903,6 +2142,38 @@ export class AdminDashboardController {
       if (vb) vb.innerHTML = html;
       const vt = document.getElementById('voucherTemplateBody');
       if (vt) vt.innerHTML = html;
+      const lr = document.getElementById('loyaltyRewardsCatalogBody');
+      if (lr) {
+        const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        const copySvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        const viewSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+        lr.innerHTML = (data || []).map((v) =>
+          '<tr><td>' + fmt(v.code) + '</td><td>' + fmt(v.title) + '</td><td class="td-actions">' +
+          '<button type="button" class="icon-btn reward-def-copy-id-btn" data-id="' + fmt(v.id) + '" title="Copy voucher ID">' + copySvg + '</button></td><td class="td-actions">' +
+          (v.imageUrl
+            ? '<button type="button" class="icon-btn reward-def-view-image-btn" data-image-url="' + fmt(v.imageUrl) + '" title="View image">' + viewSvg + '</button>'
+            : '<span class="muted-hint">—</span>') +
+          '</td><td>' + fmt(v.pointsCost) + '</td><td>' + fmt(v.rewardCategory) + '</td><td>' +
+          (v.showInRewardsCatalog ? statusPill('YES') : statusPill('NO')) + '</td><td>' + formatRewardWindow(v) + '</td><td>' + fmt(v.rewardSortOrder) + '</td><td>' +
+          fmt(v.maxTotalIssued) + '</td><td>' + statusPill(v.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td class="td-actions">' +
+          '<button type="button" class="icon-btn reward-def-edit-btn" data-id="' + v.id + '" title="Edit">' + editSvg + '</button></td></tr>'
+        ).join('') || '<tr><td colspan="12">No data</td></tr>';
+      }
+    }
+
+    async function loadVoucherPushRules() {
+      const data = await api('/admin/voucher-push-rules');
+      lastPushRules = data || [];
+      const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      const body = document.getElementById('voucherPushRulesBody');
+      if (!body) return;
+      body.innerHTML = (data || []).map((r) => {
+        var vd = r.voucherDefinition || {};
+        var lim = (r.maxGrantsPerCustomer != null ? 'max ' + r.maxGrantsPerCustomer : '—') + ' · cd ' + (r.cooldownDays != null ? r.cooldownDays + 'd' : '—');
+        return '<tr><td>' + fmt(r.name) + '</td><td>' + fmt(r.triggerType) + '</td><td>' + fmt(vd.code) + '</td><td>' +
+          (r.isActive ? statusPill('ACTIVE') : statusPill('OFF')) + '</td><td>' + fmt(r.sortOrder) + '</td><td>' + lim + '</td><td class="td-actions">' +
+          '<button type="button" class="icon-btn vpr-edit-btn" data-id="' + r.id + '" title="Edit">' + editSvg + '</button></td></tr>';
+      }).join('') || '<tr><td colspan="7">No rules yet</td></tr>';
     }
 
     async function loadWalletLedger() {
@@ -2014,6 +2285,27 @@ export class AdminDashboardController {
       });
     }
 
+    function pollCampaignRunStatus(runId) {
+      return new Promise(function (resolve, reject) {
+        var tries = 0;
+        function tick() {
+          tries += 1;
+          api('/admin/segments/campaigns/run/' + encodeURIComponent(runId) + '/status')
+            .then(function (s) {
+              if (s.status === 'COMPLETED' || s.status === 'FAILED') {
+                resolve(s);
+              } else if (tries > 900) {
+                reject(new Error('Campaign status poll timed out'));
+              } else {
+                setTimeout(tick, 1000);
+              }
+            })
+            .catch(reject);
+        }
+        tick();
+      });
+    }
+
     async function loadImportHistory() {
       const data = await api('/admin/import/batches');
       const rows = (data || []).map((b) =>
@@ -2059,6 +2351,16 @@ export class AdminDashboardController {
       document.getElementById('adminUsersBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
+    async function loadShopCatalog() {
+      const data = await api('/admin/shop-catalog/products');
+      lastShopCatalogProducts = data || [];
+      const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      document.getElementById('shopCatalogBody').innerHTML = (data || []).map(function (p) {
+        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.category) + '</td><td>' + fmt(p.basePriceCents) + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+          (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
+      }).join('') || '<tr><td colspan="6">No products</td></tr>';
+    }
+
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
       const tasks = [
@@ -2076,6 +2378,8 @@ export class AdminDashboardController {
         loadExportJobs(),
         loadReporting(),
         loadAdminUsers(),
+        loadVoucherPushRules(),
+        loadShopCatalog(),
       ];
       const results = await Promise.allSettled(tasks);
       const failed = results.filter((r) => r.status === 'rejected');
@@ -2097,7 +2401,15 @@ export class AdminDashboardController {
       statusPanel.textContent = 'Connected with limited access. Some modules could not load due to permissions or unavailable endpoints.';
     }
 
+    function firstVisibleView() {
+      for (var i = 0; i < views.length; i += 1) {
+        if (!hiddenViews.has(views[i])) return views[i];
+      }
+      return 'dashboard-overview';
+    }
+
     function setMainView(view) {
+      if (hiddenViews.has(view)) view = firstVisibleView();
       views.forEach((v) => {
         const el = document.getElementById(v);
         if (el) el.classList.add('hidden');
@@ -2106,6 +2418,58 @@ export class AdminDashboardController {
       if (cur) cur.classList.remove('hidden');
       title.textContent = viewTitles[view] || view;
       titleIcon.innerHTML = icons[view] || icons['dashboard-overview'];
+    }
+
+    async function applyDashboardConfig() {
+      try {
+        var res = await fetch('/admin-dashboard/config.json');
+        if (!res.ok) return;
+        var cfg = await res.json();
+        var groups = (cfg && cfg.menuGroups) || {};
+        var menuViews = (cfg && cfg.menuViews) || {};
+        var hidden = new Set();
+        document.querySelectorAll('.nav-group[data-menu-group]').forEach(function (groupEl) {
+          var key = groupEl.getAttribute('data-menu-group');
+          var groupCfg = groups[key] || {};
+          var showGroup = groupCfg.showGroup !== false;
+          var showSubmenu = groupCfg.showSubmenu !== false;
+          var navItems = groupEl.querySelector('.nav-items');
+          groupEl.classList.toggle('hidden', !showGroup);
+          if (!navItems) return;
+          navItems.classList.toggle('hidden', !showSubmenu || !showGroup);
+          if (!showSubmenu || !showGroup) {
+            navItems.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
+              var v = btn.getAttribute('data-view');
+              if (v) hidden.add(v);
+            });
+          }
+        });
+        document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
+          var v = btn.getAttribute('data-view');
+          if (!v) return;
+          if (Object.prototype.hasOwnProperty.call(menuViews, v) && menuViews[v] === false) {
+            btn.classList.add('hidden');
+            hidden.add(v);
+          } else if (Object.keys(menuViews).length && !menuViews[v]) {
+            btn.classList.add('hidden');
+            hidden.add(v);
+          } else {
+            btn.classList.remove('hidden');
+          }
+        });
+        hiddenViews = hidden;
+        var activeBtn = document.querySelector('.nav-btn.active');
+        var activeView = activeBtn ? activeBtn.getAttribute('data-view') : '';
+        if (!activeView || hiddenViews.has(activeView)) {
+          var fallback = firstVisibleView();
+          navButtons().forEach(function (b) {
+            b.classList.toggle('active', b.getAttribute('data-view') === fallback);
+          });
+          setMainView(fallback);
+        }
+      } catch (_) {
+        // Ignore config load failures and keep default menu behavior.
+      }
     }
 
     connectBtn.addEventListener('click', openAuthModal);
@@ -2228,7 +2592,17 @@ export class AdminDashboardController {
       out.textContent = 'Running campaign…';
       runCampaignPushVoucher()
         .then((res) => {
-          out.textContent = 'Done. Matched: ' + fmt(res.matched) + ', succeeded: ' + fmt(res.succeeded) + ', failed: ' + fmt(res.failed) + '.';
+          if (res.status === 'PENDING' && res.runId) {
+            out.textContent = 'Campaign queued (run ' + fmt(res.runId) + '). Processing…';
+            return pollCampaignRunStatus(res.runId).then((final) => {
+              out.textContent = 'Done. Status: ' + fmt(final.status) + '. Matched: ' + fmt(final.matched) +
+                ', processed: ' + fmt(final.processed) + ', succeeded: ' + fmt(final.succeeded) +
+                ', failed: ' + fmt(final.failed) + ', duplicates skipped: ' + fmt(final.duplicatesSkipped) + '.';
+              return Promise.all([loadCampaignVoucherInsights(), loadCampaignHistory()]);
+            });
+          }
+          out.textContent = 'Done. Matched: ' + fmt(res.matched) + ', succeeded: ' + fmt(res.succeeded) +
+            ', failed: ' + fmt(res.failed) + ', duplicates skipped: ' + fmt(res.duplicatesSkipped || 0) + '.';
           return Promise.all([loadCampaignVoucherInsights(), loadCampaignHistory()]);
         })
         .catch((e) => { out.textContent = e.message; });
@@ -2319,6 +2693,248 @@ export class AdminDashboardController {
         .catch((e) => { out.textContent = e.message; });
     });
 
+    document.getElementById('refreshLoyaltyRewardsBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('refreshVoucherPushRulesBtn').addEventListener('click', () => loadVoucherPushRules().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+
+    function isoDateOnly(d) {
+      if (!d) return '';
+      var x = new Date(d);
+      if (Number.isNaN(x.getTime())) return '';
+      return x.toISOString().slice(0, 10);
+    }
+
+    document.getElementById('loyaltyRewardsCatalogBody').addEventListener('click', (e) => {
+      var copyBtn = e.target.closest('.reward-def-copy-id-btn');
+      if (copyBtn) {
+        var voucherId = copyBtn.getAttribute('data-id') || '';
+        if (!voucherId) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(voucherId).then(function () {
+            statusPanel.textContent = 'Voucher ID copied: ' + voucherId;
+          }).catch(function () {
+            statusPanel.textContent = 'Copy failed. ID: ' + voucherId;
+          });
+        } else {
+          statusPanel.textContent = 'Clipboard not available. ID: ' + voucherId;
+        }
+        return;
+      }
+
+      var viewBtn = e.target.closest('.reward-def-view-image-btn');
+      if (viewBtn) {
+        var imageUrl = viewBtn.getAttribute('data-image-url') || '';
+        if (!imageUrl) return;
+        window.open(imageUrl, '_blank', 'noopener');
+        return;
+      }
+
+      var btn = e.target.closest('.reward-def-edit-btn');
+      if (!btn) return;
+      var id = btn.getAttribute('data-id');
+      var v = lastVoucherDefinitions.find(function (x) { return x.id === id; });
+      if (!v) return;
+      document.getElementById('rdEditId').value = v.id;
+      document.getElementById('rdCode').value = v.code || '';
+      document.getElementById('rdTitle').value = v.title || '';
+      document.getElementById('rdDescription').value = v.description || '';
+      document.getElementById('rdPoints').value = v.pointsCost != null ? String(v.pointsCost) : '';
+      document.getElementById('rdCategory').value = v.rewardCategory || '';
+      document.getElementById('rdImageUrl').value = v.imageUrl || '';
+      document.getElementById('rdValidFrom').value = isoDateOnly(v.rewardValidFrom);
+      document.getElementById('rdValidUntil').value = isoDateOnly(v.rewardValidUntil);
+      document.getElementById('rdSort').value = v.rewardSortOrder != null ? String(v.rewardSortOrder) : '0';
+      document.getElementById('rdMaxIssued').value = v.maxTotalIssued != null ? String(v.maxTotalIssued) : '';
+      document.getElementById('rdShowCatalog').checked = !!v.showInRewardsCatalog;
+      document.getElementById('rdActive').checked = !!v.isActive;
+      document.getElementById('rewardDefEditor').classList.remove('hidden');
+      document.getElementById('rdSaveResult').textContent = '';
+    });
+
+    document.getElementById('rewardDefEditorCancel').addEventListener('click', () => {
+      document.getElementById('rewardDefEditor').classList.add('hidden');
+    });
+
+    document.getElementById('rdSaveBtn').addEventListener('click', () => {
+      var id = document.getElementById('rdEditId').value;
+      var out = document.getElementById('rdSaveResult');
+      if (!id) return;
+      var pcVal = document.getElementById('rdPoints').value;
+      var body = {
+        title: document.getElementById('rdTitle').value.trim(),
+        description: document.getElementById('rdDescription').value.trim() || null,
+        pointsCost: pcVal === '' ? undefined : parseInt(pcVal, 10),
+        imageUrl: document.getElementById('rdImageUrl').value.trim() || null,
+        rewardCategory: document.getElementById('rdCategory').value.trim() || null,
+        showInRewardsCatalog: document.getElementById('rdShowCatalog').checked,
+        isActive: document.getElementById('rdActive').checked,
+        rewardSortOrder: parseInt(document.getElementById('rdSort').value, 10) || 0,
+        rewardValidFrom: document.getElementById('rdValidFrom').value || null,
+        rewardValidUntil: document.getElementById('rdValidUntil').value || null,
+        maxTotalIssued: document.getElementById('rdMaxIssued').value === '' ? null : parseInt(document.getElementById('rdMaxIssued').value, 10),
+      };
+      out.textContent = 'Saving…';
+      apiPatch('/admin/voucher-definitions/' + encodeURIComponent(id), body)
+        .then(function () {
+          out.textContent = 'Saved.';
+          return loadVouchers();
+        })
+        .catch(function (err) { out.textContent = err.message; });
+    });
+
+    document.getElementById('voucherPushRulesBody').addEventListener('click', (e) => {
+      var btn = e.target.closest('.vpr-edit-btn');
+      if (!btn) return;
+      var id = btn.getAttribute('data-id');
+      var r = lastPushRules.find(function (x) { return x.id === id; });
+      if (!r) return;
+      document.getElementById('vprEditId').value = r.id;
+      document.getElementById('vprEditName').value = r.name || '';
+      document.getElementById('vprEditDesc').value = r.description || '';
+      document.getElementById('vprEditTrigger').value = r.triggerType || 'NEWCOMER';
+      document.getElementById('vprEditVoucherId').value = r.voucherDefinitionId || (r.voucherDefinition && r.voucherDefinition.id) || '';
+      document.getElementById('vprEditConfig').value = JSON.stringify(r.triggerConfig || {}, null, 2);
+      document.getElementById('vprEditSort').value = r.sortOrder != null ? String(r.sortOrder) : '0';
+      document.getElementById('vprEditMax').value = r.maxGrantsPerCustomer != null ? String(r.maxGrantsPerCustomer) : '';
+      document.getElementById('vprEditCooldown').value = r.cooldownDays != null ? String(r.cooldownDays) : '';
+      document.getElementById('vprEditActive').checked = !!r.isActive;
+      document.getElementById('vprEditPanel').classList.remove('hidden');
+      document.getElementById('vprSaveResult').textContent = '';
+    });
+
+    document.getElementById('vprEditCancel').addEventListener('click', () => {
+      document.getElementById('vprEditPanel').classList.add('hidden');
+    });
+
+    document.getElementById('vprCreateBtn').addEventListener('click', () => {
+      var out = document.getElementById('vprCreateResult');
+      var name = document.getElementById('vprName').value.trim();
+      var vid = document.getElementById('vprVoucherDefId').value.trim();
+      var raw = document.getElementById('vprConfigJson').value.trim();
+      if (!name || !vid) {
+        out.textContent = 'Name and voucher definition ID are required.';
+        return;
+      }
+      var cfg = {};
+      try {
+        cfg = raw ? JSON.parse(raw) : {};
+      } catch (err) {
+        out.textContent = 'Invalid JSON in trigger config.';
+        return;
+      }
+      out.textContent = 'Creating…';
+      apiPost('/admin/voucher-push-rules', {
+        name: name,
+        description: document.getElementById('vprDesc').value.trim() || undefined,
+        triggerType: document.getElementById('vprTrigger').value,
+        triggerConfig: cfg,
+        voucherDefinitionId: vid,
+        sortOrder: parseInt(document.getElementById('vprSort').value, 10) || 0,
+        maxGrantsPerCustomer: document.getElementById('vprMaxGrants').value === '' ? undefined : parseInt(document.getElementById('vprMaxGrants').value, 10),
+        cooldownDays: document.getElementById('vprCooldown').value === '' ? undefined : parseInt(document.getElementById('vprCooldown').value, 10),
+      })
+        .then(function () {
+          out.textContent = 'Created.';
+          document.getElementById('vprName').value = '';
+          document.getElementById('vprDesc').value = '';
+          document.getElementById('vprVoucherDefId').value = '';
+          document.getElementById('vprConfigJson').value = '';
+          return loadVoucherPushRules();
+        })
+        .catch(function (err) { out.textContent = err.message; });
+    });
+
+    document.getElementById('vprSaveBtn').addEventListener('click', () => {
+      var id = document.getElementById('vprEditId').value;
+      var out = document.getElementById('vprSaveResult');
+      if (!id) return;
+      var raw = document.getElementById('vprEditConfig').value.trim();
+      var cfg;
+      try {
+        cfg = raw ? JSON.parse(raw) : {};
+      } catch (err) {
+        out.textContent = 'Invalid JSON.';
+        return;
+      }
+      out.textContent = 'Saving…';
+      apiPatch('/admin/voucher-push-rules/' + encodeURIComponent(id), {
+        name: document.getElementById('vprEditName').value.trim(),
+        description: document.getElementById('vprEditDesc').value.trim() || null,
+        triggerType: document.getElementById('vprEditTrigger').value,
+        voucherDefinitionId: document.getElementById('vprEditVoucherId').value.trim(),
+        triggerConfig: cfg,
+        sortOrder: parseInt(document.getElementById('vprEditSort').value, 10) || 0,
+        maxGrantsPerCustomer: document.getElementById('vprEditMax').value === '' ? null : parseInt(document.getElementById('vprEditMax').value, 10),
+        cooldownDays: document.getElementById('vprEditCooldown').value === '' ? null : parseInt(document.getElementById('vprEditCooldown').value, 10),
+        isActive: document.getElementById('vprEditActive').checked,
+      })
+        .then(function () {
+          out.textContent = 'Saved.';
+          return loadVoucherPushRules();
+        })
+        .catch(function (err) { out.textContent = err.message; });
+    });
+
+    document.getElementById('shopCatalogBody').addEventListener('click', (e) => {
+      var btn = e.target.closest('.sc-edit-btn');
+      if (!btn) return;
+      var id = btn.getAttribute('data-id');
+      var p = lastShopCatalogProducts.find(function (x) { return x.id === id; });
+      if (!p) return;
+      document.getElementById('scId').value = p.id || '';
+      document.getElementById('scName').value = p.name || '';
+      document.getElementById('scCategory').value = p.category || 'specials';
+      document.getElementById('scShort').value = p.shortDescription || '';
+      document.getElementById('scDesc').value = p.description || '';
+      document.getElementById('scImageUrl').value = p.imageUrl || '';
+      document.getElementById('scPrice').value = p.basePriceCents != null ? String(p.basePriceCents) : '0';
+      document.getElementById('scSort').value = p.sortOrder != null ? String(p.sortOrder) : '0';
+      document.getElementById('scActive').checked = !!p.isActive;
+      document.getElementById('scSaveResult').textContent = '';
+    });
+
+    document.getElementById('scNewBtn').addEventListener('click', () => {
+      document.getElementById('scId').value = '';
+      document.getElementById('scName').value = '';
+      document.getElementById('scCategory').value = 'specials';
+      document.getElementById('scShort').value = '';
+      document.getElementById('scDesc').value = '';
+      document.getElementById('scImageUrl').value = '';
+      document.getElementById('scPrice').value = '0';
+      document.getElementById('scSort').value = '0';
+      document.getElementById('scActive').checked = true;
+      document.getElementById('scSaveResult').textContent = '';
+    });
+
+    document.getElementById('scSaveBtn').addEventListener('click', () => {
+      var id = document.getElementById('scId').value.trim();
+      var out = document.getElementById('scSaveResult');
+      var body = {
+        name: document.getElementById('scName').value.trim(),
+        category: document.getElementById('scCategory').value,
+        shortDescription: document.getElementById('scShort').value.trim(),
+        description: document.getElementById('scDesc').value.trim(),
+        imageUrl: document.getElementById('scImageUrl').value.trim(),
+        basePriceCents: parseInt(document.getElementById('scPrice').value, 10) || 0,
+        sortOrder: parseInt(document.getElementById('scSort').value, 10) || 0,
+        isActive: document.getElementById('scActive').checked,
+      };
+      if (!body.name) {
+        out.textContent = 'Name is required.';
+        return;
+      }
+      out.textContent = 'Saving…';
+      var req = id
+        ? apiPatch('/admin/shop-catalog/products/' + encodeURIComponent(id), body)
+        : apiPost('/admin/shop-catalog/products', body);
+      req
+        .then(function () {
+          out.textContent = id ? 'Updated.' : 'Created.';
+          return loadShopCatalog();
+        })
+        .catch(function (err) { out.textContent = err.message; });
+    });
+
     document.getElementById('vcCreateBtn').addEventListener('click', () => {
       const code = document.getElementById('vcCode').value.trim();
       const title = document.getElementById('vcTitle').value.trim();
@@ -2351,7 +2967,9 @@ export class AdminDashboardController {
         });
       });
     }
-    wireNav();
+    applyDashboardConfig().then(function () {
+      wireNav();
+    });
   </script>
 </body>
 </html>`;

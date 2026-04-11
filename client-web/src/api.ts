@@ -1,4 +1,4 @@
-const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3153';
 
 const TOKEN_KEY = 'moja_access_token';
 
@@ -166,8 +166,61 @@ export type MemberRewardsPayload = {
     description: string | null;
     pointsCost: number | null;
     isActive: boolean;
+    imageUrl?: string | null;
+    rewardCategory?: string | null;
   }>;
 };
+
+export type ShopCatalogProduct = {
+  id: string;
+  category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials';
+  name: string;
+  shortDescription: string;
+  description: string;
+  imageUrl: string;
+  basePriceCents: number;
+  variants?: Array<{ id: string; label: string; priceCents: number }>;
+};
+
+export async function requestShopHandoff(): Promise<{
+  handoffToken: string;
+  expiresInSec: number;
+  consumeUrl: string;
+}> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/auth/shop-handoff`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    code?: string;
+    handoffToken?: string;
+    expiresInSec?: number;
+    consumeUrl?: string;
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      typeof data.message === 'string'
+        ? data.message
+        : Array.isArray(data.message)
+          ? data.message.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Handoff failed (${res.status})`);
+  }
+  if (!data.consumeUrl || !data.handoffToken) {
+    throw new Error('Invalid handoff response from server');
+  }
+  return {
+    handoffToken: data.handoffToken,
+    expiresInSec: data.expiresInSec ?? 45,
+    consumeUrl: data.consumeUrl,
+  };
+}
 
 export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
   const token = getToken();
@@ -182,4 +235,15 @@ export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
     );
   }
   return data as MemberRewardsPayload;
+}
+
+export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> {
+  const res = await fetch(`${base}/shop/catalog/products`);
+  const data = await parseJson<Array<ShopCatalogProduct> & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to load shop catalog',
+    );
+  }
+  return (Array.isArray(data) ? data : []) as ShopCatalogProduct[];
 }

@@ -76,7 +76,7 @@ WHATSAPP_OTP_TEMPLATE_NAME=
 WHATSAPP_OTP_TEMPLATE_LANG=en
 
 # CORS for client web app
-CLIENT_WEB_ORIGIN=http://localhost:5173
+CLIENT_WEB_ORIGIN=http://localhost:5193
 
 # OTP delivery mode: auto | mock | whatsapp
 OTP_DELIVERY_MODE=mock
@@ -277,6 +277,14 @@ Local import/export files default under `data/` (gitignored).
 ---
 
 For implementation details and client integration, trace controllers under `src/admin/`, `src/segmentation/`, `src/import-export/`, `src/master-data/`, and `src/ui/admin-dashboard.controller.ts`.
+
+### Voucher rewards and push setup
+
+See `docs/voucher-rewards-dashboard-guide.md` for:
+
+- How to create reward vouchers in the dashboard.
+- How to configure voucher push entitlement rules (newcomer/top-up/referral/etc.).
+- How rewards appear in the client app.
 
 ## Deployment
 
