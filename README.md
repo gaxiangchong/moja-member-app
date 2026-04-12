@@ -290,16 +290,9 @@ Sidebar visibility and the member **Shop** product list are documented there as 
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+For a step-by-step runbook (API, PostgreSQL / Prisma, `client-web`, `ops-queue-web`, CORS, env vars, health checks, and rollback), see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. Feature-flag and shop SSO rollout steps are in **[docs/rollout-checklist.md](docs/rollout-checklist.md)**.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Generic NestJS hosting notes: [NestJS deployment](https://docs.nestjs.com/deployment).
 
 ## Resources
 

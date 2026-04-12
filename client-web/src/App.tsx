@@ -287,7 +287,28 @@ function App() {
     () => profile?.displayName?.trim() || 'Member',
     [profile?.displayName],
   );
-  const memberTier = profile?.memberTier || 'Gold';
+
+  const profilePersonalIncomplete = useMemo(() => {
+    if (!profile) return false;
+    const nameOk = Boolean(profile.displayName?.trim());
+    const emailOk = Boolean(profile.email?.trim());
+    const birthdayOk = Boolean(profile.birthday?.trim());
+    return !nameOk || !emailOk || !birthdayOk;
+  }, [profile]);
+
+  const normalizedTierKey = useMemo(() => {
+    const raw = (profile?.memberTier ?? 'silver').trim().toLowerCase();
+    if (raw.includes('plat')) return 'platinum';
+    if (raw.includes('gold')) return 'gold';
+    if (raw.includes('silver')) return 'silver';
+    return 'silver';
+  }, [profile?.memberTier]);
+
+  const tierDisplayName = useMemo(() => {
+    if (normalizedTierKey === 'platinum') return 'Platinum';
+    if (normalizedTierKey === 'gold') return 'Gold';
+    return 'Silver';
+  }, [normalizedTierKey]);
 
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
   const nextTarget = Math.ceil((pointsBalance + 1) / 500) * 500;
@@ -543,6 +564,9 @@ function App() {
                 </div>
                 {perksSub === 'vouchers' ? (
                   <>
+                    <p className="caption" style={{ margin: '6px 0 0' }}>
+                      Your <strong>issued</strong> vouchers (added to your wallet). They are not the same as the points catalog under Rewards.
+                    </p>
                     <div className="tabsRow" style={{ marginTop: 8 }}>
                       {(['ACTIVE', 'USED', 'EXPIRED'] as VoucherTab[]).map((vt) => (
                         <button
@@ -574,6 +598,9 @@ function App() {
                   </>
                 ) : (
                   <>
+                    <p className="caption" style={{ margin: '6px 0 0' }}>
+                      Redeem with <strong>points</strong> when the store lists an item here. Cash or rebate vouchers you receive appear under <strong>Vouchers</strong> after they are issued to you.
+                    </p>
                     <Card>
                       <input
                         className="searchInput"
@@ -629,10 +656,22 @@ function App() {
                 </header>
                 <Card>
                   <h3>{memberName}</h3>
-                  <p className="caption">Membership tier: {memberTier}</p>
+                  <div
+                    className={`tierBanner tierBanner--${normalizedTierKey}`}
+                    role="status"
+                    aria-label={`Member tier ${tierDisplayName}`}
+                  >
+                    <span className="tierBanner-label">Member tier</span>
+                    <span className="tierBanner-name">{tierDisplayName}</span>
+                  </div>
                 </Card>
                 <Card>
                   <SectionHeader title="Personal Info" />
+                  {profilePersonalIncomplete ? (
+                    <p className="profileIncompleteCue" role="status">
+                      *Enter your details below
+                    </p>
+                  ) : null}
                   <form onSubmit={handleProfileSave}>
                     <label htmlFor="name">Name</label>
                     <input id="name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
@@ -713,12 +752,16 @@ function App() {
 
           <nav className="bottomTabs">
             <button type="button" className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')} aria-label="Home">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 22v-7h6v7"/></svg>
-              <span>Home</span>
+              <div className="tabIconSlot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 22v-7h6v7"/></svg>
+              </div>
+              <span className="tabLabel">Home</span>
             </button>
             <button type="button" className={tab === 'perks' ? 'active' : ''} onClick={() => setTab('perks')} aria-label="Perks">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><circle cx="12" cy="16" r="2"/></svg>
-              <span>Perks</span>
+              <div className="tabIconSlot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><circle cx="12" cy="16" r="2"/></svg>
+              </div>
+              <span className="tabLabel">Perks</span>
             </button>
             <button
               type="button"
@@ -726,16 +769,41 @@ function App() {
               onClick={() => setTab('shop')}
               aria-label="Shop"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h12l1.5 4H4.5z"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 11h6"/></svg>
-              <span>Shop</span>
+              <div className="tabIconSlot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h12l1.5 4H4.5z"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 11h6"/></svg>
+              </div>
+              <span className="tabLabel">Shop</span>
             </button>
             <button type="button" className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')} aria-label="Orders">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>
-              <span>Orders</span>
+              <div className="tabIconSlot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>
+              </div>
+              <span className="tabLabel">Orders</span>
             </button>
-            <button type="button" className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')} aria-label="Account">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-              <span>Account</span>
+            <button
+              type="button"
+              className={[tab === 'account' ? 'active' : '', profilePersonalIncomplete ? 'tabProfileIncomplete' : '']
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => setTab('account')}
+              aria-label={
+                profilePersonalIncomplete
+                  ? 'Account — add your name, email, and birthday'
+                  : 'Account'
+              }
+            >
+              <div className="tabIconSlot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21a8 8 0 0 1 16 0" />
+                </svg>
+                {profilePersonalIncomplete ? (
+                  <div className="tabIconBadge" aria-hidden>
+                    !
+                  </div>
+                ) : null}
+              </div>
+              <span className="tabLabel">Account</span>
             </button>
           </nav>
 

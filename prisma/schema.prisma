@@ -116,6 +116,25 @@ enum VoucherPushTriggerType {
   REENGAGEMENT
 }
 
+/// Rebate cash voucher vs free catalog reward vs points-catalog campaign.
+enum PerksProgramKind {
+  VOUCHER_REBATE
+  REWARD_FREE_ITEM
+  REWARD_POINTS_REDEEM
+}
+
+/// Selectable auto-issue criteria (no JSON in admin UI).
+enum PerksCriteriaKind {
+  CAMPAIGN_WINDOW_ONLY
+  NEW_MEMBER_WITHIN_DAYS
+  SINGLE_PURCHASE_MIN_RM
+  TIER_AND_PURCHASE_MIN_RM
+  BIRTHDAY_DURING_CAMPAIGN
+  WALLET_TOPUP_MIN_RM
+  REFERRALS_MIN_COUNT
+  REENGAGEMENT_INACTIVE_DAYS
+}
+
 model Customer {
   id          String         @id @default(uuid()) @db.Uuid
   phoneE164   String         @unique @map("phone_e164")
@@ -316,8 +335,9 @@ model VoucherDefinition {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  instances    CustomerVoucher[]
-  pushRules    VoucherPushRule[]
+  instances            CustomerVoucher[]
+  pushRules            VoucherPushRule[]
+  perksCampaignRules   PerksCampaignRule[]
 
   @@map("voucher_definitions")
 }
@@ -341,6 +361,45 @@ model VoucherPushRule {
   @@index([isActive, sortOrder])
   @@index([voucherDefinitionId])
   @@map("voucher_push_rules")
+}
+
+/// Loyalty perks auto-campaigns: RM thresholds, campaign dates, structured criteria (voucher rebate vs reward).
+model PerksCampaignRule {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  description String?
+  isActive  Boolean @default(true) @map("is_active")
+
+  programKind  PerksProgramKind  @map("program_kind")
+  criteriaKind PerksCriteriaKind @map("criteria_kind")
+
+  campaignStartDate DateTime @map("campaign_start_date") @db.Date
+  campaignEndDate   DateTime @map("campaign_end_date") @db.Date
+
+  /// Minimum single-order total in sen (1/100 MYR) when criteria uses purchase threshold.
+  minPurchaseAmountSen Int? @map("min_purchase_amount_sen")
+  /// Fixed cash rebate value for VOUCHER_REBATE (sen).
+  rebateValueSen       Int? @map("rebate_value_sen")
+  /// Minimum wallet top-up in sen for WALLET_TOPUP_MIN_RM.
+  minWalletTopupSen    Int? @map("min_wallet_topup_sen")
+  withinDaysOfSignup   Int? @map("within_days_of_signup")
+  minReferralCount     Int? @map("min_referral_count")
+  inactiveDays         Int? @map("inactive_days")
+  /// SILVER | GOLD | PLATINUM when tier gate applies.
+  minMemberTier        String? @map("min_member_tier")
+
+  voucherDefinitionId String            @map("voucher_definition_id") @db.Uuid
+  voucherDefinition   VoucherDefinition @relation(fields: [voucherDefinitionId], references: [id], onDelete: Restrict)
+
+  maxGrantsPerCustomer Int? @map("max_grants_per_customer")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([programKind])
+  @@index([voucherDefinitionId])
+  @@map("perks_campaign_rules")
 }
 
 model CustomerVoucher {

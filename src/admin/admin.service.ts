@@ -8,6 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   CustomerStatus,
+  PerksCriteriaKind,
+  PerksProgramKind,
   Prisma,
   VoucherStatus,
   WalletTxnType,
@@ -37,6 +39,8 @@ import type {
 } from './dto/sales-analytics-query.dto';
 import type { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
 import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
+import type { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
+import type { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 
 function dtoHas<T extends object>(dto: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(dto, key);
@@ -58,6 +62,138 @@ function startOfLocalWeekMonday(d = new Date()): Date {
 
 function startOfLocalMonth(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function perksDateOnly(isoDate: string): Date {
+  const s = isoDate.trim().slice(0, 10);
+  const d = new Date(`${s}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) {
+    throw new BadRequestException({
+      code: 'INVALID_DATE',
+      message: 'Invalid campaign date',
+    });
+  }
+  return d;
+}
+
+function validatePerksCampaignRuleFields(input: {
+  programKind: PerksProgramKind;
+  criteriaKind: PerksCriteriaKind;
+  campaignStartDate: Date;
+  campaignEndDate: Date;
+  minPurchaseAmountSen: number | null;
+  rebateValueSen: number | null;
+  minWalletTopupSen: number | null;
+  withinDaysOfSignup: number | null;
+  minReferralCount: number | null;
+  inactiveDays: number | null;
+  minMemberTier: string | null;
+  definitionPointsCost: number | null;
+}) {
+  const end = input.campaignEndDate.getTime();
+  const start = input.campaignStartDate.getTime();
+  if (end < start) {
+    throw new BadRequestException({
+      code: 'PERKS_CAMPAIGN_DATES',
+      message: 'Campaign end date must be on or after start date',
+    });
+  }
+
+  if (input.programKind === PerksProgramKind.VOUCHER_REBATE) {
+    if (input.rebateValueSen == null || input.rebateValueSen < 1) {
+      throw new BadRequestException({
+        code: 'PERKS_REBATE_REQUIRED',
+        message: 'Voucher rebate rules require a rebate value greater than RM 0',
+      });
+    }
+  } else if (input.rebateValueSen != null && input.rebateValueSen > 0) {
+    throw new BadRequestException({
+      code: 'PERKS_REBATE_FORBIDDEN',
+      message: 'Rebate value applies only to voucher (cash rebate) programs',
+    });
+  }
+
+  if (input.programKind === PerksProgramKind.REWARD_POINTS_REDEEM) {
+    if (input.criteriaKind !== PerksCriteriaKind.CAMPAIGN_WINDOW_ONLY) {
+      throw new BadRequestException({
+        code: 'PERKS_POINTS_CRITERIA',
+        message: 'Points-catalog rewards use criteria “Campaign window only”',
+      });
+    }
+    const pc = input.definitionPointsCost;
+    if (pc == null || pc < 1) {
+      throw new BadRequestException({
+        code: 'PERKS_POINTS_COST',
+        message: 'Pick a voucher definition with a points cost (catalog redeemable)',
+      });
+    }
+  }
+
+  switch (input.criteriaKind) {
+    case PerksCriteriaKind.CAMPAIGN_WINDOW_ONLY:
+      break;
+    case PerksCriteriaKind.NEW_MEMBER_WITHIN_DAYS:
+      if (input.withinDaysOfSignup == null || input.withinDaysOfSignup < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_WITHIN_DAYS',
+          message: 'Enter within-days for new member criteria',
+        });
+      }
+      break;
+    case PerksCriteriaKind.SINGLE_PURCHASE_MIN_RM:
+      if (input.minPurchaseAmountSen == null || input.minPurchaseAmountSen < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_PURCHASE',
+          message: 'Enter minimum purchase (RM) for single-order criteria',
+        });
+      }
+      break;
+    case PerksCriteriaKind.TIER_AND_PURCHASE_MIN_RM:
+      if (input.minPurchaseAmountSen == null || input.minPurchaseAmountSen < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_PURCHASE',
+          message: 'Enter minimum purchase (RM) for tier + purchase criteria',
+        });
+      }
+      if (!input.minMemberTier?.trim()) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_TIER',
+          message: 'Select minimum member tier (Silver / Gold / Platinum)',
+        });
+      }
+      break;
+    case PerksCriteriaKind.BIRTHDAY_DURING_CAMPAIGN:
+      break;
+    case PerksCriteriaKind.WALLET_TOPUP_MIN_RM:
+      if (input.minWalletTopupSen == null || input.minWalletTopupSen < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_TOPUP',
+          message: 'Enter minimum wallet top-up (RM)',
+        });
+      }
+      break;
+    case PerksCriteriaKind.REFERRALS_MIN_COUNT:
+      if (input.minReferralCount == null || input.minReferralCount < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_REFERRALS',
+          message: 'Enter minimum successful referrals',
+        });
+      }
+      break;
+    case PerksCriteriaKind.REENGAGEMENT_INACTIVE_DAYS:
+      if (input.inactiveDays == null || input.inactiveDays < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_INACTIVE_DAYS',
+          message: 'Enter inactive days for re-engagement criteria',
+        });
+      }
+      break;
+    default:
+      throw new BadRequestException({
+        code: 'PERKS_CRITERIA',
+        message: 'Unsupported criteria kind',
+      });
+  }
 }
 
 function daysUntilBirthdayUtc(birthday: Date | null): number | null {
@@ -781,7 +917,7 @@ export class AdminService {
         pointsCost: dto.pointsCost ?? null,
         imageUrl: dto.imageUrl?.trim() || null,
         rewardCategory: dto.rewardCategory?.trim() || null,
-        showInRewardsCatalog: dto.showInRewardsCatalog ?? true,
+        showInRewardsCatalog: dto.showInRewardsCatalog ?? false,
         rewardSortOrder: dto.rewardSortOrder ?? 0,
         rewardValidFrom: dto.rewardValidFrom
           ? new Date(dto.rewardValidFrom)
@@ -1771,7 +1907,12 @@ export class AdminService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       include: {
         voucherDefinition: {
-          select: { id: true, code: true, title: true },
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
         },
       },
     });
@@ -1798,7 +1939,12 @@ export class AdminService {
       },
       include: {
         voucherDefinition: {
-          select: { id: true, code: true, title: true },
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
         },
       },
     });
@@ -1858,7 +2004,12 @@ export class AdminService {
       data,
       include: {
         voucherDefinition: {
-          select: { id: true, code: true, title: true },
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
         },
       },
     });
@@ -1877,6 +2028,218 @@ export class AdminService {
         triggerType: updated.triggerType,
         isActive: updated.isActive,
       } as object,
+    });
+    return updated;
+  }
+
+  listPerksCampaignRules() {
+    return this.prisma.perksCampaignRule.findMany({
+      orderBy: [{ campaignStartDate: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+  }
+
+  async createPerksCampaignRule(
+    dto: CreatePerksCampaignRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const def = await this.prisma.voucherDefinition.findUniqueOrThrow({
+      where: { id: dto.voucherDefinitionId },
+      select: { id: true, pointsCost: true },
+    });
+    const start = perksDateOnly(dto.campaignStartDate);
+    const end = perksDateOnly(dto.campaignEndDate);
+    validatePerksCampaignRuleFields({
+      programKind: dto.programKind,
+      criteriaKind: dto.criteriaKind,
+      campaignStartDate: start,
+      campaignEndDate: end,
+      minPurchaseAmountSen: dto.minPurchaseAmountSen ?? null,
+      rebateValueSen: dto.rebateValueSen ?? null,
+      minWalletTopupSen: dto.minWalletTopupSen ?? null,
+      withinDaysOfSignup: dto.withinDaysOfSignup ?? null,
+      minReferralCount: dto.minReferralCount ?? null,
+      inactiveDays: dto.inactiveDays ?? null,
+      minMemberTier: dto.minMemberTier?.trim() || null,
+      definitionPointsCost: def.pointsCost,
+    });
+    const created = await this.prisma.perksCampaignRule.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        isActive: dto.isActive ?? true,
+        programKind: dto.programKind,
+        criteriaKind: dto.criteriaKind,
+        campaignStartDate: start,
+        campaignEndDate: end,
+        minPurchaseAmountSen: dto.minPurchaseAmountSen ?? null,
+        rebateValueSen: dto.rebateValueSen ?? null,
+        minWalletTopupSen: dto.minWalletTopupSen ?? null,
+        withinDaysOfSignup: dto.withinDaysOfSignup ?? null,
+        minReferralCount: dto.minReferralCount ?? null,
+        inactiveDays: dto.inactiveDays ?? null,
+        minMemberTier: dto.minMemberTier?.trim() || null,
+        voucherDefinitionId: dto.voucherDefinitionId,
+        maxGrantsPerCustomer: dto.maxGrantsPerCustomer ?? null,
+      },
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'perks_campaign_rule.created',
+      entityType: 'perks_campaign_rule',
+      entityId: created.id,
+      afterValue: { name: created.name, programKind: created.programKind } as object,
+    });
+    return created;
+  }
+
+  async updatePerksCampaignRule(
+    id: string,
+    dto: UpdatePerksCampaignRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const before = await this.prisma.perksCampaignRule.findUnique({
+      where: { id },
+      include: {
+        voucherDefinition: { select: { pointsCost: true } },
+      },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'PERKS_CAMPAIGN_RULE_NOT_FOUND',
+        message: 'Perks campaign rule not found',
+      });
+    }
+    const defId = dto.voucherDefinitionId ?? before.voucherDefinitionId;
+    const def = await this.prisma.voucherDefinition.findUniqueOrThrow({
+      where: { id: defId },
+      select: { id: true, pointsCost: true },
+    });
+    const programKind = dto.programKind ?? before.programKind;
+    const criteriaKind = dto.criteriaKind ?? before.criteriaKind;
+    const start =
+      dto.campaignStartDate != null
+        ? perksDateOnly(dto.campaignStartDate)
+        : before.campaignStartDate;
+    const end =
+      dto.campaignEndDate != null
+        ? perksDateOnly(dto.campaignEndDate)
+        : before.campaignEndDate;
+    validatePerksCampaignRuleFields({
+      programKind,
+      criteriaKind,
+      campaignStartDate: start,
+      campaignEndDate: end,
+      minPurchaseAmountSen:
+        dto.minPurchaseAmountSen !== undefined
+          ? dto.minPurchaseAmountSen
+          : before.minPurchaseAmountSen,
+      rebateValueSen:
+        dto.rebateValueSen !== undefined ? dto.rebateValueSen : before.rebateValueSen,
+      minWalletTopupSen:
+        dto.minWalletTopupSen !== undefined
+          ? dto.minWalletTopupSen
+          : before.minWalletTopupSen,
+      withinDaysOfSignup:
+        dto.withinDaysOfSignup !== undefined
+          ? dto.withinDaysOfSignup
+          : before.withinDaysOfSignup,
+      minReferralCount:
+        dto.minReferralCount !== undefined
+          ? dto.minReferralCount
+          : before.minReferralCount,
+      inactiveDays:
+        dto.inactiveDays !== undefined ? dto.inactiveDays : before.inactiveDays,
+      minMemberTier:
+        dto.minMemberTier !== undefined
+          ? dto.minMemberTier?.trim() || null
+          : before.minMemberTier,
+      definitionPointsCost: def.pointsCost,
+    });
+    const data: Prisma.PerksCampaignRuleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.description !== undefined) {
+      data.description = dto.description?.trim() || null;
+    }
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.programKind !== undefined) data.programKind = dto.programKind;
+    if (dto.criteriaKind !== undefined) data.criteriaKind = dto.criteriaKind;
+    if (dto.campaignStartDate !== undefined) {
+      data.campaignStartDate = start;
+    }
+    if (dto.campaignEndDate !== undefined) {
+      data.campaignEndDate = end;
+    }
+    if (dto.minPurchaseAmountSen !== undefined) {
+      data.minPurchaseAmountSen = dto.minPurchaseAmountSen;
+    }
+    if (dto.rebateValueSen !== undefined) {
+      data.rebateValueSen = dto.rebateValueSen;
+    }
+    if (dto.minWalletTopupSen !== undefined) {
+      data.minWalletTopupSen = dto.minWalletTopupSen;
+    }
+    if (dto.withinDaysOfSignup !== undefined) {
+      data.withinDaysOfSignup = dto.withinDaysOfSignup;
+    }
+    if (dto.minReferralCount !== undefined) {
+      data.minReferralCount = dto.minReferralCount;
+    }
+    if (dto.inactiveDays !== undefined) {
+      data.inactiveDays = dto.inactiveDays;
+    }
+    if (dto.minMemberTier !== undefined) {
+      data.minMemberTier = dto.minMemberTier?.trim() || null;
+    }
+    if (dto.voucherDefinitionId !== undefined) {
+      data.voucherDefinition = { connect: { id: dto.voucherDefinitionId } };
+    }
+    if (dto.maxGrantsPerCustomer !== undefined) {
+      data.maxGrantsPerCustomer = dto.maxGrantsPerCustomer;
+    }
+    const updated = await this.prisma.perksCampaignRule.update({
+      where: { id },
+      data,
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'perks_campaign_rule.updated',
+      entityType: 'perks_campaign_rule',
+      entityId: id,
+      beforeValue: { name: before.name, isActive: before.isActive } as object,
+      afterValue: { name: updated.name, isActive: updated.isActive } as object,
     });
     return updated;
   }

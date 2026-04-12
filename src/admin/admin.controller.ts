@@ -33,6 +33,8 @@ import { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
 import { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
+import { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
+import { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 import { CreateShopCatalogProductDto } from './dto/create-shop-catalog-product.dto';
 import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
@@ -269,6 +271,31 @@ export class AdminController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.updateVoucherPushRule(id, dto, auth);
+  }
+
+  @Get('perks-campaign-rules')
+  @RequirePermissions(P.VOUCHER_READ)
+  listPerksCampaignRules() {
+    return this.admin.listPerksCampaignRules();
+  }
+
+  @Post('perks-campaign-rules')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  createPerksCampaignRule(
+    @Body() dto: CreatePerksCampaignRuleDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.createPerksCampaignRule(dto, auth);
+  }
+
+  @Patch('perks-campaign-rules/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updatePerksCampaignRule(
+    @Param('id') id: string,
+    @Body() dto: UpdatePerksCampaignRuleDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.updatePerksCampaignRule(id, dto, auth);
   }
 
   @Get('shop-catalog/products')

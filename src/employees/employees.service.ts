@@ -445,11 +445,13 @@ export class EmployeesService {
     }[] = [];
 
     let totalPayCents = 0;
+    let straightTimeEquivalentCents = 0;
 
     for (const [, agg] of [...byDay.entries()].sort((a, b) =>
       a[0].localeCompare(b[0]),
     )) {
       const m = agg.minutes;
+      straightTimeEquivalentCents += Math.round((m / 60) * hourly);
       let pay = 0;
       let regM = 0;
       let otM = 0;
@@ -486,6 +488,10 @@ export class EmployeesService {
     const manualExtra = Math.max(0, input.manualCommissionCents ?? 0);
     const commissionTotalCents = commissionFromRate + manualExtra;
     const grandTotalCents = totalPayCents + commissionTotalCents;
+    const rulesPremiumPayCents = Math.max(
+      0,
+      totalPayCents - straightTimeEquivalentCents,
+    );
 
     return {
       employee: this.serializeEmployee(emp),
@@ -497,13 +503,17 @@ export class EmployeesService {
         offDayWorkedMultiplierBps: settings.offDayWorkedMultiplierBps,
       },
       lines,
+      breakdown: {
+        straightTimePayCents: straightTimeEquivalentCents,
+        rulesPremiumPayCents,
+      },
       hourlyPayCents: totalPayCents,
       commissionFromRateBpsCents: commissionFromRate,
       manualCommissionCents: manualExtra,
       commissionTotalCents,
       grandTotalCents,
       notes:
-        'Commission = (hourly subtotal × employee commission bps) + optional manual add-on. Basis points: 10000 = 100%.',
+        'Commission = (wage subtotal × employee percentage / 100) + optional manual add-on. Wage subtotal includes overtime, public holiday, and off-day multipliers.',
     };
   }
 }

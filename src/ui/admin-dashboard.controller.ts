@@ -21,9 +21,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'dashboard-employees': true,
     'customers-list': true,
     'customer-orders': true,
-    'loyalty-rewards-catalog': true,
-    'loyalty-voucher-push-rules': true,
-    'vouchers-list': true,
+    'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
     'settings-system': true,
     'reports-customers': true,
@@ -457,6 +455,57 @@ export class AdminDashboardController {
       line-height: 1.45;
     }
     .info-banner code { background: rgba(255,255,255,0.6); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+    .vrh-shell { margin-top: 0; }
+    .vrh-hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      color: #e2e8f0;
+      border-radius: var(--radius-lg);
+      padding: 20px 22px 18px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .vrh-hero h2 { margin: 0 0 6px; font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+    .vrh-hero p { margin: 0; font-size: 13px; line-height: 1.5; color: #94a3b8; max-width: 720px; }
+    .vrh-hero a { color: #93c5fd; }
+    .vrh-tabbar {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+      border-bottom: 1px solid var(--border); padding-bottom: 2px;
+    }
+    .vrh-tab {
+      border: 1px solid transparent; background: transparent;
+      padding: 10px 14px; font-size: 12px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);
+      border-radius: var(--radius) var(--radius) 0 0; cursor: pointer;
+    }
+    .vrh-tab:hover { color: var(--text); background: rgba(37, 99, 235, 0.06); }
+    .vrh-tab.active {
+      color: var(--primary); background: var(--surface);
+      border-color: var(--border); border-bottom-color: var(--surface); margin-bottom: -1px;
+      box-shadow: 0 -2px 0 var(--primary) inset;
+    }
+    .vrh-stepper { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .vrh-step {
+      flex: 1; min-width: 100px; text-align: center; padding: 8px 10px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-muted); background: #f1f5f9; border-radius: var(--radius); border: 1px solid var(--border);
+    }
+    .vrh-step.is-current { background: #eff6ff; color: var(--primary); border-color: #93c5fd; }
+    .vrh-step.is-done { background: #ecfdf5; color: #047857; border-color: #6ee7b7; }
+    .vrh-wiz-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow); padding: 20px 22px; max-width: 640px;
+    }
+    .vrh-offer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    @media (max-width: 640px) { .vrh-offer-grid { grid-template-columns: 1fr; } }
+    .vrh-offer-card {
+      border: 2px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; cursor: pointer;
+      text-align: left; background: #fff; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .vrh-offer-card:hover { border-color: #93c5fd; }
+    .vrh-offer-card.is-selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+    .vrh-offer-card strong { display: block; font-size: 14px; margin-bottom: 4px; color: var(--text); }
+    .vrh-offer-card span { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .vrh-wiz-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; align-items: center; }
     .kpi-panel {
       margin-top: 20px;
       background: var(--surface);
@@ -682,6 +731,123 @@ export class AdminDashboardController {
       .nav-group .nav-items { flex-direction: row; flex-wrap: wrap; }
       .nav-btn { flex: 1 1 auto; min-width: 140px; }
     }
+    .em-payslip {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      color: #000;
+      background: #fff;
+      border: 1px solid #000;
+      padding: 14px 16px 18px;
+      max-width: 820px;
+      font-variant-numeric: tabular-nums;
+    }
+    .em-payslip-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #000;
+      margin-bottom: 10px;
+    }
+    .em-payslip-co { font-weight: 700; font-size: 14px; }
+    .em-payslip-title { font-weight: 700; font-size: 13px; text-align: right; }
+    .em-payslip-sub { font-size: 11px; font-weight: 400; margin-top: 4px; }
+    .em-payslip-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 20px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+    .em-payslip-grid span:nth-child(odd) { font-weight: 600; }
+    .em-payslip-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border: 1px solid #000;
+      margin-bottom: 10px;
+    }
+    .em-payslip-col { border-right: 1px solid #000; padding: 0; }
+    .em-payslip-col:last-child { border-right: none; }
+    .em-payslip-col h3 {
+      margin: 0;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid #000;
+      background: #f8fafc;
+    }
+    .em-payslip-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 4px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 11px;
+    }
+    .em-payslip-row:last-child { border-bottom: none; }
+    .em-payslip-row em { font-style: normal; text-align: right; min-width: 88px; }
+    .em-payslip-foot {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 6px 8px;
+      font-weight: 700;
+      border-top: 1px solid #000;
+      background: #f1f5f9;
+      font-size: 11px;
+    }
+    .em-payslip-foot em { font-style: normal; text-align: right; min-width: 88px; }
+    .em-payslip-net {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid #000;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .em-payslip-net em { font-style: normal; text-align: right; }
+    .em-payslip-meta { font-size: 10px; color: #334155; margin-top: 10px; line-height: 1.45; }
+    .em-payslip-sign {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid #000;
+      font-size: 11px;
+    }
+    .em-payslip-sign div { min-height: 48px; border-bottom: 1px solid #000; padding-top: 22px; }
+    .em-payslip-lines { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 12px; }
+    .em-payslip-lines th, .em-payslip-lines td { border: 1px solid #000; padding: 4px 6px; text-align: left; }
+    .em-payslip-lines th { background: #f8fafc; font-weight: 600; }
+    .em-payslip-lines td.num, .em-payslip-lines th.num { text-align: right; }
+    @media print {
+      @page { margin: 10mm; }
+      body * { visibility: hidden !important; }
+      #emPayslipRoot, #emPayslipRoot * { visibility: visible !important; }
+      #emPayslipRoot {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        border: none !important;
+      }
+      #emPayslipRoot .em-payslip {
+        border: 1px solid #000;
+        max-width: none;
+        box-shadow: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -771,29 +937,9 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
               Bonus campaigns
             </button>
-            <button type="button" class="nav-btn nav-sub" data-view="loyalty-rewards-catalog">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              Rewards catalog
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="loyalty-voucher-push-rules">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Voucher push rules
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-list">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>
-              Voucher definitions
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-templates">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
-              Voucher templates
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-assigned">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Assigned vouchers
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-redemption">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              Redemption tracking
+            <button type="button" class="nav-btn nav-sub" data-view="vouchers-rewards-hub">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/><path d="M7 12h.01M17 12h.01M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
+              Vouchers &amp; rewards
             </button>
           </div>
         </details>
@@ -1066,15 +1212,15 @@ export class AdminDashboardController {
 
         <section id="dashboard-employees" class="tab-panel hidden">
           <div class="info-banner" style="margin-top:0">
-            <strong>Clock in/out</strong> runs from the ops order queue (Timesheet window). Here: staff records, work calendar (off / public holiday), closed punches, payroll rules, and a period calculator (regular + overtime + holiday multipliers + commission bps + optional manual commission).
+            <strong>Clock in/out</strong> runs from the ops order queue (Timesheet window). Here: staff records, work calendar (off / public holiday), closed punches, payroll rules (hours, decimal multipliers, percentage), and a period salary preview you can print.
           </div>
           <div class="sheet">
             <div class="sheet-head"><h2>Payroll rules</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emPayrollReloadBtn">Reload</button><button type="button" class="btn-primary" id="emPayrollSaveBtn">Save</button></div></div>
             <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
-              <div class="form-section" style="margin:0"><label for="emStdMin">Standard workday (minutes)</label><input type="number" id="emStdMin" min="1" step="1" /></div>
-              <div class="form-section" style="margin:0"><label for="emOtBps">Overtime multiplier (bps)</label><input type="number" id="emOtBps" min="0" step="1" title="15000 = 1.5× hourly for minutes after standard day" /></div>
-              <div class="form-section" style="margin:0"><label for="emPhBps">Public holiday multiplier (bps)</label><input type="number" id="emPhBps" min="0" step="1" title="20000 = 2× for all minutes that day" /></div>
-              <div class="form-section" style="margin:0"><label for="emOffBps">Off-day worked multiplier (bps)</label><input type="number" id="emOffBps" min="0" step="1" title="10000 = same pay structure as regular; adjust for premium" /></div>
+              <div class="form-section" style="margin:0"><label for="emStdHours">Standard day (hours)</label><input type="number" id="emStdHours" min="0.1" step="0.1" title="Converted to minutes for payroll (e.g. 8.0 = 480 min)" /></div>
+              <div class="form-section" style="margin:0"><label for="emOtMul">Overtime multiplier</label><input type="number" id="emOtMul" min="0" step="0.01" title="e.g. 1.50 = 1.5× on minutes after the standard day" /></div>
+              <div class="form-section" style="margin:0"><label for="emPhMul">Public holiday multiplier</label><input type="number" id="emPhMul" min="0" step="0.01" title="e.g. 2.00 = 2× for all minutes that day" /></div>
+              <div class="form-section" style="margin:0"><label for="emOffMul">Off-day worked multiplier</label><input type="number" id="emOffMul" min="0" step="0.01" title="Applied to pay for minutes worked on calendar off days" /></div>
             </div>
             <p class="field-hint" id="emPayrollSaveHint" style="padding:0 20px 16px;margin:0"></p>
           </div>
@@ -1088,15 +1234,16 @@ export class AdminDashboardController {
               </div>
               <div class="form-row-2">
                 <div class="form-section" style="margin:0"><label for="emNewPos">Position</label><input type="text" id="emNewPos" maxlength="120" placeholder="Barista, shift lead…" /></div>
-                <div class="form-section" style="margin:0"><label for="emNewRate">Hourly rate (¢)</label><input type="number" id="emNewRate" min="0" step="1" value="0" /></div>
+                <div class="form-section" style="margin:0"><label for="emNewRate">Monthly salary (¢)</label><input type="number" id="emNewRate" min="0" step="1" value="0" /></div>
               </div>
-              <div class="form-section" style="margin:0"><label for="emNewComm">Commission (basis points of wage subtotal)</label><input type="number" id="emNewComm" min="0" step="1" value="0" title="500 = 5%" /></div>
+              <div class="form-section" style="margin:0"><label for="emNewComm">Percentage (% of wage subtotal)</label><input type="number" id="emNewComm" min="0" step="0.01" value="0" title="e.g. 5.00 means 5%" /></div>
+              <p class="field-hint" style="margin:0 0 8px">Monthly salary is converted to an implied hourly rate using 173.33 hours per month (40 h/week basis) for the same wage engine.</p>
               <button type="button" class="btn-primary" id="emEmpCreateBtn" style="margin-top:12px">Add employee</button>
               <p class="field-hint" id="emEmpCreateHint" style="margin-top:8px"></p>
             </div>
             <div class="table-wrap">
               <table class="data">
-                <thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Hourly ¢</th><th>Comm bps</th><th>Active</th><th>Save row</th></tr></thead>
+                <thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Monthly ¢</th><th>%</th><th>Active</th><th>Save row</th></tr></thead>
                 <tbody id="emEmpBody"></tbody>
               </table>
             </div>
@@ -1142,15 +1289,15 @@ export class AdminDashboardController {
             </div>
           </div>
           <div class="sheet" style="margin-top:16px">
-            <div class="sheet-head"><h2>Salary calculator (period)</h2></div>
+            <div class="sheet-head"><h2>Salary calculator (period)</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emPayPrintBtn">Print payslip</button></div></div>
             <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
               <div class="form-section" style="margin:0"><label for="emPayEmp">Employee</label><select id="emPayEmp"></select></div>
               <div class="form-section" style="margin:0"><label for="emPayFrom">From</label><input type="date" id="emPayFrom" /></div>
               <div class="form-section" style="margin:0"><label for="emPayTo">To</label><input type="date" id="emPayTo" /></div>
-              <div class="form-section" style="margin:0"><label for="emPayManual">Manual commission add-on (¢)</label><input type="number" id="emPayManual" min="0" step="1" value="0" /></div>
+              <div class="form-section" style="margin:0"><label for="emPayManual">Manual add-on (¢)</label><input type="number" id="emPayManual" min="0" step="1" value="0" /></div>
               <button type="button" class="btn-primary" id="emPayCalcBtn">Calculate</button>
             </div>
-            <pre id="emPayrollOut" class="muted-box" style="margin:16px 20px;white-space:pre-wrap;font-size:13px;max-height:420px;overflow:auto"></pre>
+            <div id="emPayslipRoot" style="margin:16px 20px;max-height:520px;overflow:auto"></div>
           </div>
         </section>
 
@@ -1412,209 +1559,314 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="loyalty-rewards-catalog" class="tab-panel hidden">
-          <div class="info-banner" style="margin-top:0">
-            Configure how items appear in the <strong>member app Rewards</strong> tab: image URL, points cost, category, visibility, date window, sort order, and optional max total issues.
-            New definitions: use <strong>Loyalty → Voucher definitions → Create definition</strong>, or the editor below for catalog fields on existing codes.
-          </div>
-          <div class="sheet">
-            <div class="sheet-head">
-              <h2>Rewards catalog (voucher definitions)</h2>
-              <div class="sheet-actions">
-                <button type="button" class="btn-outline" id="refreshLoyaltyRewardsBtn">Refresh</button>
-              </div>
+        <section id="vouchers-rewards-hub" class="tab-panel hidden">
+          <div class="vrh-shell">
+            <div class="vrh-hero">
+              <h2>Vouchers &amp; rewards</h2>
+              <p>Create <strong>voucher series</strong> (offer templates), choose how they appear in the member app, then optionally wire <strong>automation</strong> so qualifying members receive them automatically. Layout follows the familiar POS pattern: <em>general settings → schedule &amp; limits → review</em>, similar to commercial systems such as <a href="https://www.epos.com.sg/knowledge-base-back-end/products/knowledge-base-vouchers/" target="_blank" rel="noopener noreferrer">EPOS voucher configuration</a>.</p>
             </div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Code</th><th>Title</th><th>Voucher ID</th><th>Image</th><th>Points</th><th>Category</th><th>Catalog</th><th>Valid</th><th>Sort</th><th>Max issued</th><th>Status</th><th>Edit</th></tr></thead>
-                <tbody id="loyaltyRewardsCatalogBody"></tbody>
-              </table>
+            <div class="vrh-tabbar" role="tablist">
+              <button type="button" class="vrh-tab active" data-vrh-pane="overview" role="tab" aria-selected="true">Overview</button>
+              <button type="button" class="vrh-tab" data-vrh-pane="wizard" role="tab" aria-selected="false">New series</button>
+              <button type="button" class="vrh-tab" data-vrh-pane="series" role="tab" aria-selected="false">All series</button>
+              <button type="button" class="vrh-tab" data-vrh-pane="automation" role="tab" aria-selected="false">Automation</button>
+              <button type="button" class="vrh-tab" data-vrh-pane="issued" role="tab" aria-selected="false">Issued to members</button>
             </div>
-          </div>
-          <div id="rewardDefEditor" class="sheet hidden" style="margin-top:16px">
-            <div class="sheet-head"><h2>Edit catalog entry</h2><button type="button" class="btn-outline" id="rewardDefEditorCancel">Close</button></div>
-            <div style="padding:16px 20px;max-width:560px">
-              <input type="hidden" id="rdEditId" />
-              <div class="form-section"><label>Code</label><input type="text" id="rdCode" readonly /></div>
-              <div class="form-section"><label for="rdTitle">Title</label><input type="text" id="rdTitle" maxlength="200" /></div>
-              <div class="form-section"><label for="rdDescription">Description</label><textarea id="rdDescription" maxlength="2000"></textarea></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
-                <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
-              </div>
-              <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://…" /></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="rdValidFrom">Valid from (ISO date)</label><input type="date" id="rdValidFrom" /></div>
-                <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
-              </div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="rdSort">Sort order</label><input type="number" id="rdSort" step="1" value="0" /></div>
-                <div class="form-section"><label for="rdMaxIssued">Max total issued</label><input type="number" id="rdMaxIssued" min="1" step="1" placeholder="empty = unlimited" /></div>
-              </div>
-              <div class="form-section"><label><input type="checkbox" id="rdShowCatalog" style="width:auto;margin-right:8px" /> Show in member rewards catalog</label></div>
-              <div class="form-section"><label><input type="checkbox" id="rdActive" style="width:auto;margin-right:8px" /> Definition active</label></div>
-              <button type="button" class="btn-primary" id="rdSaveBtn">Save changes</button>
-              <p class="field-hint" id="rdSaveResult"></p>
-            </div>
-          </div>
-        </section>
-
-        <section id="loyalty-voucher-push-rules" class="tab-panel hidden">
-          <div class="info-banner" style="margin-top:0">
-            <strong>Automated voucher entitlement rules</strong> (configuration). Execution can be wired to signup, wallet top-up, referral, or scheduled jobs.
-            Suggested <code>triggerConfig</code> keys: <code>withinDaysOfSignup</code> (newcomer), <code>minLifetimeTopUpCents</code> (top-up), <code>minReferrals</code> (referral), <code>inactiveDays</code> (re-engagement).
-            Use <strong>Campaigns → Push voucher</strong> for immediate bulk issue with filters.
-          </div>
-          <div class="sheet">
-            <div class="sheet-head">
-              <h2>Voucher push rules</h2>
-              <div class="sheet-actions">
-                <button type="button" class="btn-outline" id="refreshVoucherPushRulesBtn">Refresh</button>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Name</th><th>Trigger</th><th>Voucher</th><th>Active</th><th>Sort</th><th>Limits</th><th>Edit</th></tr></thead>
-                <tbody id="voucherPushRulesBody"></tbody>
-              </table>
-            </div>
-          </div>
-          <div class="sheet" style="margin-top:16px">
-            <div class="sheet-head"><h2>New rule</h2></div>
-            <div style="padding:16px 20px;max-width:560px">
-              <div class="form-section"><label for="vprName">Name</label><input type="text" id="vprName" maxlength="200" /></div>
-              <div class="form-section"><label for="vprDesc">Description</label><textarea id="vprDesc" maxlength="2000"></textarea></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="vprTrigger">Trigger type</label>
-                  <select id="vprTrigger">
-                    <option value="NEWCOMER">Newcomer</option>
-                    <option value="TOPUP_THRESHOLD">Top-up threshold</option>
-                    <option value="REFERRAL">Referral</option>
-                    <option value="BIRTHDAY">Birthday</option>
-                    <option value="REENGAGEMENT">Re-engagement</option>
-                  </select>
+            <div id="vrh-pane-overview" class="vrh-pane">
+              <div class="kpi-panel" style="margin-top:0">
+                <h2>Portfolio snapshot</h2>
+                <div class="kpi-row">
+                  <div class="kpi"><div class="kpi-label">Issued (active)</div><div class="kpi-value" id="vrIssued">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Redeemed</div><div class="kpi-value" id="vrRedeemed">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Expired</div><div class="kpi-value" id="vrExpired">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Void</div><div class="kpi-value" id="vrVoid">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Redemption rate</div><div class="kpi-value" id="vrRate">-</div></div>
                 </div>
-                <div class="form-section"><label for="vprVoucherDefId">Voucher definition ID</label><input type="text" id="vprVoucherDefId" placeholder="UUID from catalog" /></div>
               </div>
-              <div class="form-section"><label for="vprConfigJson">Trigger config (JSON)</label><textarea id="vprConfigJson" rows="4" placeholder='{"withinDaysOfSignup":14}'></textarea></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="vprSort">Sort order</label><input type="number" id="vprSort" value="0" step="1" /></div>
-                <div class="form-section"><label for="vprMaxGrants">Max grants / customer</label><input type="number" id="vprMaxGrants" min="1" step="1" placeholder="optional" /></div>
+              <div class="info-banner" style="margin-top:16px">
+                <strong>Member app mapping:</strong> <strong>Perks → Rewards</strong> lists series marked for the <em>points catalog</em>. <strong>Perks → Vouchers</strong> shows <em>issued</em> instances only (assign, import, campaign, or automation). Promo / wallet-style series stay out of Rewards unless you explicitly enable the catalog.
               </div>
-              <div class="form-section"><label for="vprCooldown">Cooldown (days)</label><input type="number" id="vprCooldown" min="0" step="1" placeholder="optional" /></div>
-              <button type="button" class="btn-primary" id="vprCreateBtn">Create rule</button>
-              <p class="field-hint" id="vprCreateResult"></p>
+              <div class="sheet" style="margin-top:16px">
+                <div class="sheet-head"><h2>Where to go next</h2></div>
+                <ul class="muted-hint" style="margin:12px 20px 18px;padding-left:18px;line-height:1.65">
+                  <li><strong>New series</strong> — guided 3-step creator (general → schedule &amp; limits → review).</li>
+                  <li><strong>All series</strong> — browse, copy definition IDs, edit catalog &amp; validity.</li>
+                  <li><strong>Automation</strong> — perks campaigns (rebate, free item, points window) using a series ID.</li>
+                  <li><strong>Issued to members</strong> — recent wallet activity for vouchers.</li>
+                </ul>
+              </div>
             </div>
-          </div>
-          <div id="vprEditPanel" class="sheet hidden" style="margin-top:16px">
-            <div class="sheet-head"><h2>Edit rule</h2><button type="button" class="btn-outline" id="vprEditCancel">Close</button></div>
-            <div style="padding:16px 20px;max-width:560px">
-              <input type="hidden" id="vprEditId" />
-              <div class="form-section"><label for="vprEditName">Name</label><input type="text" id="vprEditName" maxlength="200" /></div>
-              <div class="form-section"><label for="vprEditDesc">Description</label><textarea id="vprEditDesc" maxlength="2000"></textarea></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="vprEditTrigger">Trigger</label>
-                  <select id="vprEditTrigger">
-                    <option value="NEWCOMER">Newcomer</option>
-                    <option value="TOPUP_THRESHOLD">Top-up threshold</option>
-                    <option value="REFERRAL">Referral</option>
-                    <option value="BIRTHDAY">Birthday</option>
-                    <option value="REENGAGEMENT">Re-engagement</option>
-                  </select>
+            <div id="vrh-pane-wizard" class="vrh-pane hidden">
+              <div class="vrh-stepper" aria-label="Progress">
+                <div class="vrh-step is-current" id="vrhStepInd1">1 · Basics</div>
+                <div class="vrh-step" id="vrhStepInd2">2 · Schedule</div>
+                <div class="vrh-step" id="vrhStepInd3">3 · Review</div>
+              </div>
+              <div id="vrhWizStep1" class="vrh-wiz-card">
+                <p class="muted-hint" style="margin-top:0">Step 1 of 3 — General settings (like EPOS &quot;New voucher configuration&quot; part 1).</p>
+                <div class="form-section"><label for="vrhSeriesTitle">Series name</label><input type="text" id="vrhSeriesTitle" maxlength="200" placeholder="e.g. Weekend 10% off drinks" /></div>
+                <div class="form-section"><label for="vrhSeriesCode">Internal code</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <input type="text" id="vrhSeriesCode" maxlength="64" style="flex:1;min-width:160px" placeholder="e.g. WKND_DRINKS_10" />
+                    <button type="button" class="btn-outline" id="vrhSuggestCodeBtn">Suggest code</button>
+                  </div>
+                  <span class="field-hint">Used as stable reference in imports and reporting. Uppercase letters, numbers, underscores.</span>
                 </div>
-                <div class="form-section"><label for="vprEditVoucherId">Voucher definition ID</label><input type="text" id="vprEditVoucherId" /></div>
+                <div class="form-section"><label for="vrhSeriesDescription">Description (optional)</label><textarea id="vrhSeriesDescription" maxlength="2000" rows="3" placeholder="Shown to staff / members where applicable"></textarea></div>
+                <div class="form-section"><label>Where should this appear?</label></div>
+                <div class="vrh-offer-grid">
+                  <label class="vrh-offer-card is-selected" id="vrhOfferPromoLabel" for="vrhOfferPromo" style="margin:0">
+                    <input type="radio" name="vrhOfferType" id="vrhOfferPromo" value="promo" checked style="position:absolute;opacity:0;width:0;height:0" />
+                    <strong>Promo &amp; wallet</strong>
+                    <span>Not in the points catalog. Use for rebates, goodwill codes, or items issued manually / by automation.</span>
+                  </label>
+                  <label class="vrh-offer-card" id="vrhOfferPointsLabel" for="vrhOfferPoints" style="margin:0">
+                    <input type="radio" name="vrhOfferType" id="vrhOfferPoints" value="points" style="position:absolute;opacity:0;width:0;height:0" />
+                    <strong>Points catalog reward</strong>
+                    <span>Appears under member <strong>Perks → Rewards</strong>. Requires a points price in the next step.</span>
+                  </label>
+                </div>
+                <div class="vrh-wiz-actions">
+                  <button type="button" class="btn-primary" id="vrhWizardNext1">Continue</button>
+                </div>
               </div>
-              <div class="form-section"><label for="vprEditConfig">Config JSON</label><textarea id="vprEditConfig" rows="4"></textarea></div>
-              <div class="form-row-2">
-                <div class="form-section"><label for="vprEditSort">Sort</label><input type="number" id="vprEditSort" step="1" /></div>
-                <div class="form-section"><label for="vprEditMax">Max / customer</label><input type="number" id="vprEditMax" min="1" step="1" /></div>
+              <div id="vrhWizStep2" class="vrh-wiz-card hidden">
+                <p class="muted-hint" style="margin-top:0">Step 2 of 3 — Validity window, presentation, and issuance cap (EPOS-style dates &amp; limited quantity).</p>
+                <div class="form-row-2">
+                  <div class="form-section"><label for="vrhSeriesValidFrom">Valid from</label><input type="date" id="vrhSeriesValidFrom" /></div>
+                  <div class="form-section"><label for="vrhSeriesValidUntil">Valid until</label><input type="date" id="vrhSeriesValidUntil" /></div>
+                </div>
+                <div class="form-row-2">
+                  <div class="form-section"><label for="vrhSeriesCategory">Category (optional)</label><input type="text" id="vrhSeriesCategory" maxlength="64" placeholder="food, drinks, merch…" /></div>
+                  <div class="form-section"><label for="vrhSeriesSort">Sort order</label><input type="number" id="vrhSeriesSort" step="1" value="0" /></div>
+                </div>
+                <div class="form-section"><label for="vrhSeriesImageUrl">Image URL (optional)</label><input type="text" id="vrhSeriesImageUrl" maxlength="2000" placeholder="https://…" /></div>
+                <div class="form-section"><label for="vrhSeriesMaxIssued">Max total issued (optional)</label><input type="number" id="vrhSeriesMaxIssued" min="1" step="1" placeholder="empty = unlimited across the program" /></div>
+                <div class="form-section" id="vrhPointsCostWrap">
+                  <label for="vrhSeriesPoints">Points price</label>
+                  <input type="number" id="vrhSeriesPoints" min="1" step="1" placeholder="Required for points catalog" />
+                </div>
+                <p class="field-hint" style="margin-bottom:0">Targeting (specific tiers, spend thresholds, birthdays) is configured under <strong>Automation</strong> after the series exists — copy the definition ID from <strong>All series</strong>.</p>
+                <div class="vrh-wiz-actions">
+                  <button type="button" class="btn-outline" id="vrhWizardBack2">Back</button>
+                  <button type="button" class="btn-primary" id="vrhWizardNext2">Continue</button>
+                </div>
               </div>
-              <div class="form-section"><label for="vprEditCooldown">Cooldown days</label><input type="number" id="vprEditCooldown" min="0" step="1" /></div>
-              <div class="form-section"><label><input type="checkbox" id="vprEditActive" style="width:auto;margin-right:8px" /> Active</label></div>
-              <button type="button" class="btn-primary" id="vprSaveBtn">Save rule</button>
-              <p class="field-hint" id="vprSaveResult"></p>
-            </div>
-          </div>
-        </section>
-
-        <section id="vouchers-list" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head">
-              <h2>Voucher definitions</h2>
-              <div class="sheet-actions">
-                <button type="button" class="btn-outline" id="toggleVoucherCreateBtn">Create definition</button>
-                <button type="button" class="btn-outline" id="refreshVouchersBtn">Refresh</button>
+              <div id="vrhWizStep3" class="vrh-wiz-card hidden">
+                <p class="muted-hint" style="margin-top:0">Step 3 of 3 — Confirm and create the series.</p>
+                <div id="vrhWizardSummary" class="muted-box" style="font-size:13px;line-height:1.55"></div>
+                <div class="vrh-wiz-actions">
+                  <button type="button" class="btn-outline" id="vrhWizardBack3">Back</button>
+                  <button type="button" class="btn-primary" id="vrhCreateSeriesBtn">Create series</button>
+                </div>
+                <p class="field-hint" id="vrhCreateSeriesResult"></p>
               </div>
             </div>
-            <div id="voucherCreatePanel" class="hidden" style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.08);max-width:520px">
-              <div class="form-section">
-                <label for="vcCode">Code</label>
-                <input type="text" id="vcCode" maxlength="64" />
+            <div id="vrh-pane-series" class="vrh-pane hidden">
+              <div class="info-banner" style="margin-top:0">Edit a row to tune catalog visibility, points, imagery, and validity. Use the copy control to grab the definition UUID for automation rules.</div>
+              <div class="sheet">
+                <div class="sheet-head">
+                  <h2>All voucher series</h2>
+                  <div class="sheet-actions">
+                    <button type="button" class="btn-outline" id="refreshVrhSeriesBtn">Refresh</button>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Code</th><th>Title</th><th>ID</th><th>Image</th><th>Points</th><th>Category</th><th>Catalog</th><th>Valid</th><th>Sort</th><th>Max issued</th><th>Status</th><th>Edit</th></tr></thead>
+                    <tbody id="vrHubSeriesBody"></tbody>
+                  </table>
+                </div>
               </div>
-              <div class="form-section">
-                <label for="vcTitle">Title</label>
-                <input type="text" id="vcTitle" maxlength="200" />
+              <div id="rewardDefEditor" class="sheet hidden" style="margin-top:16px">
+                <div class="sheet-head"><h2>Edit voucher series</h2><button type="button" class="btn-outline" id="rewardDefEditorCancel">Close</button></div>
+                <div style="padding:16px 20px;max-width:560px">
+                  <input type="hidden" id="rdEditId" />
+                  <div class="form-section"><label>Code</label><input type="text" id="rdCode" readonly /></div>
+                  <div class="form-section"><label for="rdTitle">Title</label><input type="text" id="rdTitle" maxlength="200" /></div>
+                  <div class="form-section"><label for="rdDescription">Description</label><textarea id="rdDescription" maxlength="2000"></textarea></div>
+                  <div class="form-row-2">
+                    <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
+                    <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
+                  </div>
+                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://…" /></div>
+                  <div class="form-row-2">
+                    <div class="form-section"><label for="rdValidFrom">Valid from</label><input type="date" id="rdValidFrom" /></div>
+                    <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section"><label for="rdSort">Sort order</label><input type="number" id="rdSort" step="1" value="0" /></div>
+                    <div class="form-section"><label for="rdMaxIssued">Max total issued</label><input type="number" id="rdMaxIssued" min="1" step="1" placeholder="empty = unlimited" /></div>
+                  </div>
+                  <div class="form-section"><label><input type="checkbox" id="rdShowCatalog" style="width:auto;margin-right:8px" /> Show in member rewards catalog (points redeem)</label></div>
+                  <div class="form-section"><label><input type="checkbox" id="rdActive" style="width:auto;margin-right:8px" /> Series active</label></div>
+                  <button type="button" class="btn-primary" id="rdSaveBtn">Save changes</button>
+                  <p class="field-hint" id="rdSaveResult"></p>
+                </div>
               </div>
-              <div class="form-section">
-                <label for="vcDescription">Description (optional)</label>
-                <textarea id="vcDescription" maxlength="2000"></textarea>
+            </div>
+            <div id="vrh-pane-automation" class="vrh-pane hidden">
+              <div class="info-banner" style="margin-top:0">
+                <strong>Automation</strong> links a voucher series to business rules (min spend, tier, birthdays, top-ups, referrals, inactivity). Amounts are <strong>RM</strong> in the form; the API stores sen. Paste the <strong>voucher definition ID</strong> from <strong>All series</strong>.
               </div>
-              <div class="form-section">
-                <label for="vcPoints">Points cost (optional)</label>
-                <input type="number" id="vcPoints" min="0" step="1" />
+              <div class="sheet">
+                <div class="sheet-head">
+                  <h2>Perks campaigns</h2>
+                  <div class="sheet-actions">
+                    <button type="button" class="btn-outline" id="refreshPerksCampaignRulesBtn">Refresh</button>
+                  </div>
+                </div>
+                <div style="padding:12px 20px 0;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;border-bottom:1px solid rgba(0,0,0,0.06)">
+                  <div class="form-section" style="margin:0;min-width:220px">
+                    <label for="pcrProgramFilter">Show</label>
+                    <select id="pcrProgramFilter">
+                      <option value="all">All programs</option>
+                      <option value="VOUCHER_REBATE">Voucher (rebate)</option>
+                      <option value="reward">Rewards (free item + points)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Name</th><th>Program</th><th>Criteria</th><th>Campaign</th><th>Conditions (RM / tier)</th><th>Definition</th><th>Active</th><th>Max / member</th><th>Edit</th></tr></thead>
+                    <tbody id="pcrRulesBody"></tbody>
+                  </table>
+                </div>
               </div>
-              <button type="button" class="btn-primary" id="vcCreateBtn">Create definition</button>
-              <p class="field-hint" id="vcCreateResult" style="margin-top:12px"></p>
+              <div class="sheet" style="margin-top:16px">
+                <div class="sheet-head"><h2>New campaign</h2></div>
+                <div style="padding:16px 20px;max-width:640px">
+                  <div class="form-section"><label for="pcrName">Name</label><input type="text" id="pcrName" maxlength="200" /></div>
+                  <div class="form-section"><label for="pcrDescription">Description</label><textarea id="pcrDescription" maxlength="2000"></textarea></div>
+                  <div class="form-section"><label><input type="checkbox" id="pcrIsActive" checked style="width:auto;margin-right:8px" /> Active</label></div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrProgramKind">Program</label>
+                      <select id="pcrProgramKind">
+                        <option value="VOUCHER_REBATE">Voucher — cash rebate (use on next purchase)</option>
+                        <option value="REWARD_FREE_ITEM">Reward — free catalog item (auto when criteria match)</option>
+                        <option value="REWARD_POINTS_REDEEM">Reward — points redeem (catalog window only)</option>
+                      </select>
+                    </div>
+                    <div class="form-section" style="margin:0"><label for="pcrCriteriaKind">When to trigger</label>
+                      <select id="pcrCriteriaKind">
+                        <option value="CAMPAIGN_WINDOW_ONLY">During campaign dates only</option>
+                        <option value="NEW_MEMBER_WITHIN_DAYS">New member — within days of signup</option>
+                        <option value="SINGLE_PURCHASE_MIN_RM">Single order — purchase total at least (RM)</option>
+                        <option value="TIER_AND_PURCHASE_MIN_RM">Tier + purchase — min tier and single order ≥ RM</option>
+                        <option value="BIRTHDAY_DURING_CAMPAIGN">Birthday falls inside campaign</option>
+                        <option value="WALLET_TOPUP_MIN_RM">Wallet top-up — at least (RM) in one top-up</option>
+                        <option value="REFERRALS_MIN_COUNT">Referrals — at least N successful referrals</option>
+                        <option value="REENGAGEMENT_INACTIVE_DAYS">Re-engagement — inactive for N days</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrCampaignStart">Campaign start</label><input type="date" id="pcrCampaignStart" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrCampaignEnd">Campaign end</label><input type="date" id="pcrCampaignEnd" /></div>
+                  </div>
+                  <p class="field-hint" id="pcrCriteriaHint" style="margin:0 0 8px"></p>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrMinPurchaseRm">Min single purchase (RM)</label><input type="number" id="pcrMinPurchaseRm" min="0" step="0.01" placeholder="e.g. 100" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrRebateRm">Rebate value (RM)</label><input type="number" id="pcrRebateRm" min="0" step="0.01" placeholder="voucher rebate only" /></div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrMinTopupRm">Min wallet top-up (RM)</label><input type="number" id="pcrMinTopupRm" min="0" step="0.01" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrWithinDaysSignup">Within days of signup</label><input type="number" id="pcrWithinDaysSignup" min="1" step="1" placeholder="new member criteria" /></div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrMinReferrals">Min referrals</label><input type="number" id="pcrMinReferrals" min="1" step="1" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrInactiveDays">Inactive days</label><input type="number" id="pcrInactiveDays" min="1" step="1" placeholder="re-engagement" /></div>
+                  </div>
+                  <div class="form-section" style="margin:0"><label for="pcrMinTier">Minimum member tier</label>
+                    <select id="pcrMinTier">
+                      <option value="">Any tier</option>
+                      <option value="SILVER">Silver and above</option>
+                      <option value="GOLD">Gold and above</option>
+                      <option value="PLATINUM">Platinum only</option>
+                    </select>
+                  </div>
+                  <div class="form-section"><label for="pcrVoucherDefinitionId">Voucher definition ID</label><input type="text" id="pcrVoucherDefinitionId" placeholder="UUID from All series" /></div>
+                  <div class="form-section"><label for="pcrMaxGrantsPerCustomer">Max grants per member (optional)</label><input type="number" id="pcrMaxGrantsPerCustomer" min="1" step="1" placeholder="empty = unlimited" /></div>
+                  <button type="button" class="btn-primary" id="pcrCreateBtn">Create campaign</button>
+                  <p class="field-hint" id="pcrCreateResult"></p>
+                </div>
+              </div>
+              <div id="pcrEditPanel" class="sheet hidden" style="margin-top:16px">
+                <div class="sheet-head"><h2>Edit campaign</h2><button type="button" class="btn-outline" id="pcrEditCancel">Close</button></div>
+                <div style="padding:16px 20px;max-width:640px">
+                  <input type="hidden" id="pcrEditId" />
+                  <div class="form-section"><label for="pcrEditName">Name</label><input type="text" id="pcrEditName" maxlength="200" /></div>
+                  <div class="form-section"><label for="pcrEditDescription">Description</label><textarea id="pcrEditDescription" maxlength="2000"></textarea></div>
+                  <div class="form-section"><label><input type="checkbox" id="pcrEditIsActive" style="width:auto;margin-right:8px" /> Active</label></div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrEditProgramKind">Program</label>
+                      <select id="pcrEditProgramKind">
+                        <option value="VOUCHER_REBATE">Voucher — cash rebate</option>
+                        <option value="REWARD_FREE_ITEM">Reward — free catalog item</option>
+                        <option value="REWARD_POINTS_REDEEM">Reward — points redeem</option>
+                      </select>
+                    </div>
+                    <div class="form-section" style="margin:0"><label for="pcrEditCriteriaKind">When to trigger</label>
+                      <select id="pcrEditCriteriaKind">
+                        <option value="CAMPAIGN_WINDOW_ONLY">During campaign dates only</option>
+                        <option value="NEW_MEMBER_WITHIN_DAYS">New member — within days of signup</option>
+                        <option value="SINGLE_PURCHASE_MIN_RM">Single order — purchase total at least (RM)</option>
+                        <option value="TIER_AND_PURCHASE_MIN_RM">Tier + purchase — min tier and single order ≥ RM</option>
+                        <option value="BIRTHDAY_DURING_CAMPAIGN">Birthday falls inside campaign</option>
+                        <option value="WALLET_TOPUP_MIN_RM">Wallet top-up — at least (RM)</option>
+                        <option value="REFERRALS_MIN_COUNT">Referrals — at least N</option>
+                        <option value="REENGAGEMENT_INACTIVE_DAYS">Re-engagement — inactive N days</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrEditCampaignStart">Campaign start</label><input type="date" id="pcrEditCampaignStart" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrEditCampaignEnd">Campaign end</label><input type="date" id="pcrEditCampaignEnd" /></div>
+                  </div>
+                  <p class="field-hint" id="pcrEditCriteriaHint" style="margin:0 0 8px"></p>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrEditMinPurchaseRm">Min single purchase (RM)</label><input type="number" id="pcrEditMinPurchaseRm" min="0" step="0.01" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrEditRebateRm">Rebate value (RM)</label><input type="number" id="pcrEditRebateRm" min="0" step="0.01" /></div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrEditMinTopupRm">Min wallet top-up (RM)</label><input type="number" id="pcrEditMinTopupRm" min="0" step="0.01" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrEditWithinDaysSignup">Within days of signup</label><input type="number" id="pcrEditWithinDaysSignup" min="1" step="1" /></div>
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-section" style="margin:0"><label for="pcrEditMinReferrals">Min referrals</label><input type="number" id="pcrEditMinReferrals" min="1" step="1" /></div>
+                    <div class="form-section" style="margin:0"><label for="pcrEditInactiveDays">Inactive days</label><input type="number" id="pcrEditInactiveDays" min="1" step="1" /></div>
+                  </div>
+                  <div class="form-section" style="margin:0"><label for="pcrEditMinTier">Minimum member tier</label>
+                    <select id="pcrEditMinTier">
+                      <option value="">Any tier</option>
+                      <option value="SILVER">Silver and above</option>
+                      <option value="GOLD">Gold and above</option>
+                      <option value="PLATINUM">Platinum only</option>
+                    </select>
+                  </div>
+                  <div class="form-section"><label for="pcrEditVoucherDefinitionId">Voucher definition ID</label><input type="text" id="pcrEditVoucherDefinitionId" /></div>
+                  <div class="form-section"><label for="pcrEditMaxGrantsPerCustomer">Max grants per member</label><input type="number" id="pcrEditMaxGrantsPerCustomer" min="1" step="1" placeholder="empty = unlimited" /></div>
+                  <button type="button" class="btn-primary" id="pcrSaveBtn">Save campaign</button>
+                  <p class="field-hint" id="pcrSaveResult"></p>
+                </div>
+              </div>
             </div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
-                <tbody id="voucherBody"></tbody>
-              </table>
+            <div id="vrh-pane-issued" class="vrh-pane hidden">
+              <div class="sheet">
+                <div class="sheet-head"><h2>Recently issued vouchers</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAssignedVouchersBtn">Refresh</button></div></div>
+                <p class="muted-hint" style="padding:12px 20px 0;margin:0">Latest member voucher states from the overview feed. Bulk history lives in exports / reporting.</p>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Member</th><th>Code</th><th>Status</th><th>Updated</th></tr></thead>
+                    <tbody id="voucherAssignedBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="sheet" style="margin-top:16px">
+                <div class="sheet-head"><h2>Exports</h2></div>
+                <div class="muted-box">Use <code>POST /admin/export/run</code> with kind <code>VOUCHERS_ISSUED</code> or <code>VOUCHERS_REDEEMED</code> for full extracts. Voucher KPIs stay on the <strong>Overview</strong> tab.</div>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <section id="vouchers-templates" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Voucher templates</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshVoucherTemplatesBtn">Refresh</button></div></div>
-            <p class="muted-hint" style="padding:12px 20px 0;margin:0">Templates are the same catalog as voucher definitions (reusable offers).</p>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
-                <tbody id="voucherTemplateBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="vouchers-assigned" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Assigned vouchers</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAssignedVouchersBtn">Refresh</button></div></div>
-            <p class="muted-hint" style="padding:12px 20px 0;margin:0">Recent activity from overview feed.</p>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Member</th><th>Code</th><th>Status</th><th>Updated</th></tr></thead>
-                <tbody id="voucherAssignedBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="vouchers-redemption" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Redemption overview</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Issued (active)</div><div class="kpi-value" id="vrIssued">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redeemed</div><div class="kpi-value" id="vrRedeemed">-</div></div>
-              <div class="kpi"><div class="kpi-label">Expired</div><div class="kpi-value" id="vrExpired">-</div></div>
-              <div class="kpi"><div class="kpi-label">Void</div><div class="kpi-value" id="vrVoid">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redemption rate</div><div class="kpi-value" id="vrRate">-</div></div>
-            </div>
-          </div>
-          <div class="sheet">
-            <div class="sheet-head"><h2>Export &amp; detail</h2></div>
-            <div class="muted-box">Use <code>POST /admin/export/run</code> with kind <code>VOUCHERS_ISSUED</code> or <code>VOUCHERS_REDEEMED</code> for full extracts. Deeper campaign-level redemption reports can be added here later.</div>
           </div>
         </section>
 
@@ -2258,8 +2510,7 @@ export class AdminDashboardController {
       'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
-      'loyalty-rewards-catalog', 'loyalty-voucher-push-rules',
-      'vouchers-list', 'vouchers-templates', 'vouchers-assigned', 'vouchers-redemption',
+      'vouchers-rewards-hub',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
@@ -2313,12 +2564,7 @@ export class AdminDashboardController {
       'loyalty-transactions': iconLoyalty,
       'loyalty-rules': iconLoyalty,
       'loyalty-campaigns': iconLoyalty,
-      'loyalty-rewards-catalog': iconLoyalty,
-      'loyalty-voucher-push-rules': iconLoyalty,
-      'vouchers-list': iconVoucher,
-      'vouchers-templates': iconVoucher,
-      'vouchers-assigned': iconVoucher,
-      'vouchers-redemption': iconVoucher,
+      'vouchers-rewards-hub': iconVoucher,
       'campaigns-segments': iconUsers,
       'campaigns-push-voucher': iconVoucher,
       'campaigns-push-points': iconLoyalty,
@@ -2356,12 +2602,7 @@ export class AdminDashboardController {
       'loyalty-transactions': 'Loyalty · Transactions',
       'loyalty-rules': 'Loyalty · Points rules',
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
-      'loyalty-rewards-catalog': 'Loyalty · Rewards catalog',
-      'loyalty-voucher-push-rules': 'Loyalty · Voucher push rules',
-      'vouchers-list': 'Loyalty · Voucher definitions',
-      'vouchers-templates': 'Vouchers · Templates',
-      'vouchers-assigned': 'Vouchers · Assigned',
-      'vouchers-redemption': 'Vouchers · Redemption tracking',
+      'vouchers-rewards-hub': 'Loyalty · Vouchers & rewards',
       'campaigns-segments': 'Campaigns · Customer segments',
       'campaigns-push-voucher': 'Campaigns · Push voucher',
       'campaigns-push-points': 'Campaigns · Push points',
@@ -2385,7 +2626,7 @@ export class AdminDashboardController {
     };
 
     let lastVoucherDefinitions = [];
-    let lastPushRules = [];
+    let lastPerksCampaignRules = [];
     let lastShopCatalogProducts = [];
     let lastSalesAnalytics = null;
     let saChartMetric = 'gmv';
@@ -3297,7 +3538,7 @@ export class AdminDashboardController {
       if (vb) vb.innerHTML = html;
       const vt = document.getElementById('voucherTemplateBody');
       if (vt) vt.innerHTML = html;
-      const lr = document.getElementById('loyaltyRewardsCatalogBody');
+      const lr = document.getElementById('vrHubSeriesBody');
       if (lr) {
         const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
         const copySvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -3314,6 +3555,100 @@ export class AdminDashboardController {
           '<button type="button" class="icon-btn reward-def-edit-btn" data-id="' + v.id + '" title="Edit">' + editSvg + '</button></td></tr>'
         ).join('') || '<tr><td colspan="12">No data</td></tr>';
       }
+    }
+
+    var vrhWizardStep = 1;
+    function vrhSlugFromTitle(title) {
+      var base = String(title || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 44);
+      if (!base) base = 'SERIES';
+      return base + '_' + Math.random().toString(36).slice(2, 6).toUpperCase();
+    }
+    function vrhSyncOfferTypeCards() {
+      var promo = document.getElementById('vrhOfferPromo');
+      var points = document.getElementById('vrhOfferPoints');
+      var lp = document.getElementById('vrhOfferPromoLabel');
+      var lq = document.getElementById('vrhOfferPointsLabel');
+      var isPoints = points && points.checked;
+      if (lp) lp.classList.toggle('is-selected', !isPoints);
+      if (lq) lq.classList.toggle('is-selected', !!isPoints);
+      var wrap = document.getElementById('vrhPointsCostWrap');
+      if (wrap) wrap.style.display = isPoints ? '' : 'none';
+    }
+    function vrhSetWizardStep(step) {
+      vrhWizardStep = step;
+      var s1 = document.getElementById('vrhWizStep1');
+      var s2 = document.getElementById('vrhWizStep2');
+      var s3 = document.getElementById('vrhWizStep3');
+      if (s1) s1.classList.toggle('hidden', step !== 1);
+      if (s2) s2.classList.toggle('hidden', step !== 2);
+      if (s3) s3.classList.toggle('hidden', step !== 3);
+      var i1 = document.getElementById('vrhStepInd1');
+      var i2 = document.getElementById('vrhStepInd2');
+      var i3 = document.getElementById('vrhStepInd3');
+      if (i1) {
+        i1.classList.toggle('is-current', step === 1);
+        i1.classList.toggle('is-done', step > 1);
+      }
+      if (i2) {
+        i2.classList.toggle('is-current', step === 2);
+        i2.classList.toggle('is-done', step > 2);
+      }
+      if (i3) {
+        i3.classList.toggle('is-current', step === 3);
+        i3.classList.remove('is-done');
+      }
+    }
+    function vrhShowPane(name) {
+      ['overview', 'wizard', 'series', 'automation', 'issued'].forEach(function (pane) {
+        var el = document.getElementById('vrh-pane-' + pane);
+        if (el) el.classList.toggle('hidden', pane !== name);
+      });
+      document.querySelectorAll('.vrh-tab').forEach(function (btn) {
+        var on = btn.getAttribute('data-vrh-pane') === name;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (name === 'wizard') {
+        vrhSetWizardStep(1);
+        var out = document.getElementById('vrhCreateSeriesResult');
+        if (out) out.textContent = '';
+      }
+    }
+    function vrhEsc(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    function vrhWizardBuildSummary() {
+      var title = document.getElementById('vrhSeriesTitle').value.trim();
+      var code = document.getElementById('vrhSeriesCode').value.trim();
+      var desc = document.getElementById('vrhSeriesDescription').value.trim();
+      var points = document.getElementById('vrhOfferPoints').checked;
+      var vf = document.getElementById('vrhSeriesValidFrom').value;
+      var vu = document.getElementById('vrhSeriesValidUntil').value;
+      var cat = document.getElementById('vrhSeriesCategory').value.trim();
+      var img = document.getElementById('vrhSeriesImageUrl').value.trim();
+      var mx = document.getElementById('vrhSeriesMaxIssued').value.trim();
+      var pc = document.getElementById('vrhSeriesPoints').value.trim();
+      var lines = [
+        '<strong>Series:</strong> ' + vrhEsc(title || '—'),
+        '<strong>Code:</strong> <code>' + vrhEsc(code || '—') + '</code>',
+        '<strong>Channel:</strong> ' + (points ? 'Points catalog (Perks → Rewards)' : 'Promo / wallet (not in points catalog)'),
+      ];
+      if (desc) lines.push('<strong>Description:</strong> ' + vrhEsc(desc));
+      if (vf || vu) lines.push('<strong>Validity:</strong> ' + vrhEsc((vf || '…') + ' → ' + (vu || '…')));
+      if (cat) lines.push('<strong>Category:</strong> ' + vrhEsc(cat));
+      if (img) lines.push('<strong>Image:</strong> ' + vrhEsc(img));
+      if (mx) lines.push('<strong>Max issued:</strong> ' + vrhEsc(mx));
+      if (points && pc) lines.push('<strong>Points price:</strong> ' + vrhEsc(pc));
+      var sumEl = document.getElementById('vrhWizardSummary');
+      if (sumEl) sumEl.innerHTML = lines.join('<br/>');
     }
 
     async function loadCommerceOrders() {
@@ -3441,19 +3776,122 @@ export class AdminDashboardController {
       }
     }
 
-    async function loadVoucherPushRules() {
-      const data = await api('/admin/voucher-push-rules');
-      lastPushRules = data || [];
+    function pcrSenToRm(sen) {
+      if (sen == null || sen === '') return '—';
+      var n = Number(sen);
+      if (!Number.isFinite(n)) return '—';
+      return 'RM ' + (n / 100).toFixed(2);
+    }
+
+    function pcrParseRmToSen(input) {
+      var s = String(input || '').trim().replace(',', '.');
+      if (!s) return undefined;
+      var n = parseFloat(s);
+      if (!Number.isFinite(n) || n < 0) return undefined;
+      return Math.round(n * 100);
+    }
+
+    function pcrOptionalInt(el) {
+      var s = String(el && el.value != null ? el.value : '').trim();
+      if (!s) return undefined;
+      var n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : undefined;
+    }
+
+    function pcrCriteriaHintText(criteriaKind) {
+      var m = {
+        CAMPAIGN_WINDOW_ONLY: 'No extra thresholds — only campaign dates apply.',
+        NEW_MEMBER_WITHIN_DAYS: 'Fill “Within days of signup”.',
+        SINGLE_PURCHASE_MIN_RM: 'Fill “Min single purchase (RM)” for one qualifying order.',
+        TIER_AND_PURCHASE_MIN_RM: 'Fill minimum tier and “Min single purchase (RM)”.',
+        BIRTHDAY_DURING_CAMPAIGN: 'Member birthday must fall between campaign dates.',
+        WALLET_TOPUP_MIN_RM: 'Fill “Min wallet top-up (RM)” for one top-up event.',
+        REFERRALS_MIN_COUNT: 'Fill “Min referrals”.',
+        REENGAGEMENT_INACTIVE_DAYS: 'Fill “Inactive days” since last activity.',
+      };
+      return m[criteriaKind] || '';
+    }
+
+    function pcrRefreshCriteriaHint(isEdit) {
+      var ck = document.getElementById(isEdit ? 'pcrEditCriteriaKind' : 'pcrCriteriaKind');
+      var hint = document.getElementById(isEdit ? 'pcrEditCriteriaHint' : 'pcrCriteriaHint');
+      if (hint && ck) hint.textContent = pcrCriteriaHintText(ck.value);
+    }
+
+    function pcrIsoDate(d) {
+      if (!d) return '—';
+      return String(d).slice(0, 10);
+    }
+
+    function pcrConditionsLine(r) {
+      var parts = [];
+      if (r.minPurchaseAmountSen != null) parts.push('Min purchase ' + pcrSenToRm(r.minPurchaseAmountSen));
+      if (r.rebateValueSen != null) parts.push('Rebate ' + pcrSenToRm(r.rebateValueSen));
+      if (r.minWalletTopupSen != null) parts.push('Min top-up ' + pcrSenToRm(r.minWalletTopupSen));
+      if (r.withinDaysOfSignup != null) parts.push('Signup ≤ ' + r.withinDaysOfSignup + 'd');
+      if (r.minReferralCount != null) parts.push('Referrals ≥ ' + r.minReferralCount);
+      if (r.inactiveDays != null) parts.push('Inactive ≥ ' + r.inactiveDays + 'd');
+      if (r.minMemberTier) parts.push('Tier ≥ ' + r.minMemberTier);
+      return parts.length ? parts.join(' · ') : '—';
+    }
+
+    function filterPerksCampaignRules(rows, filterVal) {
+      var list = Array.isArray(rows) ? rows : [];
+      if (!filterVal || filterVal === 'all') return list;
+      if (filterVal === 'VOUCHER_REBATE') {
+        return list.filter(function (r) {
+          return r.programKind === 'VOUCHER_REBATE';
+        });
+      }
+      return list.filter(function (r) {
+        return r.programKind === 'REWARD_FREE_ITEM' || r.programKind === 'REWARD_POINTS_REDEEM';
+      });
+    }
+
+    function paintPerksCampaignRulesTable() {
+      var sel = document.getElementById('pcrProgramFilter');
+      var fv = sel && sel.value ? sel.value : 'all';
+      var filtered = filterPerksCampaignRules(lastPerksCampaignRules, fv);
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-      const body = document.getElementById('voucherPushRulesBody');
+      const body = document.getElementById('pcrRulesBody');
       if (!body) return;
-      body.innerHTML = (data || []).map((r) => {
-        var vd = r.voucherDefinition || {};
-        var lim = (r.maxGrantsPerCustomer != null ? 'max ' + r.maxGrantsPerCustomer : '—') + ' · cd ' + (r.cooldownDays != null ? r.cooldownDays + 'd' : '—');
-        return '<tr><td>' + fmt(r.name) + '</td><td>' + fmt(r.triggerType) + '</td><td>' + fmt(vd.code) + '</td><td>' +
-          (r.isActive ? statusPill('ACTIVE') : statusPill('OFF')) + '</td><td>' + fmt(r.sortOrder) + '</td><td>' + lim + '</td><td class="td-actions">' +
-          '<button type="button" class="icon-btn vpr-edit-btn" data-id="' + r.id + '" title="Edit">' + editSvg + '</button></td></tr>';
-      }).join('') || '<tr><td colspan="7">No rules yet</td></tr>';
+      body.innerHTML = filtered
+        .map(function (r) {
+          var vd = r.voucherDefinition || {};
+          var camp = pcrIsoDate(r.campaignStartDate) + ' → ' + pcrIsoDate(r.campaignEndDate);
+          var maxG = r.maxGrantsPerCustomer != null ? String(r.maxGrantsPerCustomer) : '—';
+          return (
+            '<tr><td>' +
+            fmt(r.name) +
+            '</td><td>' +
+            fmt(r.programKind) +
+            '</td><td>' +
+            fmt(r.criteriaKind) +
+            '</td><td>' +
+            fmt(camp) +
+            '</td><td style="font-size:12px;max-width:220px">' +
+            fmt(pcrConditionsLine(r)) +
+            '</td><td>' +
+            fmt(vd.code) +
+            '</td><td>' +
+            (r.isActive ? statusPill('ACTIVE') : statusPill('OFF')) +
+            '</td><td>' +
+            fmt(maxG) +
+            '</td><td class="td-actions">' +
+            '<button type="button" class="icon-btn pcr-edit-btn" data-id="' +
+            r.id +
+            '" title="Edit">' +
+            editSvg +
+            '</button></td></tr>'
+          );
+        })
+        .join('') || '<tr><td colspan="9">No campaigns match this filter.</td></tr>';
+    }
+
+    async function loadPerksCampaignRules() {
+      const data = await api('/admin/perks-campaign-rules');
+      lastPerksCampaignRules = data || [];
+      paintPerksCampaignRulesTable();
     }
 
     async function loadWalletLedger() {
@@ -3649,6 +4087,163 @@ export class AdminDashboardController {
         .replace(/</g, '&lt;');
     }
 
+    function emEscapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    var EM_MONTHLY_HOURS = (52 * 40) / 12;
+
+    function emDecimalToBps(s) {
+      var n = parseFloat(String(s).replace(',', '.'), 10);
+      if (!isFinite(n) || n < 0) return 10_000;
+      return Math.min(1_000_000, Math.max(0, Math.round(n * 10_000)));
+    }
+
+    function emBpsToDecimalStr(bps, dec) {
+      var d = dec == null ? 2 : dec;
+      return (Number(bps || 0) / 10_000).toFixed(d);
+    }
+
+    function emPercentStrToBps(s) {
+      var n = parseFloat(String(s).replace(',', '.'), 10);
+      if (!isFinite(n) || n < 0) return 0;
+      return Math.min(1_000_000, Math.max(0, Math.round(n * 100)));
+    }
+
+    function emBpsToPercentStr(bps) {
+      return (Number(bps || 0) / 100).toFixed(2);
+    }
+
+    function emHourlyToMonthlyCents(hourlyCents) {
+      return Math.round(Number(hourlyCents || 0) * EM_MONTHLY_HOURS);
+    }
+
+    function emMonthlyToHourlyCents(monthlyCents) {
+      return Math.round(Number(monthlyCents || 0) / EM_MONTHLY_HOURS);
+    }
+
+    function emMoneyCents(c) {
+      return (Number(c || 0) / 100).toFixed(2);
+    }
+
+    function emRenderPayrollPayslip(r) {
+      var emp = r.employee || {};
+      var period = r.period || {};
+      var set = r.settings || {};
+      var lines = Array.isArray(r.lines) ? r.lines : [];
+      var bd = r.breakdown || { straightTimePayCents: 0, rulesPremiumPayCents: 0 };
+      var stdH = (Number(set.standardWorkdayMinutes || 0) / 60).toFixed(2);
+      var otM = emBpsToDecimalStr(set.overtimeMultiplierBps, 2);
+      var phM = emBpsToDecimalStr(set.publicHolidayMultiplierBps, 2);
+      var offM = emBpsToDecimalStr(set.offDayWorkedMultiplierBps, 2);
+      var pct = emBpsToPercentStr(emp.commissionRateBps);
+      var totalMin = lines.reduce(function (a, ln) {
+        return a + Number(ln.minutesWorked || 0);
+      }, 0);
+      var totalH = (totalMin / 60).toFixed(2);
+      var monthlyC = emHourlyToMonthlyCents(emp.hourlyRateCents);
+      var commRate = Number(r.commissionFromRateBpsCents || 0);
+      var manual = Number(r.manualCommissionCents || 0);
+      var gross = Number(r.grandTotalCents || 0);
+      var ded = 0;
+      var net = gross - ded;
+      var title =
+        'PAYROLL SUMMARY — ' + emEscapeHtml(period.from || '') + ' to ' + emEscapeHtml(period.to || '');
+      var dayRows = lines
+        .map(function (ln) {
+          var h = (Number(ln.minutesWorked || 0) / 60).toFixed(2);
+          return (
+            '<tr><td>' +
+            emEscapeHtml(ln.date) +
+            '</td><td>' +
+            emEscapeHtml(ln.dayType) +
+            '</td><td class="num">' +
+            h +
+            '</td><td class="num">' +
+            emMoneyCents(ln.payCents) +
+            '</td></tr>'
+          );
+        })
+        .join('');
+      return (
+        '<div class="em-payslip">' +
+        '<div class="em-payslip-head">' +
+        '<div class="em-payslip-co">Moja</div>' +
+        '<div class="em-payslip-title">' +
+        title +
+        '<div class="em-payslip-sub">Generated from closed punches in range</div></div></div>' +
+        '<div class="em-payslip-grid">' +
+        '<span>EMPLOYEE NO.</span><span>' +
+        emEscapeHtml(emp.employeeCode) +
+        '</span>' +
+        '<span>POSITION</span><span>' +
+        emEscapeHtml(emp.positionTitle || '—') +
+        '</span>' +
+        '<span>NAME</span><span>' +
+        emEscapeHtml(emp.displayName) +
+        '</span>' +
+        '<span>MONTHLY SALARY (¢)</span><span>' +
+        fmt(monthlyC) +
+        '</span>' +
+        '<span>HOURS (PERIOD)</span><span>' +
+        totalH +
+        '</span>' +
+        '<span>PERCENTAGE (%)</span><span>' +
+        pct +
+        '</span>' +
+        '</div>' +
+        '<div class="em-payslip-2col">' +
+        '<div class="em-payslip-col"><h3>Earnings</h3>' +
+        '<div class="em-payslip-row"><span>Straight-time pay (1×)</span><em>$ ' +
+        emMoneyCents(bd.straightTimePayCents) +
+        '</em></div>' +
+        '<div class="em-payslip-row"><span>Multipliers &amp; premiums (OT / PH / off)</span><em>$ ' +
+        emMoneyCents(bd.rulesPremiumPayCents) +
+        '</em></div>' +
+        '<div class="em-payslip-row"><span>Commission (' +
+        pct +
+        '% of wage subtotal)</span><em>$ ' +
+        emMoneyCents(commRate) +
+        '</em></div>' +
+        '<div class="em-payslip-row"><span>Manual add-on</span><em>$ ' +
+        emMoneyCents(manual) +
+        '</em></div>' +
+        '<div class="em-payslip-foot"><span>GROSS PAY</span><em>$ ' +
+        emMoneyCents(gross) +
+        '</em></div></div>' +
+        '<div class="em-payslip-col"><h3>Deduction</h3>' +
+        '<div class="em-payslip-row"><span>—</span><em>$ 0.00</em></div>' +
+        '<div class="em-payslip-foot"><span>TOTAL DEDUCTION</span><em>$ ' +
+        emMoneyCents(ded) +
+        '</em></div></div></div>' +
+        '<div class="em-payslip-net"><span>NET PAY</span><em>$ ' +
+        emMoneyCents(net) +
+        '</em></div>' +
+        (dayRows
+          ? '<table class="em-payslip-lines" aria-label="Daily breakdown"><thead><tr><th>Date</th><th>Day type</th><th class="num">Hours</th><th class="num">Pay ($)</th></tr></thead><tbody>' +
+            dayRows +
+            '</tbody></table>'
+          : '<p class="em-payslip-meta">No closed punches in this range.</p>') +
+        '<p class="em-payslip-meta">Rules: standard day ' +
+        stdH +
+        ' h · OT ×' +
+        otM +
+        ' · PH ×' +
+        phM +
+        ' · Off worked ×' +
+        offM +
+        '</p>' +
+        (r.notes
+          ? '<p class="em-payslip-meta">' + emEscapeHtml(r.notes) + '</p>'
+          : '') +
+        '<div class="em-payslip-sign"><div>APPROVED BY :</div><div>RECEIVED BY :</div></div>' +
+        '</div>'
+      );
+    }
+
     function emInitRangeDates() {
       var t = new Date();
       var end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
@@ -3672,10 +4267,11 @@ export class AdminDashboardController {
 
     async function loadEmPayrollSettingsForm() {
       var s = await api('/admin/employees/payroll-settings');
-      document.getElementById('emStdMin').value = String(s.standardWorkdayMinutes);
-      document.getElementById('emOtBps').value = String(s.overtimeMultiplierBps);
-      document.getElementById('emPhBps').value = String(s.publicHolidayMultiplierBps);
-      document.getElementById('emOffBps').value = String(s.offDayWorkedMultiplierBps);
+      var min = Number(s.standardWorkdayMinutes || 480);
+      document.getElementById('emStdHours').value = (min / 60).toFixed(2);
+      document.getElementById('emOtMul').value = emBpsToDecimalStr(s.overtimeMultiplierBps, 2);
+      document.getElementById('emPhMul').value = emBpsToDecimalStr(s.publicHolidayMultiplierBps, 2);
+      document.getElementById('emOffMul').value = emBpsToDecimalStr(s.offDayWorkedMultiplierBps, 2);
       document.getElementById('emPayrollSaveHint').textContent = '';
     }
 
@@ -3696,10 +4292,10 @@ export class AdminDashboardController {
               '" style="width:140px" maxlength="200"/></td><td><input type="text" class="em-inp-pos" value="' +
               emEscapeAttr(e.positionTitle) +
               '" style="width:120px" maxlength="120"/></td><td><input type="number" class="em-inp-rate" min="0" step="1" value="' +
-              Number(e.hourlyRateCents || 0) +
-              '" style="width:90px"/></td><td><input type="number" class="em-inp-comm" min="0" step="1" value="' +
-              Number(e.commissionRateBps || 0) +
-              '" style="width:80px"/></td><td><input type="checkbox" class="em-inp-active" ' +
+              emHourlyToMonthlyCents(e.hourlyRateCents) +
+              '" style="width:100px"/></td><td><input type="number" class="em-inp-comm" min="0" step="0.01" value="' +
+              emBpsToPercentStr(e.commissionRateBps) +
+              '" style="width:72px"/></td><td><input type="checkbox" class="em-inp-active" ' +
               (e.isActive ? 'checked' : '') +
               ' /></td><td class="td-actions"><button type="button" class="btn-outline em-row-save">Save</button></td></tr>'
             );
@@ -3823,7 +4419,7 @@ export class AdminDashboardController {
         loadExportJobs(),
         loadReporting(),
         loadAdminUsers(),
-        loadVoucherPushRules(),
+        loadPerksCampaignRules(),
         loadShopCatalog(),
       ];
       const results = await Promise.allSettled(tasks);
@@ -3863,6 +4459,10 @@ export class AdminDashboardController {
       if (cur) cur.classList.remove('hidden');
       title.textContent = viewTitles[view] || view;
       titleIcon.innerHTML = icons[view] || icons['dashboard-overview'];
+      if (view === 'vouchers-rewards-hub') {
+        vrhShowPane('overview');
+        loadOverview().catch(function () {});
+      }
     }
 
     async function applyDashboardConfig() {
@@ -4034,8 +4634,6 @@ export class AdminDashboardController {
       });
     });
     document.getElementById('refreshLoyaltyBtn').addEventListener('click', () => loadLoyalty().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshVouchersBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshVoucherTemplatesBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshAssignedVouchersBtn').addEventListener('click', () => loadOverview().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshWalletLedgerBtn').addEventListener('click', () => loadWalletLedger().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAudit().catch((e) => { statusPanel.textContent = e.message; }));
@@ -4212,11 +4810,6 @@ export class AdminDashboardController {
           if (out) out.textContent = e.message || String(e);
         });
     });
-    document.getElementById('toggleVoucherCreateBtn').addEventListener('click', () => {
-      const p = document.getElementById('voucherCreatePanel');
-      if (p) p.classList.toggle('hidden');
-    });
-
     document.getElementById('waSubmitBtn').addEventListener('click', () => {
       const customerId = document.getElementById('waCustomerId').value.trim();
       const type = document.getElementById('waType').value;
@@ -4239,8 +4832,25 @@ export class AdminDashboardController {
         .catch((e) => { out.textContent = e.message; });
     });
 
-    document.getElementById('refreshLoyaltyRewardsBtn').addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshVoucherPushRulesBtn').addEventListener('click', () => loadVoucherPushRules().catch((e) => { statusPanel.textContent = e.message; }));
+    var refreshVrhSeriesBtn = document.getElementById('refreshVrhSeriesBtn');
+    if (refreshVrhSeriesBtn) {
+      refreshVrhSeriesBtn.addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
+    }
+    document.getElementById('refreshPerksCampaignRulesBtn').addEventListener('click', () => loadPerksCampaignRules().catch((e) => { statusPanel.textContent = e.message; }));
+    var pcrProgramFilterEl = document.getElementById('pcrProgramFilter');
+    if (pcrProgramFilterEl) {
+      pcrProgramFilterEl.addEventListener('change', function () {
+        paintPerksCampaignRulesTable();
+      });
+    }
+    ['pcrCriteriaKind', 'pcrProgramKind'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(false); });
+    });
+    ['pcrEditCriteriaKind', 'pcrEditProgramKind'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
+    });
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
 
     function isoDateOnly(d) {
@@ -4250,7 +4860,8 @@ export class AdminDashboardController {
       return x.toISOString().slice(0, 10);
     }
 
-    document.getElementById('loyaltyRewardsCatalogBody').addEventListener('click', (e) => {
+    var vrHubSeriesBody = document.getElementById('vrHubSeriesBody');
+    if (vrHubSeriesBody) vrHubSeriesBody.addEventListener('click', (e) => {
       var copyBtn = e.target.closest('.reward-def-copy-id-btn');
       if (copyBtn) {
         var voucherId = copyBtn.getAttribute('data-id') || '';
@@ -4328,95 +4939,141 @@ export class AdminDashboardController {
         .catch(function (err) { out.textContent = err.message; });
     });
 
-    document.getElementById('voucherPushRulesBody').addEventListener('click', (e) => {
-      var btn = e.target.closest('.vpr-edit-btn');
+    document.getElementById('pcrRulesBody').addEventListener('click', (e) => {
+      var btn = e.target.closest('.pcr-edit-btn');
       if (!btn) return;
       var id = btn.getAttribute('data-id');
-      var r = lastPushRules.find(function (x) { return x.id === id; });
+      var r = lastPerksCampaignRules.find(function (x) { return x.id === id; });
       if (!r) return;
-      document.getElementById('vprEditId').value = r.id;
-      document.getElementById('vprEditName').value = r.name || '';
-      document.getElementById('vprEditDesc').value = r.description || '';
-      document.getElementById('vprEditTrigger').value = r.triggerType || 'NEWCOMER';
-      document.getElementById('vprEditVoucherId').value = r.voucherDefinitionId || (r.voucherDefinition && r.voucherDefinition.id) || '';
-      document.getElementById('vprEditConfig').value = JSON.stringify(r.triggerConfig || {}, null, 2);
-      document.getElementById('vprEditSort').value = r.sortOrder != null ? String(r.sortOrder) : '0';
-      document.getElementById('vprEditMax').value = r.maxGrantsPerCustomer != null ? String(r.maxGrantsPerCustomer) : '';
-      document.getElementById('vprEditCooldown').value = r.cooldownDays != null ? String(r.cooldownDays) : '';
-      document.getElementById('vprEditActive').checked = !!r.isActive;
-      document.getElementById('vprEditPanel').classList.remove('hidden');
-      document.getElementById('vprSaveResult').textContent = '';
+      document.getElementById('pcrEditId').value = r.id;
+      document.getElementById('pcrEditName').value = r.name || '';
+      document.getElementById('pcrEditDescription').value = r.description || '';
+      document.getElementById('pcrEditIsActive').checked = !!r.isActive;
+      document.getElementById('pcrEditProgramKind').value = r.programKind || 'VOUCHER_REBATE';
+      document.getElementById('pcrEditCriteriaKind').value = r.criteriaKind || 'CAMPAIGN_WINDOW_ONLY';
+      document.getElementById('pcrEditCampaignStart').value = pcrIsoDate(r.campaignStartDate);
+      document.getElementById('pcrEditCampaignEnd').value = pcrIsoDate(r.campaignEndDate);
+      document.getElementById('pcrEditMinPurchaseRm').value =
+        r.minPurchaseAmountSen != null ? (Number(r.minPurchaseAmountSen) / 100).toFixed(2) : '';
+      document.getElementById('pcrEditRebateRm').value =
+        r.rebateValueSen != null ? (Number(r.rebateValueSen) / 100).toFixed(2) : '';
+      document.getElementById('pcrEditMinTopupRm').value =
+        r.minWalletTopupSen != null ? (Number(r.minWalletTopupSen) / 100).toFixed(2) : '';
+      document.getElementById('pcrEditWithinDaysSignup').value =
+        r.withinDaysOfSignup != null ? String(r.withinDaysOfSignup) : '';
+      document.getElementById('pcrEditMinReferrals').value =
+        r.minReferralCount != null ? String(r.minReferralCount) : '';
+      document.getElementById('pcrEditInactiveDays').value =
+        r.inactiveDays != null ? String(r.inactiveDays) : '';
+      document.getElementById('pcrEditMinTier').value = r.minMemberTier || '';
+      document.getElementById('pcrEditVoucherDefinitionId').value =
+        r.voucherDefinitionId || (r.voucherDefinition && r.voucherDefinition.id) || '';
+      document.getElementById('pcrEditMaxGrantsPerCustomer').value =
+        r.maxGrantsPerCustomer != null ? String(r.maxGrantsPerCustomer) : '';
+      document.getElementById('pcrEditPanel').classList.remove('hidden');
+      document.getElementById('pcrSaveResult').textContent = '';
+      pcrRefreshCriteriaHint(true);
     });
 
-    document.getElementById('vprEditCancel').addEventListener('click', () => {
-      document.getElementById('vprEditPanel').classList.add('hidden');
+    document.getElementById('pcrEditCancel').addEventListener('click', () => {
+      document.getElementById('pcrEditPanel').classList.add('hidden');
     });
 
-    document.getElementById('vprCreateBtn').addEventListener('click', () => {
-      var out = document.getElementById('vprCreateResult');
-      var name = document.getElementById('vprName').value.trim();
-      var vid = document.getElementById('vprVoucherDefId').value.trim();
-      var raw = document.getElementById('vprConfigJson').value.trim();
-      if (!name || !vid) {
-        out.textContent = 'Name and voucher definition ID are required.';
+    document.getElementById('pcrCreateBtn').addEventListener('click', () => {
+      var out = document.getElementById('pcrCreateResult');
+      var name = document.getElementById('pcrName').value.trim();
+      var vid = document.getElementById('pcrVoucherDefinitionId').value.trim();
+      var cs = document.getElementById('pcrCampaignStart').value;
+      var ce = document.getElementById('pcrCampaignEnd').value;
+      if (!name || !vid || !cs || !ce) {
+        out.textContent = 'Name, voucher definition ID, campaign start and end are required.';
         return;
       }
-      var cfg = {};
-      try {
-        cfg = raw ? JSON.parse(raw) : {};
-      } catch (err) {
-        out.textContent = 'Invalid JSON in trigger config.';
-        return;
-      }
-      out.textContent = 'Creating…';
-      apiPost('/admin/voucher-push-rules', {
+      var body = {
         name: name,
-        description: document.getElementById('vprDesc').value.trim() || undefined,
-        triggerType: document.getElementById('vprTrigger').value,
-        triggerConfig: cfg,
+        description: document.getElementById('pcrDescription').value.trim() || undefined,
+        isActive: document.getElementById('pcrIsActive').checked,
+        programKind: document.getElementById('pcrProgramKind').value,
+        criteriaKind: document.getElementById('pcrCriteriaKind').value,
+        campaignStartDate: cs,
+        campaignEndDate: ce,
         voucherDefinitionId: vid,
-        sortOrder: parseInt(document.getElementById('vprSort').value, 10) || 0,
-        maxGrantsPerCustomer: document.getElementById('vprMaxGrants').value === '' ? undefined : parseInt(document.getElementById('vprMaxGrants').value, 10),
-        cooldownDays: document.getElementById('vprCooldown').value === '' ? undefined : parseInt(document.getElementById('vprCooldown').value, 10),
-      })
+      };
+      var mp = pcrParseRmToSen(document.getElementById('pcrMinPurchaseRm').value);
+      if (mp != null) body.minPurchaseAmountSen = mp;
+      var rv = pcrParseRmToSen(document.getElementById('pcrRebateRm').value);
+      if (rv != null) body.rebateValueSen = rv;
+      var tu = pcrParseRmToSen(document.getElementById('pcrMinTopupRm').value);
+      if (tu != null) body.minWalletTopupSen = tu;
+      var wd = pcrOptionalInt(document.getElementById('pcrWithinDaysSignup'));
+      if (wd != null) body.withinDaysOfSignup = wd;
+      var mr = pcrOptionalInt(document.getElementById('pcrMinReferrals'));
+      if (mr != null) body.minReferralCount = mr;
+      var idays = pcrOptionalInt(document.getElementById('pcrInactiveDays'));
+      if (idays != null) body.inactiveDays = idays;
+      var tier = document.getElementById('pcrMinTier').value.trim();
+      if (tier) body.minMemberTier = tier;
+      var mg = pcrOptionalInt(document.getElementById('pcrMaxGrantsPerCustomer'));
+      if (mg != null) body.maxGrantsPerCustomer = mg;
+      out.textContent = 'Creating…';
+      apiPost('/admin/perks-campaign-rules', body)
         .then(function () {
           out.textContent = 'Created.';
-          document.getElementById('vprName').value = '';
-          document.getElementById('vprDesc').value = '';
-          document.getElementById('vprVoucherDefId').value = '';
-          document.getElementById('vprConfigJson').value = '';
-          return loadVoucherPushRules();
+          document.getElementById('pcrName').value = '';
+          document.getElementById('pcrDescription').value = '';
+          document.getElementById('pcrVoucherDefinitionId').value = '';
+          document.getElementById('pcrMinPurchaseRm').value = '';
+          document.getElementById('pcrRebateRm').value = '';
+          document.getElementById('pcrMinTopupRm').value = '';
+          document.getElementById('pcrWithinDaysSignup').value = '';
+          document.getElementById('pcrMinReferrals').value = '';
+          document.getElementById('pcrInactiveDays').value = '';
+          document.getElementById('pcrMinTier').value = '';
+          document.getElementById('pcrMaxGrantsPerCustomer').value = '';
+          return loadPerksCampaignRules();
         })
         .catch(function (err) { out.textContent = err.message; });
     });
 
-    document.getElementById('vprSaveBtn').addEventListener('click', () => {
-      var id = document.getElementById('vprEditId').value;
-      var out = document.getElementById('vprSaveResult');
+    document.getElementById('pcrSaveBtn').addEventListener('click', () => {
+      var id = document.getElementById('pcrEditId').value;
+      var out = document.getElementById('pcrSaveResult');
       if (!id) return;
-      var raw = document.getElementById('vprEditConfig').value.trim();
-      var cfg;
-      try {
-        cfg = raw ? JSON.parse(raw) : {};
-      } catch (err) {
-        out.textContent = 'Invalid JSON.';
+      var cs = document.getElementById('pcrEditCampaignStart').value;
+      var ce = document.getElementById('pcrEditCampaignEnd').value;
+      if (!cs || !ce) {
+        out.textContent = 'Campaign start and end are required.';
         return;
       }
+      var body = {
+        name: document.getElementById('pcrEditName').value.trim(),
+        description: document.getElementById('pcrEditDescription').value.trim() || null,
+        isActive: document.getElementById('pcrEditIsActive').checked,
+        programKind: document.getElementById('pcrEditProgramKind').value,
+        criteriaKind: document.getElementById('pcrEditCriteriaKind').value,
+        campaignStartDate: cs,
+        campaignEndDate: ce,
+        voucherDefinitionId: document.getElementById('pcrEditVoucherDefinitionId').value.trim(),
+      };
+      var mp = pcrParseRmToSen(document.getElementById('pcrEditMinPurchaseRm').value);
+      body.minPurchaseAmountSen = mp != null ? mp : null;
+      var rv = pcrParseRmToSen(document.getElementById('pcrEditRebateRm').value);
+      body.rebateValueSen = rv != null ? rv : null;
+      var tu = pcrParseRmToSen(document.getElementById('pcrEditMinTopupRm').value);
+      body.minWalletTopupSen = tu != null ? tu : null;
+      body.withinDaysOfSignup = pcrOptionalInt(document.getElementById('pcrEditWithinDaysSignup')) ?? null;
+      body.minReferralCount = pcrOptionalInt(document.getElementById('pcrEditMinReferrals')) ?? null;
+      body.inactiveDays = pcrOptionalInt(document.getElementById('pcrEditInactiveDays')) ?? null;
+      var tier = document.getElementById('pcrEditMinTier').value.trim();
+      body.minMemberTier = tier || null;
+      var mg = document.getElementById('pcrEditMaxGrantsPerCustomer').value.trim();
+      body.maxGrantsPerCustomer = mg === '' ? null : parseInt(mg, 10);
       out.textContent = 'Saving…';
-      apiPatch('/admin/voucher-push-rules/' + encodeURIComponent(id), {
-        name: document.getElementById('vprEditName').value.trim(),
-        description: document.getElementById('vprEditDesc').value.trim() || null,
-        triggerType: document.getElementById('vprEditTrigger').value,
-        voucherDefinitionId: document.getElementById('vprEditVoucherId').value.trim(),
-        triggerConfig: cfg,
-        sortOrder: parseInt(document.getElementById('vprEditSort').value, 10) || 0,
-        maxGrantsPerCustomer: document.getElementById('vprEditMax').value === '' ? null : parseInt(document.getElementById('vprEditMax').value, 10),
-        cooldownDays: document.getElementById('vprEditCooldown').value === '' ? null : parseInt(document.getElementById('vprEditCooldown').value, 10),
-        isActive: document.getElementById('vprEditActive').checked,
-      })
+      apiPatch('/admin/perks-campaign-rules/' + encodeURIComponent(id), body)
         .then(function () {
           out.textContent = 'Saved.';
-          return loadVoucherPushRules();
+          document.getElementById('pcrEditPanel').classList.add('hidden');
+          return loadPerksCampaignRules();
         })
         .catch(function (err) { out.textContent = err.message; });
     });
@@ -4481,28 +5138,6 @@ export class AdminDashboardController {
         .catch(function (err) { out.textContent = err.message; });
     });
 
-    document.getElementById('vcCreateBtn').addEventListener('click', () => {
-      const code = document.getElementById('vcCode').value.trim();
-      const title = document.getElementById('vcTitle').value.trim();
-      const description = document.getElementById('vcDescription').value.trim();
-      const pc = document.getElementById('vcPoints').value;
-      const out = document.getElementById('vcCreateResult');
-      if (!code || !title) {
-        out.textContent = 'Code and title are required.';
-        return;
-      }
-      out.textContent = 'Creating…';
-      const body = { code, title };
-      if (description) body.description = description;
-      if (pc !== '') body.pointsCost = parseInt(pc, 10);
-      apiPost('/admin/voucher-definitions', body)
-        .then(() => {
-          out.textContent = 'Created. Refreshing lists.';
-          return loadVouchers();
-        })
-        .catch((e) => { out.textContent = e.message; });
-    });
-
     document.getElementById('emPayrollReloadBtn').addEventListener('click', function () {
       loadEmPayrollSettingsForm().catch(function (e) { statusPanel.textContent = e.message; });
     });
@@ -4510,10 +5145,13 @@ export class AdminDashboardController {
       var h = document.getElementById('emPayrollSaveHint');
       h.textContent = 'Saving…';
       apiPatch('/admin/employees/payroll-settings', {
-        standardWorkdayMinutes: parseInt(document.getElementById('emStdMin').value, 10) || 480,
-        overtimeMultiplierBps: parseInt(document.getElementById('emOtBps').value, 10) || 0,
-        publicHolidayMultiplierBps: parseInt(document.getElementById('emPhBps').value, 10) || 0,
-        offDayWorkedMultiplierBps: parseInt(document.getElementById('emOffBps').value, 10) || 0,
+        standardWorkdayMinutes: Math.max(
+          1,
+          Math.round((parseFloat(document.getElementById('emStdHours').value) || 8) * 60),
+        ),
+        overtimeMultiplierBps: emDecimalToBps(document.getElementById('emOtMul').value),
+        publicHolidayMultiplierBps: emDecimalToBps(document.getElementById('emPhMul').value),
+        offDayWorkedMultiplierBps: emDecimalToBps(document.getElementById('emOffMul').value),
       })
         .then(function () {
           h.textContent = 'Saved.';
@@ -4536,8 +5174,8 @@ export class AdminDashboardController {
         employeeCode: code,
         displayName: name,
         positionTitle: document.getElementById('emNewPos').value.trim(),
-        hourlyRateCents: parseInt(document.getElementById('emNewRate').value, 10) || 0,
-        commissionRateBps: parseInt(document.getElementById('emNewComm').value, 10) || 0,
+        hourlyRateCents: emMonthlyToHourlyCents(parseInt(document.getElementById('emNewRate').value, 10) || 0),
+        commissionRateBps: emPercentStrToBps(document.getElementById('emNewComm').value),
       })
         .then(function () {
           hint.textContent = 'Created.';
@@ -4556,8 +5194,8 @@ export class AdminDashboardController {
       var body = {
         displayName: tr.querySelector('.em-inp-name').value.trim(),
         positionTitle: tr.querySelector('.em-inp-pos').value.trim(),
-        hourlyRateCents: parseInt(tr.querySelector('.em-inp-rate').value, 10) || 0,
-        commissionRateBps: parseInt(tr.querySelector('.em-inp-comm').value, 10) || 0,
+        hourlyRateCents: emMonthlyToHourlyCents(parseInt(tr.querySelector('.em-inp-rate').value, 10) || 0),
+        commissionRateBps: emPercentStrToBps(tr.querySelector('.em-inp-comm').value),
         isActive: tr.querySelector('.em-inp-active').checked,
       };
       apiPatch('/admin/employees/' + encodeURIComponent(id), body)
@@ -4596,12 +5234,13 @@ export class AdminDashboardController {
       var id = document.getElementById('emPayEmp').value;
       var from = document.getElementById('emPayFrom').value;
       var to = document.getElementById('emPayTo').value;
-      var out = document.getElementById('emPayrollOut');
+      var root = document.getElementById('emPayslipRoot');
       if (!id || !from || !to) {
-        out.textContent = 'Select employee and date range.';
+        root.innerHTML =
+          '<p class="field-hint" style="margin:0">Select employee and date range.</p>';
         return;
       }
-      out.textContent = 'Calculating…';
+      root.innerHTML = '<p class="muted-box" style="margin:0">Calculating…</p>';
       apiPost('/admin/employees/payroll-preview', {
         employeeId: id,
         from: from,
@@ -4609,9 +5248,20 @@ export class AdminDashboardController {
         manualCommissionCents: parseInt(document.getElementById('emPayManual').value, 10) || 0,
       })
         .then(function (r) {
-          out.textContent = JSON.stringify(r, null, 2);
+          root.innerHTML = emRenderPayrollPayslip(r);
         })
-        .catch(function (e) { out.textContent = e.message; });
+        .catch(function (e) {
+          root.innerHTML =
+            '<p class="field-hint" style="margin:0">' + emEscapeHtml(e.message) + '</p>';
+        });
+    });
+    document.getElementById('emPayPrintBtn').addEventListener('click', function () {
+      var root = document.getElementById('emPayslipRoot');
+      if (!root || !root.querySelector('.em-payslip')) {
+        statusPanel.textContent = 'Run Calculate first to print the payslip.';
+        return;
+      }
+      window.print();
     });
 
     function wireNav() {
@@ -4653,11 +5303,129 @@ export class AdminDashboardController {
               statusPanel.textContent = err.message || String(err);
             });
           }
+          if (view === 'vouchers-rewards-hub' && isConnected) {
+            loadVouchers().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
         });
       });
     }
+    document.querySelectorAll('.vrh-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var pane = btn.getAttribute('data-vrh-pane');
+        if (pane) vrhShowPane(pane);
+      });
+    });
+    ['vrhOfferPromo', 'vrhOfferPoints'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', vrhSyncOfferTypeCards);
+    });
+    vrhSyncOfferTypeCards();
+    var vrhSuggest = document.getElementById('vrhSuggestCodeBtn');
+    if (vrhSuggest) {
+      vrhSuggest.addEventListener('click', function () {
+        var t = document.getElementById('vrhSeriesTitle').value.trim();
+        document.getElementById('vrhSeriesCode').value = vrhSlugFromTitle(t);
+      });
+    }
+    var vrhN1 = document.getElementById('vrhWizardNext1');
+    if (vrhN1) {
+      vrhN1.addEventListener('click', function () {
+        var title = document.getElementById('vrhSeriesTitle').value.trim();
+        var code = document.getElementById('vrhSeriesCode').value.trim();
+        if (!title || !code) {
+          statusPanel.textContent = 'Series name and internal code are required.';
+          return;
+        }
+        statusPanel.textContent = '';
+        vrhSyncOfferTypeCards();
+        vrhSetWizardStep(2);
+      });
+    }
+    var vrhN2 = document.getElementById('vrhWizardNext2');
+    if (vrhN2) {
+      vrhN2.addEventListener('click', function () {
+        if (document.getElementById('vrhOfferPoints').checked) {
+          var pc = parseInt(document.getElementById('vrhSeriesPoints').value, 10);
+          if (!Number.isFinite(pc) || pc < 1) {
+            statusPanel.textContent = 'Points catalog rewards need a points price (at least 1).';
+            return;
+          }
+        }
+        statusPanel.textContent = '';
+        vrhWizardBuildSummary();
+        vrhSetWizardStep(3);
+      });
+    }
+    var vrhB2 = document.getElementById('vrhWizardBack2');
+    if (vrhB2) vrhB2.addEventListener('click', function () { vrhSetWizardStep(1); });
+    var vrhB3 = document.getElementById('vrhWizardBack3');
+    if (vrhB3) vrhB3.addEventListener('click', function () { vrhSetWizardStep(2); });
+    var vrhCreate = document.getElementById('vrhCreateSeriesBtn');
+    if (vrhCreate) {
+      vrhCreate.addEventListener('click', function () {
+        var title = document.getElementById('vrhSeriesTitle').value.trim();
+        var code = document.getElementById('vrhSeriesCode').value.trim();
+        var desc = document.getElementById('vrhSeriesDescription').value.trim();
+        var points = document.getElementById('vrhOfferPoints').checked;
+        var out = document.getElementById('vrhCreateSeriesResult');
+        if (!title || !code) {
+          if (out) out.textContent = 'Series name and code are required.';
+          return;
+        }
+        var body = { code: code, title: title, showInRewardsCatalog: points, rewardSortOrder: parseInt(document.getElementById('vrhSeriesSort').value, 10) || 0 };
+        if (desc) body.description = desc;
+        if (points) {
+          var p = parseInt(document.getElementById('vrhSeriesPoints').value, 10);
+          if (!Number.isFinite(p) || p < 1) {
+            if (out) out.textContent = 'Points price is required for catalog rewards.';
+            return;
+          }
+          body.pointsCost = p;
+        }
+        var vf = document.getElementById('vrhSeriesValidFrom').value;
+        var vu = document.getElementById('vrhSeriesValidUntil').value;
+        if (vf) body.rewardValidFrom = vf;
+        if (vu) body.rewardValidUntil = vu;
+        var cat = document.getElementById('vrhSeriesCategory').value.trim();
+        if (cat) body.rewardCategory = cat;
+        var img = document.getElementById('vrhSeriesImageUrl').value.trim();
+        if (img) body.imageUrl = img;
+        var mx = document.getElementById('vrhSeriesMaxIssued').value.trim();
+        if (mx !== '') {
+          var m = parseInt(mx, 10);
+          if (Number.isFinite(m) && m >= 1) body.maxTotalIssued = m;
+        }
+        if (out) out.textContent = 'Creating…';
+        apiPost('/admin/voucher-definitions', body)
+          .then(function () {
+            if (out) out.textContent = 'Series created. You can find it under All series or set up automation.';
+            document.getElementById('vrhSeriesTitle').value = '';
+            document.getElementById('vrhSeriesCode').value = '';
+            document.getElementById('vrhSeriesDescription').value = '';
+            document.getElementById('vrhSeriesValidFrom').value = '';
+            document.getElementById('vrhSeriesValidUntil').value = '';
+            document.getElementById('vrhSeriesCategory').value = '';
+            document.getElementById('vrhSeriesImageUrl').value = '';
+            document.getElementById('vrhSeriesMaxIssued').value = '';
+            document.getElementById('vrhSeriesPoints').value = '';
+            document.getElementById('vrhSeriesSort').value = '0';
+            document.getElementById('vrhOfferPromo').checked = true;
+            vrhSyncOfferTypeCards();
+            vrhSetWizardStep(1);
+            vrhShowPane('series');
+            return loadVouchers();
+          })
+          .catch(function (err) {
+            if (out) out.textContent = err.message || String(err);
+          });
+      });
+    }
+
     applyDashboardConfig().then(function () {
       wireNav();
+      pcrRefreshCriteriaHint(false);
     });
   </script>
 </body>

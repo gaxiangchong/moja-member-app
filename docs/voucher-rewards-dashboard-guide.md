@@ -22,12 +22,11 @@ npm run prisma:migrate
 
 In the left menu:
 
-- **Loyalty & rewards -> Rewards catalog**
-- **Loyalty & rewards -> Voucher push rules**
+- **Loyalty & rewards → Vouchers & rewards** (single hub: overview, **New series** wizard, **All series** table, **Automation** for perks campaigns, **Issued to members**)
 
 ## A) Create a reward voucher and show it in client app
 
-Use **Rewards catalog** to create/update a voucher definition with these recommended fields:
+Use **Vouchers & rewards → New series** (wizard) or **All series → Edit** to create/update a voucher definition with these recommended fields:
 
 - `code`: stable unique code (example: `FREE_DRINK_5`)
 - `title`: display name in admin/client
@@ -50,7 +49,7 @@ Use **Rewards catalog** to create/update a voucher definition with these recomme
 
 ## B) Configure voucher push entitlement rules
 
-Use **Voucher push rules** to define who should receive a voucher.
+Use **Vouchers & rewards → Automation** (perks campaigns) to define when members should receive a voucher or rebate.
 
 Rule fields:
 
@@ -80,8 +79,8 @@ curl -X GET "http://localhost:3153/admin/voucher-definitions" \
 ```
 
 2. **From Dashboard (no API tool needed)**
-   - Open **Loyalty & rewards -> Rewards catalog**
-   - Click **Edit** on the voucher you want to push
+   - Open **Loyalty & rewards → Vouchers & rewards → All series**
+   - Use the **copy** control on the row or click **Edit** on the voucher you want to target
    - The request URL used by save is `PATCH /admin/voucher-definitions/:id`  
      The `:id` there is your `voucherDefinitionId`
 
