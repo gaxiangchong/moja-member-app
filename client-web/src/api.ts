@@ -262,6 +262,7 @@ export type SubmitMemberOrderLine = {
 
 export type SubmitMemberOrderResult = {
   id: string;
+  orderNumber: number;
   placedAt: string;
   totalCents: number;
   status: string;
@@ -278,6 +279,7 @@ export type SubmitMemberOrderResult = {
 
 export type MemberOrderRow = {
   id: string;
+  orderNumber: number;
   placedAt: string;
   completedAt: string | null;
   totalCents: number;

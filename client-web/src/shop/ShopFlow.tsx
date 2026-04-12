@@ -174,6 +174,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
       });
       useOrderHistoryStore.getState().addOrder({
         id: order.id,
+        orderNumber: order.orderNumber,
         placedAt: order.placedAt,
         status: order.status,
         completedAt: null,
@@ -189,7 +190,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
         fulfillmentSummary: lines,
       });
       window.alert(
-        `Order placed\n\nTotal: ${formatRm(order.totalCents)}\n${lines.join('\n')}`,
+        `Order placed\n\nPickup code: ${order.orderNumber}\nTotal: ${formatRm(order.totalCents)}\n${lines.join('\n')}`,
       );
       resetAfterOrder();
       goBrowse();

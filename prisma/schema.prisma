@@ -160,6 +160,8 @@ model CustomerOrder {
   id                 String    @id @default(uuid()) @db.Uuid
   customerId         String    @map("customer_id") @db.Uuid
   customer           Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// Public pickup / order number (sequential). Shown on receipts, ops queue, and member QR.
+  orderNumber        Int       @unique @default(autoincrement()) @map("order_number")
   totalCents         Int       @map("total_cents")
   status             String    @default("placed") @db.VarChar(32)
   fulfillmentSummary Json?     @map("fulfillment_summary")
@@ -171,6 +173,16 @@ model CustomerOrder {
   @@index([customerId, placedAt])
   @@index([status, placedAt])
   @@map("customer_orders")
+}
+
+/// UTC calendar date when back office closed books for that day (sales report).
+model DailySalesClose {
+  id           String   @id @default(uuid()) @db.Uuid
+  businessDate DateTime @map("business_date") @db.Date
+  closedAt     DateTime @default(now()) @map("closed_at")
+
+  @@unique([businessDate])
+  @@map("daily_sales_closes")
 }
 
 model CustomerOrderLine {
@@ -526,4 +538,57 @@ model BusinessRule {
 
   @@index([kind, isActive])
   @@map("business_rules")
+}
+
+enum WorkCalendarDayType {
+  REGULAR
+  OFF
+  PUBLIC_HOLIDAY
+}
+
+model PayrollSettings {
+  id                           String   @id @default("default")
+  standardWorkdayMinutes         Int      @default(480) @map("standard_workday_minutes")
+  overtimeMultiplierBps        Int      @default(15000) @map("overtime_multiplier_bps")
+  publicHolidayMultiplierBps   Int      @default(20000) @map("public_holiday_multiplier_bps")
+  offDayWorkedMultiplierBps    Int      @default(10000) @map("off_day_worked_multiplier_bps")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  @@map("payroll_settings")
+}
+
+model Employee {
+  id                 String               @id @default(uuid()) @db.Uuid
+  employeeCode       String               @unique @map("employee_code")
+  displayName        String               @map("display_name")
+  positionTitle      String               @default("") @map("position_title")
+  hourlyRateCents    Int                  @default(0) @map("hourly_rate_cents")
+  commissionRateBps  Int                  @default(0) @map("commission_rate_bps")
+  isActive           Boolean              @default(true) @map("is_active")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  timeEntries        EmployeeTimeEntry[]
+
+  @@map("employees")
+}
+
+model EmployeeTimeEntry {
+  id          String    @id @default(uuid()) @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clockInAt   DateTime  @map("clock_in_at")
+  clockOutAt  DateTime? @map("clock_out_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId, clockInAt])
+  @@map("employee_time_entries")
+}
+
+model WorkCalendarDay {
+  id      String               @id @default(uuid()) @db.Uuid
+  date    DateTime             @unique @db.Date
+  dayType WorkCalendarDayType  @map("day_type")
+  label   String?
+
+  @@map("work_calendar_days")
 }

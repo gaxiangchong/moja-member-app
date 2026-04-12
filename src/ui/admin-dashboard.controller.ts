@@ -8,7 +8,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     customers: { showGroup: true, showSubmenu: true },
     wallet: { showGroup: false, showSubmenu: true },
     loyalty: { showGroup: true, showSubmenu: true },
-    vouchers: { showGroup: true, showSubmenu: true },
+    vouchers: { showGroup: false, showSubmenu: true },
     campaigns: { showGroup: false, showSubmenu: true },
     'data-tools': { showGroup: false, showSubmenu: true },
     reports: { showGroup: false, showSubmenu: true },
@@ -18,14 +18,18 @@ const DEFAULT_DASHBOARD_CONFIG = {
   menuViews: {
     'dashboard-overview': true,
     'dashboard-activity': true,
+    'dashboard-employees': true,
     'customers-list': true,
-    'customers-profile': true,
+    'customer-orders': true,
     'loyalty-rewards-catalog': true,
     'loyalty-voucher-push-rules': true,
     'vouchers-list': true,
-    'vouchers-create': true,
     'settings-shopping-catalog': true,
     'settings-system': true,
+    'reports-customers': true,
+    'reports-sales': true,
+    'reports-vouchers': true,
+    'reports-loyalty': true,
   },
 };
 
@@ -95,7 +99,132 @@ export class AdminDashboardController {
       --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.06);
       --radius: 8px;
       --radius-lg: 12px;
+      --ok: #059669;
+      --danger: #dc2626;
     }
+    .sa-page { max-width: 1200px; margin: 0 auto; padding: 0 0 28px; }
+    .sa-toolbar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px 16px;
+      margin-bottom: 16px;
+    }
+    .sa-toolbar-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .sa-toolbar-group label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+    .sa-toolbar-group input[type="date"],
+    .sa-toolbar-group select {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+      min-width: 0;
+    }
+    .sa-toolbar-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .sa-toolbar-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .sa-kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1020px) {
+      .sa-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .sa-kpi-strip { grid-template-columns: 1fr; }
+    }
+    .sa-kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 14px 16px 16px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .sa-kpi-card:hover { border-color: #93c5fd; }
+    .sa-kpi-card.is-active {
+      border-color: var(--primary);
+      box-shadow: var(--shadow), inset 0 -3px 0 var(--primary);
+    }
+    .sa-kpi-card-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .sa-kpi-card-value { font-size: 24px; font-weight: 700; color: var(--text); margin-top: 6px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .sa-kpi-card-delta { font-size: 12px; margin-top: 6px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .sa-kpi-card-delta .sa-pos { color: var(--ok); font-weight: 600; }
+    .sa-kpi-card-delta .sa-neg { color: var(--danger); font-weight: 600; }
+    .sa-chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 16px 18px 12px;
+      margin-bottom: 16px;
+    }
+    .sa-chart-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .sa-chart-head-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .sa-chart-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .sa-chart-controls select { padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); font-size: 13px; background: #fff; }
+    .sa-line-chart-wrap { width: 100%; overflow-x: auto; padding: 4px 0 8px; }
+    .sa-line-chart-wrap svg { display: block; min-width: 480px; width: 100%; height: auto; }
+    .sa-chart-axis { font-size: 11px; fill: var(--text-muted); }
+    .sa-chart-grid { stroke: #e2e8f0; stroke-width: 1; }
+    .sa-chart-line { fill: none; stroke: var(--primary); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+    .sa-chart-area { fill: rgba(37, 99, 235, 0.08); stroke: none; }
+    .sa-chart-dot { fill: #fff; stroke: var(--primary); stroke-width: 2; }
+    .sa-substats {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      padding: 0 2px 14px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    .sa-substats strong { color: var(--text); font-weight: 600; }
+    .sa-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .sa-split { grid-template-columns: 1fr; } }
+    .sa-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .sa-panel-head { padding: 12px 18px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 700; color: var(--text); }
+    .sa-panel-body { padding: 0 0 12px; font-size: 13px; line-height: 1.55; color: var(--text); }
+    .sa-panel-body-inner { padding: 12px 18px 4px; }
+    .sa-export-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sa-export-head h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--text); }
+    .sa-export-block .table-wrap { border-radius: 0; border: none; }
+    .sa-export-block table.data thead { background: var(--table-head-bg); color: var(--table-head-text); }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: var(--text); background: var(--main-bg); font-size: 14px; }
     .layout { display: grid; grid-template-columns: 268px 1fr; min-height: 100vh; }
@@ -515,6 +644,7 @@ export class AdminDashboardController {
     .mk-chart-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
     .mk-chart { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding: 4px 0 22px; border-bottom: 1px solid var(--border); }
     .mk-chart.mk-chart-signups { height: 168px; }
+    .mk-chart-scroll { overflow-x: auto; max-width: 100%; }
     .mk-bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
     .mk-bar { width: 100%; max-width: 14px; min-height: 2px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius: 3px 3px 0 0; transition: height 0.2s; }
     .mk-legend { display: flex; flex-wrap: wrap; gap: 14px 18px; font-size: 12px; color: var(--text-muted); margin: 0 0 8px; align-items: center; }
@@ -570,6 +700,10 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               Activity feed
             </button>
+            <button type="button" class="nav-btn nav-sub" data-view="dashboard-employees">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Employee management
+            </button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="customers" open>
@@ -579,9 +713,13 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
               Customer list
             </button>
-            <button type="button" class="nav-btn nav-sub" data-view="customers-profile">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              Customer profile
+            <button type="button" class="nav-btn nav-sub" data-view="customer-orders">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              Customer orders
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="reports-sales">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>
+              Sales &amp; transactions
             </button>
             <button type="button" class="nav-btn nav-sub" data-view="customers-segments">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><circle cx="12" cy="12" r="1"/></svg>
@@ -641,22 +779,13 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               Voucher push rules
             </button>
-          </div>
-        </details>
-        <details class="nav-group" data-menu-group="vouchers" open>
-          <summary>Vouchers</summary>
-          <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="vouchers-list">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>
-              Voucher list
+              Voucher definitions
             </button>
             <button type="button" class="nav-btn nav-sub" data-view="vouchers-templates">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
               Voucher templates
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-create">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-              Create voucher
             </button>
             <button type="button" class="nav-btn nav-sub" data-view="vouchers-assigned">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -719,9 +848,7 @@ export class AdminDashboardController {
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="reports-customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>Customer reports</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-vouchers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>Voucher reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-wallet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>Wallet reports</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-loyalty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Loyalty reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-admin-activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 10 14 13 19 8"/></svg>Admin activity reports</button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="settings" open>
@@ -937,7 +1064,100 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="dashboard-employees" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            <strong>Clock in/out</strong> runs from the ops order queue (Timesheet window). Here: staff records, work calendar (off / public holiday), closed punches, payroll rules, and a period calculator (regular + overtime + holiday multipliers + commission bps + optional manual commission).
+          </div>
+          <div class="sheet">
+            <div class="sheet-head"><h2>Payroll rules</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emPayrollReloadBtn">Reload</button><button type="button" class="btn-primary" id="emPayrollSaveBtn">Save</button></div></div>
+            <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+              <div class="form-section" style="margin:0"><label for="emStdMin">Standard workday (minutes)</label><input type="number" id="emStdMin" min="1" step="1" /></div>
+              <div class="form-section" style="margin:0"><label for="emOtBps">Overtime multiplier (bps)</label><input type="number" id="emOtBps" min="0" step="1" title="15000 = 1.5× hourly for minutes after standard day" /></div>
+              <div class="form-section" style="margin:0"><label for="emPhBps">Public holiday multiplier (bps)</label><input type="number" id="emPhBps" min="0" step="1" title="20000 = 2× for all minutes that day" /></div>
+              <div class="form-section" style="margin:0"><label for="emOffBps">Off-day worked multiplier (bps)</label><input type="number" id="emOffBps" min="0" step="1" title="10000 = same pay structure as regular; adjust for premium" /></div>
+            </div>
+            <p class="field-hint" id="emPayrollSaveHint" style="padding:0 20px 16px;margin:0"></p>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Employees</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emEmpReloadBtn">Refresh</button></div></div>
+            <div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.08)">
+              <p class="muted-hint" style="margin:0 0 12px">New hire — <strong>Employee ID</strong> is what staff type at the queue timesheet.</p>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emNewCode">Employee ID</label><input type="text" id="emNewCode" maxlength="64" /></div>
+                <div class="form-section" style="margin:0"><label for="emNewName">Display name</label><input type="text" id="emNewName" maxlength="200" /></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emNewPos">Position</label><input type="text" id="emNewPos" maxlength="120" placeholder="Barista, shift lead…" /></div>
+                <div class="form-section" style="margin:0"><label for="emNewRate">Hourly rate (¢)</label><input type="number" id="emNewRate" min="0" step="1" value="0" /></div>
+              </div>
+              <div class="form-section" style="margin:0"><label for="emNewComm">Commission (basis points of wage subtotal)</label><input type="number" id="emNewComm" min="0" step="1" value="0" title="500 = 5%" /></div>
+              <button type="button" class="btn-primary" id="emEmpCreateBtn" style="margin-top:12px">Add employee</button>
+              <p class="field-hint" id="emEmpCreateHint" style="margin-top:8px"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Hourly ¢</th><th>Comm bps</th><th>Active</th><th>Save row</th></tr></thead>
+                <tbody id="emEmpBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Work calendar</h2></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emCalFrom">From</label><input type="date" id="emCalFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emCalTo">To</label><input type="date" id="emCalTo" /></div>
+              <button type="button" class="btn-outline" id="emCalLoadBtn">Load range</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Date</th><th>Type</th><th>Label</th></tr></thead>
+                <tbody id="emCalBody"></tbody>
+              </table>
+            </div>
+            <div style="padding:16px 20px;border-top:1px solid rgba(0,0,0,0.08)">
+              <p class="muted-hint" style="margin:0 0 10px">Set one day (UTC date) — <strong>REGULAR</strong>, <strong>OFF</strong>, or <strong>PUBLIC_HOLIDAY</strong>.</p>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emCalDay">Date</label><input type="date" id="emCalDay" /></div>
+                <div class="form-section" style="margin:0"><label for="emCalType">Type</label>
+                  <select id="emCalType"><option value="REGULAR">REGULAR</option><option value="OFF">OFF</option><option value="PUBLIC_HOLIDAY">PUBLIC_HOLIDAY</option></select>
+                </div>
+              </div>
+              <div class="form-section" style="margin:0"><label for="emCalLabel">Label (optional)</label><input type="text" id="emCalLabel" maxlength="120" placeholder="CNY, team off…" /></div>
+              <button type="button" class="btn-primary" id="emCalSaveBtn" style="margin-top:10px">Save calendar day</button>
+              <p class="field-hint" id="emCalHint"></p>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Clock in / out report</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emTeReloadBtn">Load</button></div></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emTeFrom">From</label><input type="date" id="emTeFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emTeTo">To</label><input type="date" id="emTeTo" /></div>
+              <div class="form-section" style="margin:0"><label for="emTeEmp">Employee (optional)</label><select id="emTeEmp"><option value="">All</option></select></div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>In</th><th>Out</th><th>Minutes</th><th>ID</th><th>Name</th><th>Position</th></tr></thead>
+                <tbody id="emTeBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Salary calculator (period)</h2></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emPayEmp">Employee</label><select id="emPayEmp"></select></div>
+              <div class="form-section" style="margin:0"><label for="emPayFrom">From</label><input type="date" id="emPayFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emPayTo">To</label><input type="date" id="emPayTo" /></div>
+              <div class="form-section" style="margin:0"><label for="emPayManual">Manual commission add-on (¢)</label><input type="number" id="emPayManual" min="0" step="1" value="0" /></div>
+              <button type="button" class="btn-primary" id="emPayCalcBtn">Calculate</button>
+            </div>
+            <pre id="emPayrollOut" class="muted-box" style="margin:16px 20px;white-space:pre-wrap;font-size:13px;max-height:420px;overflow:auto"></pre>
+          </div>
+        </section>
+
         <section id="customers-list" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            Browse members and open <strong>Edit</strong> for full profile, tags, and recent orders for that customer.
+          </div>
           <div class="sheet">
             <div class="sheet-head">
               <h2>Customer list</h2>
@@ -974,20 +1194,76 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="customers-profile" class="tab-panel hidden">
+        <section id="customer-orders" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            Member-app commerce orders across all customers. Filter by status and date (placed or completed), or by <strong>Product contains</strong> / <strong>Product / SKU id</strong> on order lines.
+          </div>
           <div class="sheet">
-            <div class="sheet-head"><h2>Customer profile</h2></div>
-            <div style="padding:16px 20px">
-              <div class="form-row-2" style="margin-bottom:12px;align-items:flex-end">
-                <div class="form-section" style="margin:0">
-                  <label for="profileLookupId">Member ID (UUID)</label>
-                  <input type="text" id="profileLookupId" placeholder="Paste customer id from the list" />
-                </div>
-                <button type="button" class="btn-primary" id="profileLoadBtn">Load profile</button>
+            <div class="sheet-head">
+              <h2>Customer orders</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="oqRefreshBtn">Apply filters</button>
               </div>
-              <p class="muted-hint" style="margin-bottom:12px">Use the customer list to copy an ID, or open <strong>Edit</strong> from the list for full editing.</p>
-              <div id="profileViewCard" class="muted-box" style="display:none"></div>
             </div>
+            <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:end">
+              <div class="form-section" style="margin:0">
+                <label for="oqStatus">Status</label>
+                <select id="oqStatus">
+                  <option value="all">All</option>
+                  <option value="placed">Open (placed)</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqDateField">Date field</label>
+                <select id="oqDateField">
+                  <option value="placed">Placed at</option>
+                  <option value="completed">Completed at</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqFrom">From (UTC date)</label>
+                <input type="date" id="oqFrom" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqTo">To (UTC, inclusive)</label>
+                <input type="date" id="oqTo" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqProductContains">Product contains</label>
+                <input type="text" id="oqProductContains" maxlength="120" placeholder="e.g. cheesecake" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqProductId">Product / SKU id</label>
+                <input type="text" id="oqProductId" maxlength="120" placeholder="exact line productId" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqSort">Sort</label>
+                <select id="oqSort">
+                  <option value="placed_desc">Placed · newest first</option>
+                  <option value="placed_asc">Placed · oldest first</option>
+                  <option value="completed_desc">Completed · newest first</option>
+                  <option value="completed_asc">Completed · oldest first</option>
+                  <option value="total_desc">Total · high → low</option>
+                  <option value="total_asc">Total · low → high</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqLimit">Row limit</label>
+                <select id="oqLimit">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="200">200</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>#</th><th>Status</th><th>Placed</th><th>Completed</th><th>Customer</th><th>Phone</th><th>Total</th><th>Lines</th></tr></thead>
+                <tbody id="oqBody"></tbody>
+              </table>
+            </div>
+            <p class="field-hint" id="oqHint" style="padding:0 20px 16px;margin:0"></p>
           </div>
         </section>
 
@@ -1139,7 +1415,7 @@ export class AdminDashboardController {
         <section id="loyalty-rewards-catalog" class="tab-panel hidden">
           <div class="info-banner" style="margin-top:0">
             Configure how items appear in the <strong>member app Rewards</strong> tab: image URL, points cost, category, visibility, date window, sort order, and optional max total issues.
-            New definitions: <strong>Vouchers → Create voucher</strong> or use the form fields in the editor below.
+            New definitions: use <strong>Loyalty → Voucher definitions → Create definition</strong>, or the editor below for catalog fields on existing codes.
           </div>
           <div class="sheet">
             <div class="sheet-head">
@@ -1263,33 +1539,14 @@ export class AdminDashboardController {
 
         <section id="vouchers-list" class="tab-panel hidden">
           <div class="sheet">
-            <div class="sheet-head"><h2>Voucher list</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshVouchersBtn">Refresh</button></div></div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
-                <tbody id="voucherBody"></tbody>
-              </table>
+            <div class="sheet-head">
+              <h2>Voucher definitions</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="toggleVoucherCreateBtn">Create definition</button>
+                <button type="button" class="btn-outline" id="refreshVouchersBtn">Refresh</button>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <section id="vouchers-templates" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Voucher templates</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshVoucherTemplatesBtn">Refresh</button></div></div>
-            <p class="muted-hint" style="padding:12px 20px 0;margin:0">Templates are the same catalog as voucher definitions (reusable offers).</p>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
-                <tbody id="voucherTemplateBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="vouchers-create" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Create voucher</h2></div>
-            <div style="padding:16px 20px;max-width:480px">
+            <div id="voucherCreatePanel" class="hidden" style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.08);max-width:520px">
               <div class="form-section">
                 <label for="vcCode">Code</label>
                 <input type="text" id="vcCode" maxlength="64" />
@@ -1308,6 +1565,25 @@ export class AdminDashboardController {
               </div>
               <button type="button" class="btn-primary" id="vcCreateBtn">Create definition</button>
               <p class="field-hint" id="vcCreateResult" style="margin-top:12px"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
+                <tbody id="voucherBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="vouchers-templates" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Voucher templates</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshVoucherTemplatesBtn">Refresh</button></div></div>
+            <p class="muted-hint" style="padding:12px 20px 0;margin:0">Templates are the same catalog as voucher definitions (reusable offers).</p>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Code</th><th>Title</th><th>Points cost</th><th>Status</th></tr></thead>
+                <tbody id="voucherTemplateBody"></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -1552,6 +1828,151 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="reports-sales" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="saPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="saPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="saPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saFrom">From (UTC)</label>
+                <input type="date" id="saFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saTo">To (UTC, inclusive)</label>
+                <input type="date" id="saTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saBucket">Bucket</label>
+                <select id="saBucket" aria-label="Time bucket">
+                  <option value="day">Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month">Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saStoreFilter">Store</label>
+                <select id="saStoreFilter" disabled title="Not tracked in this build"><option>All stores</option></select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saStaffFilter">Staff</label>
+                <select id="saStaffFilter" disabled title="Not tracked in this build"><option>All staff</option></select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="saRefreshBtn">Apply</button>
+                <button type="button" class="btn-outline" id="saExportCsv">Export CSV</button>
+                <button type="button" class="btn-outline" id="saExportJson">Export JSON</button>
+              </div>
+            </div>
+
+            <div class="sa-kpi-strip" id="saKpiStrip">
+              <button type="button" class="sa-kpi-card is-active" data-sa-metric="gmv" id="saCardGmv">
+                <div class="sa-kpi-card-title">GMV (completed)</div>
+                <div class="sa-kpi-card-value" id="saValGmv">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaGmv">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="orders" id="saCardOrders">
+                <div class="sa-kpi-card-title">Completed orders</div>
+                <div class="sa-kpi-card-value" id="saValOrders">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaOrders">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="aov" id="saCardAov">
+                <div class="sa-kpi-card-title">Avg order value</div>
+                <div class="sa-kpi-card-value" id="saValAov">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaAov">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="wallet" id="saCardWallet">
+                <div class="sa-kpi-card-title">Wallet spend</div>
+                <div class="sa-kpi-card-value" id="saValWallet">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaWallet">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="points" id="saCardPts">
+                <div class="sa-kpi-card-title">Points redeemed</div>
+                <div class="sa-kpi-card-value" id="saValPts">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaPts">—</div>
+              </button>
+            </div>
+
+            <p class="sa-substats" id="saSubstats">
+              <strong>Scope:</strong> completed orders use <code>COALESCE(completed_at, placed_at)</code> (UTC). Wallet &amp; loyalty totals are ledger activity in the same date window. <strong>Open orders (placed in range):</strong> <span id="saOpen">—</span>
+              · <strong>Points issued:</strong> <span id="saPtsIn">—</span>
+              · <strong>Wallet top-up:</strong> <span id="saWalTop">—</span>
+              · <strong>Vouchers issued / redeemed:</strong> <span id="saVIss">—</span> / <span id="saVRed">—</span>
+            </p>
+
+            <div class="sa-chart-card">
+              <div class="sa-chart-head">
+                <div class="sa-chart-head-title" id="saChartTitleLabel">Gross merchandise value</div>
+                <div class="sa-chart-controls">
+                  <label class="muted-hint" style="width:auto;margin:0;font-size:12px">Chart
+                    <select id="saChartStyle" aria-label="Chart type" style="margin-left:6px">
+                      <option value="area">Area</option>
+                      <option value="line">Line</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div id="saLineChart" class="sa-line-chart-wrap" aria-label="Sales trend chart"></div>
+            </div>
+
+            <div class="sa-split">
+              <div class="sa-panel">
+                <div class="sa-panel-head">Best seller</div>
+                <div class="sa-panel-body"><div class="sa-panel-body-inner" id="saBestSeller">Apply filters to load data.</div></div>
+              </div>
+              <div class="sa-panel">
+                <div class="sa-panel-head">Top products (quantity)</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr></thead>
+                    <tbody id="saTopBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Export</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">Period breakdown</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Period start (UTC)</th><th>GMV</th><th>Orders</th><th>Avg basket</th></tr></thead>
+                  <tbody id="saSeriesBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel" style="margin-top:20px">
+              <div class="sa-export-head">
+                <h3>Daily sales by item (completed orders)</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">UTC business day · close books when reconciled</span>
+              </div>
+              <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+                <div class="form-section" style="margin:0">
+                  <label for="dcDate">Business date (UTC)</label>
+                  <input type="date" id="dcDate" />
+                </div>
+                <button type="button" class="btn-primary" id="dcLoadBtn">Load day</button>
+                <span id="dcClosedBadge" class="muted-hint" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="dcCloseBtn">Close day</button>
+              </div>
+              <p class="muted-hint" id="dcSummary" style="margin:0 16px 12px;font-size:13px"></p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="dcItemsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="dcResult" style="padding:0 16px 16px;margin:0"></p>
+            </div>
+            <p class="muted-hint" id="saLoadHint" style="margin:12px 4px 0;font-size:12px"></p>
+          </div>
+        </section>
+
         <section id="reports-vouchers" class="tab-panel hidden">
           <div class="kpi-panel" style="margin-top:0">
             <h2>Voucher reports</h2>
@@ -1563,33 +1984,12 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="reports-wallet" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Wallet reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Outstanding liability (cents)</div><div class="kpi-value" id="rpWalletOutstanding">-</div></div>
-              <div class="kpi"><div class="kpi-label">Lifetime top-up (cents)</div><div class="kpi-value" id="rpWalletTopUp">-</div></div>
-            </div>
-          </div>
-        </section>
-
         <section id="reports-loyalty" class="tab-panel hidden">
           <div class="kpi-panel" style="margin-top:0">
             <h2>Loyalty reports</h2>
             <div class="kpi-row">
               <div class="kpi"><div class="kpi-label">Points issued</div><div class="kpi-value" id="rpPtsIssued">-</div></div>
               <div class="kpi"><div class="kpi-label">Points redeemed</div><div class="kpi-value" id="rpPtsRedeemed">-</div></div>
-            </div>
-          </div>
-        </section>
-
-        <section id="reports-admin-activity" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Admin activity reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Import commits (30d)</div><div class="kpi-value" id="rpImport30">-</div></div>
-              <div class="kpi"><div class="kpi-label">Export runs (30d)</div><div class="kpi-value" id="rpExport30">-</div></div>
-              <div class="kpi"><div class="kpi-label">Manual adjustments (30d)</div><div class="kpi-value" id="rpAdjust30">-</div></div>
             </div>
           </div>
         </section>
@@ -1854,15 +2254,15 @@ export class AdminDashboardController {
   <script>
     const navButtons = () => document.querySelectorAll('.nav-btn');
     const views = [
-      'dashboard-overview', 'dashboard-activity',
-      'customers-list', 'customers-profile', 'customers-segments', 'customers-merge',
+      'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
+      'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
       'loyalty-rewards-catalog', 'loyalty-voucher-push-rules',
-      'vouchers-list', 'vouchers-templates', 'vouchers-create', 'vouchers-assigned', 'vouchers-redemption',
+      'vouchers-list', 'vouchers-templates', 'vouchers-assigned', 'vouchers-redemption',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
-      'reports-customers', 'reports-vouchers', 'reports-wallet', 'reports-loyalty', 'reports-admin-activity',
+      'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
       'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog',
       'audit', 'audit-logins',
     ];
@@ -1899,8 +2299,10 @@ export class AdminDashboardController {
     const icons = {
       'dashboard-overview': iconHome,
       'dashboard-activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+      'dashboard-employees': iconUsers,
       'customers-list': iconUsers,
-      'customers-profile': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      'customer-orders':
+        '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
       'customers-segments': iconUsers,
       'customers-merge': iconUsers,
       'wallet-balances': iconWallet,
@@ -1915,7 +2317,6 @@ export class AdminDashboardController {
       'loyalty-voucher-push-rules': iconLoyalty,
       'vouchers-list': iconVoucher,
       'vouchers-templates': iconVoucher,
-      'vouchers-create': iconVoucher,
       'vouchers-assigned': iconVoucher,
       'vouchers-redemption': iconVoucher,
       'campaigns-segments': iconUsers,
@@ -1928,10 +2329,9 @@ export class AdminDashboardController {
       'data-templates': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><line x1="7" y1="10" x2="17" y2="10"/>',
       'data-import-history': iconAudit,
       'reports-customers': iconUsers,
+      'reports-sales': '<path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/>',
       'reports-vouchers': iconVoucher,
-      'reports-wallet': iconWallet,
       'reports-loyalty': iconLoyalty,
-      'reports-admin-activity': '<path d="M3 3v18h18"/><polyline points="7 14 11 10 14 13 19 8"/>',
       'settings-roles': iconUsers,
       'settings-master-data': iconAudit,
       'settings-notifications': iconAudit,
@@ -1943,8 +2343,9 @@ export class AdminDashboardController {
     const viewTitles = {
       'dashboard-overview': 'Dashboard · Overview',
       'dashboard-activity': 'Dashboard · Activity feed',
+      'dashboard-employees': 'Dashboard · Employee management',
       'customers-list': 'Customers · List',
-      'customers-profile': 'Customers · Profile',
+      'customer-orders': 'Customers · Customer orders',
       'customers-segments': 'Customers · Tags / segments',
       'customers-merge': 'Customers · Merge duplicates',
       'wallet-balances': 'Wallet · Balances',
@@ -1957,9 +2358,8 @@ export class AdminDashboardController {
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
       'loyalty-rewards-catalog': 'Loyalty · Rewards catalog',
       'loyalty-voucher-push-rules': 'Loyalty · Voucher push rules',
-      'vouchers-list': 'Vouchers · List',
+      'vouchers-list': 'Loyalty · Voucher definitions',
       'vouchers-templates': 'Vouchers · Templates',
-      'vouchers-create': 'Vouchers · Create',
       'vouchers-assigned': 'Vouchers · Assigned',
       'vouchers-redemption': 'Vouchers · Redemption tracking',
       'campaigns-segments': 'Campaigns · Customer segments',
@@ -1972,10 +2372,9 @@ export class AdminDashboardController {
       'data-templates': 'Data Tools · Template downloads',
       'data-import-history': 'Data Tools · Import history',
       'reports-customers': 'Reports · Customer reports',
+      'reports-sales': 'Customers · Sales & transactions',
       'reports-vouchers': 'Reports · Voucher reports',
-      'reports-wallet': 'Reports · Wallet reports',
       'reports-loyalty': 'Reports · Loyalty reports',
-      'reports-admin-activity': 'Reports · Admin activity',
       'settings-roles': 'Settings · Roles & permissions',
       'settings-master-data': 'Settings · Master data',
       'settings-notifications': 'Settings · Notification templates',
@@ -1988,6 +2387,8 @@ export class AdminDashboardController {
     let lastVoucherDefinitions = [];
     let lastPushRules = [];
     let lastShopCatalogProducts = [];
+    let lastSalesAnalytics = null;
+    let saChartMetric = 'gmv';
 
     const fmt = (value) => value === null || value === undefined || value === '' ? '-' : value;
     const moneyFromCents = (cents) => {
@@ -2003,6 +2404,330 @@ export class AdminDashboardController {
     };
     let lastDashMarketing = null;
     let lastRpMarketing = null;
+
+    function saIsoDateUtc(d) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const da = String(d.getUTCDate()).padStart(2, '0');
+      return y + '-' + m + '-' + da;
+    }
+
+    function saInitDefaultDates() {
+      const fromEl = document.getElementById('saFrom');
+      const toEl = document.getElementById('saTo');
+      if (!fromEl || !toEl) return;
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 29);
+      fromEl.value = saIsoDateUtc(start);
+      toEl.value = saIsoDateUtc(end);
+    }
+
+    function buildSalesAnalyticsQuery() {
+      const fromStr = document.getElementById('saFrom').value;
+      const toStr = document.getElementById('saTo').value;
+      if (!fromStr || !toStr) return null;
+      const fromIso = fromStr + 'T00:00:00.000Z';
+      const toEnd = new Date(toStr + 'T00:00:00.000Z');
+      toEnd.setUTCDate(toEnd.getUTCDate() + 1);
+      const toIso = toEnd.toISOString();
+      const bucket = document.getElementById('saBucket').value;
+      return (
+        'from=' +
+        encodeURIComponent(fromIso) +
+        '&to=' +
+        encodeURIComponent(toIso) +
+        '&bucket=' +
+        encodeURIComponent(bucket)
+      );
+    }
+
+    function saSetKpiActive(metric) {
+      document.querySelectorAll('#saKpiStrip .sa-kpi-card').forEach(function (el) {
+        el.classList.toggle('is-active', el.getAttribute('data-sa-metric') === metric);
+      });
+    }
+
+    function saChartMetricLabel(metric) {
+      const map = {
+        gmv: 'Gross merchandise value',
+        orders: 'Completed orders by period',
+        aov: 'Average basket by period',
+        wallet: 'Stored wallet spend (range total)',
+        points: 'Loyalty points redeemed (range total)',
+      };
+      return map[metric] || map.gmv;
+    }
+
+    function paintSalesSeriesTable(series) {
+      const tb = document.getElementById('saSeriesBody');
+      if (!tb) return;
+      const arr = series || [];
+      tb.innerHTML = arr.length
+        ? arr
+            .map(function (s) {
+              const g = Number(s.gmvCents) || 0;
+              const n = Number(s.orderCount) || 0;
+              const aov = n ? Math.round(g / n) : 0;
+              const d = String(s.periodStart || '').slice(0, 10);
+              return (
+                '<tr><td>' +
+                fmt(d) +
+                '</td><td>' +
+                moneyFromCents(g) +
+                '</td><td>' +
+                fmt(n) +
+                '</td><td>' +
+                moneyFromCents(aov) +
+                '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="4">No rows in this range.</td></tr>';
+    }
+
+    function paintSalesChart() {
+      const wrap = document.getElementById('saLineChart');
+      const titleEl = document.getElementById('saChartTitleLabel');
+      if (!wrap) return;
+      const styleEl = document.getElementById('saChartStyle');
+      const chartStyle = styleEl && styleEl.value === 'line' ? 'line' : 'area';
+      const arr = (lastSalesAnalytics && lastSalesAnalytics.series) || [];
+      if (titleEl) titleEl.textContent = saChartMetricLabel(saChartMetric);
+
+      if (saChartMetric === 'wallet' || saChartMetric === 'points') {
+        wrap.innerHTML =
+          '<div class="muted-hint" style="margin:0;padding:72px 20px;text-align:center;line-height:1.55;max-width:420px;margin-left:auto;margin-right:auto">' +
+          'This metric is only available as a <strong>range total</strong> on the card above. The chart shows order trends; pick <strong>GMV</strong>, <strong>Orders</strong>, or <strong>Avg order value</strong> to plot by period.</div>';
+        return;
+      }
+
+      const valueAt = function (s) {
+        const g = Number(s.gmvCents) || 0;
+        const n = Number(s.orderCount) || 0;
+        if (saChartMetric === 'orders') return n;
+        if (saChartMetric === 'aov') return n ? g / n : 0;
+        return g;
+      };
+      const fmtY = function (v) {
+        if (saChartMetric === 'orders') return String(Math.round(v));
+        return moneyFromCents(Math.round(v));
+      };
+
+      if (!arr.length) {
+        wrap.innerHTML =
+          '<p class="muted-hint" style="margin:0;padding:48px 16px;text-align:center">No completed orders in this range.</p>';
+        return;
+      }
+
+      const W = 880;
+      const H = 260;
+      const padL = 58;
+      const padR = 20;
+      const padT = 16;
+      const padB = 44;
+      const iw = W - padL - padR;
+      const ih = H - padT - padB;
+      const vals = arr.map(valueAt);
+      const maxV = Math.max(1, ...vals) * 1.06;
+      const n = arr.length;
+      const xAt = function (i) {
+        return padL + (n <= 1 ? iw / 2 : (iw * i) / (n - 1));
+      };
+      const yAt = function (v) {
+        return padT + ih * (1 - v / maxV);
+      };
+
+      let pathD = '';
+      arr.forEach(function (s, i) {
+        const vx = valueAt(s);
+        const x = xAt(i);
+        const y = yAt(vx);
+        pathD += (i === 0 ? 'M ' : ' L ') + x.toFixed(1) + ' ' + y.toFixed(1);
+      });
+
+      let areaD = '';
+      if (chartStyle === 'area' && n > 0) {
+        const yb = padT + ih;
+        areaD = 'M ' + xAt(0).toFixed(1) + ' ' + yb.toFixed(1);
+        arr.forEach(function (s, i) {
+          areaD += ' L ' + xAt(i).toFixed(1) + ' ' + yAt(valueAt(s)).toFixed(1);
+        });
+        areaD += ' L ' + xAt(n - 1).toFixed(1) + ' ' + yb.toFixed(1) + ' Z';
+      }
+
+      const yTicks = 5;
+      let gridAndLabels = '';
+      for (let t = 0; t <= yTicks; t += 1) {
+        const frac = t / yTicks;
+        const val = maxV * (1 - frac);
+        const y = padT + ih * frac;
+        gridAndLabels +=
+          '<line class="sa-chart-grid" x1="' +
+          padL +
+          '" y1="' +
+          y.toFixed(1) +
+          '" x2="' +
+          (W - padR) +
+          '" y2="' +
+          y.toFixed(1) +
+          '" />';
+        gridAndLabels +=
+          '<text class="sa-chart-axis" x="' +
+          (padL - 8) +
+          '" y="' +
+          (y + 4).toFixed(1) +
+          '" text-anchor="end">' +
+          fmtY(val) +
+          '</text>';
+      }
+
+      let xLabels = '';
+      const step = n <= 8 ? 1 : Math.ceil(n / 8);
+      arr.forEach(function (s, i) {
+        if (i % step !== 0 && i !== n - 1) return;
+        const x = xAt(i);
+        const lab = String(s.periodStart || '').slice(5, 10);
+        xLabels +=
+          '<text class="sa-chart-axis" x="' +
+          x.toFixed(1) +
+          '" y="' +
+          (H - 12) +
+          '" text-anchor="middle">' +
+          lab +
+          '</text>';
+      });
+
+      let dots = '';
+      arr.forEach(function (s, i) {
+        const x = xAt(i);
+        const y = yAt(valueAt(s));
+        const tip =
+          (String(s.periodStart || '').slice(0, 10) +
+            ': ' +
+            (saChartMetric === 'orders'
+              ? fmt(valueAt(s)) + ' orders'
+              : saChartMetric === 'aov'
+                ? 'Avg ' + moneyFromCents(Math.round(valueAt(s)))
+                : moneyFromCents(Math.round(valueAt(s))) + ' GMV')) +
+          ' · ' +
+          fmt(s.orderCount) +
+          ' orders';
+        dots +=
+          '<circle class="sa-chart-dot" cx="' +
+          x.toFixed(1) +
+          '" cy="' +
+          y.toFixed(1) +
+          '" r="4"><title>' +
+          tip.replace(/</g, '&lt;') +
+          '</title></circle>';
+      });
+
+      const pathEsc = pathD.replace(/"/g, '&quot;');
+      const areaEsc = areaD.replace(/"/g, '&quot;');
+
+      wrap.innerHTML =
+        '<svg viewBox="0 0 ' +
+        W +
+        ' ' +
+        H +
+        '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart">' +
+        gridAndLabels +
+        (chartStyle === 'area' && areaD ? '<path class="sa-chart-area" d="' + areaEsc + '" />' : '') +
+        '<path class="sa-chart-line" d="' +
+        pathEsc +
+        '" />' +
+        dots +
+        xLabels +
+        '</svg>';
+    }
+
+    function refreshSalesViz() {
+      saSetKpiActive(saChartMetric);
+      paintSalesChart();
+    }
+
+    async function loadSalesAnalytics() {
+      const q = buildSalesAnalyticsQuery();
+      const hint = document.getElementById('saLoadHint');
+      if (!q) {
+        if (hint) hint.textContent = 'Set from and to dates, then Apply.';
+        statusPanel.textContent = 'Set from and to dates for sales analytics.';
+        return;
+      }
+      if (hint) hint.textContent = 'Loading…';
+      try {
+        const data = await api('/admin/reports/sales-analytics?' + q);
+        lastSalesAnalytics = data;
+        const sum = data.summary || {};
+        const noCmp = '—';
+        document.getElementById('saValGmv').textContent = moneyFromCents(sum.totalGmvCents);
+        document.getElementById('saValOrders').textContent = fmt(sum.completedOrders);
+        document.getElementById('saValAov').textContent = moneyFromCents(sum.averageOrderValueCents);
+        document.getElementById('saValWallet').textContent = moneyFromCents(sum.storedWalletSpendCentsInRange);
+        document.getElementById('saValPts').textContent = fmt(sum.loyaltyPointsRedeemedInRange);
+        document.getElementById('saDeltaGmv').textContent = noCmp;
+        document.getElementById('saDeltaOrders').textContent = noCmp;
+        document.getElementById('saDeltaAov').textContent = noCmp;
+        document.getElementById('saDeltaWallet').textContent = noCmp;
+        document.getElementById('saDeltaPts').textContent = noCmp;
+        document.getElementById('saOpen').textContent = fmt(sum.openOrdersPlacedInRange);
+        document.getElementById('saPtsIn').textContent = fmt(sum.loyaltyPointsIssuedInRange);
+        document.getElementById('saWalTop').textContent = moneyFromCents(sum.storedWalletTopUpCentsInRange);
+        document.getElementById('saVIss').textContent = fmt(sum.vouchersIssuedInRange);
+        document.getElementById('saVRed').textContent = fmt(sum.vouchersRedeemedInRange);
+        paintSalesSeriesTable(data.series);
+        refreshSalesViz();
+        const tb = document.getElementById('saTopBody');
+        const rows = (data.topProducts || []).map(function (p) {
+          return (
+            '<tr><td>' +
+            fmt(p.name) +
+            '</td><td><code style="font-size:11px">' +
+            fmt(p.productId) +
+            '</code></td><td>' +
+            fmt(p.qtySold) +
+            '</td><td>' +
+            moneyFromCents(p.revenueCents) +
+            '</td><td>' +
+            fmt(p.orders) +
+            '</td></tr>'
+          );
+        });
+        tb.innerHTML = rows.join('') || '<tr><td colspan="5">No products</td></tr>';
+        const best = document.getElementById('saBestSeller');
+        if (data.bestSeller) {
+          const b = data.bestSeller;
+          best.innerHTML =
+            '<strong>' +
+            fmt(b.name) +
+            '</strong> <span class="muted-hint">(' +
+            fmt(b.productId) +
+            ')</span><br/>Qty sold: ' +
+            fmt(b.qtySold) +
+            ' · Revenue: ' +
+            moneyFromCents(b.revenueCents) +
+            ' · Orders: ' +
+            fmt(b.orders);
+        } else {
+          best.innerHTML = '<span class="muted-hint">No completed order lines in this range.</span>';
+        }
+        if (hint) {
+          hint.textContent =
+            'Loaded · ' +
+            fmt(data.meta?.bucket) +
+            ' bucket · window ' +
+            fmt(data.meta?.from) +
+            ' → ' +
+            fmt(data.meta?.to);
+        }
+        statusPanel.textContent = 'Sales analytics updated.';
+      } catch (e) {
+        if (hint) hint.textContent = e.message || String(e);
+        statusPanel.textContent = e.message || String(e);
+      }
+    }
 
     function paintSpenderPeriod(scope, m, period) {
       const map = {
@@ -2339,7 +3064,7 @@ export class AdminDashboardController {
               ow.textContent = 'No stored orders yet.';
             } else {
               ow.innerHTML =
-                '<table class="data mk-mini-table" style="width:100%"><thead><tr><th>When</th><th>Status</th><th>Total</th><th>Lines</th></tr></thead><tbody>' +
+                '<table class="data mk-mini-table" style="width:100%"><thead><tr><th>Order #</th><th>When</th><th>Status</th><th>Total</th><th>Lines</th></tr></thead><tbody>' +
                 orders
                   .map(function (o) {
                     const linePreview = (o.lines || [])
@@ -2353,6 +3078,8 @@ export class AdminDashboardController {
                       rawSt === 'completed' ? 'Collected' : rawSt === 'placed' ? 'Open' : fmt(o.status);
                     return (
                       '<tr><td>' +
+                      fmt(o.orderNumber) +
+                      '</td><td>' +
                       dateFmt(o.placedAt) +
                       '</td><td>' +
                       statusLabel +
@@ -2589,6 +3316,131 @@ export class AdminDashboardController {
       }
     }
 
+    async function loadCommerceOrders() {
+      const hint = document.getElementById('oqHint');
+      const tbody = document.getElementById('oqBody');
+      if (!tbody) return;
+      if (hint) hint.textContent = 'Loading…';
+      const params = new URLSearchParams();
+      params.set('status', document.getElementById('oqStatus').value);
+      params.set('dateField', document.getElementById('oqDateField').value);
+      const from = document.getElementById('oqFrom').value;
+      const to = document.getElementById('oqTo').value;
+      const pc = document.getElementById('oqProductContains').value.trim();
+      const pid = document.getElementById('oqProductId').value.trim();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      if (pc) params.set('productContains', pc);
+      if (pid) params.set('productId', pid);
+      params.set('sort', document.getElementById('oqSort').value);
+      params.set('limit', document.getElementById('oqLimit').value);
+      try {
+        const data = await api('/admin/commerce/orders?' + params.toString());
+        const orders = data.orders || [];
+        tbody.innerHTML =
+          orders
+            .map(function (o) {
+              var lines = (o.lines || [])
+                .map(function (l) {
+                  return fmt(l.name) + ' ×' + fmt(l.qty);
+                })
+                .slice(0, 3)
+                .join(', ');
+              if ((o.lines || []).length > 3) lines += '…';
+              var st = (o.status || '').toLowerCase();
+              var stLabel =
+                st === 'completed' ? 'Completed' : st === 'placed' ? 'Open' : fmt(o.status);
+              return (
+                '<tr><td>' +
+                fmt(o.orderNumber) +
+                '</td><td>' +
+                stLabel +
+                '</td><td>' +
+                dateFmt(o.placedAt) +
+                '</td><td>' +
+                (o.completedAt ? dateFmt(o.completedAt) : '—') +
+                '</td><td>' +
+                fmt(o.customerDisplayName) +
+                '</td><td>' +
+                fmt(o.customerPhoneMasked) +
+                '</td><td>' +
+                moneyFromCents(o.totalCents) +
+                '</td><td style="max-width:280px;font-size:12px">' +
+                (lines || '—') +
+                '</td></tr>'
+              );
+            })
+            .join('') || '<tr><td colspan="8">No orders match filters.</td></tr>';
+        if (hint) hint.textContent = orders.length + ' row(s).';
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="8">Could not load orders.</td></tr>';
+        if (hint) hint.textContent = e.message || String(e);
+        throw e;
+      }
+    }
+
+    async function loadDailyCommerceReport() {
+      const dce = document.getElementById('dcDate');
+      const tbody = document.getElementById('dcItemsBody');
+      const summary = document.getElementById('dcSummary');
+      const badge = document.getElementById('dcClosedBadge');
+      const closeBtn = document.getElementById('dcCloseBtn');
+      const resEl = document.getElementById('dcResult');
+      if (!dce || !tbody) return;
+      var t0 = new Date();
+      var dateStr =
+        dce.value ||
+        saIsoDateUtc(new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate())));
+      dce.value = dateStr;
+      if (resEl) resEl.textContent = '';
+      tbody.innerHTML = '<tr><td colspan="4">Loading…</td></tr>';
+      try {
+        const data = await api(
+          '/admin/reports/daily-commerce?date=' + encodeURIComponent(dateStr),
+        );
+        const items = data.items || [];
+        tbody.innerHTML =
+          items
+            .map(function (it) {
+              return (
+                '<tr><td>' +
+                fmt(it.name) +
+                '</td><td><code style="font-size:11px">' +
+                fmt(it.productId) +
+                '</code></td><td>' +
+                fmt(it.qtySold) +
+                '</td><td>' +
+                moneyFromCents(it.revenueCents) +
+                '</td></tr>'
+              );
+            })
+            .join('') || '<tr><td colspan="4">No completed sales for this day.</td></tr>';
+        if (summary) {
+          summary.textContent =
+            'Completed orders: ' +
+            fmt(data.completedOrders) +
+            ' · GMV: ' +
+            moneyFromCents(data.totalGmvCents);
+        }
+        if (data.closed) {
+          if (badge)
+            badge.textContent =
+              'Day closed' + (data.closedAt ? ' · ' + dateFmt(data.closedAt) : '') + '.';
+          if (closeBtn) closeBtn.disabled = true;
+        } else {
+          if (badge) badge.textContent = 'Open — not closed for this date.';
+          if (closeBtn) closeBtn.disabled = false;
+        }
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4">Could not load daily report.</td></tr>';
+        if (summary) summary.textContent = '';
+        if (badge) badge.textContent = '';
+        if (closeBtn) closeBtn.disabled = true;
+        if (resEl) resEl.textContent = e.message || String(e);
+        throw e;
+      }
+    }
+
     async function loadVoucherPushRules() {
       const data = await api('/admin/voucher-push-rules');
       lastPushRules = data || [];
@@ -2762,13 +3614,8 @@ export class AdminDashboardController {
       document.getElementById('rpVRedeemed').textContent = fmt(data.overview?.vouchers?.redeemed);
       const rr = data.overview?.vouchers?.redemptionRate;
       document.getElementById('rpVRate').textContent = rr != null ? (Math.round(rr * 10000) / 100) + '%' : '-';
-      document.getElementById('rpWalletOutstanding').textContent = fmt(data.walletSummary?.outstandingLiabilityCents);
-      document.getElementById('rpWalletTopUp').textContent = fmt(data.walletSummary?.lifetimeTopUpCents);
       document.getElementById('rpPtsIssued').textContent = fmt(data.overview?.loyalty?.pointsIssued);
       document.getElementById('rpPtsRedeemed').textContent = fmt(data.overview?.loyalty?.pointsRedeemed);
-      document.getElementById('rpImport30').textContent = fmt(data.last30Days?.importCommits);
-      document.getElementById('rpExport30').textContent = fmt(data.last30Days?.exportRuns);
-      document.getElementById('rpAdjust30').textContent = fmt(data.last30Days?.manualWalletOrLoyaltyAdjustments);
       lastRpMarketing = data.marketing || null;
       paintMarketing(lastRpMarketing, 'mkRp');
       const rpSp = document.getElementById('mkRpSpenderPeriod');
@@ -2791,6 +3638,172 @@ export class AdminDashboardController {
         return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.category) + '</td><td>' + fmt(p.basePriceCents) + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
+    }
+
+    let lastEmployeesList = [];
+
+    function emEscapeAttr(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+
+    function emInitRangeDates() {
+      var t = new Date();
+      var end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      var start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 13);
+      function iso(d) {
+        return d.toISOString().slice(0, 10);
+      }
+      [
+        ['emTeFrom', start],
+        ['emTeTo', end],
+        ['emPayFrom', start],
+        ['emPayTo', end],
+        ['emCalFrom', start],
+        ['emCalTo', end],
+      ].forEach(function (pair) {
+        var el = document.getElementById(pair[0]);
+        if (el && !el.value) el.value = iso(pair[1]);
+      });
+    }
+
+    async function loadEmPayrollSettingsForm() {
+      var s = await api('/admin/employees/payroll-settings');
+      document.getElementById('emStdMin').value = String(s.standardWorkdayMinutes);
+      document.getElementById('emOtBps').value = String(s.overtimeMultiplierBps);
+      document.getElementById('emPhBps').value = String(s.publicHolidayMultiplierBps);
+      document.getElementById('emOffBps').value = String(s.offDayWorkedMultiplierBps);
+      document.getElementById('emPayrollSaveHint').textContent = '';
+    }
+
+    async function loadEmEmployeesTable() {
+      var list = await api('/admin/employees');
+      lastEmployeesList = Array.isArray(list) ? list : [];
+      var body = document.getElementById('emEmpBody');
+      body.innerHTML =
+        lastEmployeesList
+          .map(function (e) {
+            return (
+              '<tr data-em-id="' +
+              fmt(e.id) +
+              '"><td>' +
+              fmt(e.employeeCode) +
+              '</td><td><input type="text" class="em-inp-name" value="' +
+              emEscapeAttr(e.displayName) +
+              '" style="width:140px" maxlength="200"/></td><td><input type="text" class="em-inp-pos" value="' +
+              emEscapeAttr(e.positionTitle) +
+              '" style="width:120px" maxlength="120"/></td><td><input type="number" class="em-inp-rate" min="0" step="1" value="' +
+              Number(e.hourlyRateCents || 0) +
+              '" style="width:90px"/></td><td><input type="number" class="em-inp-comm" min="0" step="1" value="' +
+              Number(e.commissionRateBps || 0) +
+              '" style="width:80px"/></td><td><input type="checkbox" class="em-inp-active" ' +
+              (e.isActive ? 'checked' : '') +
+              ' /></td><td class="td-actions"><button type="button" class="btn-outline em-row-save">Save</button></td></tr>'
+            );
+          })
+          .join('') || '<tr><td colspan="7">No employees yet. Add one above.</td></tr>';
+      var teSel = document.getElementById('emTeEmp');
+      var paySel = document.getElementById('emPayEmp');
+      teSel.innerHTML =
+        '<option value="">All</option>' +
+        lastEmployeesList
+          .map(function (e) {
+            return (
+              '<option value="' +
+              fmt(e.id) +
+              '">' +
+              fmt(e.employeeCode) +
+              ' · ' +
+              fmt(e.displayName) +
+              '</option>'
+            );
+          })
+          .join('');
+      paySel.innerHTML = lastEmployeesList
+        .map(function (e) {
+          return (
+            '<option value="' +
+            fmt(e.id) +
+            '">' +
+            fmt(e.employeeCode) +
+            ' · ' +
+            fmt(e.displayName) +
+            '</option>'
+          );
+        })
+        .join('');
+    }
+
+    async function loadEmTimeEntries() {
+      var from = document.getElementById('emTeFrom').value;
+      var to = document.getElementById('emTeTo').value;
+      var emp = document.getElementById('emTeEmp').value;
+      var q =
+        'from=' +
+        encodeURIComponent(from) +
+        '&to=' +
+        encodeURIComponent(to) +
+        (emp ? '&employeeId=' + encodeURIComponent(emp) : '');
+      var data = await api('/admin/employees/time-entries?' + q);
+      var rows = data.entries || [];
+      document.getElementById('emTeBody').innerHTML =
+        rows
+          .map(function (r) {
+            return (
+              '<tr><td>' +
+              dateFmt(r.clockInAt) +
+              '</td><td>' +
+              (r.clockOutAt ? dateFmt(r.clockOutAt) : '—') +
+              '</td><td>' +
+              fmt(r.minutesWorked) +
+              '</td><td>' +
+              fmt(r.employeeCode) +
+              '</td><td>' +
+              fmt(r.displayName) +
+              '</td><td>' +
+              fmt(r.positionTitle) +
+              '</td></tr>'
+            );
+          })
+          .join('') || '<tr><td colspan="6">No rows</td></tr>';
+    }
+
+    async function loadEmCalendarTable() {
+      var from = document.getElementById('emCalFrom').value;
+      var to = document.getElementById('emCalTo').value;
+      if (!from || !to) return;
+      var data = await api(
+        '/admin/employees/calendar?from=' +
+          encodeURIComponent(from) +
+          '&to=' +
+          encodeURIComponent(to),
+      );
+      var rows = data.days || [];
+      document.getElementById('emCalBody').innerHTML =
+        rows
+          .map(function (d) {
+            return (
+              '<tr><td>' +
+              fmt(d.date) +
+              '</td><td>' +
+              fmt(d.dayType) +
+              '</td><td>' +
+              fmt(d.label) +
+              '</td></tr>'
+            );
+          })
+          .join('') ||
+        '<tr><td colspan="3">No custom days in range (days default to REGULAR).</td></tr>';
+    }
+
+    async function loadEmployeesMgmtPage() {
+      await loadEmPayrollSettingsForm();
+      await loadEmEmployeesTable();
+      emInitRangeDates();
+      await Promise.all([loadEmTimeEntries(), loadEmCalendarTable()]);
     }
 
     async function loadAll() {
@@ -3076,6 +4089,91 @@ export class AdminDashboardController {
     document.getElementById('refreshImportHistoryBtn').addEventListener('click', () => loadImportHistory().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshExportJobsBtn').addEventListener('click', () => loadExportJobs().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshAdminUsersBtn').addEventListener('click', () => loadAdminUsers().catch((e) => { statusPanel.textContent = e.message; }));
+
+    function saBind(id, fn) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', fn);
+    }
+    saBind('saRefreshBtn', () => {
+      loadSalesAnalytics().catch((e) => {
+        statusPanel.textContent = e.message || String(e);
+      });
+    });
+    saBind('saPreset7', () => {
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 6);
+      const fe = document.getElementById('saFrom');
+      const te = document.getElementById('saTo');
+      if (fe) fe.value = saIsoDateUtc(start);
+      if (te) te.value = saIsoDateUtc(end);
+    });
+    saBind('saPreset30', () => {
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 29);
+      const fe = document.getElementById('saFrom');
+      const te = document.getElementById('saTo');
+      if (fe) fe.value = saIsoDateUtc(start);
+      if (te) te.value = saIsoDateUtc(end);
+    });
+    saBind('saPresetMtd', () => {
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
+      const fe = document.getElementById('saFrom');
+      const te = document.getElementById('saTo');
+      if (fe) fe.value = saIsoDateUtc(start);
+      if (te) te.value = saIsoDateUtc(end);
+    });
+    saBind('saExportCsv', () => {
+      const q = buildSalesAnalyticsQuery();
+      if (!q) {
+        statusPanel.textContent = 'Set from and to dates before exporting.';
+        return;
+      }
+      apiDownload('/admin/reports/sales-analytics?' + q + '&format=csv', 'sales-analytics.csv').catch((e) => {
+        statusPanel.textContent = e.message || String(e);
+      });
+    });
+    saBind('saExportJson', () => {
+      if (!lastSalesAnalytics) {
+        statusPanel.textContent = 'Load sales analytics first (open tab and Apply).';
+        return;
+      }
+      const blob = new Blob([JSON.stringify(lastSalesAnalytics, null, 2)], {
+        type: 'application/json',
+      });
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj;
+      a.download = 'sales-analytics.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(obj);
+      statusPanel.textContent = 'JSON export downloaded.';
+    });
+
+    const saKpiStripEl = document.getElementById('saKpiStrip');
+    if (saKpiStripEl) {
+      saKpiStripEl.addEventListener('click', function (e) {
+        const card = e.target.closest('.sa-kpi-card');
+        if (!card) return;
+        const m = card.getAttribute('data-sa-metric');
+        if (!m) return;
+        saChartMetric = m;
+        refreshSalesViz();
+      });
+    }
+    const saChartStyleEl = document.getElementById('saChartStyle');
+    if (saChartStyleEl) {
+      saChartStyleEl.addEventListener('change', function () {
+        refreshSalesViz();
+      });
+    }
     document.querySelectorAll('.template-dl-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.getAttribute('data-kind');
@@ -3087,36 +4185,36 @@ export class AdminDashboardController {
       });
     });
 
-    document.getElementById('profileViewCard').addEventListener('click', (e) => {
-      const b = e.target.closest('.profile-open-edit');
-      if (!b) return;
-      openEditMemberModal(b.getAttribute('data-id'));
+    document.getElementById('oqRefreshBtn').addEventListener('click', () => {
+      loadCommerceOrders().catch((e) => {
+        statusPanel.textContent = e.message || String(e);
+      });
     });
-
-    document.getElementById('profileLoadBtn').addEventListener('click', () => {
-      const id = document.getElementById('profileLookupId').value.trim();
-      if (!id) {
-        statusPanel.textContent = 'Enter a member UUID.';
+    document.getElementById('dcLoadBtn').addEventListener('click', () => {
+      loadDailyCommerceReport().catch((e) => {
+        statusPanel.textContent = e.message || String(e);
+      });
+    });
+    document.getElementById('dcCloseBtn').addEventListener('click', () => {
+      const dce = document.getElementById('dcDate');
+      const out = document.getElementById('dcResult');
+      if (!dce || !dce.value) {
+        statusPanel.textContent = 'Pick a business date first.';
         return;
       }
-      statusPanel.textContent = 'Loading profile…';
-      api('/admin/customers/' + encodeURIComponent(id))
-        .then((c) => {
-          const card = document.getElementById('profileViewCard');
-          card.style.display = 'block';
-          card.innerHTML =
-            '<div style="display:grid;gap:10px;font-size:13px;line-height:1.45">' +
-            '<div><strong>Phone</strong> ' + fmt(c.phoneE164) + '</div>' +
-            '<div><strong>Name</strong> ' + fmt(c.displayName) + '</div>' +
-            '<div><strong>Email</strong> ' + fmt(c.email) + '</div>' +
-            '<div><strong>Status</strong> ' + statusPill(fmt(c.status)) + '</div>' +
-            '<div><strong>Tier</strong> ' + fmt(c.memberTier) + ' · <strong>Source</strong> ' + fmt(c.signupSource) + '</div>' +
-            '<div><strong>Points</strong> ' + fmt(c.wallet?.pointsCached) + '</div>' +
-            '<div><button type="button" class="btn-primary profile-open-edit" data-id="' + c.id + '">Open full editor</button></div>' +
-            '</div>';
-          statusPanel.textContent = 'Profile loaded.';
+      if (out) out.textContent = 'Closing…';
+      apiPost('/admin/reports/daily-commerce/close', { date: dce.value })
+        .then(() => {
+          if (out) out.textContent = 'Day marked closed.';
+          return loadDailyCommerceReport();
         })
-        .catch((e) => { statusPanel.textContent = e.message; });
+        .catch((e) => {
+          if (out) out.textContent = e.message || String(e);
+        });
+    });
+    document.getElementById('toggleVoucherCreateBtn').addEventListener('click', () => {
+      const p = document.getElementById('voucherCreatePanel');
+      if (p) p.classList.toggle('hidden');
     });
 
     document.getElementById('waSubmitBtn').addEventListener('click', () => {
@@ -3405,6 +4503,117 @@ export class AdminDashboardController {
         .catch((e) => { out.textContent = e.message; });
     });
 
+    document.getElementById('emPayrollReloadBtn').addEventListener('click', function () {
+      loadEmPayrollSettingsForm().catch(function (e) { statusPanel.textContent = e.message; });
+    });
+    document.getElementById('emPayrollSaveBtn').addEventListener('click', function () {
+      var h = document.getElementById('emPayrollSaveHint');
+      h.textContent = 'Saving…';
+      apiPatch('/admin/employees/payroll-settings', {
+        standardWorkdayMinutes: parseInt(document.getElementById('emStdMin').value, 10) || 480,
+        overtimeMultiplierBps: parseInt(document.getElementById('emOtBps').value, 10) || 0,
+        publicHolidayMultiplierBps: parseInt(document.getElementById('emPhBps').value, 10) || 0,
+        offDayWorkedMultiplierBps: parseInt(document.getElementById('emOffBps').value, 10) || 0,
+      })
+        .then(function () {
+          h.textContent = 'Saved.';
+        })
+        .catch(function (e) { h.textContent = e.message; });
+    });
+    document.getElementById('emEmpReloadBtn').addEventListener('click', function () {
+      loadEmEmployeesTable().catch(function (e) { statusPanel.textContent = e.message; });
+    });
+    document.getElementById('emEmpCreateBtn').addEventListener('click', function () {
+      var hint = document.getElementById('emEmpCreateHint');
+      hint.textContent = '';
+      var code = document.getElementById('emNewCode').value.trim();
+      var name = document.getElementById('emNewName').value.trim();
+      if (!code || !name) {
+        hint.textContent = 'Employee ID and display name required.';
+        return;
+      }
+      apiPost('/admin/employees', {
+        employeeCode: code,
+        displayName: name,
+        positionTitle: document.getElementById('emNewPos').value.trim(),
+        hourlyRateCents: parseInt(document.getElementById('emNewRate').value, 10) || 0,
+        commissionRateBps: parseInt(document.getElementById('emNewComm').value, 10) || 0,
+      })
+        .then(function () {
+          hint.textContent = 'Created.';
+          document.getElementById('emNewCode').value = '';
+          document.getElementById('emNewName').value = '';
+          return loadEmEmployeesTable();
+        })
+        .catch(function (e) { hint.textContent = e.message; });
+    });
+    document.getElementById('emEmpBody').addEventListener('click', function (e) {
+      var btn = e.target.closest('.em-row-save');
+      if (!btn) return;
+      var tr = btn.closest('tr[data-em-id]');
+      if (!tr) return;
+      var id = tr.getAttribute('data-em-id');
+      var body = {
+        displayName: tr.querySelector('.em-inp-name').value.trim(),
+        positionTitle: tr.querySelector('.em-inp-pos').value.trim(),
+        hourlyRateCents: parseInt(tr.querySelector('.em-inp-rate').value, 10) || 0,
+        commissionRateBps: parseInt(tr.querySelector('.em-inp-comm').value, 10) || 0,
+        isActive: tr.querySelector('.em-inp-active').checked,
+      };
+      apiPatch('/admin/employees/' + encodeURIComponent(id), body)
+        .then(function () {
+          statusPanel.textContent = 'Employee row saved.';
+          return loadEmEmployeesTable();
+        })
+        .catch(function (err) { statusPanel.textContent = err.message; });
+    });
+    document.getElementById('emCalLoadBtn').addEventListener('click', function () {
+      loadEmCalendarTable().catch(function (e) { statusPanel.textContent = e.message; });
+    });
+    document.getElementById('emCalSaveBtn').addEventListener('click', function () {
+      var h = document.getElementById('emCalHint');
+      var day = document.getElementById('emCalDay').value;
+      var type = document.getElementById('emCalType').value;
+      var label = document.getElementById('emCalLabel').value.trim();
+      if (!day) {
+        h.textContent = 'Pick a date.';
+        return;
+      }
+      h.textContent = 'Saving…';
+      apiPost('/admin/employees/calendar', {
+        days: [{ date: day, dayType: type, label: label || undefined }],
+      })
+        .then(function () {
+          h.textContent = 'Saved.';
+          return loadEmCalendarTable();
+        })
+        .catch(function (e) { h.textContent = e.message; });
+    });
+    document.getElementById('emTeReloadBtn').addEventListener('click', function () {
+      loadEmTimeEntries().catch(function (e) { statusPanel.textContent = e.message; });
+    });
+    document.getElementById('emPayCalcBtn').addEventListener('click', function () {
+      var id = document.getElementById('emPayEmp').value;
+      var from = document.getElementById('emPayFrom').value;
+      var to = document.getElementById('emPayTo').value;
+      var out = document.getElementById('emPayrollOut');
+      if (!id || !from || !to) {
+        out.textContent = 'Select employee and date range.';
+        return;
+      }
+      out.textContent = 'Calculating…';
+      apiPost('/admin/employees/payroll-preview', {
+        employeeId: id,
+        from: from,
+        to: to,
+        manualCommissionCents: parseInt(document.getElementById('emPayManual').value, 10) || 0,
+      })
+        .then(function (r) {
+          out.textContent = JSON.stringify(r, null, 2);
+        })
+        .catch(function (e) { out.textContent = e.message; });
+    });
+
     function wireNav() {
       navButtons().forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -3412,6 +4621,38 @@ export class AdminDashboardController {
           navButtons().forEach((b) => b.classList.remove('active'));
           btn.classList.add('active');
           setMainView(view);
+          if (view === 'reports-sales' && isConnected) {
+            const fe = document.getElementById('saFrom');
+            if (fe && !fe.value) saInitDefaultDates();
+            const dce = document.getElementById('dcDate');
+            if (dce && !dce.value) {
+              const t = new Date();
+              dce.value = saIsoDateUtc(
+                new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())),
+              );
+            }
+            loadSalesAnalytics().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+            loadDailyCommerceReport().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'customers-list' && isConnected) {
+            loadCustomers().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'customer-orders' && isConnected) {
+            loadCommerceOrders().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'dashboard-employees' && isConnected) {
+            loadEmployeesMgmtPage().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
         });
       });
     }

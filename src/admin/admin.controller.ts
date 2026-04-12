@@ -20,6 +20,7 @@ import { ApprovalsService } from './approvals.service';
 import { AdminService } from './admin.service';
 import { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
+import { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
 import { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
 import { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
@@ -44,6 +45,12 @@ export class AdminController {
     private readonly approvals: ApprovalsService,
     private readonly shopCatalog: ShopCatalogService,
   ) {}
+
+  @Get('commerce/orders')
+  @RequirePermissions(P.CUSTOMER_READ)
+  listCommerceOrders(@Query() query: AdminListOrdersQueryDto) {
+    return this.admin.listCommerceOrders(query);
+  }
 
   @Get('customers')
   @RequirePermissions(P.CUSTOMER_READ)

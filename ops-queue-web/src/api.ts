@@ -12,6 +12,7 @@ export type QueueOrderLine = {
 
 export type QueueOrderSummary = {
   id: string;
+  orderNumber: number;
   placedAt: string;
   completedAt: string | null;
   totalCents: number;
@@ -30,6 +31,7 @@ export type QueueOrdersResponse = {
 
 export type QueueOrderDetail = {
   id: string;
+  orderNumber: number;
   placedAt: string;
   completedAt: string | null;
   totalCents: number;
@@ -95,15 +97,73 @@ export async function fetchQueueOrderDetail(
 
 export async function completeQueueOrder(
   apiKey: string,
-  orderId: string,
+  orderToken: string,
   baseUrl: string = defaultBase,
-): Promise<void> {
-  const res = await fetch(
-    `${baseUrl.replace(/\/$/, '')}/ops/queue/orders/${encodeURIComponent(orderId)}/complete`,
-    { method: 'PATCH', headers: { 'x-ops-api-key': apiKey } },
-  );
+): Promise<{ orderNumber: number }> {
+  const apiRoot = baseUrl.replace(/\/$/, '');
+  const isNum = orderToken.startsWith('NUM:');
+  const path = isNum
+    ? `${apiRoot}/ops/queue/orders/by-number/${encodeURIComponent(orderToken.slice(4))}/complete`
+    : `${apiRoot}/ops/queue/orders/${encodeURIComponent(orderToken)}/complete`;
+  const res = await fetch(path, {
+    method: 'PATCH',
+    headers: { 'x-ops-api-key': apiKey },
+  });
+  const data = await parseJson<{ message?: string | string[]; orderNumber?: number }>(res);
   if (!res.ok) {
-    const data = await parseJson<{ message?: string | string[] }>(res);
     throw new Error(formatHttpError(res.status, data));
   }
+  return { orderNumber: Number(data.orderNumber) || 0 };
+}
+
+export type TimesheetClockResponse = {
+  ok: boolean;
+  employee?: { id: string; employeeCode: string; displayName: string };
+  entry?: { id: string; clockInAt: string; clockOutAt?: string };
+};
+
+export async function timesheetClockIn(
+  apiKey: string,
+  employeeCode: string,
+  baseUrl: string = defaultBase,
+): Promise<TimesheetClockResponse> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/queue/timesheet/clock-in`,
+    {
+      method: 'POST',
+      headers: {
+        'x-ops-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ employeeCode }),
+    },
+  );
+  const data = await parseJson<TimesheetClockResponse & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    throw new Error(formatHttpError(res.status, data as { message?: string | string[] }));
+  }
+  return data as TimesheetClockResponse;
+}
+
+export async function timesheetClockOut(
+  apiKey: string,
+  employeeCode: string,
+  baseUrl: string = defaultBase,
+): Promise<TimesheetClockResponse> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/queue/timesheet/clock-out`,
+    {
+      method: 'POST',
+      headers: {
+        'x-ops-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ employeeCode }),
+    },
+  );
+  const data = await parseJson<TimesheetClockResponse & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    throw new Error(formatHttpError(res.status, data as { message?: string | string[] }));
+  }
+  return data as TimesheetClockResponse;
 }

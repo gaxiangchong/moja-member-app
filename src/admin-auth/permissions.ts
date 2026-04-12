@@ -30,6 +30,8 @@ export const P = {
   EXPORT_RUN: 'export:run',
   MASTER_MANAGE: 'master:manage',
   REPORT_VIEW: 'report:view',
+  EMPLOYEE_READ: 'employee:read',
+  EMPLOYEE_MANAGE: 'employee:manage',
   AUDIT_READ: 'audit:read',
   AUDIT_EXPORT: 'audit:export',
   ADMIN_MANAGE: 'admin:manage',
@@ -84,6 +86,8 @@ export const ROLE_PERMISSIONS: Record<AdminRoleCode, Set<string>> = {
     P.IMPORT_COMMIT,
     P.EXPORT_RUN,
     P.REPORT_VIEW,
+    P.EMPLOYEE_READ,
+    P.EMPLOYEE_MANAGE,
     P.AUDIT_READ,
     P.AUDIT_EXPORT,
   ),
@@ -96,6 +100,7 @@ export const ROLE_PERMISSIONS: Record<AdminRoleCode, Set<string>> = {
     P.WALLET_REVERSAL_REQUEST,
     P.AUDIT_READ,
     P.REPORT_VIEW,
+    P.EMPLOYEE_READ,
   ),
   [AdminRoleCode.READONLY_ANALYST]: set(
     P.CUSTOMER_READ,
@@ -104,6 +109,7 @@ export const ROLE_PERMISSIONS: Record<AdminRoleCode, Set<string>> = {
     P.LOYALTY_READ,
     P.VOUCHER_READ,
     P.REPORT_VIEW,
+    P.EMPLOYEE_READ,
     P.AUDIT_READ,
     P.EXPORT_RUN,
     P.AUDIT_EXPORT,
@@ -115,6 +121,8 @@ export const ROLE_PERMISSIONS: Record<AdminRoleCode, Set<string>> = {
     P.LOYALTY_READ,
     P.VOUCHER_READ,
     P.REPORT_VIEW,
+    P.EMPLOYEE_READ,
+    P.EMPLOYEE_MANAGE,
   ),
 };
 

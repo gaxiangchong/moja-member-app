@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
+import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
 import type { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
 import type { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
@@ -30,6 +31,10 @@ import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition
 import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
+import type {
+  SalesAnalyticsQueryDto,
+  SalesAnalyticsResult,
+} from './dto/sales-analytics-query.dto';
 import type { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
 import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
 
@@ -1288,6 +1293,476 @@ export class AdminService {
           orders: Number(p.order_count),
         })),
       },
+    };
+  }
+
+  async getSalesAnalytics(query: SalesAnalyticsQueryDto): Promise<SalesAnalyticsResult> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from and to must be valid ISO dates',
+      });
+    }
+    if (from.getTime() >= to.getTime()) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from must be before to',
+      });
+    }
+    const maxMs = 800 * 86400000;
+    if (to.getTime() - from.getTime() > maxMs) {
+      throw new BadRequestException({
+        code: 'RANGE_TOO_LARGE',
+        message: 'Date range cannot exceed 800 days',
+      });
+    }
+
+    const bucket = query.bucket ?? 'day';
+
+    const bucketSeries = () => {
+      if (bucket === 'week') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('week', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(o.total_cents)::bigint AS gmv_cents
+          FROM customer_orders o
+          WHERE o.status = 'completed'
+            AND COALESCE(o.completed_at, o.placed_at) >= ${from}
+            AND COALESCE(o.completed_at, o.placed_at) < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      if (bucket === 'month') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('month', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(o.total_cents)::bigint AS gmv_cents
+          FROM customer_orders o
+          WHERE o.status = 'completed'
+            AND COALESCE(o.completed_at, o.placed_at) >= ${from}
+            AND COALESCE(o.completed_at, o.placed_at) < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      return this.prisma.$queryRaw<
+        { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+      >`
+        SELECT date_trunc('day', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS order_count,
+               SUM(o.total_cents)::bigint AS gmv_cents
+        FROM customer_orders o
+        WHERE o.status = 'completed'
+          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
+          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `;
+    };
+
+    const [
+      seriesRows,
+      topProducts,
+      completedRow,
+      openPlaced,
+      loyaltyNeg,
+      loyaltyPos,
+      walletSpend,
+      walletTopUp,
+      vouchersRedeemed,
+      vouchersIssued,
+    ] = await Promise.all([
+      bucketSeries(),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          revenue_cents: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT l.product_id AS product_id,
+               MAX(l.name) AS name,
+               SUM(l.qty)::bigint AS qty_sold,
+               SUM(l.unit_price_cents * l.qty)::bigint AS revenue_cents,
+               COUNT(DISTINCT o.id)::bigint AS order_count
+        FROM customer_order_lines l
+        INNER JOIN customer_orders o ON o.id = l.order_id
+        WHERE o.status = 'completed'
+          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
+          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+        GROUP BY l.product_id
+        ORDER BY qty_sold DESC
+        LIMIT 25
+      `,
+      this.prisma.$queryRaw<{ cnt: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+        FROM customer_orders o
+        WHERE o.status = 'completed'
+          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
+          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+      `,
+      this.prisma.customerOrder.count({
+        where: {
+          status: { not: 'completed' },
+          placedAt: { gte: from, lt: to },
+        },
+      }),
+      this.prisma.loyaltyLedgerEntry.aggregate({
+        where: {
+          deltaPoints: { lt: 0 },
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { deltaPoints: true },
+      }),
+      this.prisma.loyaltyLedgerEntry.aggregate({
+        where: {
+          deltaPoints: { gt: 0 },
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { deltaPoints: true },
+      }),
+      this.prisma.storedWalletLedgerEntry.aggregate({
+        where: {
+          type: WalletTxnType.SPEND,
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { amountCents: true },
+      }),
+      this.prisma.storedWalletLedgerEntry.aggregate({
+        where: {
+          type: WalletTxnType.TOPUP,
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { amountCents: true },
+      }),
+      this.prisma.customerVoucher.count({
+        where: {
+          status: VoucherStatus.REDEEMED,
+          redeemedAt: { gte: from, lt: to },
+        },
+      }),
+      this.prisma.customerVoucher.count({
+        where: {
+          issuedAt: { gte: from, lt: to },
+        },
+      }),
+    ]);
+
+    const completedCount = Number(completedRow[0]?.cnt ?? 0n);
+    const totalGmv = Number(completedRow[0]?.gmv ?? 0n);
+    const pointsRedeemedPeriod = Math.abs(loyaltyNeg._sum.deltaPoints ?? 0);
+    const pointsIssuedPeriod = loyaltyPos._sum.deltaPoints ?? 0;
+    const walletSpendSum = walletSpend._sum.amountCents ?? 0;
+    const walletSpendCents = Math.abs(walletSpendSum);
+    const walletTopUpPeriod = walletTopUp._sum.amountCents ?? 0;
+
+    const series = seriesRows.map((r) => ({
+      periodStart: r.period_start.toISOString(),
+      orderCount: Number(r.order_count),
+      gmvCents: Number(r.gmv_cents),
+    }));
+
+    const top = topProducts.map((p) => ({
+      productId: p.product_id,
+      name: p.name,
+      qtySold: Number(p.qty_sold),
+      revenueCents: Number(p.revenue_cents),
+      orders: Number(p.order_count),
+    }));
+
+    const bestSeller = top[0] ?? null;
+
+    return {
+      meta: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        bucket,
+        generatedAt: now.toISOString(),
+      },
+      series,
+      topProducts: top,
+      bestSeller,
+      summary: {
+        completedOrders: completedCount,
+        totalGmvCents: totalGmv,
+        averageOrderValueCents:
+          completedCount > 0 ? Math.round(totalGmv / completedCount) : 0,
+        openOrdersPlacedInRange: openPlaced,
+        loyaltyPointsIssuedInRange: pointsIssuedPeriod,
+        loyaltyPointsRedeemedInRange: pointsRedeemedPeriod,
+        storedWalletSpendCentsInRange: walletSpendCents,
+        storedWalletTopUpCentsInRange: walletTopUpPeriod,
+        vouchersIssuedInRange: vouchersIssued,
+        vouchersRedeemedInRange: vouchersRedeemed,
+      },
+    };
+  }
+
+  salesAnalyticsToCsv(payload: SalesAnalyticsResult): string {
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const lines: string[] = [];
+    lines.push('kind,key,value');
+    lines.push(['meta', 'from', payload.meta.from].map(esc).join(','));
+    lines.push(['meta', 'to', payload.meta.to].map(esc).join(','));
+    lines.push(['meta', 'bucket', payload.meta.bucket].map(esc).join(','));
+    lines.push(['meta', 'generatedAt', payload.meta.generatedAt].map(esc).join(','));
+    for (const [k, v] of Object.entries(payload.summary)) {
+      lines.push(['summary', k, v].map(esc).join(','));
+    }
+    lines.push('');
+    lines.push('periodStart,orderCount,gmvCents');
+    for (const row of payload.series) {
+      lines.push(
+        [row.periodStart, row.orderCount, row.gmvCents].map(esc).join(','),
+      );
+    }
+    lines.push('');
+    lines.push('productId,name,qtySold,revenueCents,orders');
+    for (const p of payload.topProducts) {
+      lines.push(
+        [p.productId, p.name, p.qtySold, p.revenueCents, p.orders]
+          .map(esc)
+          .join(','),
+      );
+    }
+    if (payload.bestSeller) {
+      lines.push('');
+      lines.push('bestSellerKey,value');
+      const b = payload.bestSeller;
+      lines.push(['productId', b.productId].map(esc).join(','));
+      lines.push(['name', b.name].map(esc).join(','));
+      lines.push(['qtySold', b.qtySold].map(esc).join(','));
+      lines.push(['revenueCents', b.revenueCents].map(esc).join(','));
+      lines.push(['orders', b.orders].map(esc).join(','));
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  private fulfillmentSummaryStrings(raw: Prisma.JsonValue | null): string[] {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.filter((x): x is string => typeof x === 'string');
+    }
+    return [];
+  }
+
+  private maskOrderPhone(phone: string | null | undefined): string {
+    const p = (phone ?? '').trim();
+    if (p.length < 5) return p || '—';
+    return `···${p.slice(-4)}`;
+  }
+
+  async listCommerceOrders(query: AdminListOrdersQueryDto) {
+    const take = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const where: Prisma.CustomerOrderWhereInput = {};
+    const st = query.status ?? 'all';
+    if (st === 'placed') where.status = 'placed';
+    else if (st === 'completed') where.status = 'completed';
+
+    const parseDayStart = (iso: string) =>
+      iso.length >= 10
+        ? new Date(`${iso.slice(0, 10)}T00:00:00.000Z`)
+        : new Date(iso);
+    const parseDayExclusiveEnd = (iso: string) => {
+      const d = parseDayStart(iso);
+      if (iso.length >= 10) {
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      return d;
+    };
+
+    const from = query.from ? parseDayStart(query.from) : undefined;
+    const toEx = query.to ? parseDayExclusiveEnd(query.to) : undefined;
+
+    if (from || toEx) {
+      if (query.dateField === 'completed' && st === 'completed') {
+        where.AND = [
+          { status: 'completed' },
+          {
+            OR: [
+              {
+                completedAt: {
+                  ...(from ? { gte: from } : {}),
+                  ...(toEx ? { lt: toEx } : {}),
+                },
+              },
+              {
+                AND: [
+                  { completedAt: null },
+                  {
+                    placedAt: {
+                      ...(from ? { gte: from } : {}),
+                      ...(toEx ? { lt: toEx } : {}),
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+      } else {
+        where.placedAt = {
+          ...(from ? { gte: from } : {}),
+          ...(toEx ? { lt: toEx } : {}),
+        };
+      }
+    }
+
+    if (query.productId?.trim()) {
+      where.lines = { some: { productId: query.productId.trim() } };
+    } else if (query.productContains?.trim()) {
+      const q = query.productContains.trim();
+      where.lines = {
+        some: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { productId: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      };
+    }
+
+    const sort = query.sort ?? 'placed_desc';
+    let orderBy: Prisma.CustomerOrderOrderByWithRelationInput = {
+      placedAt: 'desc',
+    };
+    if (sort === 'placed_asc') orderBy = { placedAt: 'asc' };
+    else if (sort === 'total_desc') orderBy = { totalCents: 'desc' };
+    else if (sort === 'total_asc') orderBy = { totalCents: 'asc' };
+    else if (sort === 'completed_desc') orderBy = { completedAt: 'desc' };
+    else if (sort === 'completed_asc') orderBy = { completedAt: 'asc' };
+
+    const rows = await this.prisma.customerOrder.findMany({
+      where,
+      orderBy,
+      take,
+      include: {
+        customer: { select: { id: true, phoneE164: true, displayName: true } },
+        lines: { orderBy: { id: 'asc' } },
+      },
+    });
+
+    return {
+      orders: rows.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        placedAt: o.placedAt.toISOString(),
+        completedAt: o.completedAt?.toISOString() ?? null,
+        totalCents: o.totalCents,
+        status: o.status,
+        fulfillmentSummary: this.fulfillmentSummaryStrings(o.fulfillmentSummary),
+        customerDisplayName: o.customer.displayName,
+        customerPhoneMasked: this.maskOrderPhone(o.customer.phoneE164),
+        lineCount: o.lines.length,
+        lines: o.lines.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          name: l.name,
+          variantLabel: l.variantLabel,
+          unitPriceCents: l.unitPriceCents,
+          qty: l.qty,
+        })),
+      })),
+    };
+  }
+
+  async getDailyCommerceReport(dateStr: string) {
+    const day = new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
+    const next = new Date(day);
+    next.setUTCDate(next.getUTCDate() + 1);
+
+    const closed = await this.prisma.dailySalesClose.findUnique({
+      where: { businessDate: day },
+    });
+
+    const items = await this.prisma.$queryRaw<
+      {
+        product_id: string;
+        name: string;
+        qty_sold: bigint;
+        revenue_cents: bigint;
+      }[]
+    >`
+      SELECT l.product_id AS product_id,
+             MAX(l.name) AS name,
+             SUM(l.qty)::bigint AS qty_sold,
+             SUM(l.unit_price_cents * l.qty)::bigint AS revenue_cents
+      FROM customer_order_lines l
+      INNER JOIN customer_orders o ON o.id = l.order_id
+      WHERE o.status = 'completed'
+        AND COALESCE(o.completed_at, o.placed_at) >= ${day}
+        AND COALESCE(o.completed_at, o.placed_at) < ${next}
+      GROUP BY l.product_id
+      ORDER BY qty_sold DESC
+    `;
+
+    const totals = await this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+      SELECT COUNT(*)::bigint AS orders,
+             COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+      FROM customer_orders o
+      WHERE o.status = 'completed'
+        AND COALESCE(o.completed_at, o.placed_at) >= ${day}
+        AND COALESCE(o.completed_at, o.placed_at) < ${next}
+    `;
+
+    return {
+      date: day.toISOString().slice(0, 10),
+      closed: !!closed,
+      closedAt: closed?.closedAt.toISOString() ?? null,
+      completedOrders: Number(totals[0]?.orders ?? 0n),
+      totalGmvCents: Number(totals[0]?.gmv ?? 0n),
+      items: items.map((r) => ({
+        productId: r.product_id,
+        name: r.name,
+        qtySold: Number(r.qty_sold),
+        revenueCents: Number(r.revenue_cents),
+      })),
+    };
+  }
+
+  async closeDailyCommerce(dateStr: string, auth: AdminAuthState) {
+    const day = new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
+    const existing = await this.prisma.dailySalesClose.findUnique({
+      where: { businessDate: day },
+    });
+    if (existing) {
+      return {
+        date: day.toISOString().slice(0, 10),
+        closedAt: existing.closedAt.toISOString(),
+        alreadyClosed: true as const,
+      };
+    }
+    const row = await this.prisma.dailySalesClose.create({
+      data: { businessDate: day },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'commerce.daily_closed',
+      entityType: 'daily_sales_close',
+      entityId: row.id,
+      metadata: { businessDate: day.toISOString().slice(0, 10) } as object,
+    });
+    return {
+      date: day.toISOString().slice(0, 10),
+      closedAt: row.closedAt.toISOString(),
+      alreadyClosed: false as const,
     };
   }
 

@@ -12,6 +12,7 @@ export type OrderLineSnapshot = {
 
 export type PastOrder = {
   id: string;
+  orderNumber?: number;
   placedAt: string;
   completedAt?: string | null;
   status?: string;
@@ -27,6 +28,7 @@ type OrderHistoryState = {
     totalCents: number;
     fulfillmentSummary: string[];
     id?: string;
+    orderNumber?: number;
     placedAt?: string;
     status?: string;
     completedAt?: string | null;
@@ -45,6 +47,7 @@ export const useOrderHistoryStore = create<OrderHistoryState>()(
       addOrder: (input) => {
         const entry: PastOrder = {
           id: input.id ?? newOrderId(),
+          orderNumber: input.orderNumber,
           placedAt: input.placedAt ?? new Date().toISOString(),
           completedAt: input.completedAt ?? null,
           status: input.status ?? 'placed',

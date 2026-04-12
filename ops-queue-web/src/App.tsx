@@ -13,37 +13,8 @@ import {
   type QueueOrderDetail,
   type QueueOrderSummary,
 } from './api';
-import { ScanCollectModal } from './ScanCollectModal';
-
-const STORAGE_KEY = 'moja_ops_api_key';
-const STORAGE_BASE = 'moja_ops_api_base';
-const defaultBase =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3153';
-
-/** localStorage is shared across tabs on the same origin — required for detail windows. */
-function readStoredKey(): string {
-  try {
-    return (
-      localStorage.getItem(STORAGE_KEY)?.trim() ||
-      (import.meta.env.VITE_OPS_API_KEY as string | undefined)?.trim() ||
-      ''
-    );
-  } catch {
-    return (import.meta.env.VITE_OPS_API_KEY as string | undefined)?.trim() || '';
-  }
-}
-
-function readStoredBase(): string {
-  try {
-    return (
-      localStorage.getItem(STORAGE_BASE)?.trim() ||
-      (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ||
-      defaultBase
-    );
-  } catch {
-    return (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || defaultBase;
-  }
-}
+import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
+import { formatOrderPickupLabel } from './orderRef';
 
 /** Self pickup lines from ShopFlow: `Date: yyyy-mm-dd`, `Time: hh:mm`. */
 function pickupCalendarDay(summary: string[]): string | null {
@@ -147,6 +118,25 @@ function shopCalendarYmd(now: Date = new Date()): string {
   return `${y}-${mo}-${d}`;
 }
 
+/** yyyy-mm-dd in shop TZ for an instant (e.g. when the order was collected). */
+function shopDateFromIso(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const tz = shopTimeZone();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const mo = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  if (!y || !mo || !day) return iso.slice(0, 10);
+  return `${y}-${mo}-${day}`;
+}
+
 function filterPendingTodayShop(
   list: QueueOrderSummary[],
   todayOnly: boolean,
@@ -193,11 +183,14 @@ function placedLabel(iso: string): string {
   });
 }
 
-function shortOrderId(id: string): string {
-  return id.replace(/-/g, '').slice(0, 8).toUpperCase();
-}
-
-function OrderDetailView({ orderId }: { orderId: string }) {
+function OrderDetailView({
+  orderId,
+  onDismiss,
+}: {
+  orderId: string;
+  /** When set (e.g. in-app modal), replaces window.close(). */
+  onDismiss?: () => void;
+}) {
   const [apiKey, setApiKey] = useState(() => readStoredKey());
   const [apiBase, setApiBase] = useState(() => readStoredBase());
   const [unlockKey, setUnlockKey] = useState('');
@@ -220,6 +213,8 @@ function OrderDetailView({ orderId }: { orderId: string }) {
     load();
   }, [load]);
 
+  const detailShellClass = `detailShell${onDismiss ? ' detailShell--embedded' : ''}`;
+
   const onUnlock = (e: FormEvent) => {
     e.preventDefault();
     const k = unlockKey.trim();
@@ -237,7 +232,7 @@ function OrderDetailView({ orderId }: { orderId: string }) {
 
   if (!apiKey.trim()) {
     return (
-      <div className="connectCard" style={{ marginTop: 24 }}>
+      <div className="connectCard" style={{ marginTop: onDismiss ? 0 : 24 }}>
         <h1>Order detail</h1>
         <p className="muted" style={{ lineHeight: 1.5 }}>
           This window cannot read your ops key (private browsing, or first visit here only). Paste
@@ -264,8 +259,13 @@ function OrderDetailView({ orderId }: { orderId: string }) {
             Unlock &amp; load order
           </button>
         </form>
-        <button type="button" className="ghostBtn" style={{ marginTop: 14 }} onClick={() => window.close()}>
-          Close window
+        <button
+          type="button"
+          className="ghostBtn"
+          style={{ marginTop: 14 }}
+          onClick={() => (onDismiss ? onDismiss() : window.close())}
+        >
+          {onDismiss ? 'Close' : 'Close window'}
         </button>
       </div>
     );
@@ -273,15 +273,15 @@ function OrderDetailView({ orderId }: { orderId: string }) {
 
   if (err) {
     return (
-      <div className="detailShell">
+      <div className={detailShellClass}>
         <p className="err">{err}</p>
         <p className="muted">Check the API key and that this order id exists.</p>
         <div className="btnRow" style={{ marginTop: 12 }}>
           <button type="button" className="btnGhost" onClick={() => load()}>
             Retry
           </button>
-          <button type="button" className="ghostBtn" onClick={() => window.close()}>
-            Close window
+          <button type="button" className="ghostBtn" onClick={() => (onDismiss ? onDismiss() : window.close())}>
+            {onDismiss ? 'Close' : 'Close window'}
           </button>
         </div>
       </div>
@@ -290,24 +290,24 @@ function OrderDetailView({ orderId }: { orderId: string }) {
 
   if (!data) {
     return (
-      <div className="detailShell">
+      <div className={detailShellClass}>
         <p className="muted">Loading order…</p>
       </div>
     );
   }
 
   return (
-    <div className="detailShell">
+    <div className={detailShellClass}>
       <header className="detailHead">
         <div>
-          <h1>Order {shortOrderId(data.id)}</h1>
+          <h1 id="order-detail-title">Order {formatOrderPickupLabel(data.orderNumber)}</h1>
           <p className="muted">
             Placed {placedLabel(data.placedAt)}
             {data.completedAt ? ` · Collected ${placedLabel(data.completedAt)}` : ''} · Status{' '}
             <strong>{data.status === 'completed' ? 'Collected' : data.status}</strong>
           </p>
         </div>
-        <button type="button" className="ghostBtn" onClick={() => window.close()}>
+        <button type="button" className="ghostBtn" onClick={() => (onDismiss ? onDismiss() : window.close())}>
           Close
         </button>
       </header>
@@ -369,11 +369,24 @@ function OrderDetailView({ orderId }: { orderId: string }) {
   );
 }
 
-function openOrderDetailWindow(orderId: string): void {
+function openScanPopup(): void {
   const u = new URL(window.location.href);
-  u.searchParams.set('detail', orderId);
-  // Do not use noopener: detail tab must share same origin localStorage as the queue tab.
-  window.open(u.toString(), '_blank', 'width=800,height=960');
+  u.hash = '#/scan';
+  window.open(
+    u.toString(),
+    'mojaOpsScan',
+    'width=520,height=780,scrollbars=yes,resizable=yes',
+  );
+}
+
+function openTimesheetPopup(): void {
+  const u = new URL(window.location.href);
+  u.hash = '#/timesheet';
+  window.open(
+    u.toString(),
+    'mojaOpsTimesheet',
+    'width=440,height=560,scrollbars=yes,resizable=yes',
+  );
 }
 
 function OrderCard({
@@ -393,7 +406,7 @@ function OrderCard({
     <article className={`orderCard${pulse ? ' orderCard--pulse' : ''}`}>
       <div className="orderCardHead">
         <div>
-          <div className="idline">Order {shortOrderId(order.id)}</div>
+          <div className="idline">Order {formatOrderPickupLabel(order.orderNumber)}</div>
           <div className="when">{placedLabel(order.placedAt)}</div>
         </div>
         <div className="muted" style={{ fontSize: '0.9rem' }}>
@@ -436,7 +449,7 @@ function OrderCard({
         <span className="totalBadge">{formatRm(order.totalCents)}</span>
         <div className="btnRow">
           <button type="button" className="btnGhost" onClick={onOpenDetail}>
-            Open detail (new window)
+            View details
           </button>
           <button type="button" className="btnPrimary" disabled={busy} onClick={onDone}>
             {busy ? 'Saving…' : 'Collected'}
@@ -448,8 +461,7 @@ function OrderCard({
 }
 
 export function App() {
-  const initialDetail = detailIdFromSearch();
-  const [detailId] = useState<string | null>(initialDetail);
+  const [detailModalId, setDetailModalId] = useState<string | null>(() => detailIdFromSearch());
   const [apiKey, setApiKey] = useState(() => readStoredKey());
   const [apiBase, setApiBase] = useState(() => readStoredBase());
   const [connectKey, setConnectKey] = useState(
@@ -464,7 +476,6 @@ export function App() {
   const [dateTo, setDateTo] = useState('');
   const [sortPickup, setSortPickup] = useState<'desc' | 'asc'>('asc');
   const [todayOnly, setTodayOnly] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
   const [pollErr, setPollErr] = useState<string | null>(null);
   const [pollOk, setPollOk] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -484,10 +495,21 @@ export function App() {
   const displayPendingCount =
     pendingSections.expedite.length + pendingSections.scheduled.length;
 
-  const displayHistory = useMemo(() => {
-    const f = filterByPickupCalendarDay(rawHistory, dateFrom, dateTo);
-    return sortByPickupSlot(f, sortPickup);
-  }, [rawHistory, dateFrom, dateTo, sortPickup]);
+  const hasPickupDateFilter = Boolean(dateFrom.trim() || dateTo.trim());
+
+  /** Sidebar: only today’s collected (shop day) unless From/To filters are set — then same pickup-date range as the queue. */
+  const sidebarHistory = useMemo(() => {
+    let list: QueueOrderSummary[];
+    if (!hasPickupDateFilter) {
+      const today = shopCalendarYmd();
+      list = rawHistory.filter(
+        (h) => shopDateFromIso(h.completedAt ?? h.placedAt) === today,
+      );
+    } else {
+      list = filterByPickupCalendarDay(rawHistory, dateFrom, dateTo);
+    }
+    return sortByPickupSlot(list, sortPickup);
+  }, [rawHistory, hasPickupDateFilter, dateFrom, dateTo, sortPickup]);
 
   const saveSession = useCallback((key: string, base: string) => {
     try {
@@ -575,24 +597,15 @@ export function App() {
   const onDone = (id: string) => {
     setCompletingId(id);
     completeQueueOrder(apiKey, id, apiBase.trim() || defaultBase)
-      .then(() => void poll())
+      .then(() => {
+        setDetailModalId((openId) => (openId === id ? null : openId));
+        void poll();
+      })
       .catch((err) => {
         window.alert(err instanceof Error ? err.message : 'Could not mark order collected');
       })
       .finally(() => setCompletingId(null));
   };
-
-  const onScanCollect = useCallback(
-    async (orderId: string) => {
-      await completeQueueOrder(apiKey, orderId, apiBase.trim() || defaultBase);
-      await poll();
-    },
-    [apiKey, apiBase, poll],
-  );
-
-  if (detailId) {
-    return <OrderDetailView orderId={detailId} />;
-  }
 
   if (!apiKey.trim()) {
     return (
@@ -602,7 +615,7 @@ export function App() {
           Enter the same secret configured on the API as <code>OPS_QUEUE_API_KEY</code>. For local
           dev you can also set <code>VITE_OPS_API_KEY</code> in <code>ops-queue-web/.env</code> (same
           value, prefixed with <code>VITE_</code> so Vite exposes it). Key is stored in{' '}
-          <strong>localStorage</strong> so detail windows on this device can load orders.
+          <strong>localStorage</strong> so Scan QR and Timesheet on this browser can use the same key.
         </p>
         <form onSubmit={onConnect}>
           <label htmlFor="base">API base URL</label>
@@ -642,8 +655,11 @@ export function App() {
           </div>
         </div>
         <div className="btnRow">
-          <button type="button" className="btnGhost" onClick={() => setScanOpen(true)}>
+          <button type="button" className="btnGhost" onClick={() => openScanPopup()}>
             Scan QR
+          </button>
+          <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
+            Timesheet
           </button>
           <button type="button" className="btnGhost" onClick={() => void poll()}>
             Refresh now
@@ -653,12 +669,6 @@ export function App() {
           </button>
         </div>
       </header>
-
-      <ScanCollectModal
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onCollect={onScanCollect}
-      />
 
       {pollErr ? (
         <p className="err" style={{ marginBottom: 16 }}>
@@ -721,13 +731,16 @@ export function App() {
           </button>
         </div>
         <p className="queueToolbarHint">
-          Active: {displayPendingCount} of {rawPending.length} · History: {displayHistory.length} of{' '}
-          {rawHistory.length}
+          Active: {displayPendingCount} of {rawPending.length} · Collected sidebar:{' '}
+          {sidebarHistory.length}
+          {!hasPickupDateFilter
+            ? ` (today = ${shopCalendarYmd()} in ${shopTimeZone()} · earlier days: set From/To)`
+            : ` of ${rawHistory.length} loaded · pickup-date range`}
           {todayOnly
-            ? ` (today = ${shopCalendarYmd()} in ${shopTimeZone()}; in-store expedite always included)`
+            ? ` · Queue “Today”: in-store expedite always included`
             : ''}
-          {(dateFrom || dateTo) &&
-            ' · Range filter uses pickup date from the card; delivery-only orders use placed date for the day'}
+          {hasPickupDateFilter &&
+            ' · Range uses pickup date on the card; delivery-only uses placed date for the day'}
         </p>
       </section>
 
@@ -735,23 +748,29 @@ export function App() {
         <aside className="sidePanel">
           <h2>Recent collected</h2>
           <p className="muted" style={{ fontSize: 13, marginTop: -6, marginBottom: 12 }}>
-            Click a row to open full transaction data in a new window.
+            {hasPickupDateFilter
+              ? 'Filtered by pickup From/To. Click a row for details.'
+              : `Today only (${shopCalendarYmd()}, ${shopTimeZone()}). Resets each shop day — set From/To to see earlier collected orders.`}
           </p>
           <div className="historyList">
-            {displayHistory.length === 0 ? (
+            {sidebarHistory.length === 0 ? (
               <p className="muted" style={{ padding: 8 }}>
-                {rawHistory.length === 0 ? 'No collected orders yet.' : 'No rows match this date filter.'}
+                {rawHistory.length === 0
+                  ? 'No collected orders yet.'
+                  : hasPickupDateFilter
+                    ? 'No collected orders match this date range.'
+                    : 'Nothing collected today yet.'}
               </p>
             ) : (
-              displayHistory.map((h) => (
+              sidebarHistory.map((h) => (
                 <button
                   key={h.id}
                   type="button"
                   className="historyRow"
-                  onClick={() => openOrderDetailWindow(h.id)}
+                  onClick={() => setDetailModalId(h.id)}
                 >
                   <strong>
-                    {shortOrderId(h.id)} · {formatRm(h.totalCents)}
+                    {formatOrderPickupLabel(h.orderNumber)} · {formatRm(h.totalCents)}
                   </strong>
                   <div className="meta">
                     {placedLabel(h.placedAt)} · {h.customerPhoneMasked}
@@ -787,7 +806,7 @@ export function App() {
                       pulse={pulseIds.has(o.id)}
                       busy={completingId === o.id}
                       onDone={() => onDone(o.id)}
-                      onOpenDetail={() => openOrderDetailWindow(o.id)}
+                      onOpenDetail={() => setDetailModalId(o.id)}
                     />
                   ))}
                 </>
@@ -802,7 +821,7 @@ export function App() {
                       pulse={pulseIds.has(o.id)}
                       busy={completingId === o.id}
                       onDone={() => onDone(o.id)}
-                      onOpenDetail={() => openOrderDetailWindow(o.id)}
+                      onOpenDetail={() => setDetailModalId(o.id)}
                     />
                   ))}
                 </>
@@ -811,6 +830,24 @@ export function App() {
           )}
         </div>
       </div>
+
+      {detailModalId ? (
+        <div
+          className="detailModalBackdrop"
+          role="presentation"
+          onClick={() => setDetailModalId(null)}
+        >
+          <div
+            className="detailModalPanel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-detail-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <OrderDetailView orderId={detailModalId} onDismiss={() => setDetailModalId(null)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

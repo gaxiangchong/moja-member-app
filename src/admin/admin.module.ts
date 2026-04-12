@@ -9,13 +9,23 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
+import { EmployeesModule } from '../employees/employees.module';
+import { AdminEmployeesController } from './admin-employees.controller';
 
 @Module({
-  imports: [AdminAuthModule, LoyaltyModule, CustomersModule, WalletModule, ShopCatalogModule],
+  imports: [
+    AdminAuthModule,
+    LoyaltyModule,
+    CustomersModule,
+    WalletModule,
+    ShopCatalogModule,
+    EmployeesModule,
+  ],
   controllers: [
     AdminController,
     AdminApprovalsController,
     AdminReportsController,
+    AdminEmployeesController,
   ],
   providers: [AdminService, ApprovalsService],
 })

@@ -52,6 +52,7 @@ export class OpsQueueService {
 
     const mapRow = (o: (typeof pending)[number]) => ({
       id: o.id,
+      orderNumber: o.orderNumber,
       placedAt: o.placedAt.toISOString(),
       completedAt: o.completedAt?.toISOString() ?? null,
       totalCents: o.totalCents,
@@ -94,6 +95,7 @@ export class OpsQueueService {
     }
     return {
       id: o.id,
+      orderNumber: o.orderNumber,
       placedAt: o.placedAt.toISOString(),
       completedAt: o.completedAt?.toISOString() ?? null,
       totalCents: o.totalCents,
@@ -146,5 +148,19 @@ export class OpsQueueService {
         lines: true,
       },
     });
+  }
+
+  async completeOrderByNumber(orderNumber: number) {
+    const row = await this.prisma.customerOrder.findUnique({
+      where: { orderNumber },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found for this order number',
+      });
+    }
+    return this.completeOrder(row.id);
   }
 }

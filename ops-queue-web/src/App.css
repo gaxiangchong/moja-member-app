@@ -81,10 +81,28 @@ body {
   min-width: 150px;
 }
 
+.queueToolbarField.queueToolbarCheck {
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-end;
+  gap: 8px;
+  min-height: 38px;
+  padding-bottom: 2px;
+}
+
+.queueToolbarCheck span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
 .queueToolbarCheck input[type='checkbox'] {
   width: 18px;
   height: 18px;
   margin: 0;
+  flex-shrink: 0;
   cursor: pointer;
   accent-color: var(--accent);
 }
@@ -542,4 +560,73 @@ body {
   font-family: ui-monospace, monospace;
   font-size: 0.9rem;
   word-break: break-all;
+}
+
+.detailModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.detailModalPanel {
+  width: 100%;
+  max-width: 760px;
+  max-height: min(92vh, 920px);
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.detailShell--embedded {
+  padding: 16px 18px 20px;
+}
+
+.scanWindowPage {
+  min-height: 100vh;
+  padding: 12px 16px 24px;
+  box-sizing: border-box;
+}
+
+.scanFlash {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #14532d;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+}
+
+.scanWindowInner {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.scanModal--standalone {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
+
+.scanCameraGate {
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  background: var(--surface2);
+  padding: 16px 14px;
+  margin-bottom: 12px;
+}
+
+.scanCameraGate .btnPrimary {
+  width: 100%;
 }

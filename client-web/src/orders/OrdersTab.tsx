@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toDataURL } from 'qrcode';
 import { fetchMemberOrders, type MemberOrderRow } from '../api';
+import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
 import { useOrderHistoryStore, type PastOrder } from '../shop/store/useOrderHistoryStore';
 import { useShopStore } from '../shop/store/useShopStore';
@@ -8,6 +9,7 @@ import { useShopStore } from '../shop/store/useShopStore';
 function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
   return {
     id: row.id,
+    orderNumber: row.orderNumber,
     placedAt: row.placedAt,
     completedAt: row.completedAt,
     status: row.status,
@@ -24,11 +26,12 @@ function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
   };
 }
 
-function OrderQrBlock({ orderId }: { orderId: string }) {
+function OrderQrBlock({ orderNumber }: { orderNumber: number }) {
+  const payload = `ORDER:${orderNumber}`;
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    toDataURL(orderId, {
+    toDataURL(payload, {
       margin: 1,
       width: 200,
       color: { dark: '#2B2B2B', light: '#ffffff' },
@@ -42,17 +45,17 @@ function OrderQrBlock({ orderId }: { orderId: string }) {
     return () => {
       alive = false;
     };
-  }, [orderId]);
-  const shortRef = orderId.replace(/-/g, '').slice(-8).toUpperCase();
+  }, [payload]);
+  const label = formatOrderPickupLabel(orderNumber);
   return (
     <div className="orderQrBlock">
       {src ? (
-        <img src={src} alt={`Order ${shortRef} QR`} width={200} height={200} className="orderQrImg" />
+        <img src={src} alt={`Order ${label} QR`} width={200} height={200} className="orderQrImg" />
       ) : (
         <p className="caption">Generating QR…</p>
       )}
       <p className="caption" style={{ marginBottom: 0 }}>
-        Order ref · <strong>{shortRef}</strong>
+        Pickup code · <strong>{label}</strong>
       </p>
       <p className="caption" style={{ marginTop: 4, fontSize: 11 }}>
         Show this QR at the counter. Staff scans it to mark collected.
@@ -158,7 +161,13 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
                       <span className="orderHistoryTotal">{formatRm(order.totalCents)}</span>
                     </div>
                   </div>
-                  <OrderQrBlock orderId={order.id} />
+                  {order.orderNumber != null ? (
+                    <OrderQrBlock orderNumber={order.orderNumber} />
+                  ) : (
+                    <p className="caption" style={{ margin: 0 }}>
+                      Order number not on this device yet — tap Refresh.
+                    </p>
+                  )}
                   {order.fulfillmentSummary.length ? (
                     <p className="caption orderHistoryFulfill">{order.fulfillmentSummary.join(' · ')}</p>
                   ) : null}

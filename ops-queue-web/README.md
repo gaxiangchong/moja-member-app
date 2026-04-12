@@ -1,12 +1,12 @@
 # Operations — order queue (customer display)
 
-Single-purpose web app for your **operations / kitchen line**: shows **new member shop orders** as large cards (pickup window, lines, total), **Done** marks them complete, and a **history** list opens **full transaction detail** in a new browser window.
+Single-purpose web app for your **operations / kitchen line**: shows **new member shop orders** as large cards (pickup window, lines, total), **Collected** marks them complete, **history** opens **transaction detail in an in-app panel**, and **Scan QR (new window)** opens a separate popup (same origin / `localStorage`) so staff can scan while the queue stays open.
 
 ## Run (development)
 
 1. On the API server, set **`OPS_QUEUE_API_KEY`** (see repo root `.env.example`) and include this app’s origin in **`CLIENT_WEB_ORIGIN`** (e.g. `http://localhost:5194`).
 2. Apply DB migrations so `customer_orders.completed_at` exists.
-3. **Credentials:** the app saves the key in **`localStorage`** (not `sessionStorage`) so **“Open detail”** tabs on the same browser origin can call the API. Optional: set **`VITE_OPS_API_KEY`** in `ops-queue-web/.env` to the same value as the server key for auto-fill (never commit real secrets).
+3. **Credentials:** the app saves the key in **`localStorage`** (not `sessionStorage`) so the **Scan QR** popup on the same browser origin can call the API. Optional: set **`VITE_OPS_API_KEY`** in `ops-queue-web/.env` to the same value as the server key for auto-fill (never commit real secrets).
 4. Install and start this app:
 
 ```bash
@@ -31,4 +31,4 @@ Open **http://localhost:5194**, paste the API base URL and ops key, then **Conne
 | `GET` | `/ops/queue/orders/:id` | same |
 | `PATCH` | `/ops/queue/orders/:id/complete` | same |
 
-Pending orders have `status = placed`. **Done** sets `status = completed` and `completedAt`.
+Pending orders have `status = placed`. **Collected** sets `status = completed` and `completedAt`.

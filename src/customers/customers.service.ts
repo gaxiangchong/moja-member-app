@@ -284,6 +284,7 @@ export class CustomersService {
     return {
       orders: rows.map((o) => ({
         id: o.id,
+        orderNumber: o.orderNumber,
         placedAt: o.placedAt.toISOString(),
         completedAt: o.completedAt?.toISOString() ?? null,
         totalCents: o.totalCents,
