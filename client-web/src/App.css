@@ -10,15 +10,108 @@
   font-family: Inter, 'Segoe UI', Arial, sans-serif;
 }
 
+/* Login / PIN / OTP: full-bleed hero + glass panel (place image at public/images/login-hero-bg.png) */
+.app--auth {
+  background: #f2efe8;
+}
+
 .authMain {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  overflow: hidden;
+}
+
+.authMain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: #f0ebe4;
+  background-image: url('/images/login-hero-bg.png');
+  background-size: cover;
+  background-position: center 30%;
+  background-repeat: no-repeat;
+}
+
+.authMain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 252, 248, 0.5) 0%,
+    rgba(0, 52, 141, 0.12) 45%,
+    rgba(0, 40, 110, 0.22) 100%
+  );
+}
+
+.authGlass {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  padding: clamp(22px, 5vw, 32px);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.48);
+  backdrop-filter: blur(20px) saturate(1.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 8px 32px rgba(0, 52, 141, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.authGlass .sub,
+.authGlass h1 {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.authGlass .hint {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.authGlass .authCard {
+  width: 100%;
+  max-width: none;
+}
+
+.authGlass .authCardPin {
+  max-width: none;
+  padding: 0;
+}
+
+.authGlass .pinScreenTitle,
+.authGlass .pinScreenCaption {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.authGlass input {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .authGlass {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .authCard {
   width: min(420px, 100%);
+}
+
+.authCardPin {
+  padding: 18px 16px 22px;
+  max-width: min(400px, 100%);
 }
 
 .pmShell {

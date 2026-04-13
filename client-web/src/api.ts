@@ -24,16 +24,49 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
 }
 
-export async function requestOtp(phone: string): Promise<{
+export async function lookupLogin(phone: string): Promise<{
+  registered: boolean;
+  hasPin: boolean;
+}> {
+  const res = await fetch(`${base}/auth/login/lookup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+  const data = await parseJson<{
+    registered?: boolean;
+    hasPin?: boolean;
+    message?: string | string[];
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      typeof data.message === 'string'
+        ? data.message
+        : Array.isArray(data.message)
+          ? data.message.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Request failed (${res.status})`);
+  }
+  return {
+    registered: Boolean(data.registered),
+    hasPin: Boolean(data.hasPin),
+  };
+}
+
+export async function requestOtp(
+  phone: string,
+  purpose?: 'register' | 'recovery',
+): Promise<{
   sent: boolean;
   channel?: string;
+  purpose?: string;
   expiresAt: string;
   _devCode?: string;
 }> {
   const res = await fetch(`${base}/auth/otp/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone, ...(purpose ? { purpose } : {}) }),
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -55,6 +88,7 @@ export async function requestOtp(phone: string): Promise<{
   return data as {
     sent: boolean;
     channel?: string;
+    purpose?: string;
     expiresAt: string;
     _devCode?: string;
   };
@@ -64,7 +98,11 @@ export async function verifyOtp(
   phone: string,
   code: string,
   opts?: { referralCode?: string | null },
-): Promise<{ accessToken: string; customerId: string; status: string }> {
+): Promise<{
+  setupToken: string;
+  setupExpiresInSec: number;
+  purpose: 'register' | 'recovery';
+}> {
   const body: { phone: string; code: string; referralCode?: string } = { phone, code };
   const ref = opts?.referralCode?.trim();
   if (ref) body.referralCode = ref;
@@ -72,6 +110,41 @@ export async function verifyOtp(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    setupToken?: string;
+    setupExpiresInSec?: number;
+    purpose?: string;
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      typeof data.message === 'string'
+        ? data.message
+        : Array.isArray(data.message)
+          ? data.message.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Verify failed (${res.status})`);
+  }
+  if (!data.setupToken) throw new Error('No setup token returned');
+  const purpose =
+    data.purpose === 'recovery' ? 'recovery' : ('register' as const);
+  return {
+    setupToken: data.setupToken,
+    setupExpiresInSec: data.setupExpiresInSec ?? 900,
+    purpose,
+  };
+}
+
+export async function setInitialPin(
+  setupToken: string,
+  pin: string,
+  pinConfirm: string,
+): Promise<{ accessToken: string; customerId: string; status: string }> {
+  const res = await fetch(`${base}/auth/pin/set-initial`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ setupToken, pin, pinConfirm }),
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -86,7 +159,39 @@ export async function verifyOtp(
         : Array.isArray(data.message)
           ? data.message.join(', ')
           : JSON.stringify(data);
-    throw new Error(msg || `Verify failed (${res.status})`);
+    throw new Error(msg || `PIN setup failed (${res.status})`);
+  }
+  if (!data.accessToken) throw new Error('No access token returned');
+  return {
+    accessToken: data.accessToken,
+    customerId: data.customerId!,
+    status: data.status ?? '',
+  };
+}
+
+export async function loginWithPin(
+  phone: string,
+  pin: string,
+): Promise<{ accessToken: string; customerId: string; status: string }> {
+  const res = await fetch(`${base}/auth/pin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, pin }),
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    accessToken?: string;
+    customerId?: string;
+    status?: string;
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      typeof data.message === 'string'
+        ? data.message
+        : Array.isArray(data.message)
+          ? data.message.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Login failed (${res.status})`);
   }
   if (!data.accessToken) throw new Error('No access token returned');
   return {

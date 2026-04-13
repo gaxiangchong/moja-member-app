@@ -1,0 +1,352 @@
+.pinDots {
+  display: flex;
+  gap: clamp(10px, 3vw, 16px);
+  justify-content: center;
+  align-items: center;
+  min-height: 18px;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.pinDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #dce8ff;
+  border: 1px solid #c8d6f0;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.pinDot.filled {
+  background: #00348d;
+  border-color: #00348d;
+  transform: scale(1.05);
+}
+
+.pinKeypad {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 4px 0;
+}
+
+.pinKeyRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.pinKeySpacer {
+  min-height: 1px;
+}
+
+.pinKey {
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 72px;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 1px solid #dde8fb;
+  background: #f0f4fc;
+  font-size: clamp(1.2rem, 4.5vw, 1.45rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #2b2b2b;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition:
+    background 0.15s ease,
+    transform 0.08s ease,
+    box-shadow 0.15s ease;
+  box-shadow: 0 1px 0 rgba(0, 52, 141, 0.06);
+}
+
+.pinKey:hover:not(:disabled) {
+  background: #e8eef8;
+}
+
+.pinKey:active:not(:disabled) {
+  transform: scale(0.96);
+  background: #e0e9f8;
+}
+
+.pinKey:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pinKeyBack {
+  color: #00348d;
+}
+
+.pinKeyBack svg {
+  display: block;
+}
+
+.pinScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.25rem;
+}
+
+.pinScreenTitle {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.15rem, 4vw, 1.35rem);
+  font-weight: 600;
+  color: #2b2b2b;
+  letter-spacing: 0.01em;
+}
+
+.pinScreenCaption {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: #5a6578;
+  line-height: 1.4;
+  max-width: 28ch;
+}
+
+.pinScreenLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  width: 100%;
+}
+
+.pinScreenLinks .textLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.92rem;
+  color: #00348d;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pinScreenLinks .textLink:hover:not(:disabled) {
+  color: #002a70;
+}
+
+.pinScreenLinks .textLink:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pinScreenLinks .textLinkMuted {
+  color: #5a6578;
+  text-decoration: none;
+}
+
+.pinScreenLinks .textLinkMuted:hover:not(:disabled) {
+  color: #00348d;
+  text-decoration: underline;
+}
+
+/* Underlined digit slots (PIN / OTP-style) */
+.pinDigitSlots {
+  display: flex;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 14px);
+  margin: 0.75rem 0 1rem;
+  min-height: 52px;
+}
+
+.pinDigitSlot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: clamp(36px, 11vw, 44px);
+}
+
+.pinDigitChar {
+  font-size: clamp(1.5rem, 5vw, 1.85rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #2b2b2b;
+  line-height: 1.2;
+  min-height: 1.2em;
+}
+
+.pinDigitUnderline {
+  display: block;
+  width: 100%;
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 1px;
+  background: #00348d;
+  opacity: 0.35;
+}
+
+.pinDigitSlot.hasDigit .pinDigitUnderline {
+  opacity: 0.88;
+}
+
+/* Phone-style rectangular keypad */
+.pinKeypadSheet {
+  max-width: none;
+  width: 100%;
+  gap: 8px;
+  padding: 12px 0 0;
+  margin-top: 0.5rem;
+}
+
+.pinKeypadSheet .pinKeyRow {
+  gap: 8px;
+}
+
+.pinKeySheet {
+  aspect-ratio: auto;
+  min-height: 52px;
+  max-width: none;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #d7e3fb;
+  background: rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 4px 8px;
+  box-shadow: 0 1px 0 rgba(0, 52, 141, 0.05);
+}
+
+.pinKeyNum {
+  font-size: clamp(1.35rem, 4.5vw, 1.55rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #2b2b2b;
+  line-height: 1;
+}
+
+.pinKeyLetters {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #5a6578;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pinKeyLettersEmpty {
+  min-height: 0.58rem;
+  display: block;
+}
+
+.pinKeypadSheet .pinKeySheet:hover:not(:disabled) {
+  background: #f8faff;
+}
+
+.pinKeypadSheet .pinKeySheet:active:not(:disabled) {
+  background: #eef3fc;
+}
+
+.pinKeyBackSheet {
+  min-height: 52px;
+}
+
+/* PIN login screen layout (reference: header + body + CTA + keypad) */
+.pinLoginLayout {
+  width: 100%;
+  text-align: left;
+}
+
+.pinLoginHeader {
+  display: flex;
+  align-items: center;
+  margin: -4px 0 12px;
+}
+
+.pinBackBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(215, 227, 251, 0.95);
+  background: rgba(255, 255, 255, 0.55);
+  color: #00348d;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background 0.15s ease,
+    transform 0.08s ease;
+}
+
+.pinBackBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.pinBackBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.pinBackBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pinLoginTitle {
+  margin: 0 0 8px;
+  font-size: clamp(1.35rem, 4.5vw, 1.6rem);
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
+}
+
+.pinLoginSub {
+  margin: 0 0 4px;
+  font-size: 0.94rem;
+  color: #5a6578;
+  line-height: 1.45;
+}
+
+.pinLoginForgot {
+  margin: 0 0 14px;
+  font-size: 0.86rem;
+  color: #5a6578;
+}
+
+.pinLoginForgotBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: #00348d;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pinLoginForgotBtn:hover:not(:disabled) {
+  color: #002a70;
+}
+
+.pinLoginForgotBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pinVerifyBtn {
+  width: 100%;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 1rem;
+  font-weight: 600;
+}

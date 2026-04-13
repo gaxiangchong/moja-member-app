@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   GoneException,
   HttpException,
   HttpStatus,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { CustomerStatus, OtpPurpose } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomInt, randomUUID } from 'crypto';
 import { AuditService } from '../audit/audit.service';
@@ -33,8 +35,25 @@ export class AuthService {
     private readonly metrics: MetricsService,
   ) {}
 
-  async requestOtp(phoneRaw: string, ipAddress?: string | null) {
+  async loginLookup(phoneRaw: string) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: { loginPinHash: true },
+    });
+    return {
+      registered: Boolean(customer),
+      hasPin: Boolean(customer?.loginPinHash),
+    };
+  }
+
+  async requestOtp(
+    phoneRaw: string,
+    ipAddress?: string | null,
+    purposeInput?: 'register' | 'recovery',
+  ) {
+    const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
+    const purpose = await this.resolveOtpRequestPurpose(phoneE164, purposeInput);
 
     const windowMinutes = this.config.get<number>(
       'OTP_REQUEST_WINDOW_MINUTES',
@@ -85,6 +104,7 @@ export class AuthService {
         data: {
           phoneE164,
           otpHash,
+          purpose,
           expiresAt,
         },
       }),
@@ -101,7 +121,11 @@ export class AuthService {
       action: 'otp.requested',
       entityType: 'phone',
       entityId: null,
-      metadata: { phoneE164, ipAddress: ipAddress ?? null },
+      metadata: {
+        phoneE164,
+        ipAddress: ipAddress ?? null,
+        purpose,
+      },
     });
 
     const waConfigured = this.whatsappOtp.isConfigured();
@@ -124,6 +148,7 @@ export class AuthService {
     return {
       sent: true,
       channel,
+      purpose: purpose === OtpPurpose.REGISTER ? 'register' : 'recovery',
       expiresAt: expiresAt.toISOString(),
       ...(returnCode ? { _devCode: code } : {}),
     };
@@ -167,10 +192,47 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
+    const setupExpiresInSec = Math.min(
+      Math.max(this.config.get<number>('PIN_SETUP_JWT_TTL_SEC', 15 * 60), 60),
+      60 * 60,
+    );
+
+    if (challenge.purpose === OtpPurpose.RECOVERY) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { phoneE164 },
+      });
+      if (!customer) {
+        throw new UnauthorizedException({
+          code: 'OTP_INVALID',
+          message: 'Invalid or unknown verification code',
+        });
+      }
+
+      const setupToken = await this.signPinSetupToken(
+        customer.id,
+        customer.phoneE164,
+        setupExpiresInSec,
+      );
+
+      await this.audit.log({
+        actorType: 'customer',
+        actorId: customer.id,
+        action: 'otp.recovery_verified',
+        entityType: 'customer',
+        entityId: customer.id,
+        metadata: { phoneE164 },
+      });
+
+      return {
+        setupToken,
+        setupExpiresInSec,
+        purpose: 'recovery' as const,
+      };
+    }
+
     const customer = await this.customers.ensureCustomerForPhone(phoneE164, {
       referralCode: referralCode?.trim() || undefined,
     });
-    await this.customers.touchLastLogin(customer.id);
 
     await this.audit.log({
       actorType: 'customer',
@@ -181,13 +243,180 @@ export class AuthService {
       metadata: { phoneE164 },
     });
 
+    const setupToken = await this.signPinSetupToken(
+      customer.id,
+      customer.phoneE164,
+      setupExpiresInSec,
+    );
+
+    return {
+      setupToken,
+      setupExpiresInSec,
+      purpose: 'register' as const,
+    };
+  }
+
+  async setPinFromSetup(setupToken: string, pin: string, pinConfirm: string) {
+    if (pin !== pinConfirm) {
+      throw new BadRequestException({
+        code: 'PIN_MISMATCH',
+        message: 'PIN entries do not match.',
+      });
+    }
+    const { customerId } = await this.verifyPinSetupToken(setupToken);
+    const hash = await bcrypt.hash(pin, 12);
+    const customer = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { loginPinHash: hash },
+    });
+    await this.customers.touchLastLogin(customer.id);
+    await this.audit.log({
+      actorType: 'customer',
+      actorId: customer.id,
+      action: 'pin.set',
+      entityType: 'customer',
+      entityId: customer.id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+    return this.issueAccessToken(customer);
+  }
+
+  async loginWithPin(phoneRaw: string, pin: string) {
+    const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+    });
+    if (!customer?.loginPinHash) {
+      throw new UnauthorizedException({
+        code: 'PIN_NOT_SET',
+        message:
+          'No login PIN for this number yet. Continue with WhatsApp verification or Forgot PIN.',
+      });
+    }
+    const match = await bcrypt.compare(pin, customer.loginPinHash);
+    if (!match) {
+      await this.audit.log({
+        actorType: 'customer',
+        actorId: customer.id,
+        action: 'pin.login_failed',
+        entityType: 'customer',
+        entityId: customer.id,
+        metadata: { phoneE164 },
+      });
+      throw new UnauthorizedException({
+        code: 'PIN_INVALID',
+        message: 'Incorrect PIN.',
+      });
+    }
+    await this.customers.touchLastLogin(customer.id);
+    await this.audit.log({
+      actorType: 'customer',
+      actorId: customer.id,
+      action: 'pin.login',
+      entityType: 'customer',
+      entityId: customer.id,
+      metadata: { phoneE164 },
+    });
+    return this.issueAccessToken(customer);
+  }
+
+  private async resolveOtpRequestPurpose(
+    phoneE164: string,
+    purposeInput?: 'register' | 'recovery',
+  ): Promise<OtpPurpose> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: { loginPinHash: true },
+    });
+
+    if (purposeInput === 'register') {
+      if (customer) {
+        throw new BadRequestException({
+          code: 'PHONE_ALREADY_REGISTERED',
+          message:
+            'This number is already registered. Sign in with your PIN or use Forgot PIN.',
+        });
+      }
+      return OtpPurpose.REGISTER;
+    }
+
+    if (purposeInput === 'recovery') {
+      if (!customer) {
+        throw new BadRequestException({
+          code: 'PHONE_NOT_REGISTERED',
+          message: 'No account found for this number.',
+        });
+      }
+      return OtpPurpose.RECOVERY;
+    }
+
+    if (customer?.loginPinHash) {
+      throw new HttpException(
+        {
+          code: 'USE_PIN_LOGIN',
+          message:
+            'This number uses a login PIN. Enter your PIN instead of requesting a WhatsApp code.',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (customer) {
+      return OtpPurpose.RECOVERY;
+    }
+    return OtpPurpose.REGISTER;
+  }
+
+  private async signPinSetupToken(
+    customerId: string,
+    phoneE164: string,
+    expiresInSec: number,
+  ): Promise<string> {
+    return this.jwt.signAsync(
+      { sub: customerId, scope: 'pin_setup' as const, phoneE164 },
+      {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+        expiresIn: expiresInSec,
+      },
+    );
+  }
+
+  private async verifyPinSetupToken(
+    token: string,
+  ): Promise<{ customerId: string }> {
+    let payload: { sub?: unknown; scope?: unknown };
+    try {
+      payload = await this.jwt.verifyAsync(token, {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException({
+        code: 'SETUP_TOKEN_INVALID',
+        message: 'Setup session expired or invalid. Request a new code.',
+      });
+    }
+    if (
+      payload.scope !== 'pin_setup' ||
+      typeof payload.sub !== 'string' ||
+      !payload.sub
+    ) {
+      throw new UnauthorizedException({
+        code: 'SETUP_TOKEN_INVALID',
+        message: 'Setup session expired or invalid. Request a new code.',
+      });
+    }
+    return { customerId: payload.sub };
+  }
+
+  private async issueAccessToken(customer: {
+    id: string;
+    phoneE164: string;
+    status: CustomerStatus;
+  }) {
     const payload: AccessTokenJwtPayload = {
       sub: customer.id,
       phoneE164: customer.phoneE164,
     };
-
     const accessToken = await this.jwt.signAsync(payload);
-
     return {
       accessToken,
       tokenType: 'Bearer' as const,

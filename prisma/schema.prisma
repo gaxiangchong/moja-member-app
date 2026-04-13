@@ -107,6 +107,12 @@ enum CampaignRunStatus {
   FAILED
 }
 
+/// WhatsApp OTP is tied to registration vs PIN recovery / completing PIN setup.
+enum OtpPurpose {
+  REGISTER
+  RECOVERY
+}
+
 // When to auto-issue a voucher (evaluation engine uses rules later).
 enum VoucherPushTriggerType {
   NEWCOMER
@@ -150,6 +156,8 @@ model Customer {
   notes       String?        @map("notes")
   tags        String[]       @default([]) @map("tags")
   lastLoginAt DateTime?      @map("last_login_at")
+  /// bcrypt hash of 6-digit login PIN (set after first OTP; null until then).
+  loginPinHash String?       @map("login_pin_hash")
   /// Shareable code for referral attribution (set on first login / create).
   referralCode          String?   @unique @map("referral_code") @db.VarChar(20)
   referredByCustomerId  String?   @map("referred_by_customer_id") @db.Uuid
@@ -224,6 +232,7 @@ model OtpChallenge {
   id         String    @id @default(uuid()) @db.Uuid
   phoneE164  String    @map("phone_e164")
   otpHash    String    @map("otp_hash")
+  purpose    OtpPurpose @default(REGISTER) @map("purpose")
   expiresAt  DateTime  @map("expires_at")
   usedAt     DateTime? @map("used_at")
   createdAt  DateTime  @default(now()) @map("created_at")

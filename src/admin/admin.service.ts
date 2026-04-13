@@ -377,7 +377,8 @@ export class AdminService {
         message: 'Member not found',
       });
     }
-    return customer;
+    const { loginPinHash: _loginPinHash, ...safe } = customer;
+    return safe;
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {

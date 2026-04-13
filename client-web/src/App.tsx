@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import './App.css';
 import { toDataURL } from 'qrcode';
 import {
@@ -6,7 +6,10 @@ import {
   fetchMe,
   fetchMeRewards,
   getToken,
+  loginWithPin,
+  lookupLogin,
   requestOtp,
+  setInitialPin,
   setToken,
   updateMe,
   verifyOtp,
@@ -15,10 +18,12 @@ import {
 } from './api';
 
 const PENDING_REFERRAL_KEY = 'moja_pending_referral';
+import { PinDigitSlots, PinDots, PinKeypad } from './components/PinKeypad';
 import { OrdersTab } from './orders/OrdersTab';
 import { ShopFlow } from './shop/ShopFlow';
 
-type Step = 'phone' | 'code' | 'member';
+type Step = 'phone' | 'pin' | 'code' | 'setPin' | 'member';
+type OtpFlowPurpose = 'register' | 'recovery';
 type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
@@ -130,7 +135,15 @@ function App() {
   const [step, setStep] = useState<Step>('phone');
   const [tab, setTab] = useState<MemberTab>('home');
   const [phone, setPhone] = useState('');
+  const [loginPin, setLoginPin] = useState('');
   const [code, setCode] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
+  const newPinRef = useRef(newPin);
+  newPinRef.current = newPin;
+  const [setPinPhase, setSetPinPhase] = useState<'first' | 'confirm'>('first');
+  const [setupToken, setSetupToken] = useState('');
+  const [otpFlowPurpose, setOtpFlowPurpose] = useState<OtpFlowPurpose>('register');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
@@ -181,14 +194,8 @@ function App() {
     }
   }, []);
 
-  const handleSendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setHint(null);
-    setLoading(true);
-    try {
-      const res = await requestOtp(phone);
-      setStep('code');
+  const applyOtpResponseHint = useCallback(
+    (res: { channel?: string; _devCode?: string }) => {
       if (res.channel === 'whatsapp') {
         setHint('Check WhatsApp for your verification code.');
       } else if (res.channel === 'mock' && res._devCode) {
@@ -198,6 +205,29 @@ function App() {
       } else {
         setHint('If you did not receive a code, contact support.');
       }
+    },
+    [],
+  );
+
+  const handlePhoneContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const { registered, hasPin } = await lookupLogin(phone);
+      if (registered && hasPin) {
+        setStep('pin');
+        setLoginPin('');
+        return;
+      }
+      const purpose: OtpFlowPurpose =
+        registered && !hasPin ? 'recovery' : 'register';
+      const res = await requestOtp(phone, purpose);
+      setOtpFlowPurpose(purpose);
+      setStep('code');
+      setCode('');
+      applyOtpResponseHint(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -205,25 +235,113 @@ function App() {
     }
   };
 
+  const handleForgotPin = async () => {
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const res = await requestOtp(phone, 'recovery');
+      setOtpFlowPurpose('recovery');
+      setStep('code');
+      setCode('');
+      applyOtpResponseHint(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitPinLoginWith = useCallback(
+    async (pin: string) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const { accessToken } = await loginWithPin(phone, pin);
+        setToken(accessToken);
+        setLoginPin('');
+        await loadMemberData();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Login failed');
+        setLoginPin('');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [phone, loadMemberData],
+  );
+
+  const onLoginPinChange = useCallback(
+    (next: string) => {
+      setLoginPin(next);
+      if (next.length === 6) {
+        void submitPinLoginWith(next);
+      }
+    },
+    [submitPinLoginWith],
+  );
+
+  const handlePinSignInClick = useCallback(() => {
+    if (loginPin.length !== 6) return;
+    void submitPinLoginWith(loginPin);
+  }, [loginPin, submitPinLoginWith]);
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
       const pendingRef = sessionStorage.getItem(PENDING_REFERRAL_KEY)?.trim();
-      const { accessToken } = await verifyOtp(phone, code, {
-        referralCode: pendingRef || undefined,
+      const verified = await verifyOtp(phone, code, {
+        referralCode:
+          otpFlowPurpose === 'register' ? pendingRef || undefined : undefined,
       });
-      if (pendingRef) sessionStorage.removeItem(PENDING_REFERRAL_KEY);
-      setToken(accessToken);
-      await loadMemberData();
+      if (pendingRef && verified.purpose === 'register') {
+        sessionStorage.removeItem(PENDING_REFERRAL_KEY);
+      }
+      setSetupToken(verified.setupToken);
+      setOtpFlowPurpose(verified.purpose);
       setCode('');
+      setNewPin('');
+      setNewPinConfirm('');
+      setSetPinPhase('first');
+      setStep('setPin');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
       setLoading(false);
     }
   };
+
+  const submitSetPinPair = useCallback(
+    async (a: string, b: string) => {
+      setError(null);
+      if (a !== b) {
+        setError('PIN entries do not match.');
+        setNewPinConfirm('');
+        return;
+      }
+      if (!/^\d{6}$/.test(a)) {
+        setError('PIN must be exactly 6 digits.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const { accessToken } = await setInitialPin(setupToken, a, b);
+        setToken(accessToken);
+        setNewPin('');
+        setNewPinConfirm('');
+        setSetupToken('');
+        setSetPinPhase('first');
+        await loadMemberData();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not save PIN');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setupToken, loadMemberData],
+  );
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,7 +394,12 @@ function App() {
     setProfile(null);
     setRewardsData(null);
     setStep('phone');
+    setLoginPin('');
     setCode('');
+    setNewPin('');
+    setNewPinConfirm('');
+    setSetPinPhase('first');
+    setSetupToken('');
     setHint(null);
     setError(null);
     setTab('home');
@@ -369,20 +492,25 @@ function App() {
     };
   }, [profile?.phoneE164]);
 
+  const authMode =
+    step === 'phone' || step === 'pin' || step === 'code' || step === 'setPin';
+
   return (
-    <div className="app">
-      {(step === 'phone' || step === 'code') && (
+    <div className={`app${authMode ? ' app--auth' : ''}`}>
+      {authMode && (
         <main className="authMain">
+          <div className="authGlass">
           {step === 'phone' && (
             <section className="card authCard">
-              <h1>Welcome to Moja Member</h1>
+              <h1>Welcome to Moja Maison Member</h1>
               <p className="sub">
-                Register and login with phone OTP. We send your code to WhatsApp.
+                Enter your phone number to get started.
               </p>
-              <form onSubmit={handleSendCode}>
+              <form onSubmit={handlePhoneContinue}>
                 {sessionStorage.getItem(PENDING_REFERRAL_KEY) ? (
                   <p className="hint" style={{ marginTop: 0 }}>
-                    You opened an invite link — your first sign-up will credit your friend after OTP verification.
+                    You opened an invite link — your first sign-up will credit your friend after you verify and
+                    set your PIN.
                   </p>
                 ) : null}
                 <label htmlFor="phone">Phone number</label>
@@ -399,16 +527,87 @@ function App() {
                 />
                 {error && <p className="err">{error}</p>}
                 <button type="submit" disabled={loading}>
-                  {loading ? 'Sending…' : 'Send WhatsApp OTP'}
+                  {loading ? 'Checking…' : 'Continue'}
                 </button>
               </form>
             </section>
           )}
 
+          {step === 'pin' && (
+            <section className="card authCard authCardPin">
+              <div className="pinLoginLayout">
+                <div className="pinLoginHeader">
+                  <button
+                    type="button"
+                    className="pinBackBtn"
+                    onClick={() => {
+                      setStep('phone');
+                      setLoginPin('');
+                      setError(null);
+                    }}
+                    disabled={loading}
+                    aria-label="Back"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path
+                        d="M15 18l-6-6 6-6"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <h1 className="pinLoginTitle">Enter your PIN</h1>
+                <p className="pinLoginSub">
+                  Enter your 6-digit login PIN.
+                  {phone.trim() ? (
+                    <>
+                      {' '}
+                      <strong style={{ fontWeight: 600, color: '#2b2b2b' }}>{phone.trim()}</strong>
+                    </>
+                  ) : null}
+                </p>
+                <PinDigitSlots value={loginPin} maxLength={6} />
+                {error && <p className="err" style={{ marginTop: '0.25rem' }}>{error}</p>}
+                <p className="pinLoginForgot">
+                  Forgot your PIN?{' '}
+                  <button
+                    type="button"
+                    className="pinLoginForgotBtn"
+                    onClick={() => void handleForgotPin()}
+                    disabled={loading}
+                  >
+                    Login with OTP
+                  </button>
+                </p>
+                <button
+                  type="button"
+                  className="pinVerifyBtn"
+                  onClick={handlePinSignInClick}
+                  disabled={loading || loginPin.length !== 6}
+                >
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </button>
+                <PinKeypad
+                  variant="sheet"
+                  value={loginPin}
+                  onChange={onLoginPinChange}
+                  disabled={loading}
+                />
+              </div>
+            </section>
+          )}
+
           {step === 'code' && (
             <section className="card authCard">
-              <h1>Verify OTP</h1>
-              <p className="sub">Enter the code you received on WhatsApp.</p>
+              <h1>{otpFlowPurpose === 'recovery' ? 'Verify to reset PIN' : 'Verify your number'}</h1>
+              <p className="sub">
+                {otpFlowPurpose === 'recovery'
+                  ? 'Enter the code we sent to WhatsApp to continue.'
+                  : 'Enter the code we sent to WhatsApp to finish registration.'}
+              </p>
               {hint && <p className="hint">{hint}</p>}
               <form onSubmit={handleVerify}>
                 <label htmlFor="code">OTP code</label>
@@ -431,13 +630,13 @@ function App() {
                     type="button"
                     className="ghost"
                     onClick={() => {
-                      setStep('phone');
+                      setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
                       setCode('');
                       setError(null);
                     }}
                     disabled={loading}
                   >
-                    Change number
+                    Back
                   </button>
                   <button type="submit" disabled={loading}>
                     {loading ? 'Verifying…' : 'Verify & Continue'}
@@ -446,6 +645,78 @@ function App() {
               </form>
             </section>
           )}
+
+          {step === 'setPin' && (
+            <section className="card authCard authCardPin">
+              <div className="pinScreen">
+                <h1 className="pinScreenTitle">
+                  {setPinPhase === 'first'
+                    ? otpFlowPurpose === 'recovery'
+                      ? 'Create a new PIN'
+                      : 'Create your login PIN'
+                    : 'Confirm your PIN'}
+                </h1>
+                <p className="pinScreenCaption">
+                  {setPinPhase === 'first'
+                    ? 'Choose six digits. You will use this instead of WhatsApp for most logins.'
+                    : 'Enter the same digits again to confirm.'}
+                </p>
+                <PinDots
+                  length={setPinPhase === 'first' ? newPin.length : newPinConfirm.length}
+                  max={6}
+                />
+                <PinKeypad
+                  value={setPinPhase === 'first' ? newPin : newPinConfirm}
+                  onChange={(next) => {
+                    if (setPinPhase === 'first') {
+                      setNewPin(next);
+                      if (next.length === 6) {
+                        setSetPinPhase('confirm');
+                      }
+                    } else {
+                      setNewPinConfirm(next);
+                      if (next.length === 6) {
+                        void submitSetPinPair(newPinRef.current, next);
+                      }
+                    }
+                  }}
+                  disabled={loading}
+                />
+                {error && <p className="err" style={{ marginTop: '0.5rem' }}>{error}</p>}
+                <div className="pinScreenLinks">
+                  {setPinPhase === 'confirm' ? (
+                    <button
+                      type="button"
+                      className="textLink"
+                      onClick={() => {
+                        setSetPinPhase('first');
+                        setNewPinConfirm('');
+                        setError(null);
+                      }}
+                      disabled={loading}
+                    >
+                      Edit PIN
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="textLink textLinkMuted"
+                    onClick={() => {
+                      setStep('code');
+                      setNewPin('');
+                      setNewPinConfirm('');
+                      setSetPinPhase('first');
+                      setError(null);
+                    }}
+                    disabled={loading}
+                  >
+                    Back to code
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+          </div>
         </main>
       )}
 
