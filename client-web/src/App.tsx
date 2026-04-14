@@ -160,7 +160,6 @@ function App() {
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formBirthday, setFormBirthday] = useState('');
-
   const syncFormFromProfile = useCallback((p: MemberProfile) => {
     setFormName(p.displayName ?? '');
     setFormEmail(p.email ?? '');
@@ -183,6 +182,32 @@ function App() {
       });
     }
   }, [loadMemberData]);
+
+  useEffect(() => {
+    if (step !== 'member') return;
+    try {
+      const u = new URL(window.location.href);
+      const shopPay = u.searchParams.get('shopPayment');
+      const t = u.searchParams.get('tab');
+      if (t === 'account' || t === 'home' || t === 'perks' || t === 'shop' || t === 'orders') {
+        setTab(t);
+      }
+      if (shopPay === 'success') {
+        setHint('Shop payment completed. Your order is confirmed when Xendit sends the capture event.');
+        void loadMemberData();
+      } else if (shopPay === 'failed') {
+        setHint('Shop payment did not complete. Open Shop to try again.');
+      }
+      if (shopPay || t) {
+        u.searchParams.delete('shopPayment');
+        u.searchParams.delete('tab');
+        const qs = u.searchParams.toString();
+        window.history.replaceState({}, '', `${u.pathname}${qs ? `?${qs}` : ''}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [step, loadMemberData]);
 
   useEffect(() => {
     try {
@@ -935,6 +960,19 @@ function App() {
                     <span className="tierBanner-label">Member tier</span>
                     <span className="tierBanner-name">{tierDisplayName}</span>
                   </div>
+                </Card>
+                <Card>
+                  <SectionHeader title="Wallet balance" />
+                  <p className="caption" style={{ marginTop: 0 }}>
+                    Stored wallet credit is shown for reference. Top-ups and payments run through{' '}
+                    <strong>Shop checkout</strong> (Xendit hosted payment page), not from this screen.
+                  </p>
+                  <p style={{ margin: '8px 0 4px', fontSize: 22, fontWeight: 700, color: '#00348d' }}>
+                    {(profile.storedWallet?.currentWalletBalance ?? 0) / 100}
+                  </p>
+                  <p className="caption" style={{ marginTop: 0 }}>
+                    Current balance (major units).
+                  </p>
                 </Card>
                 <Card>
                   <SectionHeader title="Personal Info" />

@@ -13,6 +13,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "xendit-components-web": "^0.0.21",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

@@ -174,6 +174,7 @@ model Customer {
   otpChallenges     OtpChallenge[]
   shopHandoffJtis   ShopHandoffJti[]
   orders            CustomerOrder[]
+  paymentIntents    PaymentIntent[]
 
   @@index([displayName])
   @@index([email])
@@ -181,6 +182,27 @@ model Customer {
   @@index([memberTier])
   @@index([referredByCustomerId])
   @@map("customers")
+}
+
+/// Xendit Payments API v3 — wallet top-up (and future flows). Confirmed via webhook.
+model PaymentIntent {
+  id                       String   @id @default(uuid()) @db.Uuid
+  customerId               String   @map("customer_id") @db.Uuid
+  customer                 Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  referenceId              String   @unique @map("reference_id") @db.VarChar(64)
+  purpose                  String   @db.VarChar(32)
+  amountCents              Int      @map("amount_cents")
+  currency                 String   @db.VarChar(3)
+  country                  String   @db.VarChar(2)
+  status                   String   @default("PENDING") @db.VarChar(32)
+  channelCode              String   @map("channel_code") @db.VarChar(64)
+  xenditPaymentRequestId   String?  @map("xendit_payment_request_id") @db.VarChar(128)
+  metadata                 Json?
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@index([customerId, createdAt])
+  @@map("payment_intents")
 }
 
 model CustomerOrder {

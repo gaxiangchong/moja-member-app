@@ -18,6 +18,7 @@ import { AdminAuthModule } from './admin-auth/admin-auth.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
 import { OpsQueueModule } from './ops-queue/ops-queue.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { OpsQueueModule } from './ops-queue/ops-queue.module';
     MasterDataModule,
     ShopCatalogModule,
     OpsQueueModule,
+    PaymentsModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

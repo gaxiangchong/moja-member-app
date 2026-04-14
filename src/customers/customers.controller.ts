@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -14,7 +15,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
 import { CustomersService } from './customers.service';
 import { UpdateMeDto } from './dto/update-me.dto';
-import { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import { WalletTopUpDto } from './dto/wallet-topup.dto';
 
 @Controller('customers')
@@ -50,11 +50,12 @@ export class CustomersController {
 
   @Post('me/orders')
   @UseGuards(JwtAuthGuard)
-  async submitMyOrder(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: SubmitMemberOrderDto,
-  ) {
-    return this.customers.submitMemberOrder(user.customerId, dto);
+  async submitMyOrder() {
+    throw new BadRequestException({
+      code: 'ORDER_USE_SHOP_CHECKOUT',
+      message:
+        'Orders are placed from Shop checkout. Complete payment on the Xendit page (or test payment in demo mode).',
+    });
   }
 
   @Get('me/wallet')

@@ -303,7 +303,7 @@ export class CustomersService {
     };
   }
 
-  async submitMemberOrder(customerId: string, dto: SubmitMemberOrderDto) {
+  private validateMemberOrderTotals(dto: SubmitMemberOrderDto) {
     const computed = dto.lines.reduce(
       (acc, l) => acc + l.unitPriceCents * l.qty,
       0,
@@ -314,12 +314,19 @@ export class CustomersService {
         message: 'Order total does not match line items',
       });
     }
+  }
+
+  /**
+   * Creates a shop order awaiting payment (Xendit). Does not credit lifetime spend until finalized.
+   */
+  async createPendingMemberOrder(customerId: string, dto: SubmitMemberOrderDto) {
+    this.validateMemberOrderTotals(dto);
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.customerOrder.create({
         data: {
           customerId,
           totalCents: dto.totalCents,
-          status: 'placed',
+          status: 'pending_payment',
           fulfillmentSummary:
             dto.fulfillmentSummary == null
               ? Prisma.JsonNull
@@ -337,12 +344,41 @@ export class CustomersService {
         },
         include: { lines: true },
       });
-      await tx.storedWallet.upsert({
-        where: { customerId },
-        create: { customerId, lifetimeSpentCents: dto.totalCents },
-        update: { lifetimeSpentCents: { increment: dto.totalCents } },
-      });
       return created;
+    });
+  }
+
+  /**
+   * Marks a pending shop order as placed and applies stored-wallet lifetime spend (idempotent).
+   */
+  async finalizeShopOrderAfterPayment(orderId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.customerOrder.findFirst({
+        where: { id: orderId },
+      });
+      if (!order) {
+        throw new NotFoundException({
+          code: 'ORDER_NOT_FOUND',
+          message: 'Order not found',
+        });
+      }
+      if (order.status !== 'pending_payment') {
+        return;
+      }
+      await tx.customerOrder.update({
+        where: { id: orderId },
+        data: { status: 'placed' },
+      });
+      await tx.storedWallet.upsert({
+        where: { customerId: order.customerId },
+        create: {
+          customerId: order.customerId,
+          lifetimeSpentCents: order.totalCents,
+        },
+        update: {
+          lifetimeSpentCents: { increment: order.totalCents },
+        },
+      });
     });
   }
 
@@ -350,6 +386,13 @@ export class CustomersService {
     customerId: string,
     dto: { amountCents: number; channel: 'online' | 'cashier' },
   ) {
+    if (dto.channel === 'online') {
+      throw new BadRequestException({
+        code: 'WALLET_TOPUP_ONLINE_REQUIRES_XENDIT',
+        message:
+          'Online top-up uses Xendit. Sign in and call POST /payments/xendit/wallet-topup, then complete payment in the redirect flow.',
+      });
+    }
     const entry = await this.wallet.appendTransaction({
       customerId,
       type: 'TOPUP',

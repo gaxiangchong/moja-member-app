@@ -201,6 +201,289 @@ export async function loginWithPin(
   };
 }
 
+export async function fetchXenditShopChannels(): Promise<{
+  channels: Array<{ code: string; label: string }>;
+}> {
+  const res = await fetch(`${base}/payments/xendit/shop-channels`);
+  const data = await parseJson<{
+    channels?: Array<{ code: string; label: string }>;
+    message?: string | string[];
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Channels failed (${res.status})`);
+  }
+  return { channels: Array.isArray(data.channels) ? data.channels : [] };
+}
+
+export async function createXenditCardTokenSession(): Promise<{
+  paymentSessionId: string;
+  componentsSdkKey: string;
+  expiresAt: string | null;
+}> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/payments/xendit/card-token-session`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    paymentSessionId?: string;
+    componentsSdkKey?: string;
+    expiresAt?: string | null;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Card token session failed (${res.status})`);
+  }
+  if (!data.paymentSessionId || !data.componentsSdkKey) {
+    throw new Error('Invalid card token session response from server');
+  }
+  return {
+    paymentSessionId: data.paymentSessionId,
+    componentsSdkKey: data.componentsSdkKey,
+    expiresAt:
+      typeof data.expiresAt === 'string' || data.expiresAt === null ? data.expiresAt : null,
+  };
+}
+
+export async function getXenditCardTokenSessionStatus(paymentSessionId: string): Promise<{
+  paymentSessionId: string;
+  status: string;
+  paymentTokenId: string | null;
+}> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(
+    `${base}/payments/xendit/card-token-session/${encodeURIComponent(paymentSessionId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const data = await parseJson<{
+    message?: string | string[];
+    paymentSessionId?: string;
+    status?: string;
+    paymentTokenId?: string | null;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Card token session status failed (${res.status})`);
+  }
+  return {
+    paymentSessionId: data.paymentSessionId ?? paymentSessionId,
+    status: data.status ?? 'UNKNOWN',
+    paymentTokenId: typeof data.paymentTokenId === 'string' ? data.paymentTokenId : null,
+  };
+}
+
+export type ShopOrderCheckoutResult =
+  | {
+      demoMode: true;
+      orderId: string;
+      orderNumber: number;
+      totalCents: number;
+      placedAt: string;
+      status: string;
+    }
+  | {
+      zeroPaid: true;
+      order: {
+        id: string;
+        orderNumber: number;
+        placedAt: string;
+        status: string;
+        totalCents: number;
+      };
+    }
+  | {
+      demoMode: false;
+      zeroPaid: false;
+      orderId: string;
+      orderNumber: number;
+      referenceId: string;
+      paymentRequestId: string | null;
+      status: string;
+      redirectUrl: string | null;
+      channelCode: string;
+      country: string;
+      currency: string;
+      amountCents: number;
+    };
+
+export async function createShopOrderCheckout(payload: {
+  channelCode?: string;
+  paymentTokenId?: string;
+  order: {
+    totalCents: number;
+    lines: SubmitMemberOrderLine[];
+    fulfillmentSummary?: string[] | null;
+  };
+}): Promise<ShopOrderCheckoutResult> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/payments/xendit/shop-order`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ShopOrderCheckoutResult & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Checkout failed (${res.status})`);
+  }
+  return data as ShopOrderCheckoutResult;
+}
+
+export async function completeDemoShopOrder(orderId: string): Promise<{
+  order: {
+    id: string;
+    orderNumber: number;
+    placedAt: string;
+    status: string;
+    totalCents: number;
+    lines: Array<{
+      id: string;
+      productId: string;
+      name: string;
+      variantLabel: string | null;
+      unitPriceCents: number;
+      qty: number;
+      imageUrl: string | null;
+    }>;
+  };
+}> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/payments/demo/complete-shop-order`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ orderId }),
+  });
+  const data = await parseJson<{
+    order?: {
+      id: string;
+      orderNumber: number;
+      placedAt: string;
+      status: string;
+      totalCents: number;
+      lines: Array<{
+        id: string;
+        productId: string;
+        name: string;
+        variantLabel: string | null;
+        unitPriceCents: number;
+        qty: number;
+        imageUrl: string | null;
+      }>;
+    };
+    message?: string | string[];
+  }>(res);
+  if (!res.ok || !data.order) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Demo payment failed (${res.status})`);
+  }
+  return { order: data.order };
+}
+
+export async function createWalletTopUpSession(
+  amountCents: number,
+  channelCode?: string,
+): Promise<{
+  referenceId: string;
+  paymentRequestId: string | null;
+  status: string;
+  redirectUrl: string | null;
+  channelCode: string;
+  country: string;
+  currency: string;
+  amountCents: number;
+}> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(`${base}/payments/xendit/wallet-topup`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amountCents,
+      ...(channelCode ? { channelCode } : {}),
+    }),
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    referenceId?: string;
+    paymentRequestId?: string | null;
+    status?: string;
+    redirectUrl?: string | null;
+    channelCode?: string;
+    country?: string;
+    currency?: string;
+    amountCents?: number;
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      typeof data.message === 'string'
+        ? data.message
+        : Array.isArray(data.message)
+          ? data.message.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Payment session failed (${res.status})`);
+  }
+  return {
+    referenceId: data.referenceId!,
+    paymentRequestId: data.paymentRequestId ?? null,
+    status: data.status ?? '',
+    redirectUrl: data.redirectUrl ?? null,
+    channelCode: data.channelCode ?? '',
+    country: data.country ?? '',
+    currency: data.currency ?? '',
+    amountCents: data.amountCents ?? amountCents,
+  };
+}
+
 export type MemberProfile = {
   id: string;
   phoneE164: string;
@@ -419,35 +702,6 @@ export async function fetchMemberOrders(limit = 40): Promise<{ orders: MemberOrd
     throw new Error(msg || `Orders failed (${res.status})`);
   }
   return { orders: Array.isArray(data.orders) ? data.orders : [] };
-}
-
-export async function submitMemberOrder(payload: {
-  totalCents: number;
-  lines: SubmitMemberOrderLine[];
-  fulfillmentSummary?: string[] | null;
-}): Promise<SubmitMemberOrderResult> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/customers/me/orders`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = await parseJson<SubmitMemberOrderResult & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    const raw = data.message;
-    const msg =
-      typeof raw === 'string'
-        ? raw
-        : Array.isArray(raw)
-          ? raw.join(', ')
-          : JSON.stringify(data);
-    throw new Error(msg || `Order failed (${res.status})`);
-  }
-  return data as SubmitMemberOrderResult;
 }
 
 export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> {

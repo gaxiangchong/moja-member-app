@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CATEGORY_LABELS,
@@ -12,7 +12,14 @@ import { formatRm, MOCK_REWARDS, MOCK_VOUCHERS } from './data/mockCatalog';
 import { fulfillmentSummaryLines, validateCheckout } from './lib/checkoutValidation';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
 import { useShopStore } from './store/useShopStore';
-import { fetchShopCatalogProducts, submitMemberOrder } from '../api';
+import {
+  completeDemoShopOrder,
+  createXenditCardTokenSession,
+  createShopOrderCheckout,
+  fetchShopCatalogProducts,
+  fetchXenditShopChannels,
+  getXenditCardTokenSessionStatus,
+} from '../api';
 
 const PICKUP_TIMES = [
   '10:00',
@@ -28,7 +35,23 @@ const PICKUP_TIMES = [
 
 const DELIVERY_PRESETS = ['GrabFood', 'Foodpanda', 'Lalamove', 'Other'] as const;
 
-type Screen = 'browse' | 'product' | 'cart' | 'checkout';
+type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
+type PaymentMethodMode = 'channel' | 'card_token';
+
+type DemoCheckoutSnapshot = {
+  orderId: string;
+  orderNumber: number;
+  totalCents: number;
+  fulfillmentSummary: string[];
+  linePayload: Array<{
+    productId: string;
+    name: string;
+    imageUrl: string | null;
+    unitPriceCents: number;
+    qty: number;
+    variantLabel: string | null;
+  }>;
+};
 
 function todayIsoDate(): string {
   const d = new Date();
@@ -36,6 +59,13 @@ function todayIsoDate(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function paymentChannelIcon(code: string): string {
+  if (code === 'TOUCHNGO' || code === 'TOUCHNGO_MY') return 'TnG';
+  if (code === 'SHOPEEPAY' || code === 'SHOPEEPAY_MY') return 'SP';
+  if (code === 'FPX' || code === 'FPX_MY') return 'FPX';
+  return 'PAY';
 }
 
 export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
@@ -49,6 +79,27 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [channels, setChannels] = useState<Array<{ code: string; label: string }>>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const [selectedChannelCode, setSelectedChannelCode] = useState('');
+  const [paymentMethodMode, setPaymentMethodMode] = useState<PaymentMethodMode>('channel');
+  const [cardPaymentTokenId, setCardPaymentTokenId] = useState('');
+  const [cardSessionId, setCardSessionId] = useState<string | null>(null);
+  const [cardSessionLoading, setCardSessionLoading] = useState(false);
+  const [cardSessionError, setCardSessionError] = useState<string | null>(null);
+  const [cardSubmitReady, setCardSubmitReady] = useState(false);
+  const [cardSubmitBusy, setCardSubmitBusy] = useState(false);
+  const [cardInitAttempted, setCardInitAttempted] = useState(false);
+  const [demoCheckout, setDemoCheckout] = useState<DemoCheckoutSnapshot | null>(null);
+  const [demoCompleting, setDemoCompleting] = useState(false);
+  const cardContainerRef = useRef<HTMLDivElement | null>(null);
+  const xenditComponentsRef = useRef<{
+    submit: () => void;
+    addEventListener: (name: string, cb: () => void) => void;
+    createChannelPickerComponent: () => HTMLElement;
+  } | null>(null);
+  const cardSessionIdRef = useRef<string | null>(null);
 
   const cart = useShopStore((s) => s.cart);
   const addToCart = useShopStore((s) => s.addToCart);
@@ -100,6 +151,29 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    let alive = true;
+    setChannelsLoading(true);
+    setChannelsError(null);
+    fetchXenditShopChannels()
+      .then((r) => {
+        if (!alive) return;
+        setChannels(r.channels);
+        setSelectedChannelCode((prev) => prev || r.channels[0]?.code || '');
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setChannelsError(err instanceof Error ? err.message : 'Could not load payment methods');
+      })
+      .finally(() => {
+        if (alive) setChannelsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [screen]);
+
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
@@ -134,6 +208,95 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     setCheckoutErrors(null);
   };
 
+  const handleInitCardTokenization = useCallback(async () => {
+    setCardSessionError(null);
+    setCardInitAttempted(true);
+    setCardSessionLoading(true);
+    setCardSubmitReady(false);
+    setCardSubmitBusy(false);
+    setCardPaymentTokenId('');
+    try {
+      const session = await createXenditCardTokenSession();
+      setCardSessionId(session.paymentSessionId);
+      cardSessionIdRef.current = session.paymentSessionId;
+      const { XenditComponents } = await import('xendit-components-web');
+      const components = new XenditComponents({
+        componentsSdkKey: session.componentsSdkKey,
+      });
+      xenditComponentsRef.current = components as typeof xenditComponentsRef.current;
+      components.addEventListener('submission-ready', () => setCardSubmitReady(true));
+      components.addEventListener('submission-not-ready', () => setCardSubmitReady(false));
+      components.addEventListener('submission-begin', () => setCardSubmitBusy(true));
+      components.addEventListener('submission-end', () => setCardSubmitBusy(false));
+      components.addEventListener('session-expired-or-canceled', () => {
+        setCardSessionError('Card tokenization session expired or canceled. Start a new one.');
+      });
+      components.addEventListener('fatal-error', () => {
+        setCardSessionError(
+          'Card form origin is not authorized for this session. Open checkout from the same HTTPS domain configured in XENDIT_COMPONENTS_ORIGINS.',
+        );
+      });
+      components.addEventListener('session-complete', () => {
+        const sid = cardSessionIdRef.current;
+        if (!sid) return;
+        void (async () => {
+          try {
+            const state = await getXenditCardTokenSessionStatus(sid);
+            if (!state.paymentTokenId) {
+              throw new Error('No payment token generated. Try again.');
+            }
+            setCardPaymentTokenId(state.paymentTokenId);
+            setCardSessionError(null);
+          } catch (err) {
+            setCardSessionError(
+              err instanceof Error ? err.message : 'Could not fetch card token status.',
+            );
+          }
+        })();
+      });
+      const picker = components.createChannelPickerComponent();
+      if (cardContainerRef.current) {
+        cardContainerRef.current.replaceChildren(picker);
+      }
+    } catch (err) {
+      setCardSessionError(
+        err instanceof Error ? err.message : 'Could not initialize card tokenization.',
+      );
+    } finally {
+      setCardSessionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    if (paymentMethodMode !== 'card_token') return;
+    if (cardInitAttempted) return;
+    if (cardSessionId || cardSessionLoading || cardPaymentTokenId) return;
+    void handleInitCardTokenization();
+  }, [
+    screen,
+    paymentMethodMode,
+    cardInitAttempted,
+    cardSessionId,
+    cardSessionLoading,
+    cardPaymentTokenId,
+    handleInitCardTokenization,
+  ]);
+
+  const handleTokenizeCard = () => {
+    setCardSessionError(null);
+    const sdk = xenditComponentsRef.current;
+    if (!sdk) {
+      setCardSessionError('Initialize card form first.');
+      return;
+    }
+    try {
+      sdk.submit();
+    } catch (err) {
+      setCardSessionError(err instanceof Error ? err.message : 'Card submission failed.');
+    }
+  };
+
   const handlePlaceOrder = async () => {
     const draft = {
       cart,
@@ -147,6 +310,21 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     const { valid, errors } = validateCheckout(draft);
     if (!valid) {
       setCheckoutErrors(errors);
+      return;
+    }
+    if (paymentMethodMode === 'channel' && !selectedChannelCode.trim()) {
+      setCheckoutErrors(['Select a payment method.']);
+      return;
+    }
+    if (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim()) {
+      setCheckoutErrors(['Generate a card payment token first.']);
+      return;
+    }
+    if (
+      paymentMethodMode === 'card_token' &&
+      !cardPaymentTokenId.trim().toLowerCase().startsWith('pt-')
+    ) {
+      setCheckoutErrors(['Card payment token ID must start with "pt-".']);
       return;
     }
     setCheckoutErrors(null);
@@ -167,18 +345,85 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     }));
     setPlacingOrder(true);
     try {
-      const order = await submitMemberOrder({
-        totalCents: total,
-        fulfillmentSummary: lines,
-        lines: linePayload,
+      const result = await createShopOrderCheckout({
+        ...(paymentMethodMode === 'card_token'
+          ? { paymentTokenId: cardPaymentTokenId.trim() }
+          : { channelCode: selectedChannelCode.trim() }),
+        order: {
+          totalCents: total,
+          fulfillmentSummary: lines,
+          lines: linePayload,
+        },
       });
+
+      if ('demoMode' in result && result.demoMode) {
+        setDemoCheckout({
+          orderId: result.orderId,
+          orderNumber: result.orderNumber,
+          totalCents: result.totalCents,
+          fulfillmentSummary: lines,
+          linePayload,
+        });
+        setScreen('paymentDemo');
+        return;
+      }
+
+      if ('zeroPaid' in result && result.zeroPaid) {
+        const o = result.order;
+        useOrderHistoryStore.getState().addOrder({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          placedAt: o.placedAt,
+          status: o.status,
+          completedAt: null,
+          lines: linePayload.map((l) => ({
+            productId: l.productId,
+            name: l.name,
+            imageUrl: l.imageUrl ?? '',
+            unitPriceCents: l.unitPriceCents,
+            qty: l.qty,
+            variantLabel: l.variantLabel ?? undefined,
+          })),
+          totalCents: o.totalCents,
+          fulfillmentSummary: lines,
+        });
+        window.alert(
+          `Order placed (no payment required)\n\nPickup code: ${o.orderNumber}\nTotal: ${formatRm(o.totalCents)}\n${lines.join('\n')}`,
+        );
+        resetAfterOrder();
+        goBrowse();
+        return;
+      }
+
+      if (result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+        return;
+      }
+
+      setCheckoutErrors([
+        'No payment redirect URL. Use Xendit test keys and a valid channel, or enable PAYMENTS_DEMO_MODE for local test checkout.',
+      ]);
+    } catch (err) {
+      setCheckoutErrors([err instanceof Error ? err.message : 'Checkout could not start.']);
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  const handleCompleteDemoPayment = async () => {
+    if (!demoCheckout) return;
+    setDemoCompleting(true);
+    try {
+      const { order } = await completeDemoShopOrder(demoCheckout.orderId);
       useOrderHistoryStore.getState().addOrder({
         id: order.id,
         orderNumber: order.orderNumber,
         placedAt: order.placedAt,
         status: order.status,
         completedAt: null,
-        lines: linePayload.map((l) => ({
+        totalCents: order.totalCents,
+        fulfillmentSummary: demoCheckout.fulfillmentSummary,
+        lines: demoCheckout.linePayload.map((l) => ({
           productId: l.productId,
           name: l.name,
           imageUrl: l.imageUrl ?? '',
@@ -186,18 +431,17 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
           qty: l.qty,
           variantLabel: l.variantLabel ?? undefined,
         })),
-        totalCents: order.totalCents,
-        fulfillmentSummary: lines,
       });
       window.alert(
-        `Order placed\n\nPickup code: ${order.orderNumber}\nTotal: ${formatRm(order.totalCents)}\n${lines.join('\n')}`,
+        `Payment complete (test)\n\nPickup code: ${order.orderNumber}\nTotal: ${formatRm(order.totalCents)}\n${demoCheckout.fulfillmentSummary.join('\n')}`,
       );
+      setDemoCheckout(null);
       resetAfterOrder();
-      goBrowse();
+      setScreen('browse');
     } catch (err) {
-      setCheckoutErrors([err instanceof Error ? err.message : 'Order could not be saved.']);
+      window.alert(err instanceof Error ? err.message : 'Could not complete test payment.');
     } finally {
-      setPlacingOrder(false);
+      setDemoCompleting(false);
     }
   };
 
@@ -481,6 +725,143 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
             )}
           </section>
 
+          <section className="pmCard">
+            <h3 className="shopSectionTitle">Payment</h3>
+            <p className="caption" style={{ marginTop: 0 }}>
+              Pick a channel (Xendit supports many methods per country). You will complete payment on the secure Xendit page
+              (use test keys in the dashboard for test cards and wallets).
+            </p>
+            <div className="shopFieldGrid" style={{ marginTop: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="radio"
+                  name="paymentType"
+                  checked={paymentMethodMode === 'channel'}
+                  onChange={() => {
+                    setPaymentMethodMode('channel');
+                    setCardSessionError(null);
+                  }}
+                />
+                <span>Wallet / online banking</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="radio"
+                  name="paymentType"
+                  checked={paymentMethodMode === 'card_token'}
+                  onChange={() => {
+                    setPaymentMethodMode('card_token');
+                    setCardSessionError(null);
+                    setCardInitAttempted(false);
+                  }}
+                />
+                <span>Visa / Mastercard</span>
+              </label>
+            </div>
+            {channelsLoading ? <p className="caption">Loading payment methods…</p> : null}
+            {channelsError ? <p className="err">{channelsError}</p> : null}
+            {paymentMethodMode === 'channel' && !channelsLoading && !channelsError && channels.length ? (
+              <div className="shopFieldGrid" style={{ marginTop: 8 }}>
+                <p className="caption" style={{ marginTop: 0, marginBottom: 4 }}>
+                  Choose wallet / online banking method
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 8,
+                  }}
+                >
+                  {channels.map((c) => {
+                    const active = selectedChannelCode === c.code;
+                    return (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => setSelectedChannelCode(c.code)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 12px',
+                          borderRadius: 12,
+                          border: active ? '1px solid #5b6cff' : '1px solid rgba(255,255,255,0.12)',
+                          background: active ? 'rgba(91,108,255,0.12)' : 'rgba(255,255,255,0.03)',
+                          cursor: 'pointer',
+                          width: '100%',
+                          textAlign: 'left',
+                          color: 'var(--text, #1a1a1a)',
+                        }}
+                      >
+                        <span
+                          style={{
+                            minWidth: 42,
+                            height: 24,
+                            borderRadius: 999,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: 0.3,
+                            background: 'rgba(255,255,255,0.16)',
+                          }}
+                        >
+                          {paymentChannelIcon(c.code)}
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                          <strong style={{ fontSize: 13, color: 'var(--primary,rgb(34, 44, 229))' }}>{c.label}</strong>
+                          <small className="caption" style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}>
+                            {c.code}
+                          </small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : paymentMethodMode === 'channel' && !channelsLoading && !channelsError ? (
+              <p className="caption">No channels configured. Set XENDIT_SHOP_CHANNEL_CODES on the server.</p>
+            ) : null}
+            {paymentMethodMode === 'card_token' ? (
+              <div className="shopFieldGrid" style={{ marginTop: 8 }}>
+                <p className="caption" style={{ marginTop: 0 }}>
+                  Fill in card details below, then click "Use this card" to proceed.
+                </p>
+                {cardSessionError ? <p className="err">{cardSessionError}</p> : null}
+                {cardSessionLoading ? <p className="caption">Preparing secure card form...</p> : null}
+                <div ref={cardContainerRef} />
+                {cardSessionError ? (
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setCardInitAttempted(false);
+                      setCardSessionId(null);
+                      setCardPaymentTokenId('');
+                      setCardSubmitReady(false);
+                      setCardSubmitBusy(false);
+                      void handleInitCardTokenization();
+                    }}
+                  >
+                    Retry card form
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleTokenizeCard}
+                  disabled={!cardSessionId || !cardSubmitReady || cardSubmitBusy}
+                >
+                  {cardSubmitBusy ? 'Tokenizing...' : 'Use this card'}
+                </button>
+                {cardPaymentTokenId ? (
+                  <p className="caption" style={{ marginTop: 0 }}>
+                    Token ready: {cardPaymentTokenId}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
           <section className="pmCard shopSummaryCard">
             <h3 className="shopSectionTitle">Order summary</h3>
             <ul className="shopSummaryList">
@@ -510,9 +891,48 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
                 <span>{formatRm(total)}</span>
               </div>
             </div>
-            <p className="caption">Payment is a placeholder in this demo build.</p>
-            <button type="button" onClick={() => void handlePlaceOrder()} disabled={placingOrder}>
-              {placingOrder ? 'Placing…' : 'Place order'}
+            <button
+              type="button"
+              onClick={() => void handlePlaceOrder()}
+              disabled={
+                placingOrder ||
+                (paymentMethodMode === 'channel' &&
+                  (channelsLoading || (!channels.length && !channelsLoading))) ||
+                (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim())
+              }
+            >
+              {placingOrder ? 'Starting payment…' : 'Continue to payment'}
+            </button>
+          </section>
+        </>
+      )}
+
+      {screen === 'paymentDemo' && demoCheckout && (
+        <>
+          <header className="shopTopBar pmTopBar">
+            <button
+              type="button"
+              className="textAction shopBackLink"
+              onClick={() => {
+                setDemoCheckout(null);
+                setScreen('checkout');
+              }}
+            >
+              ← Checkout
+            </button>
+            <h2 className="shopTitleCenter">Test payment</h2>
+            <span className="shopTopSpacer" />
+          </header>
+          <section className="pmCard">
+            <p className="caption" style={{ marginTop: 0 }}>
+              Demo mode (server PAYMENTS_DEMO_MODE): no Xendit redirect. Tap below to simulate a successful payment and
+              confirm your order.
+            </p>
+            <p style={{ marginTop: 12 }}>
+              <strong>Order #{demoCheckout.orderNumber}</strong> · {formatRm(demoCheckout.totalCents)}
+            </p>
+            <button type="button" onClick={() => void handleCompleteDemoPayment()} disabled={demoCompleting}>
+              {demoCompleting ? 'Completing…' : 'Complete test payment'}
             </button>
           </section>
         </>
