@@ -1087,7 +1087,7 @@ function CartScreen({
       </header>
 
       {cart.length === 0 ? (
-        <section className="pmCard">
+        <section className="pmCard shopCartEmpty">
           <p className="caption">Your cart is empty.</p>
           <button type="button" onClick={onContinueShopping}>
             Browse products
