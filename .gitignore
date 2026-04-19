@@ -11,8 +11,8 @@ build/
 .env.*
 !.env.example
 
-# Local import/export files
-data/
+# Local import/export files (repo root only — not **/data/ e.g. client-web/src/shop/data)
+/data/
 
 # Logs & runtime
 logs/
