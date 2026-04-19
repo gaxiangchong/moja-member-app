@@ -681,7 +681,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
               <div>
                 <p className="caption">Vouchers</p>
                 <div className="shopPromoList">
-                  {MOCK_VOUCHERS.map((v) => (
+                  {MOCK_VOUCHERS.map((v: MockVoucher) => (
                     <button
                       key={v.id}
                       type="button"
@@ -697,7 +697,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
               <div>
                 <p className="caption">Rewards ({pointsBalance} pts)</p>
                 <div className="shopPromoList">
-                  {MOCK_REWARDS.map((r) => {
+                  {MOCK_REWARDS.map((r: MockReward) => {
                     const affordable = pointsBalance >= r.pointsCost;
                     return (
                       <button
