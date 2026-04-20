@@ -14,6 +14,35 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export type HomeAdSlide = {
+  id: string;
+  title: string;
+  body: string;
+  backgroundCss: string;
+  imageUrl?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export function resolveApiAssetUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || /^data:/i.test(url)) return url;
+  const prefix = String(base).replace(/\/$/, '');
+  return prefix + (url.startsWith('/') ? url : `/${url}`);
+}
+
+export async function fetchHomeAdSlides(): Promise<HomeAdSlide[]> {
+  try {
+    const res = await fetch(`${base}/home-ads/slides`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data as HomeAdSlide[];
+  } catch {
+    return [];
+  }
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;

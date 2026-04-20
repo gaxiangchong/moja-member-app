@@ -1,9 +1,22 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const uploadsRoot = resolve(process.cwd(), 'data', 'uploads');
+  mkdirSync(uploadsRoot, { recursive: true });
+  app.useStaticAssets(uploadsRoot, {
+    prefix: '/uploads/',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    },
+  });
 
   const clientOrigins = process.env.CLIENT_WEB_ORIGIN?.split(',')
     .map((s) => s.trim())

@@ -9,6 +9,7 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
+import { HomeAdsModule } from '../home-ads/home-ads.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { AdminEmployeesController } from './admin-employees.controller';
 
@@ -19,6 +20,7 @@ import { AdminEmployeesController } from './admin-employees.controller';
     CustomersModule,
     WalletModule,
     ShopCatalogModule,
+    HomeAdsModule,
     EmployeesModule,
   ],
   controllers: [

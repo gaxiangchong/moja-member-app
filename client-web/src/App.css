@@ -354,6 +354,182 @@
   overflow-wrap: break-word;
 }
 
+.adCarousel {
+  position: relative;
+  padding: 22px 22px 18px;
+  min-height: 216px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: #1e293b;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  transition: background 350ms ease;
+}
+
+.adCarousel.adCarouselHasImage {
+  color: #ffffff;
+}
+
+.adCarousel.adCarouselHasImage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0) 0%,
+    rgba(15, 23, 42, 0.55) 100%
+  );
+  pointer-events: none;
+}
+
+.adCarousel.adCarouselHasImage .adCarouselInner {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.adCarousel.adCarouselHasImage .adCarouselBody {
+  opacity: 0.95;
+}
+
+.adCarousel.adCarouselHasImage .adCarouselDots {
+  z-index: 2;
+}
+
+.adCarousel.adCarouselHasImage .adCarouselDot {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.adCarousel.adCarouselHasImage .adCarouselDot.active {
+  background: #ffffff;
+}
+
+.homeSummaryRow {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.homeSummaryCard {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 14px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.homeSummaryCard:hover,
+.homeSummaryCard:focus-visible {
+  background: #f8fafc;
+  box-shadow: 0 6px 18px -12px rgba(15, 23, 42, 0.35);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.homeSummaryCard:active {
+  transform: translateY(0);
+}
+
+.homeSummaryIcon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.homeSummaryIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.homeSummaryIcon--voucher {
+  background: linear-gradient(135deg, #fb7185, #ef4444);
+}
+
+.homeSummaryIcon--reward {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+}
+
+.homeSummaryText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.homeSummaryLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.01em;
+}
+
+.homeSummaryValue {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adCarouselInner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adCarouselTitle {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.adCarouselBody {
+  font-size: 14px;
+  opacity: 0.85;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.adCarouselDots {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+.adCarouselDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+  padding: 0;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.adCarouselDot.active {
+  background: rgba(15, 23, 42, 0.8);
+  transform: scale(1.15);
+}
+
 .promoCard h3 {
   margin: 0 0 6px;
   font-size: 20px;
@@ -585,7 +761,7 @@
   right: 0;
   bottom: 0;
   max-width: 100%;
-  min-height: 66px;
+  min-height: 76px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: #fff;
   border-top: 1px solid #d9e6ff;
@@ -600,10 +776,10 @@
   border-radius: 0;
   background: transparent;
   color: #7c6a59;
-  font-size: 11px;
-  padding: 7px 2px 8px;
+  font-size: 13px;
+  padding: 8px 2px 9px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
   justify-items: center;
   align-content: center;
   min-width: 0;
@@ -618,15 +794,15 @@
 }
 
 .bottomTabs button .tabIconSlot svg {
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
   display: block;
 }
 
 .tabIconSlot {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
   flex-shrink: 0;
   display: flex;
   align-items: center;

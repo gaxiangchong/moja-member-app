@@ -1,24 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import './App.css';
 import { toDataURL } from 'qrcode';
 import {
   clearToken,
+  fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
   getToken,
   loginWithPin,
   lookupLogin,
   requestOtp,
+  resolveApiAssetUrl,
   setInitialPin,
   setToken,
   updateMe,
   verifyOtp,
+  type HomeAdSlide,
   type MemberProfile,
   type MemberRewardsPayload,
 } from './api';
 
 const PENDING_REFERRAL_KEY = 'moja_pending_referral';
-import { PinDigitSlots, PinDots, PinKeypad } from './components/PinKeypad';
+import { PinDots, PinKeypad } from './components/PinKeypad';
 import { OrdersTab } from './orders/OrdersTab';
 import { ShopFlow } from './shop/ShopFlow';
 
@@ -37,6 +48,90 @@ function Card({
   className?: string;
 }) {
   return <section className={`pmCard ${className}`.trim()}>{children}</section>;
+}
+
+const DEFAULT_AD_SLIDES: HomeAdSlide[] = [
+  {
+    id: 'ad-default-1',
+    title: 'Double Points',
+    body: 'Coffee + Pastry before 11 AM',
+    backgroundCss: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+    sortOrder: 10,
+    isActive: true,
+  },
+  {
+    id: 'ad-default-2',
+    title: 'Birthday Treat',
+    body: 'Free cake slice on your big day',
+    backgroundCss: 'linear-gradient(135deg, #ffe4e6, #fecaca)',
+    sortOrder: 20,
+    isActive: true,
+  },
+  {
+    id: 'ad-default-3',
+    title: 'Refer & Earn',
+    body: '500 pts per friend who joins',
+    backgroundCss: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+    sortOrder: 30,
+    isActive: true,
+  },
+];
+
+function AdCarousel({ slides }: { slides: HomeAdSlide[] }) {
+  const list = slides.length > 0 ? slides : DEFAULT_AD_SLIDES;
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (list.length <= 1) return;
+    const t = window.setInterval(() => {
+      setIdx((i) => (i + 1) % list.length);
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [list.length]);
+
+  useEffect(() => {
+    if (idx >= list.length) setIdx(0);
+  }, [idx, list.length]);
+
+  const current = list[Math.min(idx, list.length - 1)];
+  if (!current) return null;
+
+  const resolvedImage = resolveApiAssetUrl(current.imageUrl ?? '');
+  const style: CSSProperties = resolvedImage
+    ? {
+        backgroundImage: `url("${resolvedImage}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : { background: current.backgroundCss };
+  const hasImage = Boolean(resolvedImage);
+
+  return (
+    <section
+      className={`pmCard adCarousel${hasImage ? ' adCarouselHasImage' : ''}`}
+      aria-label="Promotions"
+      style={style}
+    >
+      <div className="adCarouselInner">
+        <div className="adCarouselTitle">{current.title}</div>
+        {current.body ? <div className="adCarouselBody">{current.body}</div> : null}
+      </div>
+      {list.length > 1 ? (
+        <div className="adCarouselDots" role="tablist">
+          {list.map((s, i) => (
+            <button
+              key={s.id}
+              type="button"
+              className={i === idx ? 'adCarouselDot active' : 'adCarouselDot'}
+              onClick={() => setIdx(i)}
+              aria-label={`Go to slide ${i + 1}`}
+              aria-selected={i === idx}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function SectionHeader({
@@ -157,6 +252,19 @@ function App() {
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
   const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
+  const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHomeAdSlides()
+      .then((list) => {
+        if (!cancelled && list.length > 0) setAdSlides(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formBirthday, setFormBirthday] = useState('');
@@ -485,18 +593,16 @@ function App() {
     return `${r.title} ${r.description ?? ''} ${r.rewardCategory ?? ''}`.toLowerCase().includes(q);
   });
 
-  const latestHomeVoucher = useMemo(() => {
-    if (voucherItems.length === 0) return null;
-    return [...voucherItems].sort((a, b) => {
-      const ta = new Date(a.issuedAt || 0).getTime();
-      const tb = new Date(b.issuedAt || 0).getTime();
-      return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
-    })[0];
-  }, [voucherItems]);
+  const activeVouchersCount = useMemo(
+    () =>
+      voucherItems.filter((v) => {
+        const status = String(v.status || '').toUpperCase();
+        return status === 'ISSUED' || status === 'ACTIVE';
+      }).length,
+    [voucherItems],
+  );
 
-  const latestHomeReward = useMemo(() => {
-    return normalizedRewards[0] ?? null;
-  }, [normalizedRewards]);
+  const featuredRewardsCount = normalizedRewards.length;
 
   useEffect(() => {
     let alive = true;
@@ -594,8 +700,37 @@ function App() {
                     </>
                   ) : null}
                 </p>
-                <PinDigitSlots value={loginPin} maxLength={6} />
-                {error && <p className="err" style={{ marginTop: '0.25rem' }}>{error}</p>}
+                <div className="pinInputField">
+                  <label htmlFor="loginPinInput" className="srOnly">
+                    6-digit PIN
+                  </label>
+                  <input
+                    id="loginPinInput"
+                    className="pinInput"
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="••••••"
+                    value={loginPin}
+                    onChange={(ev) => {
+                      const next = ev.target.value.replace(/\D/g, '').slice(0, 6);
+                      onLoginPinChange(next);
+                    }}
+                    disabled={loading}
+                    autoFocus
+                  />
+                </div>
+                {error && <p className="err pinLoginErr">{error}</p>}
+                <button
+                  type="button"
+                  className="pinVerifyBtn"
+                  onClick={handlePinSignInClick}
+                  disabled={loading || loginPin.length !== 6}
+                >
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </button>
                 <p className="pinLoginForgot">
                   Forgot your PIN?{' '}
                   <button
@@ -607,20 +742,6 @@ function App() {
                     Login with OTP
                   </button>
                 </p>
-                <button
-                  type="button"
-                  className="pinVerifyBtn"
-                  onClick={handlePinSignInClick}
-                  disabled={loading || loginPin.length !== 6}
-                >
-                  {loading ? 'Signing in…' : 'Sign in'}
-                </button>
-                <PinKeypad
-                  variant="sheet"
-                  value={loginPin}
-                  onChange={onLoginPinChange}
-                  disabled={loading}
-                />
               </div>
             </section>
           )}
@@ -771,64 +892,58 @@ function App() {
                   <p className="caption">{pointsToNext} pts to next reward</p>
                 </Card>
 
-                <Card>
-                  <SectionHeader title="My Voucher" />
-                  <div className="voucherList">
-                    {latestHomeVoucher ? (
-                      <VoucherCard
-                        key={latestHomeVoucher.id}
-                        title={latestHomeVoucher.definition.title}
-                        conditions={latestHomeVoucher.definition.description || latestHomeVoucher.definition.code}
-                        expiry={latestHomeVoucher.expiresAt ? latestHomeVoucher.expiresAt.slice(0, 10) : '-'}
-                        status={latestHomeVoucher.status}
-                      />
-                    ) : (
-                      <p className="caption">No vouchers yet.</p>
-                    )}
-                  </div>
-                  <div className="homeSectionFooter">
-                    <button
-                      type="button"
-                      className="textAction"
-                      onClick={() => {
-                        setPerksSub('vouchers');
-                        setTab('perks');
-                      }}
-                    >
-                      View All
-                    </button>
-                  </div>
-                </Card>
+                <AdCarousel slides={adSlides} />
 
-                <Card>
-                  <SectionHeader title="Featured Rewards" />
-                  <div className="rewardsGrid homeRewardsPreview">
-                    {latestHomeReward ? (
-                      <RewardCard
-                        key={latestHomeReward.id}
-                        title={latestHomeReward.title}
-                        description={latestHomeReward.description || latestHomeReward.code}
-                        points={latestHomeReward.pointsCost ?? 0}
-                        category={latestHomeReward.category}
-                        imageUrl={latestHomeReward.imageUrl}
-                      />
-                    ) : (
-                      <p className="caption">No rewards to show yet.</p>
-                    )}
-                  </div>
-                  <div className="homeSectionFooter">
-                    <button
-                      type="button"
-                      className="textAction"
-                      onClick={() => {
-                        setPerksSub('rewards');
-                        setTab('perks');
-                      }}
-                    >
-                      View All
-                    </button>
-                  </div>
-                </Card>
+                <div className="homeSummaryRow">
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => {
+                      setPerksSub('vouchers');
+                      setTab('perks');
+                    }}
+                    aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="7" width="18" height="13" rx="2" />
+                        <path d="M3 11h18" />
+                        <path d="M9 15l2 2 4-4" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">My Voucher</span>
+                      <span className="homeSummaryValue">
+                        {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
+                      </span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => {
+                      setPerksSub('rewards');
+                      setTab('perks');
+                    }}
+                    aria-label={`Rewards, ${featuredRewardsCount} available`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="8" width="18" height="13" rx="1" />
+                        <path d="M12 8v13" />
+                        <path d="M3 12h18" />
+                        <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">Rewards</span>
+                      <span className="homeSummaryValue">
+                        {featuredRewardsCount} {featuredRewardsCount === 1 ? 'Reward' : 'Rewards'}
+                      </span>
+                    </span>
+                  </button>
+                </div>
 
                 <Card className="promoCard">
                   <h3>Fresh Morning Deal</h3>
@@ -840,7 +955,7 @@ function App() {
             {tab === 'perks' && (
               <>
                 <header className="pmTopBar">
-                  <h2>Perks</h2>
+                  <h2>Rewards</h2>
                 </header>
                 <div className="tabsRow">
                   <button
@@ -1066,11 +1181,11 @@ function App() {
               </div>
               <span className="tabLabel">Home</span>
             </button>
-            <button type="button" className={tab === 'perks' ? 'active' : ''} onClick={() => setTab('perks')} aria-label="Perks">
+            <button type="button" className={tab === 'perks' ? 'active' : ''} onClick={() => setTab('perks')} aria-label="Rewards">
               <div className="tabIconSlot">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8h18v13H3z"/><path d="M12 8v13"/><circle cx="12" cy="16" r="2"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13"/><path d="M3 12h18"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z"/></svg>
               </div>
-              <span className="tabLabel">Perks</span>
+              <span className="tabLabel">Rewards</span>
             </button>
             <button
               type="button"

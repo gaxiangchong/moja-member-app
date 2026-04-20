@@ -2,14 +2,18 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator';
 import { RequirePermissions } from '../admin-auth/decorators/require-permissions.decorator';
 import { AdminAuthGuard } from '../admin-auth/guards/admin-auth.guard';
@@ -37,7 +41,10 @@ import { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto
 import { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 import { CreateShopCatalogProductDto } from './dto/create-shop-catalog-product.dto';
 import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.dto';
+import { CreateHomeAdSlideDto } from './dto/create-home-ad-slide.dto';
+import { UpdateHomeAdSlideDto } from './dto/update-home-ad-slide.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
+import { HomeAdsService } from '../home-ads/home-ads.service';
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -46,6 +53,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly approvals: ApprovalsService,
     private readonly shopCatalog: ShopCatalogService,
+    private readonly homeAds: HomeAdsService,
   ) {}
 
   @Get('commerce/orders')
@@ -317,5 +325,50 @@ export class AdminController {
     @Body() dto: UpdateShopCatalogProductDto,
   ) {
     return this.shopCatalog.updateProduct(id, dto);
+  }
+
+  @Get('home-ads/slides')
+  @RequirePermissions(P.VOUCHER_READ)
+  listHomeAdSlides() {
+    return this.homeAds.listAdminSlides();
+  }
+
+  @Post('home-ads/slides')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  createHomeAdSlide(@Body() dto: CreateHomeAdSlideDto) {
+    return this.homeAds.createSlide(dto);
+  }
+
+  @Patch('home-ads/slides/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateHomeAdSlide(
+    @Param('id') id: string,
+    @Body() dto: UpdateHomeAdSlideDto,
+  ) {
+    return this.homeAds.updateSlide(id, dto);
+  }
+
+  @Delete('home-ads/slides/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  deleteHomeAdSlide(@Param('id') id: string) {
+    return this.homeAds.deleteSlide(id);
+  }
+
+  @Post('home-ads/slides/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }),
+  )
+  uploadHomeAdSlideImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.homeAds.attachImage(id, file);
+  }
+
+  @Delete('home-ads/slides/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearHomeAdSlideImage(@Param('id') id: string) {
+    return this.homeAds.clearImage(id);
   }
 }

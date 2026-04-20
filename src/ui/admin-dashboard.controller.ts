@@ -23,6 +23,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'customer-orders': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
+    'settings-home-ads': true,
     'settings-system': true,
     'reports-customers': true,
     'reports-sales': true,
@@ -1001,6 +1002,7 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
           </div>
         </details>
@@ -2327,6 +2329,59 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="settings-home-ads" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Home ad carousel</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshHomeAdsBtn">Refresh</button></div></div>
+            <div style="padding:12px 20px 4px 20px;color:#64748b;font-size:13px">
+              Slides shown on the client home screen between the points card and the rewards tiles. Active slides are rotated automatically.
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Preview</th><th>Image</th><th>Title</th><th>Body</th><th>Sort</th><th>Visible</th><th>Edit</th><th>Delete</th></tr></thead>
+                <tbody id="homeAdsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit slide</h2></div>
+            <div style="padding:16px 20px;max-width:720px">
+              <input type="hidden" id="haId" />
+              <div class="form-section"><label for="haTitle">Title</label><input type="text" id="haTitle" maxlength="120" placeholder="e.g. Double Points" /></div>
+              <div class="form-section"><label for="haBody">Body</label><input type="text" id="haBody" maxlength="500" placeholder="e.g. Coffee + Pastry before 11 AM" /></div>
+              <div class="form-section">
+                <label for="haImageFile">Image (optional)</label>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                  <div id="haImageThumb" style="width:160px;height:96px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">No image</div>
+                  <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
+                    <input type="file" id="haImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn-outline" id="haImageUploadBtn">Upload image</button>
+                      <button type="button" class="btn-outline" id="haImageClearBtn">Remove image</button>
+                    </div>
+                    <p class="field-hint">PNG / JPEG / WEBP / GIF, max 3 MB. Save the slide first, then upload.</p>
+                    <p class="field-hint" id="haImageResult"></p>
+                  </div>
+                </div>
+              </div>
+              <div class="form-section">
+                <label for="haBg">Fallback background (used when no image is set)</label>
+                <input type="text" id="haBg" maxlength="300" placeholder="linear-gradient(135deg, #fef3c7, #fde68a)" />
+                <p class="field-hint">Any valid CSS <code>background</code> value. Examples: <code>#fde68a</code>, <code>linear-gradient(135deg,#fef3c7,#fde68a)</code>.</p>
+                <div id="haPreview" style="margin-top:10px;height:96px;border-radius:12px;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#334155;font-weight:600;background-size:cover;background-position:center"></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="haSort">Sort order</label><input type="number" id="haSort" step="1" value="0" /></div>
+                <div class="form-section"><label><input type="checkbox" id="haActive" style="width:auto;margin-right:8px" /> Show in client app</label></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="haSaveBtn">Save slide</button>
+                <button type="button" class="btn-outline" id="haNewBtn">New slide</button>
+              </div>
+              <p class="field-hint" id="haSaveResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="audit" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Audit activity</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAuditBtn">Refresh</button></div></div>
@@ -2514,7 +2569,7 @@ export class AdminDashboardController {
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -2583,6 +2638,7 @@ export class AdminDashboardController {
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
+      'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
       audit: iconAudit,
       'audit-logins': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
     };
@@ -2621,6 +2677,7 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
+      'settings-home-ads': 'Settings · Home ad carousel',
       audit: 'Audit · Audit logs',
       'audit-logins': 'Audit · Admin login logs',
     };
@@ -2628,6 +2685,7 @@ export class AdminDashboardController {
     let lastVoucherDefinitions = [];
     let lastPerksCampaignRules = [];
     let lastShopCatalogProducts = [];
+    let lastHomeAdSlides = [];
     let lastSalesAnalytics = null;
     let saChartMetric = 'gmv';
 
@@ -3229,6 +3287,19 @@ export class AdminDashboardController {
         throw new Error('Request failed (' + res.status + '): ' + txt);
       }
       return res.json();
+    }
+
+    async function apiDelete(path) {
+      const headers = { ...getAuthHeaders() };
+      if (currentAuthMode === 'key') {
+        localStorage.setItem('moja_admin_api_key', normalizeKey(apiKeyInput.value));
+      }
+      const res = await fetch(path, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('Request failed (' + res.status + '): ' + txt);
+      }
+      try { return await res.json(); } catch { return {}; }
     }
 
     async function apiDownload(path, filenameHint) {
@@ -4078,6 +4149,94 @@ export class AdminDashboardController {
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
 
+    function haAbsoluteImageUrl(url) {
+      if (!url) return '';
+      return url;
+    }
+
+    async function loadHomeAdSlides() {
+      const data = await api('/admin/home-ads/slides');
+      lastHomeAdSlides = data || [];
+      const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      const delSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+      const body = document.getElementById('homeAdsBody');
+      if (!body) return;
+      body.innerHTML = (data || []).map(function (s) {
+        const bg = String(s.backgroundCss || '').replace(/"/g, '&quot;');
+        const imgUrl = haAbsoluteImageUrl(s.imageUrl).replace(/"/g, '&quot;');
+        const preview = imgUrl
+          ? '<div style="width:80px;height:36px;border-radius:8px;background:url(&quot;' + imgUrl + '&quot;) center/cover no-repeat;border:1px solid #e2e8f0"></div>'
+          : '<div style="width:80px;height:36px;border-radius:8px;background:' + bg + ';border:1px solid #e2e8f0"></div>';
+        const imageCell = imgUrl
+          ? '<span style="color:#16a34a;font-weight:600">Uploaded</span>'
+          : '<span style="color:#94a3b8">—</span>';
+        return '<tr><td>' + preview + '</td><td>' + imageCell + '</td><td>' + fmt(s.title) + '</td><td>' + fmt(s.body) + '</td><td>' + fmt(s.sortOrder) + '</td><td>' +
+          (s.isActive ? statusPill('YES') : statusPill('NO')) +
+          '</td><td class="td-actions"><button type="button" class="icon-btn ha-edit-btn" data-id="' + fmt(s.id) + '">' + editSvg +
+          '</button></td><td class="td-actions"><button type="button" class="icon-btn ha-del-btn" data-id="' + fmt(s.id) + '" title="Delete">' + delSvg + '</button></td></tr>';
+      }).join('') || '<tr><td colspan="8">No slides yet. Use “New slide” to create one.</td></tr>';
+    }
+
+    function haUpdatePreview() {
+      const p = document.getElementById('haPreview');
+      if (!p) return;
+      const bg = document.getElementById('haBg').value.trim() || 'linear-gradient(135deg, #eef2ff, #dbeafe)';
+      const title = document.getElementById('haTitle').value.trim() || 'Slide title';
+      const body = document.getElementById('haBody').value.trim() || 'Slide body';
+      const id = document.getElementById('haId').value.trim();
+      const slide = id ? lastHomeAdSlides.find(function (x) { return x.id === id; }) : null;
+      const imgUrl = slide && slide.imageUrl ? haAbsoluteImageUrl(slide.imageUrl) : '';
+      if (imgUrl) {
+        p.style.background = 'url("' + imgUrl + '") center/cover no-repeat';
+      } else {
+        p.style.background = bg;
+      }
+      p.innerHTML = '<div style="text-align:center;background:rgba(255,255,255,0.72);padding:6px 10px;border-radius:8px"><div>' + fmt(title) + '</div><div style="font-weight:400;font-size:12px;color:#475569">' + fmt(body) + '</div></div>';
+
+      const thumb = document.getElementById('haImageThumb');
+      if (thumb) {
+        if (imgUrl) {
+          thumb.style.background = 'url("' + imgUrl + '") center/cover no-repeat';
+          thumb.textContent = '';
+        } else {
+          thumb.style.background = '#f8fafc';
+          thumb.textContent = 'No image';
+        }
+      }
+    }
+
+    function haResetForm() {
+      document.getElementById('haId').value = '';
+      document.getElementById('haTitle').value = '';
+      document.getElementById('haBody').value = '';
+      document.getElementById('haBg').value = 'linear-gradient(135deg, #eef2ff, #dbeafe)';
+      document.getElementById('haSort').value = String((lastHomeAdSlides.length || 0) * 10);
+      document.getElementById('haActive').checked = true;
+      document.getElementById('haSaveResult').textContent = '';
+      const fileInput = document.getElementById('haImageFile');
+      if (fileInput) fileInput.value = '';
+      const imgOut = document.getElementById('haImageResult');
+      if (imgOut) imgOut.textContent = '';
+      haUpdatePreview();
+    }
+
+    async function haUploadFile(id, file) {
+      const headers = { ...getAuthHeaders() };
+      delete headers['Content-Type'];
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/admin/home-ads/slides/' + encodeURIComponent(id) + '/image', {
+        method: 'POST',
+        headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
     let lastEmployeesList = [];
 
     function emEscapeAttr(s) {
@@ -4421,6 +4580,7 @@ export class AdminDashboardController {
         loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
+        loadHomeAdSlides(),
       ];
       const results = await Promise.allSettled(tasks);
       const failed = results.filter((r) => r.status === 'rejected');
@@ -4852,6 +5012,119 @@ export class AdminDashboardController {
       if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
     });
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+
+    (function wireHomeAdsHandlers() {
+      const refreshBtn = document.getElementById('refreshHomeAdsBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', () => loadHomeAdSlides().catch((e) => { statusPanel.textContent = e.message; }));
+
+      ['haBg', 'haTitle', 'haBody'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', haUpdatePreview);
+      });
+
+      const listBody = document.getElementById('homeAdsBody');
+      if (listBody) {
+        listBody.addEventListener('click', function (e) {
+          const editBtn = e.target.closest('.ha-edit-btn');
+          const delBtn = e.target.closest('.ha-del-btn');
+          if (editBtn) {
+            const id = editBtn.getAttribute('data-id');
+            const s = lastHomeAdSlides.find(function (x) { return x.id === id; });
+            if (!s) return;
+            document.getElementById('haId').value = s.id || '';
+            document.getElementById('haTitle').value = s.title || '';
+            document.getElementById('haBody').value = s.body || '';
+            document.getElementById('haBg').value = s.backgroundCss || '';
+            document.getElementById('haSort').value = s.sortOrder != null ? String(s.sortOrder) : '0';
+            document.getElementById('haActive').checked = !!s.isActive;
+            document.getElementById('haSaveResult').textContent = '';
+            haUpdatePreview();
+            return;
+          }
+          if (delBtn) {
+            const id = delBtn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Delete this slide?')) return;
+            apiDelete('/admin/home-ads/slides/' + encodeURIComponent(id))
+              .then(function () { return loadHomeAdSlides(); })
+              .catch(function (err) { statusPanel.textContent = err.message; });
+          }
+        });
+      }
+
+      const newBtn = document.getElementById('haNewBtn');
+      if (newBtn) newBtn.addEventListener('click', haResetForm);
+
+      const uploadBtn = document.getElementById('haImageUploadBtn');
+      if (uploadBtn) uploadBtn.addEventListener('click', async function () {
+        const out = document.getElementById('haImageResult');
+        const id = document.getElementById('haId').value.trim();
+        const fileInput = document.getElementById('haImageFile');
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (!id) { out.textContent = 'Save the slide first, then upload an image.'; return; }
+        if (!file) { out.textContent = 'Choose an image file first.'; return; }
+        out.textContent = 'Uploading…';
+        try {
+          const updated = await haUploadFile(id, file);
+          const idx = lastHomeAdSlides.findIndex(function (x) { return x.id === id; });
+          if (idx >= 0) lastHomeAdSlides[idx] = updated;
+          out.textContent = 'Uploaded.';
+          fileInput.value = '';
+          haUpdatePreview();
+          await loadHomeAdSlides();
+        } catch (err) {
+          out.textContent = err.message;
+        }
+      });
+
+      const clearImgBtn = document.getElementById('haImageClearBtn');
+      if (clearImgBtn) clearImgBtn.addEventListener('click', async function () {
+        const out = document.getElementById('haImageResult');
+        const id = document.getElementById('haId').value.trim();
+        if (!id) { out.textContent = 'Save the slide first.'; return; }
+        if (!confirm('Remove the image from this slide?')) return;
+        out.textContent = 'Removing…';
+        try {
+          const updated = await apiDelete('/admin/home-ads/slides/' + encodeURIComponent(id) + '/image');
+          const idx = lastHomeAdSlides.findIndex(function (x) { return x.id === id; });
+          if (idx >= 0) lastHomeAdSlides[idx] = updated;
+          out.textContent = 'Removed.';
+          haUpdatePreview();
+          await loadHomeAdSlides();
+        } catch (err) {
+          out.textContent = err.message;
+        }
+      });
+
+      const saveBtn = document.getElementById('haSaveBtn');
+      if (saveBtn) saveBtn.addEventListener('click', function () {
+        const id = document.getElementById('haId').value.trim();
+        const out = document.getElementById('haSaveResult');
+        const body = {
+          title: document.getElementById('haTitle').value.trim(),
+          body: document.getElementById('haBody').value.trim(),
+          backgroundCss: document.getElementById('haBg').value.trim(),
+          sortOrder: parseInt(document.getElementById('haSort').value, 10) || 0,
+          isActive: document.getElementById('haActive').checked,
+        };
+        if (!body.title) { out.textContent = 'Title is required.'; return; }
+        if (!body.backgroundCss) { body.backgroundCss = 'linear-gradient(135deg, #eef2ff, #dbeafe)'; }
+        out.textContent = 'Saving…';
+        const req = id
+          ? apiPatch('/admin/home-ads/slides/' + encodeURIComponent(id), body)
+          : apiPost('/admin/home-ads/slides', body);
+        req
+          .then(function (saved) {
+            out.textContent = id ? 'Updated.' : 'Created. You can now upload an image below.';
+            if (saved && saved.id) {
+              document.getElementById('haId').value = saved.id;
+            }
+            return loadHomeAdSlides();
+          })
+          .then(function () { haUpdatePreview(); })
+          .catch(function (err) { out.textContent = err.message; });
+      });
+    })();
 
     function isoDateOnly(d) {
       if (!d) return '';

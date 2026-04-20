@@ -19,6 +19,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
 import { OpsQueueModule } from './ops-queue/ops-queue.module';
 import { PaymentsModule } from './payments/payments.module';
+import { HomeAdsModule } from './home-ads/home-ads.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { PaymentsModule } from './payments/payments.module';
     ShopCatalogModule,
     OpsQueueModule,
     PaymentsModule,
+    HomeAdsModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

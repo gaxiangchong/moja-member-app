@@ -395,7 +395,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
         return;
       }
 
-      if (result.redirectUrl) {
+      if ('redirectUrl' in result && result.redirectUrl) {
         window.location.href = result.redirectUrl;
         return;
       }
