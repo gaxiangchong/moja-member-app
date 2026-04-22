@@ -59,10 +59,26 @@ const DEFAULT_PRODUCTS: ShopCatalogProduct[] = [
   },
 ];
 
+export type HomePopularConfig = {
+  productIds: string[];
+  maxLimit: number;
+};
+
+const DEFAULT_POPULAR: HomePopularConfig = {
+  productIds: [],
+  maxLimit: 5,
+};
+
+const POPULAR_HARD_MAX = 5;
+
 @Injectable()
 export class ShopCatalogService {
   private filePath(): string {
     return resolve(process.cwd(), 'data', 'shop-catalog.products.json');
+  }
+
+  private popularFilePath(): string {
+    return resolve(process.cwd(), 'data', 'home-popular.json');
   }
 
   private ensureFile(): void {
@@ -70,6 +86,13 @@ export class ShopCatalogService {
     if (existsSync(p)) return;
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     writeFileSync(p, JSON.stringify(DEFAULT_PRODUCTS, null, 2), 'utf-8');
+  }
+
+  private ensurePopularFile(): void {
+    const p = this.popularFilePath();
+    if (existsSync(p)) return;
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
   }
 
   private readAll(): ShopCatalogProduct[] {
@@ -152,6 +175,76 @@ export class ShopCatalogService {
     all[idx] = next;
     this.writeAll(all);
     return next;
+  }
+
+  getPopularConfig(): HomePopularConfig {
+    this.ensurePopularFile();
+    try {
+      const raw = readFileSync(this.popularFilePath(), 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_POPULAR };
+      const maxLimit = Math.max(
+        1,
+        Math.min(
+          POPULAR_HARD_MAX,
+          Number.isFinite(Number(parsed.maxLimit))
+            ? Number(parsed.maxLimit)
+            : DEFAULT_POPULAR.maxLimit,
+        ),
+      );
+      const ids = Array.isArray(parsed.productIds)
+        ? parsed.productIds
+            .map((x: unknown) => String(x ?? '').trim())
+            .filter(Boolean)
+            .slice(0, maxLimit)
+        : [];
+      return { productIds: ids, maxLimit };
+    } catch {
+      return { ...DEFAULT_POPULAR };
+    }
+  }
+
+  setPopularConfig(input: Partial<HomePopularConfig>): HomePopularConfig {
+    const cur = this.getPopularConfig();
+    const maxLimit = Math.max(
+      1,
+      Math.min(
+        POPULAR_HARD_MAX,
+        input.maxLimit != null && Number.isFinite(Number(input.maxLimit))
+          ? Number(input.maxLimit)
+          : cur.maxLimit,
+      ),
+    );
+    const rawIds = Array.isArray(input.productIds)
+      ? input.productIds
+      : cur.productIds;
+    const all = this.readAll();
+    const validIds = new Set(all.map((p) => p.id));
+    const dedup: string[] = [];
+    for (const id of rawIds) {
+      const s = String(id ?? '').trim();
+      if (!s || !validIds.has(s)) continue;
+      if (dedup.includes(s)) continue;
+      dedup.push(s);
+      if (dedup.length >= maxLimit) break;
+    }
+    const next: HomePopularConfig = { productIds: dedup, maxLimit };
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    writeFileSync(this.popularFilePath(), JSON.stringify(next, null, 2), 'utf-8');
+    return next;
+  }
+
+  listPopularProducts(): ShopCatalogProduct[] {
+    const cfg = this.getPopularConfig();
+    if (cfg.productIds.length === 0) return [];
+    const byId = new Map(this.readAll().map((p) => [p.id, p]));
+    const out: ShopCatalogProduct[] = [];
+    for (const id of cfg.productIds) {
+      const p = byId.get(id);
+      if (p && p.isActive !== false) out.push(p);
+      if (out.length >= cfg.maxLimit) break;
+    }
+    return out;
   }
 }
 

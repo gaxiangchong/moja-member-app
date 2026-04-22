@@ -134,7 +134,10 @@ export class AuthService {
       throw new ServiceUnavailableException({
         code: 'OTP_DELIVERY_NOT_CONFIGURED',
         message:
-          'OTP mode is whatsapp but WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
+          'OTP mode is whatsapp but WhatsApp credentials are missing. ' +
+          'Set WHATSAPP_PROVIDER plus the provider credentials — ' +
+          'Meta: WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID, ' +
+          'Twilio: TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + (TWILIO_WHATSAPP_FROM or TWILIO_MESSAGING_SERVICE_SID).',
       });
     }
 

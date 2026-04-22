@@ -9,5 +9,10 @@ export class ShopCatalogController {
   listProducts() {
     return this.shopCatalog.listPublicProducts();
   }
+
+  @Get('popular')
+  listPopular() {
+    return this.shopCatalog.listPopularProducts();
+  }
 }
 

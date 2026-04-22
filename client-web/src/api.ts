@@ -43,6 +43,28 @@ export async function fetchHomeAdSlides(): Promise<HomeAdSlide[]> {
   }
 }
 
+export type PopularProduct = {
+  id: string;
+  name: string;
+  category: string;
+  shortDescription?: string;
+  description?: string;
+  imageUrl?: string;
+  basePriceCents: number;
+};
+
+export async function fetchPopularProducts(): Promise<PopularProduct[]> {
+  try {
+    const res = await fetch(`${base}/shop/catalog/popular`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data as PopularProduct[];
+  } catch {
+    return [];
+  }
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;

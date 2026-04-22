@@ -23,6 +23,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'customer-orders': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
+    'settings-popular-items': true,
     'settings-home-ads': true,
     'settings-system': true,
     'reports-customers': true,
@@ -1002,6 +1003,7 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
           </div>
@@ -2329,6 +2331,51 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="settings-popular-items" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Popular items</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshPopularBtn">Refresh</button>
+                <button type="button" class="btn-primary" id="savePopularBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px 4px 20px;color:#64748b;font-size:13px">
+              Pick up to <strong id="popularMaxHint">5</strong> shop catalog items to feature on the member home screen. Drag the numbered order or use the arrows to reorder.
+            </div>
+            <div style="padding:12px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <div class="form-section" style="margin:0">
+                <label for="popularMax">Maximum items shown</label>
+                <input type="number" id="popularMax" min="1" max="5" step="1" value="5" style="width:120px" />
+              </div>
+              <p class="field-hint" id="popularSaveResult" style="margin:0"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Selected items</h2></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:72px">Order</th><th style="width:64px">Image</th><th>Name</th><th>Category</th><th>Price</th><th style="width:140px">Move</th><th style="width:90px">Remove</th></tr></thead>
+                <tbody id="popularSelectedBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Available catalog items</h2></div>
+            <div style="padding:10px 20px">
+              <input type="text" id="popularFilter" placeholder="Search by name or category…" style="width:100%" />
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:64px">Image</th><th>Name</th><th>Category</th><th>Price</th><th style="width:110px">Add</th></tr></thead>
+                <tbody id="popularAvailableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section id="settings-home-ads" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Home ad carousel</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshHomeAdsBtn">Refresh</button></div></div>
@@ -2569,7 +2616,7 @@ export class AdminDashboardController {
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-home-ads',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -2638,6 +2685,7 @@ export class AdminDashboardController {
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
+      'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
       audit: iconAudit,
       'audit-logins': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
@@ -2677,6 +2725,7 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
+      'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
       audit: 'Audit · Audit logs',
       'audit-logins': 'Audit · Admin login logs',
@@ -2686,6 +2735,8 @@ export class AdminDashboardController {
     let lastPerksCampaignRules = [];
     let lastShopCatalogProducts = [];
     let lastHomeAdSlides = [];
+    let popularSelectedIds = [];
+    let popularMaxLimit = 5;
     let lastSalesAnalytics = null;
     let saChartMetric = 'gmv';
 
@@ -4154,6 +4205,97 @@ export class AdminDashboardController {
       return url;
     }
 
+    function popularProductById(id) {
+      return (lastShopCatalogProducts || []).find(function (p) { return p.id === id; });
+    }
+
+    function popularFormatPrice(cents) {
+      var n = Number(cents);
+      if (!Number.isFinite(n)) return '-';
+      return 'RM ' + (n / 100).toFixed(2);
+    }
+
+    function popularThumb(url) {
+      var safe = String(url || '').replace(/"/g, '&quot;');
+      if (!safe) return '<div style="width:48px;height:36px;border-radius:6px;background:#f1f5f9;border:1px solid #e2e8f0"></div>';
+      return '<div style="width:48px;height:36px;border-radius:6px;background:url(&quot;' + safe + '&quot;) center/cover no-repeat;border:1px solid #e2e8f0"></div>';
+    }
+
+    function renderPopularSelected() {
+      var body = document.getElementById('popularSelectedBody');
+      if (!body) return;
+      if (popularSelectedIds.length === 0) {
+        body.innerHTML = '<tr><td colspan="7">No items selected. Add items from the list below.</td></tr>';
+        return;
+      }
+      var rows = popularSelectedIds.map(function (id, idx) {
+        var p = popularProductById(id) || { id: id, name: id + ' (missing)', category: '-', basePriceCents: 0, imageUrl: '' };
+        var upDisabled = idx === 0 ? ' disabled' : '';
+        var downDisabled = idx === popularSelectedIds.length - 1 ? ' disabled' : '';
+        return '<tr>' +
+          '<td><strong>#' + (idx + 1) + '</strong></td>' +
+          '<td>' + popularThumb(p.imageUrl) + '</td>' +
+          '<td>' + fmt(p.name) + '</td>' +
+          '<td>' + fmt(p.category) + '</td>' +
+          '<td>' + popularFormatPrice(p.basePriceCents) + '</td>' +
+          '<td class="td-actions">' +
+            '<button type="button" class="btn-outline pop-up-btn" data-id="' + fmt(p.id) + '"' + upDisabled + '>↑</button> ' +
+            '<button type="button" class="btn-outline pop-down-btn" data-id="' + fmt(p.id) + '"' + downDisabled + '>↓</button>' +
+          '</td>' +
+          '<td class="td-actions"><button type="button" class="btn-outline pop-remove-btn" data-id="' + fmt(p.id) + '">Remove</button></td>' +
+        '</tr>';
+      });
+      body.innerHTML = rows.join('');
+    }
+
+    function renderPopularAvailable() {
+      var body = document.getElementById('popularAvailableBody');
+      if (!body) return;
+      var q = (document.getElementById('popularFilter').value || '').trim().toLowerCase();
+      var selected = new Set(popularSelectedIds);
+      var candidates = (lastShopCatalogProducts || []).filter(function (p) {
+        if (selected.has(p.id)) return false;
+        if (!q) return true;
+        return ((p.name || '') + ' ' + (p.category || '') + ' ' + (p.shortDescription || ''))
+          .toLowerCase().indexOf(q) !== -1;
+      });
+      if (candidates.length === 0) {
+        body.innerHTML = '<tr><td colspan="5">' + (q ? 'No matches.' : 'All items are already selected.') + '</td></tr>';
+        return;
+      }
+      var full = popularSelectedIds.length >= popularMaxLimit;
+      body.innerHTML = candidates.map(function (p) {
+        return '<tr>' +
+          '<td>' + popularThumb(p.imageUrl) + '</td>' +
+          '<td>' + fmt(p.name) + '</td>' +
+          '<td>' + fmt(p.category) + '</td>' +
+          '<td>' + popularFormatPrice(p.basePriceCents) + '</td>' +
+          '<td class="td-actions"><button type="button" class="btn-primary pop-add-btn" data-id="' + fmt(p.id) + '"' + (full ? ' disabled title="Max reached"' : '') + '>Add</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function refreshPopularUi() {
+      var hint = document.getElementById('popularMaxHint');
+      if (hint) hint.textContent = String(popularMaxLimit);
+      var maxInput = document.getElementById('popularMax');
+      if (maxInput) maxInput.value = String(popularMaxLimit);
+      popularSelectedIds = popularSelectedIds.slice(0, popularMaxLimit);
+      renderPopularSelected();
+      renderPopularAvailable();
+    }
+
+    async function loadPopularItems() {
+      const [cfg, products] = await Promise.all([
+        api('/admin/shop-catalog/popular'),
+        api('/admin/shop-catalog/products'),
+      ]);
+      lastShopCatalogProducts = products || [];
+      popularSelectedIds = Array.isArray(cfg && cfg.productIds) ? cfg.productIds.slice() : [];
+      popularMaxLimit = Math.max(1, Math.min(5, Number(cfg && cfg.maxLimit) || 5));
+      refreshPopularUi();
+    }
+
     async function loadHomeAdSlides() {
       const data = await api('/admin/home-ads/slides');
       lastHomeAdSlides = data || [];
@@ -4581,6 +4723,7 @@ export class AdminDashboardController {
         loadPerksCampaignRules(),
         loadShopCatalog(),
         loadHomeAdSlides(),
+        loadPopularItems(),
       ];
       const results = await Promise.allSettled(tasks);
       const failed = results.filter((r) => r.status === 'rejected');
@@ -5012,6 +5155,73 @@ export class AdminDashboardController {
       if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
     });
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+
+    (function wirePopularItemsHandlers() {
+      const refreshBtn = document.getElementById('refreshPopularBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', function () {
+        loadPopularItems().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+      const maxInput = document.getElementById('popularMax');
+      if (maxInput) maxInput.addEventListener('change', function () {
+        const n = Math.max(1, Math.min(5, Number(maxInput.value) || 5));
+        popularMaxLimit = n;
+        refreshPopularUi();
+      });
+      const filter = document.getElementById('popularFilter');
+      if (filter) filter.addEventListener('input', function () { renderPopularAvailable(); });
+
+      const selBody = document.getElementById('popularSelectedBody');
+      if (selBody) selBody.addEventListener('click', function (ev) {
+        const t = ev.target;
+        if (!t || !t.dataset || !t.dataset.id) return;
+        const id = t.dataset.id;
+        const idx = popularSelectedIds.indexOf(id);
+        if (idx < 0) return;
+        if (t.classList.contains('pop-up-btn') && idx > 0) {
+          const tmp = popularSelectedIds[idx - 1];
+          popularSelectedIds[idx - 1] = popularSelectedIds[idx];
+          popularSelectedIds[idx] = tmp;
+          refreshPopularUi();
+        } else if (t.classList.contains('pop-down-btn') && idx < popularSelectedIds.length - 1) {
+          const tmp = popularSelectedIds[idx + 1];
+          popularSelectedIds[idx + 1] = popularSelectedIds[idx];
+          popularSelectedIds[idx] = tmp;
+          refreshPopularUi();
+        } else if (t.classList.contains('pop-remove-btn')) {
+          popularSelectedIds.splice(idx, 1);
+          refreshPopularUi();
+        }
+      });
+
+      const availBody = document.getElementById('popularAvailableBody');
+      if (availBody) availBody.addEventListener('click', function (ev) {
+        const t = ev.target;
+        if (!t || !t.classList.contains('pop-add-btn') || !t.dataset.id) return;
+        if (popularSelectedIds.length >= popularMaxLimit) return;
+        const id = t.dataset.id;
+        if (popularSelectedIds.indexOf(id) !== -1) return;
+        popularSelectedIds.push(id);
+        refreshPopularUi();
+      });
+
+      const saveBtn = document.getElementById('savePopularBtn');
+      const resultEl = document.getElementById('popularSaveResult');
+      if (saveBtn) saveBtn.addEventListener('click', async function () {
+        if (resultEl) resultEl.textContent = 'Saving…';
+        try {
+          const cfg = await apiPatch('/admin/shop-catalog/popular', {
+            productIds: popularSelectedIds,
+            maxLimit: popularMaxLimit,
+          });
+          popularSelectedIds = Array.isArray(cfg && cfg.productIds) ? cfg.productIds.slice() : popularSelectedIds;
+          popularMaxLimit = Math.max(1, Math.min(5, Number(cfg && cfg.maxLimit) || popularMaxLimit));
+          refreshPopularUi();
+          if (resultEl) resultEl.textContent = 'Saved.';
+        } catch (e) {
+          if (resultEl) resultEl.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
+        }
+      });
+    })();
 
     (function wireHomeAdsHandlers() {
       const refreshBtn = document.getElementById('refreshHomeAdsBtn');

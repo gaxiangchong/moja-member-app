@@ -43,6 +43,7 @@ import { CreateShopCatalogProductDto } from './dto/create-shop-catalog-product.d
 import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.dto';
 import { CreateHomeAdSlideDto } from './dto/create-home-ad-slide.dto';
 import { UpdateHomeAdSlideDto } from './dto/update-home-ad-slide.dto';
+import { UpdateHomePopularDto } from './dto/update-home-popular.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 
@@ -325,6 +326,18 @@ export class AdminController {
     @Body() dto: UpdateShopCatalogProductDto,
   ) {
     return this.shopCatalog.updateProduct(id, dto);
+  }
+
+  @Get('shop-catalog/popular')
+  @RequirePermissions(P.VOUCHER_READ)
+  getHomePopularConfig() {
+    return this.shopCatalog.getPopularConfig();
+  }
+
+  @Patch('shop-catalog/popular')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateHomePopularConfig(@Body() dto: UpdateHomePopularDto) {
+    return this.shopCatalog.setPopularConfig(dto);
   }
 
   @Get('home-ads/slides')

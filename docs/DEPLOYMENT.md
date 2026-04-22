@@ -86,7 +86,9 @@ Copy **`.env.example`** to **`.env`** on the server (or inject equivalent keys f
 | `ADMIN_JWT_EXPIRES_IN_SEC` | Admin JWT lifetime. |
 | `OPS_QUEUE_API_KEY` | Secret for `x-ops-api-key` on ops queue endpoints; ops UI stores or prompts for this. |
 | `OTP_DELIVERY_MODE` | Production: typically **`whatsapp`** or **`auto`** with WhatsApp configured. **`mock`** is unsafe for real users. |
-| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Required for real OTP via Meta WhatsApp Cloud API. |
+| `WHATSAPP_PROVIDER` | `meta` (default) or `twilio`. Selects which WhatsApp transport to use. |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Required for real OTP via Meta WhatsApp Cloud API (`WHATSAPP_PROVIDER=meta`). |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` or `TWILIO_MESSAGING_SERVICE_SID` | Required for real OTP via Twilio WhatsApp (`WHATSAPP_PROVIDER=twilio`). Add `TWILIO_WHATSAPP_CONTENT_SID` for production templates. |
 | `FEATURE_SHOP_SSO`, `FEATURE_CAMPAIGN_ASYNC` | Feature flags; see [rollout-checklist.md](rollout-checklist.md). |
 | `SHOP_WEB_BASE_URL`, `SHOP_HANDOFF_*` | Shop SSO handoff; see [shop-ecosystem-sso-plan.md](shop-ecosystem-sso-plan.md). |
 
@@ -220,9 +222,10 @@ Point previews at your staging API to verify CORS and auth before going live.
 ## 10. WhatsApp OTP (production)
 
 1. Set **`OTP_DELIVERY_MODE`** to **`whatsapp`** (strict) or **`auto`** (WhatsApp when configured).
-2. Configure **`WHATSAPP_ACCESS_TOKEN`** and **`WHATSAPP_PHONE_NUMBER_ID`** per [README](../README.md) Meta setup.
-3. Use an **approved template** for OTP in production Meta accounts; set `WHATSAPP_OTP_TEMPLATE_NAME` / `WHATSAPP_OTP_TEMPLATE_LANG` as needed.
-4. Remove or avoid **`OTP_MOCK_FIXED_CODE`** in production.
+2. Pick a provider with **`WHATSAPP_PROVIDER`**:
+   - **Meta**: set **`WHATSAPP_ACCESS_TOKEN`** and **`WHATSAPP_PHONE_NUMBER_ID`** per [README](../README.md) Meta setup. Use an **approved template** in production (`WHATSAPP_OTP_TEMPLATE_NAME` / `WHATSAPP_OTP_TEMPLATE_LANG`).
+   - **Twilio**: set **`TWILIO_ACCOUNT_SID`**, **`TWILIO_AUTH_TOKEN`**, and either **`TWILIO_WHATSAPP_FROM`** (approved WhatsApp sender) or **`TWILIO_MESSAGING_SERVICE_SID`**. Use an **approved Content template** in production via **`TWILIO_WHATSAPP_CONTENT_SID`** (plain `Body` only works inside the 24h window or Sandbox).
+3. Remove or avoid **`OTP_MOCK_FIXED_CODE`** in production.
 
 ---
 

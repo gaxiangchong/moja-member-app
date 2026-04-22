@@ -14,6 +14,7 @@ import {
   fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
+  fetchPopularProducts,
   getToken,
   loginWithPin,
   lookupLogin,
@@ -26,10 +27,11 @@ import {
   type HomeAdSlide,
   type MemberProfile,
   type MemberRewardsPayload,
+  type PopularProduct,
 } from './api';
 
 const PENDING_REFERRAL_KEY = 'moja_pending_referral';
-import { PinDots, PinKeypad } from './components/PinKeypad';
+import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
 import { ShopFlow } from './shop/ShopFlow';
 
@@ -48,6 +50,83 @@ function Card({
   className?: string;
 }) {
   return <section className={`pmCard ${className}`.trim()}>{children}</section>;
+}
+
+function AuthBrand() {
+  return (
+    <div className="authBrand" aria-hidden>
+      <img src="/logo.png" alt="" className="authBrandLogo" />
+      <span className="authBrandWordmark">Moja Maison</span>
+    </div>
+  );
+}
+
+function AuthStepDots({ step, total }: { step: number; total: number }) {
+  return (
+    <div className="authStepDots" role="progressbar" aria-valuemin={1} aria-valuemax={total} aria-valuenow={step}>
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          className={`authStepDot${i + 1 === step ? ' active' : ''}${i + 1 < step ? ' done' : ''}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AuthBackLink({
+  label = 'Back',
+  onClick,
+  disabled,
+}: {
+  label?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button type="button" className="authBackLink" onClick={onClick} disabled={disabled}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+type AuthHeroIcon = 'phone' | 'lock' | 'chat' | 'shield';
+
+function AuthHero({ icon }: { icon: AuthHeroIcon }) {
+  return (
+    <div className={`authHero authHero--${icon}`} aria-hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        {icon === 'phone' && (
+          <>
+            <rect x="6" y="2.5" width="12" height="19" rx="3" />
+            <path d="M11 18.5h2" />
+          </>
+        )}
+        {icon === 'lock' && (
+          <>
+            <rect x="4.5" y="10" width="15" height="10.5" rx="2.5" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            <circle cx="12" cy="15.25" r="1.15" fill="currentColor" stroke="none" />
+          </>
+        )}
+        {icon === 'chat' && (
+          <>
+            <path d="M4 5.5h16v10.25a2 2 0 0 1-2 2H9.5L5 22v-4.25H6a2 2 0 0 1-2-2z" />
+            <path d="M8.5 10.5h7M8.5 13.5h4" />
+          </>
+        )}
+        {icon === 'shield' && (
+          <>
+            <path d="M12 3.25 4.5 6v6.5c0 4.25 3 7 7.5 8.25 4.5-1.25 7.5-4 7.5-8.25V6z" />
+            <path d="M9.25 12.25 11 14l3.5-3.5" />
+          </>
+        )}
+      </svg>
+    </div>
+  );
 }
 
 const DEFAULT_AD_SLIDES: HomeAdSlide[] = [
@@ -239,6 +318,8 @@ function App() {
   const [setPinPhase, setSetPinPhase] = useState<'first' | 'confirm'>('first');
   const [setupToken, setSetupToken] = useState('');
   const [otpFlowPurpose, setOtpFlowPurpose] = useState<OtpFlowPurpose>('register');
+  const [otpExpiresAt, setOtpExpiresAt] = useState<string | null>(null);
+  const [otpNow, setOtpNow] = useState<number>(() => Date.now());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
@@ -253,12 +334,18 @@ function App() {
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
   const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
+  const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     fetchHomeAdSlides()
       .then((list) => {
         if (!cancelled && list.length > 0) setAdSlides(list);
+      })
+      .catch(() => {});
+    fetchPopularProducts()
+      .then((list) => {
+        if (!cancelled) setPopularItems(list);
       })
       .catch(() => {});
     return () => {
@@ -281,6 +368,26 @@ function App() {
     syncFormFromProfile(me);
     setStep('member');
   }, [syncFormFromProfile]);
+
+  useEffect(() => {
+    if (step !== 'code' || !otpExpiresAt) return;
+    setOtpNow(Date.now());
+    const id = window.setInterval(() => setOtpNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [step, otpExpiresAt]);
+
+  const otpSecondsLeft = useMemo(() => {
+    if (!otpExpiresAt) return null;
+    const ms = new Date(otpExpiresAt).getTime() - otpNow;
+    return Math.max(0, Math.floor(ms / 1000));
+  }, [otpExpiresAt, otpNow]);
+
+  const otpCountdownLabel = useMemo(() => {
+    if (otpSecondsLeft == null) return null;
+    const m = Math.floor(otpSecondsLeft / 60);
+    const s = otpSecondsLeft % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }, [otpSecondsLeft]);
 
   useEffect(() => {
     if (getToken()) {
@@ -358,6 +465,7 @@ function App() {
         registered && !hasPin ? 'recovery' : 'register';
       const res = await requestOtp(phone, purpose);
       setOtpFlowPurpose(purpose);
+      setOtpExpiresAt(res.expiresAt ?? null);
       setStep('code');
       setCode('');
       applyOtpResponseHint(res);
@@ -375,6 +483,7 @@ function App() {
     try {
       const res = await requestOtp(phone, 'recovery');
       setOtpFlowPurpose('recovery');
+      setOtpExpiresAt(res.expiresAt ?? null);
       setStep('code');
       setCode('');
       applyOtpResponseHint(res);
@@ -384,6 +493,23 @@ function App() {
       setLoading(false);
     }
   };
+
+  const handleResendOtp = useCallback(async () => {
+    if (loading) return;
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const res = await requestOtp(phone, otpFlowPurpose);
+      setOtpExpiresAt(res.expiresAt ?? null);
+      setCode('');
+      applyOtpResponseHint(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resend code');
+    } finally {
+      setLoading(false);
+    }
+  }, [applyOtpResponseHint, loading, otpFlowPurpose, phone]);
 
   const submitPinLoginWith = useCallback(
     async (pin: string) => {
@@ -419,32 +545,49 @@ function App() {
     void submitPinLoginWith(loginPin);
   }, [loginPin, submitPinLoginWith]);
 
+  const submitVerify = useCallback(
+    async (codeValue: string) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const pendingRef = sessionStorage.getItem(PENDING_REFERRAL_KEY)?.trim();
+        const verified = await verifyOtp(phone, codeValue, {
+          referralCode:
+            otpFlowPurpose === 'register' ? pendingRef || undefined : undefined,
+        });
+        if (pendingRef && verified.purpose === 'register') {
+          sessionStorage.removeItem(PENDING_REFERRAL_KEY);
+        }
+        setSetupToken(verified.setupToken);
+        setOtpFlowPurpose(verified.purpose);
+        setCode('');
+        setNewPin('');
+        setNewPinConfirm('');
+        setSetPinPhase('first');
+        setStep('setPin');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Verification failed');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [otpFlowPurpose, phone],
+  );
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const pendingRef = sessionStorage.getItem(PENDING_REFERRAL_KEY)?.trim();
-      const verified = await verifyOtp(phone, code, {
-        referralCode:
-          otpFlowPurpose === 'register' ? pendingRef || undefined : undefined,
-      });
-      if (pendingRef && verified.purpose === 'register') {
-        sessionStorage.removeItem(PENDING_REFERRAL_KEY);
-      }
-      setSetupToken(verified.setupToken);
-      setOtpFlowPurpose(verified.purpose);
-      setCode('');
-      setNewPin('');
-      setNewPinConfirm('');
-      setSetPinPhase('first');
-      setStep('setPin');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed');
-    } finally {
-      setLoading(false);
-    }
+    await submitVerify(code);
   };
+
+  const onCodeChange = useCallback(
+    (next: string) => {
+      setCode(next);
+      if (next.length === 6 && !loading) {
+        void submitVerify(next);
+      }
+    },
+    [loading, submitVerify],
+  );
 
   const submitSetPinPair = useCallback(
     async (a: string, b: string) => {
@@ -631,237 +774,280 @@ function App() {
       {authMode && (
         <main className="authMain">
           <div className="authGlass">
-          {step === 'phone' && (
-            <section className="card authCard">
-              <h1>Welcome to Moja Maison Member</h1>
-              <p className="sub">
-                Enter your phone number to get started.
-              </p>
-              <form onSubmit={handlePhoneContinue}>
-                {sessionStorage.getItem(PENDING_REFERRAL_KEY) ? (
-                  <p className="hint" style={{ marginTop: 0 }}>
-                    You opened an invite link — your first sign-up will credit your friend after you verify and
-                    set your PIN.
-                  </p>
-                ) : null}
-                <label htmlFor="phone">Phone number</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="e.g. +65 9123 4567"
-                  value={phone}
-                  onChange={(ev) => setPhone(ev.target.value)}
-                  required
-                  disabled={loading}
-                />
-                {error && <p className="err">{error}</p>}
-                <button type="submit" disabled={loading}>
-                  {loading ? 'Checking…' : 'Continue'}
-                </button>
-              </form>
-            </section>
-          )}
+            <AuthBrand />
 
-          {step === 'pin' && (
-            <section className="card authCard authCardPin">
-              <div className="pinLoginLayout">
-                <div className="pinLoginHeader">
-                  <button
-                    type="button"
-                    className="pinBackBtn"
+            {step === 'phone' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthHero icon="phone" />
+                  <h1 className="authTitle">Welcome to Moja</h1>
+                  <p className="authSub">
+                    Sign in or create an account to unlock rewards, vouchers and your Moja Maison perks.
+                  </p>
+                  <form onSubmit={handlePhoneContinue} className="authForm">
+                    {sessionStorage.getItem(PENDING_REFERRAL_KEY) ? (
+                      <p className="authInvite">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                        </svg>
+                        <span>
+                          You opened an invite link — your friend earns referral credit after you verify and set your PIN.
+                        </span>
+                      </p>
+                    ) : null}
+                    <label htmlFor="phone" className="authLabel">Phone number</label>
+                    <div className={`authPhoneField${loading ? ' disabled' : ''}`}>
+                      <span className="authPhonePrefix" aria-hidden>+</span>
+                      <input
+                        id="phone"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="60 12 345 6789"
+                        value={phone}
+                        onChange={(ev) => setPhone(ev.target.value)}
+                        required
+                        disabled={loading}
+                        className="authPhoneInput"
+                      />
+                    </div>
+                    {error && <p className="err authErr">{error}</p>}
+                    <button type="submit" className="authPrimary" disabled={loading}>
+                      {loading ? 'Checking…' : (
+                        <>
+                          <span>Continue</span>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                            <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+                    <p className="authTrust">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <rect x="4" y="10" width="16" height="11" rx="2" />
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                      </svg>
+                      We'll send a one-time code via WhatsApp. No password needed.
+                    </p>
+                  </form>
+                </div>
+              </section>
+            )}
+
+            {step === 'pin' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthBackLink
                     onClick={() => {
                       setStep('phone');
                       setLoginPin('');
                       setError(null);
                     }}
                     disabled={loading}
-                    aria-label="Back"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path
-                        d="M15 18l-6-6 6-6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <h1 className="pinLoginTitle">Enter your PIN</h1>
-                <p className="pinLoginSub">
-                  Enter your 6-digit login PIN.
-                  {phone.trim() ? (
-                    <>
-                      {' '}
-                      <strong style={{ fontWeight: 600, color: '#2b2b2b' }}>{phone.trim()}</strong>
-                    </>
-                  ) : null}
-                </p>
-                <div className="pinInputField">
-                  <label htmlFor="loginPinInput" className="srOnly">
-                    6-digit PIN
-                  </label>
-                  <input
-                    id="loginPinInput"
-                    className="pinInput"
-                    type="password"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    placeholder="••••••"
-                    value={loginPin}
-                    onChange={(ev) => {
-                      const next = ev.target.value.replace(/\D/g, '').slice(0, 6);
-                      onLoginPinChange(next);
-                    }}
-                    disabled={loading}
-                    autoFocus
                   />
-                </div>
-                {error && <p className="err pinLoginErr">{error}</p>}
-                <button
-                  type="button"
-                  className="pinVerifyBtn"
-                  onClick={handlePinSignInClick}
-                  disabled={loading || loginPin.length !== 6}
-                >
-                  {loading ? 'Signing in…' : 'Sign in'}
-                </button>
-                <p className="pinLoginForgot">
-                  Forgot your PIN?{' '}
+                  <AuthHero icon="lock" />
+                  <h1 className="authTitle">Enter your PIN</h1>
+                  <p className="authSub">
+                    6-digit login PIN
+                    {phone.trim() ? (
+                      <>
+                        {' '}for <strong className="authSubStrong">{phone.trim()}</strong>
+                      </>
+                    ) : null}
+                  </p>
+                  <OtpBoxes
+                    id="loginPinInput"
+                    value={loginPin}
+                    onChange={onLoginPinChange}
+                    autoFocus
+                    disabled={loading}
+                    ariaLabel="6-digit PIN"
+                  />
+                  {error && <p className="err authErr">{error}</p>}
                   <button
                     type="button"
-                    className="pinLoginForgotBtn"
+                    className="authPrimary"
+                    onClick={handlePinSignInClick}
+                    disabled={loading || loginPin.length !== 6}
+                  >
+                    {loading ? 'Signing in…' : 'Sign in'}
+                  </button>
+                  <button
+                    type="button"
+                    className="authSecondary"
                     onClick={() => void handleForgotPin()}
                     disabled={loading}
                   >
-                    Login with OTP
+                    Use WhatsApp OTP instead
                   </button>
-                </p>
-              </div>
-            </section>
-          )}
+                  <p className="authHelper">
+                    Forgot your PIN? Verify by WhatsApp OTP to set a new one.
+                  </p>
+                </div>
+              </section>
+            )}
 
-          {step === 'code' && (
-            <section className="card authCard">
-              <h1>{otpFlowPurpose === 'recovery' ? 'Verify to reset PIN' : 'Verify your number'}</h1>
-              <p className="sub">
-                {otpFlowPurpose === 'recovery'
-                  ? 'Enter the code we sent to WhatsApp to continue.'
-                  : 'Enter the code we sent to WhatsApp to finish registration.'}
-              </p>
-              {hint && <p className="hint">{hint}</p>}
-              <form onSubmit={handleVerify}>
-                <label htmlFor="code">OTP code</label>
-                <input
-                  id="code"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={8}
-                  autoComplete="one-time-code"
-                  placeholder="123456"
-                  value={code}
-                  onChange={(ev) => setCode(ev.target.value.replace(/\D/g, ''))}
-                  required
-                  disabled={loading}
-                />
-                {error && <p className="err">{error}</p>}
-                <div className="row">
-                  <button
-                    type="button"
-                    className="ghost"
+            {step === 'code' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthBackLink
                     onClick={() => {
                       setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
                       setCode('');
                       setError(null);
                     }}
                     disabled={loading}
-                  >
-                    Back
-                  </button>
-                  <button type="submit" disabled={loading}>
-                    {loading ? 'Verifying…' : 'Verify & Continue'}
-                  </button>
-                </div>
-              </form>
-            </section>
-          )}
-
-          {step === 'setPin' && (
-            <section className="card authCard authCardPin">
-              <div className="pinScreen">
-                <h1 className="pinScreenTitle">
-                  {setPinPhase === 'first'
-                    ? otpFlowPurpose === 'recovery'
-                      ? 'Create a new PIN'
-                      : 'Create your login PIN'
-                    : 'Confirm your PIN'}
-                </h1>
-                <p className="pinScreenCaption">
-                  {setPinPhase === 'first'
-                    ? 'Choose six digits. You will use this instead of WhatsApp for most logins.'
-                    : 'Enter the same digits again to confirm.'}
-                </p>
-                <PinDots
-                  length={setPinPhase === 'first' ? newPin.length : newPinConfirm.length}
-                  max={6}
-                />
-                <PinKeypad
-                  value={setPinPhase === 'first' ? newPin : newPinConfirm}
-                  onChange={(next) => {
-                    if (setPinPhase === 'first') {
-                      setNewPin(next);
-                      if (next.length === 6) {
-                        setSetPinPhase('confirm');
-                      }
-                    } else {
-                      setNewPinConfirm(next);
-                      if (next.length === 6) {
-                        void submitSetPinPair(newPinRef.current, next);
-                      }
-                    }
-                  }}
-                  disabled={loading}
-                />
-                {error && <p className="err" style={{ marginTop: '0.5rem' }}>{error}</p>}
-                <div className="pinScreenLinks">
-                  {setPinPhase === 'confirm' ? (
+                  />
+                  <AuthStepDots step={1} total={otpFlowPurpose === 'recovery' ? 2 : 2} />
+                  <AuthHero icon="chat" />
+                  <h1 className="authTitle">Enter verification code</h1>
+                  <p className="authSub">
+                    We sent a 6-digit code via WhatsApp
+                    {phone.trim() ? (
+                      <>
+                        {' '}to <strong className="authSubStrong">{phone.trim()}</strong>
+                      </>
+                    ) : null}
+                    .
+                  </p>
+                  {hint && <p className="authHint">{hint}</p>}
+                  <form onSubmit={handleVerify} className="authForm">
+                    <OtpBoxes
+                      id="otpCodeInput"
+                      value={code}
+                      onChange={onCodeChange}
+                      autoFocus
+                      disabled={loading}
+                      ariaLabel="OTP code"
+                    />
+                    <div className="authOtpMeta">
+                      {otpCountdownLabel != null && (
+                        <span
+                          className={`otpTimer${otpSecondsLeft === 0 ? ' otpTimerExpired' : ''}`}
+                          aria-live="polite"
+                        >
+                          {otpSecondsLeft === 0 ? 'Code expired' : `Code expires in ${otpCountdownLabel}`}
+                        </span>
+                      )}
+                      <span className="otpResend">
+                        Didn't receive it?
+                        <button
+                          type="button"
+                          className="otpResendBtn"
+                          onClick={() => void handleResendOtp()}
+                          disabled={loading || (otpSecondsLeft != null && otpSecondsLeft > 0)}
+                        >
+                          Resend code
+                        </button>
+                      </span>
+                    </div>
+                    {error && <p className="err authErr">{error}</p>}
                     <button
-                      type="button"
-                      className="textLink"
-                      onClick={() => {
+                      type="submit"
+                      className="authPrimary"
+                      disabled={loading || code.length !== 6}
+                    >
+                      {loading ? 'Verifying…' : 'Verify & continue'}
+                    </button>
+                  </form>
+                </div>
+              </section>
+            )}
+
+            {step === 'setPin' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthBackLink
+                    label={setPinPhase === 'confirm' ? 'Edit PIN' : 'Back'}
+                    onClick={() => {
+                      if (setPinPhase === 'confirm') {
                         setSetPinPhase('first');
                         setNewPinConfirm('');
                         setError(null);
-                      }}
-                      disabled={loading}
-                    >
-                      Edit PIN
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="textLink textLinkMuted"
-                    onClick={() => {
-                      setStep('code');
-                      setNewPin('');
-                      setNewPinConfirm('');
-                      setSetPinPhase('first');
-                      setError(null);
+                      } else {
+                        setStep('code');
+                        setNewPin('');
+                        setNewPinConfirm('');
+                        setSetPinPhase('first');
+                        setError(null);
+                      }
                     }}
                     disabled={loading}
+                  />
+                  <AuthStepDots step={2} total={2} />
+                  <AuthHero icon="shield" />
+                  <h1 className="authTitle">
+                    {setPinPhase === 'first'
+                      ? otpFlowPurpose === 'recovery'
+                        ? 'Create a new PIN'
+                        : 'Create your PIN'
+                      : 'Confirm your PIN'}
+                  </h1>
+                  <p className="authSub">
+                    {setPinPhase === 'first'
+                      ? 'Choose 6 digits. You will use this for quick sign-in instead of WhatsApp.'
+                      : 'Re-enter the same 6 digits to confirm.'}
+                  </p>
+                  <div className="authPhaseDots" aria-hidden>
+                    <span className={`authPhaseDot${setPinPhase === 'first' ? ' active' : ' done'}`} />
+                    <span className={`authPhaseDot${setPinPhase === 'confirm' ? ' active' : ''}`} />
+                  </div>
+                  <OtpBoxes
+                    key={setPinPhase}
+                    id="setPinInput"
+                    name={setPinPhase === 'first' ? 'newPin' : 'newPinConfirm'}
+                    value={setPinPhase === 'first' ? newPin : newPinConfirm}
+                    onChange={(next) => {
+                      if (setPinPhase === 'first') {
+                        setNewPin(next);
+                        if (next.length === 6) setSetPinPhase('confirm');
+                      } else {
+                        setNewPinConfirm(next);
+                        if (next.length === 6) {
+                          void submitSetPinPair(newPinRef.current, next);
+                        }
+                      }
+                    }}
+                    autoFocus
+                    disabled={loading}
+                    ariaLabel="6-digit PIN"
+                  />
+                  {error && <p className="err authErr">{error}</p>}
+                  <button
+                    type="button"
+                    className="authPrimary"
+                    onClick={() => {
+                      if (setPinPhase === 'first') {
+                        if (newPin.length === 6) setSetPinPhase('confirm');
+                      } else {
+                        if (newPinConfirm.length === 6) {
+                          void submitSetPinPair(newPinRef.current, newPinConfirm);
+                        }
+                      }
+                    }}
+                    disabled={
+                      loading ||
+                      (setPinPhase === 'first' ? newPin.length !== 6 : newPinConfirm.length !== 6)
+                    }
                   >
-                    Back to code
+                    {loading
+                      ? 'Saving…'
+                      : setPinPhase === 'first'
+                        ? 'Next'
+                        : 'Confirm PIN'}
                   </button>
+                  <p className="authHelper">
+                    Tip: avoid obvious patterns like 123456 or your birth year.
+                  </p>
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
+
+            <p className="authLegal">
+              By continuing you agree to our{' '}
+              <a href="/terms" className="authLegalLink">Terms</a> and{' '}
+              <a href="/privacy" className="authLegalLink">Privacy Policy</a>.
+            </p>
           </div>
         </main>
       )}
@@ -945,10 +1131,54 @@ function App() {
                   </button>
                 </div>
 
-                <Card className="promoCard">
-                  <h3>Fresh Morning Deal</h3>
-                  <p>Earn double points on coffee + pastry combo before 11:00 AM.</p>
-                </Card>
+                {popularItems.length > 0 && (
+                  <section className="popularSection">
+                    <div className="popularHeader">
+                      <h3>Popular items</h3>
+                      <button
+                        type="button"
+                        className="popularMore"
+                        onClick={() => setTab('shop')}
+                      >
+                        Shop now
+                      </button>
+                    </div>
+                    <ul className="popularList">
+                      {popularItems.map((item) => {
+                        const img = resolveApiAssetUrl(item.imageUrl || '');
+                        const price = Number.isFinite(item.basePriceCents)
+                          ? `RM ${(item.basePriceCents / 100).toFixed(2)}`
+                          : '';
+                        return (
+                          <li key={item.id} className="popularItem">
+                            <button
+                              type="button"
+                              className="popularCard"
+                              onClick={() => setTab('shop')}
+                            >
+                              <span
+                                className="popularThumb"
+                                style={
+                                  img
+                                    ? { backgroundImage: `url(${img})` }
+                                    : undefined
+                                }
+                                aria-hidden
+                              />
+                              <span className="popularMeta">
+                                <span className="popularName">{item.name}</span>
+                                {item.shortDescription ? (
+                                  <span className="popularDesc">{item.shortDescription}</span>
+                                ) : null}
+                                {price ? <span className="popularPrice">{price}</span> : null}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                )}
               </>
             )}
 
