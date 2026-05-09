@@ -797,13 +797,13 @@ function App() {
                     ) : null}
                     <label htmlFor="phone" className="authLabel">Phone number</label>
                     <div className={`authPhoneField${loading ? ' disabled' : ''}`}>
-                      <span className="authPhonePrefix" aria-hidden>+</span>
+                      <span className="authPhonePrefix" aria-hidden>📱</span>
                       <input
                         id="phone"
                         type="tel"
                         inputMode="tel"
                         autoComplete="tel"
-                        placeholder="60 12 345 6789"
+                        placeholder="+60 12 345 6789"
                         value={phone}
                         onChange={(ev) => setPhone(ev.target.value)}
                         required
