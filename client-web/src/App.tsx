@@ -41,6 +41,9 @@ type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
 type RewardFilter = 'all' | 'food' | 'drinks';
+type PaymentResult =
+  | { status: 'success'; orderNumber: string | null }
+  | { status: 'failed' };
 
 function Card({
   children,
@@ -335,6 +338,7 @@ function App() {
   const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,18 +407,20 @@ function App() {
     try {
       const u = new URL(window.location.href);
       const shopPay = u.searchParams.get('shopPayment');
+      const orderNumber = u.searchParams.get('orderNumber');
       const t = u.searchParams.get('tab');
       if (t === 'account' || t === 'home' || t === 'perks' || t === 'shop' || t === 'orders') {
         setTab(t);
       }
       if (shopPay === 'success') {
-        setHint('Shop payment completed. Your order is confirmed when Xendit sends the capture event.');
+        setPaymentResult({ status: 'success', orderNumber });
         void loadMemberData();
       } else if (shopPay === 'failed') {
-        setHint('Shop payment did not complete. Open Shop to try again.');
+        setPaymentResult({ status: 'failed' });
       }
-      if (shopPay || t) {
+      if (shopPay || t || orderNumber) {
         u.searchParams.delete('shopPayment');
+        u.searchParams.delete('orderNumber');
         u.searchParams.delete('tab');
         const qs = u.searchParams.toString();
         window.history.replaceState({}, '', `${u.pathname}${qs ? `?${qs}` : ''}`);
@@ -1460,6 +1466,120 @@ function App() {
               <span className="tabLabel">Account</span>
             </button>
           </nav>
+
+          {paymentResult && (
+            <div
+              className="paymentResultOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="paymentResultTitle"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setPaymentResult(null);
+              }}
+            >
+              <div
+                className={`paymentResultSheet paymentResultSheet--${paymentResult.status}`}
+              >
+                {paymentResult.status === 'success' ? (
+                  <>
+                    <div
+                      className="paymentResultIcon paymentResultIcon--success"
+                      aria-hidden
+                    >
+                      <svg viewBox="0 0 64 64" fill="none">
+                        <circle cx="32" cy="32" r="30" fill="currentColor" opacity="0.12" />
+                        <circle cx="32" cy="32" r="22" fill="currentColor" />
+                        <path
+                          d="M22 32.5l7 7 14-14"
+                          stroke="#fff"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                    <h2 id="paymentResultTitle" className="paymentResultTitle">
+                      Payment received
+                    </h2>
+                    <p className="paymentResultBody">
+                      Thank you! We&apos;re confirming your order — it&apos;ll appear in{' '}
+                      <strong>Orders</strong> in a moment.
+                    </p>
+                    {paymentResult.orderNumber ? (
+                      <div className="paymentResultOrderNum">
+                        Order #{paymentResult.orderNumber}
+                      </div>
+                    ) : null}
+                    <div className="paymentResultActions">
+                      <button
+                        type="button"
+                        className="paymentResultPrimary"
+                        onClick={() => {
+                          setPaymentResult(null);
+                          setTab('orders');
+                        }}
+                      >
+                        View order
+                      </button>
+                      <button
+                        type="button"
+                        className="paymentResultGhost"
+                        onClick={() => {
+                          setPaymentResult(null);
+                          setTab('shop');
+                        }}
+                      >
+                        Continue shopping
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="paymentResultIcon paymentResultIcon--failed"
+                      aria-hidden
+                    >
+                      <svg viewBox="0 0 64 64" fill="none">
+                        <circle cx="32" cy="32" r="30" fill="currentColor" opacity="0.12" />
+                        <circle cx="32" cy="32" r="22" fill="currentColor" />
+                        <path
+                          d="M22 22l20 20M42 22L22 42"
+                          stroke="#fff"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </div>
+                    <h2 id="paymentResultTitle" className="paymentResultTitle">
+                      Payment didn&apos;t go through
+                    </h2>
+                    <p className="paymentResultBody">
+                      Your card or wallet wasn&apos;t charged. Head back to checkout and try again — pick another method if you like.
+                    </p>
+                    <div className="paymentResultActions">
+                      <button
+                        type="button"
+                        className="paymentResultPrimary"
+                        onClick={() => {
+                          setPaymentResult(null);
+                          setTab('shop');
+                        }}
+                      >
+                        Try again
+                      </button>
+                      <button
+                        type="button"
+                        className="paymentResultGhost"
+                        onClick={() => setPaymentResult(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {shareOpen && (
             <div className="shareOverlay" role="dialog" aria-modal="true">

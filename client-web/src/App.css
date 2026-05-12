@@ -1450,6 +1450,137 @@
   place-items: end center;
 }
 
+/* --- Payment result modal --------------------------------------------- */
+.paymentResultOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(20, 25, 60, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  animation: paymentResultFadeIn 180ms ease-out;
+}
+
+@keyframes paymentResultFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.paymentResultSheet {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 22px;
+  padding: 28px 24px 20px;
+  display: grid;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 24px 48px -16px rgba(0, 52, 141, 0.35);
+  animation: paymentResultPopIn 220ms cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+@keyframes paymentResultPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.paymentResultIcon {
+  display: grid;
+  place-items: center;
+  margin: 0 auto 4px;
+}
+
+.paymentResultIcon svg {
+  width: 72px;
+  height: 72px;
+}
+
+.paymentResultIcon--success {
+  color: #10a85a;
+}
+
+.paymentResultIcon--failed {
+  color: #d23a3a;
+}
+
+.paymentResultTitle {
+  margin: 0;
+  color: #00348d;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.paymentResultBody {
+  margin: 0;
+  color: #555;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.paymentResultOrderNum {
+  margin: 4px auto 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #eef4fe;
+  color: #00348d;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  display: inline-block;
+  width: fit-content;
+}
+
+.paymentResultActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.paymentResultPrimary {
+  width: 100%;
+  min-height: 46px;
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(180deg, #0a49a8 0%, #00348d 100%);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 10px 22px -10px rgba(0, 52, 141, 0.55);
+}
+
+.paymentResultPrimary:hover {
+  filter: brightness(1.04);
+}
+
+.paymentResultGhost {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(0, 52, 141, 0.18);
+  border-radius: 999px;
+  color: #00348d;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.paymentResultGhost:hover {
+  background: #f7faff;
+}
+
 .shareSheet {
   width: min(560px, 100%);
   background: #fff;
