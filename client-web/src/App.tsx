@@ -1290,7 +1290,9 @@ function App() {
               </>
             )}
 
-            {tab === 'shop' && <ShopFlow pointsBalance={pointsBalance} />}
+            {tab === 'shop' && (
+              <ShopFlow pointsBalance={pointsBalance} memberRewards={rewardsData} />
+            )}
 
             {tab === 'orders' && (
               <OrdersTab active={tab === 'orders'} onGoToShop={() => setTab('shop')} />
@@ -1315,15 +1317,14 @@ function App() {
                 <Card>
                   <SectionHeader title="Wallet balance" />
                   <p className="caption" style={{ marginTop: 0 }}>
-                    Stored wallet credit is shown for reference. Top-ups and payments run through{' '}
-                    <strong>Shop checkout</strong> (Xendit hosted payment page), not from this screen.
+
                   </p>
                   <p style={{ margin: '8px 0 4px', fontSize: 22, fontWeight: 700, color: '#00348d' }}>
                     {(profile.storedWallet?.currentWalletBalance ?? 0) / 100}
                   </p>
-                  <p className="caption" style={{ marginTop: 0 }}>
+{/*                   <p className="caption" style={{ marginTop: 0 }}>
                     Current balance (major units).
-                  </p>
+                  </p> */}
                 </Card>
                 <Card>
                   <SectionHeader title="Personal Info" />
@@ -1352,12 +1353,12 @@ function App() {
                     Friends joined: <strong>{profile.referralCount ?? 0}</strong>
                   </p>
                   <p className="caption" style={{ marginTop: 8 }}>
-                    Share your link so visits count toward referral rewards. Open “Share App” from Home or here.
+                    Share your link to earns referral rewards.
                   </p>
                   <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>
                     Copy invite link
                   </button>
-                  {(profile.favoriteProducts?.length ?? 0) > 0 ? (
+{/*                   {(profile.favoriteProducts?.length ?? 0) > 0 ? (
                     <div style={{ marginTop: 12 }}>
                       <p className="caption" style={{ margin: '0 0 6px' }}>
                         Top picks (from your orders)
@@ -1374,7 +1375,7 @@ function App() {
                     <p className="caption" style={{ marginTop: 12 }}>
                       Favourites appear after you place shop orders — we group what you buy most.
                     </p>
-                  )}
+                  )} */}
                 </Card>
                 <Card>
                   <SectionHeader title="Activity" />

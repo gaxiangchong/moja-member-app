@@ -5,8 +5,8 @@ export type CheckoutDraft = {
   fulfillmentMethod: FulfillmentMethod | null;
   pickupDate: string | null;
   pickupTime: string | null;
-  deliveryCompany: string | null;
   deliveryPickupTime: string | null;
+  deliveryRemarks?: string | null;
 };
 
 export type CheckoutValidationResult = {
@@ -35,9 +35,6 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   }
 
   if (state.fulfillmentMethod === 'delivery') {
-    if (!state.deliveryCompany?.trim()) {
-      errors.push('Select or enter a delivery company / platform.');
-    }
     if (!state.deliveryPickupTime?.trim()) {
       errors.push('Enter the expected rider pickup time.');
     }
@@ -50,8 +47,8 @@ export function fulfillmentSummaryLines(
   method: FulfillmentMethod | null,
   pickupDate: string | null,
   pickupTime: string | null,
-  deliveryCompany: string | null,
   deliveryPickupTime: string | null,
+  deliveryRemarks?: string | null,
 ): string[] {
   if (!method) return ['Not selected'];
   if (method === 'pickup') {
@@ -59,9 +56,11 @@ export function fulfillmentSummaryLines(
     const t = pickupTime ?? '—';
     return [`Self pickup`, `Date: ${d}`, `Time: ${t}`];
   }
-  return [
+  const lines = [
     `Delivery (customer-arranged)`,
-    `Platform: ${deliveryCompany ?? '—'}`,
     `Rider pickup: ${deliveryPickupTime ?? '—'}`,
   ];
+  const note = deliveryRemarks?.trim();
+  if (note) lines.push(`Remarks: ${note}`);
+  return lines;
 }

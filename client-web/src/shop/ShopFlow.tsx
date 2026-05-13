@@ -8,8 +8,10 @@ import {
   type Product,
   type ProductCategory,
 } from './types';
-import { formatRm, MOCK_REWARDS, MOCK_VOUCHERS } from './data/mockCatalog';
+import type { MemberRewardsPayload } from '../api';
+import { formatRm } from './data/mockCatalog';
 import { fulfillmentSummaryLines, validateCheckout } from './lib/checkoutValidation';
+import { checkoutCatalogRewards, checkoutIssuedVouchers } from './lib/memberRewardsCheckout';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
 import { useShopStore } from './store/useShopStore';
 import {
@@ -32,8 +34,6 @@ const PICKUP_TIMES = [
   '17:00',
   '18:00',
 ];
-
-const DELIVERY_PRESETS = ['GrabFood', 'Foodpanda', 'Lalamove', 'Other'] as const;
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
 type PaymentMethodMode = 'channel' | 'card_token';
@@ -68,13 +68,29 @@ function paymentChannelIcon(code: string): string {
   return 'PAY';
 }
 
-export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
+/** Public `/images/payments/*.png` assets for known Xendit channel codes. */
+function paymentChannelLogoSrc(code: string): string | null {
+  const u = code.trim().toUpperCase();
+  if (u === 'TOUCHNGO' || u === 'TOUCHNGO_MY') return '/images/payments/touchngo.png';
+  if (u === 'SHOPEEPAY' || u === 'SHOPEEPAY_MY') return '/images/payments/shopeepay.png';
+  if (u === 'FPX' || u === 'FPX_MY') return '/images/payments/fpx.png';
+  return null;
+}
+
+export function ShopFlow({
+  pointsBalance,
+  memberRewards,
+}: {
+  pointsBalance: number;
+  /** Same payload as Perks / account — no mock vouchers or rewards. */
+  memberRewards: MemberRewardsPayload | null;
+}) {
   const [screen, setScreen] = useState<Screen>('browse');
   const [productId, setProductId] = useState<string | null>(null);
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
-  const [deliveryOther, setDeliveryOther] = useState('');
+  const [deliveryRemarks, setDeliveryRemarks] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -111,8 +127,6 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
   const setPickupDate = useShopStore((s) => s.setPickupDate);
   const pickupTime = useShopStore((s) => s.pickupTime);
   const setPickupTime = useShopStore((s) => s.setPickupTime);
-  const deliveryCompany = useShopStore((s) => s.deliveryCompany);
-  const setDeliveryCompany = useShopStore((s) => s.setDeliveryCompany);
   const deliveryPickupTime = useShopStore((s) => s.deliveryPickupTime);
   const setDeliveryPickupTime = useShopStore((s) => s.setDeliveryPickupTime);
   const appliedVoucher = useShopStore((s) => s.appliedVoucher);
@@ -173,6 +187,15 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
       alive = false;
     };
   }, [screen]);
+
+  const checkoutVouchers = useMemo(
+    () => checkoutIssuedVouchers(memberRewards),
+    [memberRewards],
+  );
+  const checkoutRewards = useMemo(
+    () => checkoutCatalogRewards(memberRewards),
+    [memberRewards],
+  );
 
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -303,9 +326,8 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
       fulfillmentMethod,
       pickupDate,
       pickupTime,
-      deliveryCompany:
-        deliveryCompany === 'Other' ? deliveryOther.trim() || null : deliveryCompany,
       deliveryPickupTime,
+      deliveryRemarks: deliveryRemarks.trim() || null,
     };
     const { valid, errors } = validateCheckout(draft);
     if (!valid) {
@@ -332,8 +354,8 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
       draft.fulfillmentMethod,
       draft.pickupDate,
       draft.pickupTime,
-      draft.deliveryCompany,
       draft.deliveryPickupTime,
+      draft.deliveryRemarks,
     );
     const linePayload = cart.map((l) => ({
       productId: l.productId,
@@ -443,15 +465,6 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
     } finally {
       setDemoCompleting(false);
     }
-  };
-
-  const selectDeliveryPreset = (p: (typeof DELIVERY_PRESETS)[number]) => {
-    if (p === 'Other') {
-      setDeliveryCompany('Other');
-      return;
-    }
-    setDeliveryOther('');
-    setDeliveryCompany(p);
   };
 
   return (
@@ -635,101 +648,113 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
             ) : null}
             {fulfillmentMethod === 'delivery' ? (
               <div className="shopFieldGrid">
-                <span className="caption" style={{ marginBottom: 4 }}>
-                  Platform / company
-                </span>
-                <div className="chips">
-                  {DELIVERY_PRESETS.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      className={deliveryCompany === p ? 'chip active' : 'chip'}
-                      onClick={() => selectDeliveryPreset(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                {deliveryCompany === 'Other' ? (
-                  <>
-                    <label htmlFor="deliveryOther">Custom name</label>
-                    <input
-                      id="deliveryOther"
-                      placeholder="e.g. Borong rider"
-                      value={deliveryOther}
-                      onChange={(e) => setDeliveryOther(e.target.value)}
-                    />
-                  </>
-                ) : null}
-                <label htmlFor="riderTime">Expected rider pickup</label>
+                <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+                  You arrange delivery with your rider. Tell us when they should pick up from us.
+                </p>
+                <label htmlFor="riderTime">Expected rider pickup time</label>
                 <input
                   id="riderTime"
                   type="time"
                   value={deliveryPickupTime ?? ''}
                   onChange={(e) => setDeliveryPickupTime(e.target.value || null)}
                 />
+                <label htmlFor="deliveryRemarks">Order remarks (optional)</label>
+                <textarea
+                  id="deliveryRemarks"
+                  rows={3}
+                  maxLength={500}
+                  placeholder="e.g. Gate code, fragile items, rider contact..."
+                  value={deliveryRemarks}
+                  onChange={(e) => setDeliveryRemarks(e.target.value)}
+                  style={{
+                    width: '100%',
+                    resize: 'vertical',
+                    minHeight: 72,
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    font: 'inherit',
+                    boxSizing: 'border-box',
+                  }}
+                />
               </div>
             ) : null}
           </section>
 
-          <section className="pmCard">
-            <h3 className="shopSectionTitle">Voucher or reward</h3>
-            <p className="caption" style={{ marginTop: 0 }}>
-              Apply one voucher or one points reward — not both.
-            </p>
-            <div className="shopPromoGrid">
-              <div>
-                <p className="caption">Vouchers</p>
-                <div className="shopPromoList">
-                  {MOCK_VOUCHERS.map((v: MockVoucher) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
-                      onClick={() => applyVoucher(appliedVoucher?.id === v.id ? null : v)}
-                    >
-                      <strong>{v.title}</strong>
-                      <small>{v.code}</small>
-                    </button>
-                  ))}
-                </div>
+          {(checkoutVouchers.length > 0 || checkoutRewards.length > 0) ? (
+            <section className="pmCard">
+              <h3 className="shopSectionTitle">
+                {checkoutVouchers.length > 0 && checkoutRewards.length > 0
+                  ? 'Voucher or reward'
+                  : checkoutVouchers.length > 0
+                    ? 'Voucher'
+                    : 'Reward'}
+              </h3>
+              {checkoutVouchers.length > 0 && checkoutRewards.length > 0 ? (
+                <p className="caption" style={{ marginTop: 0 }}>
+                  Apply one voucher or one points reward — not both.
+                </p>
+              ) : null}
+              <div className="shopPromoGrid">
+                {checkoutVouchers.length > 0 ? (
+                  <div>
+                    <p className="caption">Your vouchers</p>
+                    <div className="shopPromoList">
+                      {checkoutVouchers.map((v: MockVoucher) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
+                          onClick={() => applyVoucher(appliedVoucher?.id === v.id ? null : v)}
+                        >
+                          <strong>{v.title}</strong>
+                          <small>{v.code}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {checkoutRewards.length > 0 ? (
+                  <div>
+                    <p className="caption">Rewards ({pointsBalance} pts)</p>
+                    <div className="shopPromoList">
+                      {checkoutRewards.map((r: MockReward) => {
+                        const affordable = pointsBalance >= r.pointsCost;
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            disabled={!affordable}
+                            className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
+                            onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
+                          >
+                            <strong>{r.title}</strong>
+                            <small>
+                              {r.pointsCost} pts
+                              {r.valueCents > 0 ? ` · up to ${formatRm(r.valueCents)}` : ''}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-              <div>
-                <p className="caption">Rewards ({pointsBalance} pts)</p>
-                <div className="shopPromoList">
-                  {MOCK_REWARDS.map((r: MockReward) => {
-                    const affordable = pointsBalance >= r.pointsCost;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        disabled={!affordable}
-                        className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
-                        onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
-                      >
-                        <strong>{r.title}</strong>
-                        <small>{r.pointsCost} pts · up to {formatRm(r.valueCents)}</small>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            {(appliedVoucher || appliedReward) && (
-              <button type="button" className="ghost shopClearPromo" onClick={() => {
-                applyVoucher(null);
-                applyReward(null);
-              }}>
-                Clear promotion
-              </button>
-            )}
-          </section>
+              {(appliedVoucher || appliedReward) && (
+                <button type="button" className="ghost shopClearPromo" onClick={() => {
+                  applyVoucher(null);
+                  applyReward(null);
+                }}>
+                  Clear promotion
+                </button>
+              )}
+            </section>
+          ) : null}
 
           <section className="pmCard">
             <h3 className="shopSectionTitle">Payment</h3>
             <p className="caption" style={{ marginTop: 0 }}>
-              Pick a channel (Xendit supports many methods per country). You will complete payment on the secure Xendit page
-              (use test keys in the dashboard for test cards and wallets).
+              Select a payment method
             </p>
             <div className="shopFieldGrid" style={{ marginTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -773,6 +798,7 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
                 >
                   {channels.map((c) => {
                     const active = selectedChannelCode === c.code;
+                    const channelLogo = paymentChannelLogoSrc(c.code);
                     return (
                       <button
                         key={c.code}
@@ -792,27 +818,42 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
                           color: 'var(--text, #1a1a1a)',
                         }}
                       >
-                        <span
-                          style={{
-                            minWidth: 42,
-                            height: 24,
-                            borderRadius: 999,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            letterSpacing: 0.3,
-                            background: 'rgba(255,255,255,0.16)',
-                          }}
-                        >
-                          {paymentChannelIcon(c.code)}
-                        </span>
-                        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                          <strong style={{ fontSize: 13, color: 'var(--primary,rgb(34, 44, 229))' }}>{c.label}</strong>
-                          <small className="caption" style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}>
+                        {channelLogo ? (
+                          <img
+                            src={channelLogo}
+                            alt=""
+                            style={{
+                              flexShrink: 0,
+                              height: 43,
+                              width: 68,
+                              maxWidth: 100,
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              minWidth: 42,
+                              height: 32,
+                              borderRadius: 999,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: 0.3,
+                              background: 'rgba(255,255,255,0.16)',
+                            }}
+                          >
+                            {paymentChannelIcon(c.code)}
+                          </span>
+                        )}
+                        <span style={{ lineHeight: 1.2 }}>
+                          <span style={{ fontSize: 13, color: 'var(--primary,rgb(3, 5, 41))' }}>
                             {c.code}
-                          </small>
+                          </span>
                         </span>
                       </button>
                     );

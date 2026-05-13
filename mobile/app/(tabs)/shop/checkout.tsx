@@ -6,11 +6,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DeliveryCompanySelector } from '../../../components/shop/DeliveryCompanySelector';
 import { FulfillmentSelector } from '../../../components/shop/FulfillmentSelector';
 import { OrderSummaryCard } from '../../../components/shop/OrderSummaryCard';
 import { PickupDatePicker } from '../../../components/shop/PickupDatePicker';
@@ -18,6 +18,7 @@ import { PickupTimePicker } from '../../../components/shop/PickupTimePicker';
 import { ShopHeader } from '../../../components/shop/ShopHeader';
 import { VoucherRewardSelector } from '../../../components/shop/VoucherRewardSelector';
 import { colors, radii, spacing } from '../../../constants/theme';
+import { MOCK_REWARDS, MOCK_VOUCHERS } from '../../../data/mockCatalog';
 import {
   fulfillmentSummaryLines,
   validateCheckout,
@@ -28,6 +29,7 @@ export default function CheckoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [attempted, setAttempted] = useState(false);
+  const [deliveryRemarks, setDeliveryRemarks] = useState('');
 
   const cart = useShopStore((s) => s.cart);
   const fulfillmentMethod = useShopStore((s) => s.fulfillmentMethod);
@@ -36,9 +38,7 @@ export default function CheckoutScreen() {
   const pickupTime = useShopStore((s) => s.pickupTime);
   const setPickupDate = useShopStore((s) => s.setPickupDate);
   const setPickupTime = useShopStore((s) => s.setPickupTime);
-  const deliveryCompany = useShopStore((s) => s.deliveryCompany);
   const deliveryPickupTime = useShopStore((s) => s.deliveryPickupTime);
-  const setDeliveryCompany = useShopStore((s) => s.setDeliveryCompany);
   const setDeliveryPickupTime = useShopStore((s) => s.setDeliveryPickupTime);
   const appliedVoucher = useShopStore((s) => s.appliedVoucher);
   const appliedReward = useShopStore((s) => s.appliedReward);
@@ -62,16 +62,16 @@ export default function CheckoutScreen() {
       fulfillmentMethod,
       pickupDate,
       pickupTime,
-      deliveryCompany,
       deliveryPickupTime,
+      deliveryRemarks: deliveryRemarks.trim() || null,
     }),
     [
       cart,
       fulfillmentMethod,
       pickupDate,
       pickupTime,
-      deliveryCompany,
       deliveryPickupTime,
+      deliveryRemarks,
     ],
   );
 
@@ -80,8 +80,8 @@ export default function CheckoutScreen() {
     fulfillmentMethod,
     pickupDate,
     pickupTime,
-    deliveryCompany,
     deliveryPickupTime,
+    deliveryRemarks.trim() || null,
   );
 
   const subtotal = getSubtotalCents();
@@ -130,7 +130,9 @@ export default function CheckoutScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.lead}>
-          Review your order, choose how you receive it, then apply an offer.
+          {MOCK_VOUCHERS.length > 0 || MOCK_REWARDS.length > 0
+            ? 'Review your order, choose how you receive it, then apply an offer.'
+            : 'Review your order and choose how you receive it.'}
         </Text>
 
         <OrderSummaryCard
@@ -156,25 +158,38 @@ export default function CheckoutScreen() {
 
         {fulfillmentMethod === 'delivery' ? (
           <View style={styles.block}>
-            <DeliveryCompanySelector
-              value={deliveryCompany}
-              onChange={setDeliveryCompany}
-            />
+            <Text style={styles.deliveryHint}>
+              You arrange delivery with your rider. Tell us when they should pick up from us.
+            </Text>
             <PickupTimePicker
               label="Expected rider pickup time"
               value={deliveryPickupTime}
               onChange={setDeliveryPickupTime}
             />
+            <Text style={styles.fieldLabel}>Order remarks (optional)</Text>
+            <TextInput
+              style={styles.remarksInput}
+              multiline
+              maxLength={500}
+              placeholder="e.g. Gate code, fragile items, rider contact..."
+              placeholderTextColor={colors.textMuted}
+              value={deliveryRemarks}
+              onChangeText={setDeliveryRemarks}
+            />
           </View>
         ) : null}
 
-        <Text style={styles.sectionTitle}>Offers</Text>
-        <VoucherRewardSelector
-          appliedVoucher={appliedVoucher}
-          appliedReward={appliedReward}
-          onApplyVoucher={applyVoucher}
-          onApplyReward={applyReward}
-        />
+        {MOCK_VOUCHERS.length > 0 || MOCK_REWARDS.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Offers</Text>
+            <VoucherRewardSelector
+              appliedVoucher={appliedVoucher}
+              appliedReward={appliedReward}
+              onApplyVoucher={applyVoucher}
+              onApplyReward={applyReward}
+            />
+          </>
+        ) : null}
 
         {attempted && !validation.valid ? (
           <View style={styles.errors}>
@@ -222,6 +237,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   block: { marginTop: spacing.md },
+  deliveryHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  remarksInput: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 15,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    textAlignVertical: 'top',
+  },
   errors: {
     backgroundColor: '#FEF2F2',
     borderRadius: radii.md,
