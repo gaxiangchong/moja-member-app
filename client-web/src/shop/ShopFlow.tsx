@@ -371,8 +371,11 @@ export function ShopFlow({
         ...(paymentMethodMode === 'card_token'
           ? { paymentTokenId: cardPaymentTokenId.trim() }
           : { channelCode: selectedChannelCode.trim() }),
+        ...(appliedVoucher?.id ? { voucherId: appliedVoucher.id } : {}),
+        idempotencyKey: crypto.randomUUID(),
         order: {
           totalCents: total,
+          discountCents: discount,
           fulfillmentSummary: lines,
           lines: linePayload,
         },

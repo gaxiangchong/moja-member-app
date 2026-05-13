@@ -107,10 +107,267 @@ enum CampaignRunStatus {
   FAILED
 }
 
+enum RewardType {
+  FREE_ITEM
+  DISCOUNT_VOUCHER
+  LIMITED_TIME
+}
+
+enum VoucherType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_ITEM
+  DELIVERY_DISCOUNT
+  WALLET_TOPUP_CODE
+}
+
+enum VoucherOrderType {
+  PICKUP
+  DELIVERY
+  IN_STORE
+}
+
+enum VoucherLifecycleStatus {
+  ACTIVE
+  LOCKED
+  USED
+  EXPIRED
+  VOID
+}
+
+enum UserRewardStatus {
+  AVAILABLE
+  REDEEMED
+  EXPIRED
+}
+
+enum WalletTxnFlowType {
+  TOPUP
+  SPEND
+  REFUND
+  GIFT_CODE_CREDIT
+  VOUCHER_CREDIT
+  MANUAL_ADJUSTMENT
+  REVERSAL
+}
+
+enum VoucherRedemptionStatus {
+  LOCKED
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
 /// WhatsApp OTP is tied to registration vs PIN recovery / completing PIN setup.
 enum OtpPurpose {
   REGISTER
   RECOVERY
+}
+
+model UserWalletBalance {
+  id              String   @id @default(uuid()) @db.Uuid
+  customerId      String   @unique @map("customer_id") @db.Uuid
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  walletBalance   Int      @default(0) @map("wallet_balance")
+  pointsBalance   Int      @default(0) @map("points_balance")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  walletTransactions WalletTransaction[]
+  pointsEntries      RewardsPointsLedger[]
+
+  @@map("user_wallet_balance")
+}
+
+model WalletTransaction {
+  id                String            @id @default(uuid()) @db.Uuid
+  customerId        String            @map("customer_id") @db.Uuid
+  customer          Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userWalletBalanceId String?         @map("user_wallet_balance_id") @db.Uuid
+  userWalletBalance UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
+  type              WalletTxnFlowType
+  amount            Int
+  balanceBefore     Int               @map("balance_before")
+  balanceAfter      Int               @map("balance_after")
+  referenceType     String?           @map("reference_type")
+  referenceId       String?           @map("reference_id")
+  idempotencyKey    String?           @unique @map("idempotency_key")
+  metadata          Json?
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("wallet_transactions")
+}
+
+model RewardsPointsLedger {
+  id                 String            @id @default(uuid()) @db.Uuid
+  customerId         String            @map("customer_id") @db.Uuid
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userWalletBalanceId String?          @map("user_wallet_balance_id") @db.Uuid
+  userWalletBalance  UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
+  pointsDelta        Int               @map("points_delta")
+  pointsBefore       Int               @map("points_before")
+  pointsAfter        Int               @map("points_after")
+  referenceType      String?           @map("reference_type")
+  referenceId        String?           @map("reference_id")
+  reason             String
+  createdAt          DateTime          @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("rewards_points_ledger")
+}
+
+model RewardCatalog {
+  id                     String      @id @default(uuid()) @db.Uuid
+  code                   String      @unique
+  name                   String
+  description            String?
+  rewardType             RewardType  @map("reward_type")
+  pointsCost             Int         @default(0) @map("points_cost")
+  voucherCampaignId      String?     @map("voucher_campaign_id") @db.Uuid
+  voucherCampaign        VoucherCampaign? @relation(fields: [voucherCampaignId], references: [id], onDelete: SetNull)
+  visibleInRewardsWallet Boolean     @default(true) @map("visible_in_rewards_wallet")
+  startsAt               DateTime?   @map("starts_at")
+  endsAt                 DateTime?   @map("ends_at")
+  isActive               Boolean     @default(true) @map("is_active")
+  tncText                String?     @map("tnc_text")
+  createdAt              DateTime    @default(now()) @map("created_at")
+  updatedAt              DateTime    @updatedAt @map("updated_at")
+
+  userRewards UserReward[]
+
+  @@index([isActive, startsAt, endsAt])
+  @@map("reward_catalog")
+}
+
+model UserReward {
+  id                String           @id @default(uuid()) @db.Uuid
+  customerId        String           @map("customer_id") @db.Uuid
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rewardCatalogId   String           @map("reward_catalog_id") @db.Uuid
+  rewardCatalog     RewardCatalog    @relation(fields: [rewardCatalogId], references: [id], onDelete: Restrict)
+  status            UserRewardStatus @default(AVAILABLE)
+  redeemedAt        DateTime?        @map("redeemed_at")
+  expiresAt         DateTime?        @map("expires_at")
+  voucherId         String?          @map("voucher_id") @db.Uuid
+  voucher           Voucher?         @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  @@index([customerId, status, createdAt])
+  @@map("user_rewards")
+}
+
+model VoucherCampaign {
+  id                     String       @id @default(uuid()) @db.Uuid
+  code                   String       @unique
+  name                   String
+  description            String?
+  voucherType            VoucherType  @map("voucher_type")
+  percentageOff          Int?         @map("percentage_off")
+  fixedAmountOff         Int?         @map("fixed_amount_off")
+  freeItemSku            String?      @map("free_item_sku")
+  deliveryDiscountAmount Int?         @map("delivery_discount_amount")
+  walletCreditAmount     Int?         @map("wallet_credit_amount")
+  minSpend               Int?         @map("min_spend")
+  expiryDate             DateTime?    @map("expiry_date")
+  oneTimeUse             Boolean      @default(true) @map("one_time_use")
+  oneVoucherPerTxn       Boolean      @default(true) @map("one_voucher_per_txn")
+  allowStacking          Boolean      @default(false) @map("allow_stacking")
+  usageLimitPerUser      Int?         @map("usage_limit_per_user")
+  totalRedemptionCap     Int?         @map("total_redemption_cap")
+  applicableProductIds   String[]     @default([]) @map("applicable_product_ids")
+  applicableCategories   String[]     @default([]) @map("applicable_categories")
+  applicableOutlets      String[]     @default([]) @map("applicable_outlets")
+  applicableOrderTypes   VoucherOrderType[] @default([]) @map("applicable_order_types")
+  autoCreditTrigger      String?      @map("auto_credit_trigger")
+  visibleInWallet        Boolean      @default(true) @map("visible_in_wallet")
+  tncText                String?      @map("tnc_text")
+  isActive               Boolean      @default(true) @map("is_active")
+  startsAt               DateTime?    @map("starts_at")
+  endsAt                 DateTime?    @map("ends_at")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+
+  vouchers    Voucher[]
+  rewards     RewardCatalog[]
+
+  @@index([isActive, startsAt, endsAt])
+  @@map("voucher_campaigns")
+}
+
+model Voucher {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  customerId          String                 @map("customer_id") @db.Uuid
+  customer            Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  voucherCampaignId   String?                @map("voucher_campaign_id") @db.Uuid
+  voucherCampaign     VoucherCampaign?       @relation(fields: [voucherCampaignId], references: [id], onDelete: SetNull)
+  code                String                 @unique
+  name                String
+  status              VoucherLifecycleStatus @default(ACTIVE)
+  expiresAt           DateTime?              @map("expires_at")
+  usedAt              DateTime?              @map("used_at")
+  usageCount          Int                    @default(0) @map("usage_count")
+  usageLimitPerUser   Int?                   @map("usage_limit_per_user")
+  lockToken           String?                @unique @map("lock_token")
+  lockedAt            DateTime?              @map("locked_at")
+  lockExpiresAt       DateTime?              @map("lock_expires_at")
+  lockOrderId         String?                @map("lock_order_id") @db.Uuid
+  visibleInWallet     Boolean                @default(true) @map("visible_in_wallet")
+  metadata            Json?
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  userRewards   UserReward[]
+  redemptions   VoucherRedemption[]
+
+  @@index([customerId, status, expiresAt])
+  @@index([voucherCampaignId])
+  @@map("vouchers")
+}
+
+model VoucherRedemption {
+  id               String                  @id @default(uuid()) @db.Uuid
+  voucherId        String                  @map("voucher_id") @db.Uuid
+  voucher          Voucher                 @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  customerId       String                  @map("customer_id") @db.Uuid
+  customer         Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId          String?                 @map("order_id") @db.Uuid
+  paymentIntentId  String?                 @map("payment_intent_id") @db.Uuid
+  status           VoucherRedemptionStatus @default(LOCKED)
+  lockToken        String                  @map("lock_token")
+  idempotencyKey   String?                 @unique @map("idempotency_key")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  confirmedAt      DateTime?               @map("confirmed_at")
+  releasedAt       DateTime?               @map("released_at")
+  metadata         Json?
+
+  @@index([voucherId, status])
+  @@index([customerId, createdAt])
+  @@map("voucher_redemptions")
+}
+
+model GiftVoucherCode {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique
+  amount             Int
+  currency           String   @default("MYR")
+  status             String   @default("ACTIVE")
+  expiresAt          DateTime? @map("expires_at")
+  maxRedemptions     Int      @default(1) @map("max_redemptions")
+  redeemedCount      Int      @default(0) @map("redeemed_count")
+  redeemedByCustomerId String? @map("redeemed_by_customer_id") @db.Uuid
+  redeemedByCustomer Customer? @relation(fields: [redeemedByCustomerId], references: [id], onDelete: SetNull)
+  redeemedAt         DateTime? @map("redeemed_at")
+  campaignCode       String?  @map("campaign_code")
+  tncText            String?  @map("tnc_text")
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([status, expiresAt])
+  @@map("gift_voucher_codes")
 }
 
 // When to auto-issue a voucher (evaluation engine uses rules later).
@@ -175,6 +432,13 @@ model Customer {
   shopHandoffJtis   ShopHandoffJti[]
   orders            CustomerOrder[]
   paymentIntents    PaymentIntent[]
+  userWalletBalance UserWalletBalance?
+  walletTransactions WalletTransaction[]
+  rewardsPointsLedger RewardsPointsLedger[]
+  userRewards       UserReward[]
+  vouchersV2        Voucher[]
+  voucherRedemptions VoucherRedemption[]
+  redeemedGiftCodes GiftVoucherCode[]
 
   @@index([displayName])
   @@index([email])
@@ -196,6 +460,7 @@ model PaymentIntent {
   country                  String   @db.VarChar(2)
   status                   String   @default("PENDING") @db.VarChar(32)
   channelCode              String   @map("channel_code") @db.VarChar(64)
+  idempotencyKey           String?  @unique @map("idempotency_key")
   xenditPaymentRequestId   String?  @map("xendit_payment_request_id") @db.VarChar(128)
   metadata                 Json?
   createdAt                DateTime @default(now()) @map("created_at")

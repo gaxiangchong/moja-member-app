@@ -1575,6 +1575,7 @@ export class AdminDashboardController {
               <button type="button" class="vrh-tab" data-vrh-pane="series" role="tab" aria-selected="false">All series</button>
               <button type="button" class="vrh-tab" data-vrh-pane="automation" role="tab" aria-selected="false">Automation</button>
               <button type="button" class="vrh-tab" data-vrh-pane="issued" role="tab" aria-selected="false">Issued to members</button>
+              <button type="button" class="vrh-tab" data-vrh-pane="workflow2" role="tab" aria-selected="false">Workflow V2</button>
             </div>
             <div id="vrh-pane-overview" class="vrh-pane">
               <div class="kpi-panel" style="margin-top:0">
@@ -1869,6 +1870,35 @@ export class AdminDashboardController {
               <div class="sheet" style="margin-top:16px">
                 <div class="sheet-head"><h2>Exports</h2></div>
                 <div class="muted-box">Use <code>POST /admin/export/run</code> with kind <code>VOUCHERS_ISSUED</code> or <code>VOUCHERS_REDEEMED</code> for full extracts. Voucher KPIs stay on the <strong>Overview</strong> tab.</div>
+              </div>
+            </div>
+            <div id="vrh-pane-workflow2" class="vrh-pane hidden">
+              <div class="info-banner" style="margin-top:0">
+                Rewards Workflow V2 APIs: catalog, campaigns, gift codes, user wallets, points ledger, wallet transactions, redemptions, analytics.
+              </div>
+              <div class="kpi-panel" style="margin-top:16px">
+                <h2>Workflow V2 snapshot</h2>
+                <div class="kpi-row">
+                  <div class="kpi"><div class="kpi-label">Reward catalog</div><div class="kpi-value" id="rwfCatalogCount">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Voucher campaigns</div><div class="kpi-value" id="rwfCampaignCount">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Redemptions total</div><div class="kpi-value" id="rwfRedemptionTotal">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Redemptions confirmed</div><div class="kpi-value" id="rwfRedemptionConfirmed">-</div></div>
+                  <div class="kpi"><div class="kpi-label">Redemptions released</div><div class="kpi-value" id="rwfRedemptionReleased">-</div></div>
+                </div>
+              </div>
+              <div class="sheet" style="margin-top:16px">
+                <div class="sheet-head">
+                  <h2>Campaign performance</h2>
+                  <div class="sheet-actions">
+                    <button type="button" class="btn-outline" id="refreshRwfBtn">Refresh</button>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Code</th><th>Name</th><th>Vouchers issued</th><th>Rewards linked</th></tr></thead>
+                    <tbody id="rwfCampaignBody"></tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -3677,6 +3707,34 @@ export class AdminDashboardController {
           '<button type="button" class="icon-btn reward-def-edit-btn" data-id="' + v.id + '" title="Edit">' + editSvg + '</button></td></tr>'
         ).join('') || '<tr><td colspan="12">No data</td></tr>';
       }
+      await loadRewardsWorkflowV2();
+    }
+
+    async function loadRewardsWorkflowV2() {
+      const [catalog, campaigns, redemptions, analytics] = await Promise.all([
+        api('/admin/rewards-workflow/reward-catalog'),
+        api('/admin/rewards-workflow/voucher-campaigns'),
+        api('/admin/rewards-workflow/redemption-reports'),
+        api('/admin/rewards-workflow/campaign-analytics'),
+      ]);
+      var cc = document.getElementById('rwfCatalogCount');
+      if (cc) cc.textContent = fmt((catalog || []).length);
+      var cp = document.getElementById('rwfCampaignCount');
+      if (cp) cp.textContent = fmt((campaigns || []).length);
+      var rt = document.getElementById('rwfRedemptionTotal');
+      if (rt) rt.textContent = fmt(redemptions && redemptions.total);
+      var rc = document.getElementById('rwfRedemptionConfirmed');
+      if (rc) rc.textContent = fmt(redemptions && redemptions.confirmed);
+      var rr = document.getElementById('rwfRedemptionReleased');
+      if (rr) rr.textContent = fmt(redemptions && redemptions.released);
+      var body = document.getElementById('rwfCampaignBody');
+      if (body) {
+        body.innerHTML = ((analytics && analytics.campaigns) || [])
+          .map(function (c) {
+            return '<tr><td>' + fmt(c.code) + '</td><td>' + fmt(c.name) + '</td><td>' + fmt(c.vouchersIssued) + '</td><td>' + fmt(c.rewardsLinked) + '</td></tr>';
+          })
+          .join('') || '<tr><td colspan="4">No campaign analytics yet</td></tr>';
+      }
     }
 
     var vrhWizardStep = 1;
@@ -3725,7 +3783,7 @@ export class AdminDashboardController {
       }
     }
     function vrhShowPane(name) {
-      ['overview', 'wizard', 'series', 'automation', 'issued'].forEach(function (pane) {
+      ['overview', 'wizard', 'series', 'automation', 'issued', 'workflow2'].forEach(function (pane) {
         var el = document.getElementById('vrh-pane-' + pane);
         if (el) el.classList.toggle('hidden', pane !== name);
       });
@@ -5903,6 +5961,14 @@ export class AdminDashboardController {
           .catch(function (err) {
             if (out) out.textContent = err.message || String(err);
           });
+      });
+    }
+    var refreshRwfBtn = document.getElementById('refreshRwfBtn');
+    if (refreshRwfBtn) {
+      refreshRwfBtn.addEventListener('click', function () {
+        loadRewardsWorkflowV2().catch(function (err) {
+          statusPanel.textContent = err.message || String(err);
+        });
       });
     }
 

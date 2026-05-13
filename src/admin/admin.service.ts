@@ -2054,10 +2054,17 @@ export class AdminService {
     dto: CreatePerksCampaignRuleDto,
     auth: AdminAuthState,
   ) {
-    const def = await this.prisma.voucherDefinition.findUniqueOrThrow({
+    const def = await this.prisma.voucherDefinition.findUnique({
       where: { id: dto.voucherDefinitionId },
       select: { id: true, pointsCost: true },
     });
+    if (!def) {
+      throw new BadRequestException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message:
+          'Voucher definition not found. Select a valid voucher/reward series before creating this campaign rule.',
+      });
+    }
     const start = perksDateOnly(dto.campaignStartDate);
     const end = perksDateOnly(dto.campaignEndDate);
     validatePerksCampaignRuleFields({
@@ -2133,10 +2140,17 @@ export class AdminService {
       });
     }
     const defId = dto.voucherDefinitionId ?? before.voucherDefinitionId;
-    const def = await this.prisma.voucherDefinition.findUniqueOrThrow({
+    const def = await this.prisma.voucherDefinition.findUnique({
       where: { id: defId },
       select: { id: true, pointsCost: true },
     });
+    if (!def) {
+      throw new BadRequestException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message:
+          'Voucher definition not found. Select a valid voucher/reward series before updating this campaign rule.',
+      });
+    }
     const programKind = dto.programKind ?? before.programKind;
     const criteriaKind = dto.criteriaKind ?? before.criteriaKind;
     const start =

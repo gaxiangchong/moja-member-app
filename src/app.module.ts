@@ -20,6 +20,7 @@ import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
 import { OpsQueueModule } from './ops-queue/ops-queue.module';
 import { PaymentsModule } from './payments/payments.module';
 import { HomeAdsModule } from './home-ads/home-ads.module';
+import { RewardsWorkflowModule } from './rewards-workflow/rewards-workflow.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { HomeAdsModule } from './home-ads/home-ads.module';
     OpsQueueModule,
     PaymentsModule,
     HomeAdsModule,
+    RewardsWorkflowModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

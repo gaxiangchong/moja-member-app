@@ -38,6 +38,16 @@ export class ShopOrderCheckoutDto {
   @MaxLength(120)
   paymentTokenId?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  voucherId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  idempotencyKey?: string;
+
   @Validate(HasChannelOrTokenConstraint)
   _channelOrTokenCheck?: boolean;
 

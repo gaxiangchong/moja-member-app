@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RewardsWorkflowService } from '../rewards-workflow/rewards-workflow.service';
 import { WalletService } from '../wallet/wallet.service';
 import type { XenditPaymentRequestResponse } from './xendit-api.service';
 import { XenditApiService } from './xendit-api.service';
@@ -34,6 +35,7 @@ export class PaymentsService {
     private readonly xendit: XenditApiService,
     private readonly wallet: WalletService,
     private readonly customers: CustomersService,
+    private readonly rewardsWorkflow: RewardsWorkflowService,
   ) {}
 
   private memberPublicBase(): string {
@@ -302,9 +304,40 @@ export class PaymentsService {
     dto: SubmitMemberOrderDto,
     channelCodeRaw?: string,
     paymentTokenIdRaw?: string,
+    voucherIdRaw?: string,
+    idempotencyKeyRaw?: string,
   ) {
+    const voucherId = voucherIdRaw?.trim() || null;
+    const idempotencyKey = idempotencyKeyRaw?.trim() || randomUUID();
+    let voucherLockToken: string | null = null;
+    const subtotalCents = this.computeSubtotal(dto);
+
+    if (voucherId) {
+      const lock = await this.rewardsWorkflow.validateAndLockVoucher({
+        customerId,
+        voucherId,
+        orderTotalCents: subtotalCents,
+        orderType: this.resolveOrderTypeFromSummary(dto.fulfillmentSummary),
+        productIds: dto.lines.map((l) => l.productId),
+        idempotencyKey,
+      });
+      voucherLockToken = lock.lockToken;
+    }
+
+    const discountCents = voucherLockToken
+      ? await this.rewardsWorkflow.computeLockedVoucherDiscount({
+          lockToken: voucherLockToken,
+          subtotalCents,
+        })
+      : 0;
+    dto.discountCents = discountCents;
+    dto.totalCents = Math.max(0, subtotalCents - discountCents);
+
     if (this.isDemoMode()) {
       const order = await this.customers.createPendingMemberOrder(customerId, dto);
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.finalizeVoucherRedemption(voucherLockToken, order.id);
+      }
       return {
         demoMode: true as const,
         orderId: order.id,
@@ -318,6 +351,9 @@ export class PaymentsService {
     if (dto.totalCents === 0) {
       const order = await this.customers.createPendingMemberOrder(customerId, dto);
       await this.customers.finalizeShopOrderAfterPayment(order.id);
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.finalizeVoucherRedemption(voucherLockToken, order.id);
+      }
       const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
         where: { id: order.id },
       });
@@ -333,10 +369,10 @@ export class PaymentsService {
       };
     }
 
-    if (!Number.isInteger(dto.totalCents) || dto.totalCents < 100) {
+    if (!Number.isInteger(subtotalCents) || subtotalCents < 100) {
       throw new BadRequestException({
         code: 'ORDER_MIN_AMOUNT',
-        message: 'Minimum payable amount is 1.00 in major currency units (100 cents).',
+        message: 'Minimum order subtotal is 1.00 in major currency units (100 cents).',
       });
     }
 
@@ -368,6 +404,15 @@ export class PaymentsService {
 
     const requestAmount = dto.totalCents / 100;
 
+    const paymentMetadata: Record<string, string> = {
+      customerId: String(customerId),
+      purpose: 'shop_order',
+      orderId: String(order.id),
+      idempotencyKey,
+    };
+    if (voucherLockToken) paymentMetadata.voucherLockToken = voucherLockToken;
+    if (voucherId) paymentMetadata.voucherId = voucherId;
+
     const xenditResponse = await this.xendit.createPaymentRequest({
       referenceId,
       country,
@@ -377,11 +422,7 @@ export class PaymentsService {
       description: `Moja shop order #${order.orderNumber}`,
       successReturnUrl: successUrl,
       failureReturnUrl: failureUrl,
-      metadata: {
-        customerId: String(customerId),
-        purpose: 'shop_order',
-        orderId: String(order.id),
-      },
+      metadata: paymentMetadata,
     });
 
     const paymentRequestId =
@@ -402,7 +443,12 @@ export class PaymentsService {
         channelCode,
         status: 'PENDING',
         xenditPaymentRequestId: paymentRequestId,
-        metadata: { orderId: order.id } as object,
+        metadata: {
+          orderId: order.id,
+          voucherLockToken: voucherLockToken ?? null,
+          voucherId: voucherId ?? null,
+          idempotencyKey,
+        } as object,
       },
     });
 
@@ -411,6 +457,9 @@ export class PaymentsService {
     }
 
     const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
+    if (!redirectUrl && voucherLockToken) {
+      await this.rewardsWorkflow.releaseVoucherLock(voucherLockToken);
+    }
 
     return {
       demoMode: false as const,
@@ -425,6 +474,10 @@ export class PaymentsService {
       country,
       currency,
       amountCents: dto.totalCents,
+      subtotalCents,
+      discountCents,
+      voucherId,
+      voucherLockToken,
     };
   }
 
@@ -502,8 +555,14 @@ export class PaymentsService {
     });
     if (lock.count === 0) return;
 
-    const meta = intent.metadata as { orderId?: string } | null;
+    const meta = intent.metadata as
+      | { orderId?: string; voucherLockToken?: string }
+      | null;
     const orderId = typeof meta?.orderId === 'string' ? meta.orderId : null;
+    const voucherLockToken =
+      meta && typeof meta === 'object' && typeof meta.voucherLockToken === 'string'
+        ? meta.voucherLockToken
+        : null;
     if (!orderId) {
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
@@ -514,6 +573,13 @@ export class PaymentsService {
 
     try {
       await this.customers.finalizeShopOrderAfterPayment(orderId);
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.finalizeVoucherRedemption(
+          voucherLockToken,
+          orderId,
+          intent.id,
+        );
+      }
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
         data: {
@@ -575,6 +641,10 @@ export class PaymentsService {
       const intent = await this.prisma.paymentIntent.findUnique({
         where: { referenceId },
       });
+      const meta = intent?.metadata as { voucherLockToken?: string } | null;
+      if (meta?.voucherLockToken) {
+        await this.rewardsWorkflow.releaseVoucherLock(meta.voucherLockToken);
+      }
       if (intent?.purpose === 'shop_order') {
         await this.prisma.paymentIntent.updateMany({
           where: { referenceId, status: { not: 'SUCCEEDED' } },
@@ -642,6 +712,22 @@ export class PaymentsService {
       });
       throw err;
     }
+  }
+
+  private resolveOrderTypeFromSummary(
+    fulfillmentSummary: SubmitMemberOrderDto['fulfillmentSummary'],
+  ): string | undefined {
+    const first = Array.isArray(fulfillmentSummary) ? fulfillmentSummary[0] : null;
+    if (!first) return undefined;
+    const v = String(first).toLowerCase();
+    if (v.includes('delivery')) return 'DELIVERY';
+    if (v.includes('pickup')) return 'PICKUP';
+    if (v.includes('in store')) return 'IN_STORE';
+    return undefined;
+  }
+
+  private computeSubtotal(dto: SubmitMemberOrderDto): number {
+    return dto.lines.reduce((sum, line) => sum + line.unitPriceCents * line.qty, 0);
   }
 }
 
