@@ -387,8 +387,11 @@ export type ShopOrderCheckoutResult =
 export async function createShopOrderCheckout(payload: {
   channelCode?: string;
   paymentTokenId?: string;
+  voucherId?: string;
+  idempotencyKey?: string;
   order: {
     totalCents: number;
+    discountCents?: number;
     lines: SubmitMemberOrderLine[];
     fulfillmentSummary?: string[] | null;
   };

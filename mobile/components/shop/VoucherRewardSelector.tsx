@@ -33,6 +33,10 @@ export function VoucherRewardSelector({
   const [expanded, setExpanded] = useState(false);
   const [modal, setModal] = useState<'voucher' | 'reward' | null>(null);
 
+  if (MOCK_VOUCHERS.length === 0 && MOCK_REWARDS.length === 0) {
+    return null;
+  }
+
   const summary =
     appliedReward != null
       ? `Reward: ${appliedReward.title}`

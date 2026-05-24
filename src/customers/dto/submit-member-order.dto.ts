@@ -47,6 +47,12 @@ export class SubmitMemberOrderDto {
   totalCents!: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  discountCents?: number;
+
+  @IsOptional()
   fulfillmentSummary?: string[] | null;
 
   @IsArray()

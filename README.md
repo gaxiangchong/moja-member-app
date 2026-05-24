@@ -142,7 +142,7 @@ In the [Twilio Console](https://console.twilio.com):
 
 ### 3) Template vs plain text behavior
 
-- **Meta**: set `WHATSAPP_OTP_TEMPLATE_NAME` to use template mode (`{{1}}` = code); otherwise plain text is sent.
+- **Meta**: set `WHATSAPP_OTP_TEMPLATE_NAME` to use template mode (`{{1}}` = code in the body); otherwise plain text is sent. For **authentication** templates (copy code / one-tap OTP), Meta requires the same code in a **button** component as well; the API enables that by default when a template name is set (`WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON`, default true). If you use a **utility** template with only a body variable and no OTP button, set `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON=false`.
 - **Twilio**: set `TWILIO_WHATSAPP_CONTENT_SID` to use a Content template (`{{1}}` = code); otherwise plain text is sent.
 
 For production accounts on either provider, an approved template is required by WhatsApp policy.
@@ -174,7 +174,7 @@ For production accounts on either provider, an approved template is required by 
   - Outside the 24h window, a `TWILIO_WHATSAPP_CONTENT_SID` (approved template) is required.
 - **API error from WhatsApp**
   - Check server logs (`WhatsappOtpService`) for the provider response body.
-  - Meta: verify Graph API version and `WHATSAPP_PHONE_NUMBER_ID`.
+  - Meta: verify Graph API version and `WHATSAPP_PHONE_NUMBER_ID`. If the error mentions template components or buttons, confirm `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON` matches your template type (auth vs utility).
   - Twilio: check **Monitor → Logs → Messaging** in the Console for the error code.
 - **Frontend blocked by CORS**
   - Add your web origin to `CLIENT_WEB_ORIGIN` (comma-separated supported).

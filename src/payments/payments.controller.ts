@@ -80,6 +80,8 @@ export class PaymentsController {
       dto.order,
       dto.channelCode,
       dto.paymentTokenId,
+      dto.voucherId,
+      dto.idempotencyKey,
     );
   }
 

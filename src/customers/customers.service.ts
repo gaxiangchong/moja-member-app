@@ -308,10 +308,13 @@ export class CustomersService {
       (acc, l) => acc + l.unitPriceCents * l.qty,
       0,
     );
-    if (computed !== dto.totalCents) {
+    const discountCents = Math.max(0, Math.floor(dto.discountCents ?? 0));
+    const expectedTotal = Math.max(0, computed - discountCents);
+    if (expectedTotal !== dto.totalCents) {
       throw new BadRequestException({
         code: 'ORDER_TOTAL_MISMATCH',
-        message: 'Order total does not match line items',
+        message:
+          'Order total does not match line items and discount calculation.',
       });
     }
   }

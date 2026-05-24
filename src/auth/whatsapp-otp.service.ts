@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { envFlagTrue } from '../config/env-flags';
 
 type Provider = 'meta' | 'twilio';
 
@@ -40,6 +41,18 @@ export class WhatsappOtpService {
     return raw === 'twilio' ? 'twilio' : 'meta';
   }
 
+  /**
+   * When unset, defaults to `true` so Meta **authentication** OTP templates work
+   * (code must appear in body + url button). Explicit `false` for body-only utility templates.
+   */
+  private resolveMetaIncludeAuthButton(): boolean {
+    const raw = this.config.get<string>('WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON');
+    if (raw === undefined || raw.trim() === '') {
+      return true;
+    }
+    return envFlagTrue(raw);
+  }
+
   // ---------------------------------------------------------------------------
   // Meta WhatsApp Cloud API
   // ---------------------------------------------------------------------------
@@ -67,17 +80,30 @@ export class WhatsappOtpService {
       throw new Error('Invalid phone for WhatsApp delivery');
     }
 
-    const templateName = this.config.get<string>('WHATSAPP_OTP_TEMPLATE_NAME');
-    const templateLang = this.config.get<string>(
-      'WHATSAPP_OTP_TEMPLATE_LANG',
-      'en',
-    );
+    const templateName = this.config.get<string>('WHATSAPP_OTP_TEMPLATE_NAME')?.trim();
+    const templateLang =
+      this.config.get<string>('WHATSAPP_OTP_TEMPLATE_LANG', 'en')?.trim() ||
+      'en';
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+
+    /**
+     * Meta authentication (OTP) templates with a copy-code / one-tap button require
+     * the same code in both `body` and `button` components. See:
+     * https://developers.facebook.com/docs/whatsapp/business-management-api/authentication-templates/copy-code-button-authentication-templates/
+     * Utility templates with only `{{1}}` in the body should set
+     * `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON=false`.
+     */
+    const includeAuthButton = templateName
+      ? this.resolveMetaIncludeAuthButton()
+      : false;
+
+    const otpTextParam = { type: 'text' as const, text: code };
 
     const body = templateName
       ? {
           messaging_product: 'whatsapp',
+          recipient_type: 'individual',
           to,
           type: 'template',
           template: {
@@ -86,8 +112,18 @@ export class WhatsappOtpService {
             components: [
               {
                 type: 'body',
-                parameters: [{ type: 'text', text: code }],
+                parameters: [otpTextParam],
               },
+              ...(includeAuthButton
+                ? [
+                    {
+                      type: 'button' as const,
+                      sub_type: 'url' as const,
+                      index: '0',
+                      parameters: [otpTextParam],
+                    },
+                  ]
+                : []),
             ],
           },
         }
