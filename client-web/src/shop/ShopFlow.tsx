@@ -68,8 +68,16 @@ function paymentChannelIcon(code: string): string {
   return 'PAY';
 }
 
-export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
-  const [screen, setScreen] = useState<Screen>('browse');
+export function ShopFlow({
+  pointsBalance,
+  initialScreen,
+  onInitialScreenApplied,
+}: {
+  pointsBalance: number;
+  initialScreen?: Screen | null;
+  onInitialScreenApplied?: () => void;
+}) {
+  const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -129,6 +137,12 @@ export function ShopFlow({ pointsBalance }: { pointsBalance: number }) {
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
   const total = getTotalCents();
+
+  useEffect(() => {
+    if (!initialScreen) return;
+    setScreen(initialScreen);
+    onInitialScreenApplied?.();
+  }, [initialScreen, onInitialScreenApplied]);
 
   useEffect(() => {
     let alive = true;

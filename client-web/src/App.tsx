@@ -11,6 +11,7 @@ import './App.css';
 import { toDataURL } from 'qrcode';
 import {
   clearToken,
+  consumeShopCartHandoff,
   fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
@@ -29,11 +30,14 @@ import {
   type MemberRewardsPayload,
   type PopularProduct,
 } from './api';
-
-const PENDING_REFERRAL_KEY = 'moja_pending_referral';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
 import { ShopFlow } from './shop/ShopFlow';
+import { useShopStore } from './shop/store/useShopStore';
+
+const PENDING_REFERRAL_KEY = 'moja_pending_referral';
+const PENDING_CART_HANDOFF_KEY = 'moja_pending_cart_handoff';
+const PENDING_SHOP_SCREEN_KEY = 'moja_pending_shop_screen';
 
 type Step = 'phone' | 'pin' | 'code' | 'setPin' | 'member';
 type OtpFlowPurpose = 'register' | 'recovery';
@@ -44,6 +48,8 @@ type RewardFilter = 'all' | 'food' | 'drinks';
 type PaymentResult =
   | { status: 'success'; orderNumber: string | null }
   | { status: 'failed' };
+
+type ShopScreen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
 
 function Card({
   children,
@@ -339,6 +345,7 @@ function App() {
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,6 +408,67 @@ function App() {
       });
     }
   }, [loadMemberData]);
+
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      const handoff = u.searchParams.get('cartHandoff')?.trim();
+      const shopScreen = u.searchParams.get('shopScreen')?.trim();
+      if (handoff) sessionStorage.setItem(PENDING_CART_HANDOFF_KEY, handoff);
+      if (shopScreen === 'cart' || shopScreen === 'checkout') {
+        sessionStorage.setItem(PENDING_SHOP_SCREEN_KEY, shopScreen);
+      }
+      if (handoff) {
+        setTab('shop');
+        setHint('Sign in to complete payment for your shop cart.');
+      }
+      if (handoff || shopScreen) {
+        u.searchParams.delete('cartHandoff');
+        u.searchParams.delete('shopScreen');
+        const qs = u.searchParams.toString();
+        window.history.replaceState({}, '', `${u.pathname}${qs ? `?${qs}` : ''}`);
+      }
+    } catch {
+      /* ignore invalid URL */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'member') return;
+    const token = sessionStorage.getItem(PENDING_CART_HANDOFF_KEY);
+    if (!token) return;
+
+    sessionStorage.removeItem(PENDING_CART_HANDOFF_KEY);
+    const pendingScreen = sessionStorage.getItem(PENDING_SHOP_SCREEN_KEY);
+    sessionStorage.removeItem(PENDING_SHOP_SCREEN_KEY);
+
+    void consumeShopCartHandoff(token)
+      .then(({ lines }) => {
+        if (lines.length === 0) {
+          throw new Error('Cart handoff contained no items');
+        }
+        useShopStore.getState().importExternalCart(
+          lines.map((l) => ({
+            productId: l.productId,
+            name: l.name,
+            imageUrl: l.imageUrl ?? '',
+            unitPriceCents: l.unitPriceCents,
+            qty: l.qty,
+            variantLabel: l.variantLabel ?? undefined,
+          })),
+        );
+        setTab('shop');
+        setShopInitialScreen(
+          pendingScreen === 'checkout' ? 'checkout' : 'cart',
+        );
+        setHint('Your cart from Moja Maison shop is ready. Review items and pay below.');
+      })
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : 'Could not import shop cart',
+        );
+      });
+  }, [step]);
 
   useEffect(() => {
     if (step !== 'member') return;
@@ -1290,7 +1358,13 @@ function App() {
               </>
             )}
 
-            {tab === 'shop' && <ShopFlow pointsBalance={pointsBalance} />}
+            {tab === 'shop' && (
+              <ShopFlow
+                pointsBalance={pointsBalance}
+                initialScreen={shopInitialScreen}
+                onInitialScreenApplied={() => setShopInitialScreen(null)}
+              />
+            )}
 
             {tab === 'orders' && (
               <OrdersTab active={tab === 'orders'} onGoToShop={() => setTab('shop')} />

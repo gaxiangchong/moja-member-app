@@ -40,6 +40,7 @@ import { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
 import { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
 import { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 import { CreateShopCatalogProductDto } from './dto/create-shop-catalog-product.dto';
+import { UpdateShopCatalogLayoutDto } from './dto/update-shop-catalog-layout.dto';
 import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.dto';
 import { CreateHomeAdSlideDto } from './dto/create-home-ad-slide.dto';
 import { UpdateHomeAdSlideDto } from './dto/update-home-ad-slide.dto';
@@ -338,6 +339,18 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateHomePopularConfig(@Body() dto: UpdateHomePopularDto) {
     return this.shopCatalog.setPopularConfig(dto);
+  }
+
+  @Get('shop-catalog/layout')
+  @RequirePermissions(P.VOUCHER_READ)
+  getShopCatalogLayout() {
+    return this.shopCatalog.getAdminLayout();
+  }
+
+  @Patch('shop-catalog/layout')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateShopCatalogLayout(@Body() dto: UpdateShopCatalogLayoutDto) {
+    return this.shopCatalog.setLayout(dto);
   }
 
   @Get('home-ads/slides')

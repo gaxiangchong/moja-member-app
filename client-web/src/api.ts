@@ -627,13 +627,31 @@ export type MemberRewardsPayload = {
 export type ShopCatalogProduct = {
   id: string;
   category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials';
+  categoryLabel?: string;
   name: string;
   shortDescription: string;
   description: string;
   imageUrl: string;
   basePriceCents: number;
-  variants?: Array<{ id: string; label: string; priceCents: number }>;
+  priceDisplay?: string;
+  variants?: Array<{
+    id: string;
+    label: string;
+    priceCents: number;
+    available?: boolean;
+    priceDisplay?: string | null;
+  }>;
+  soldOut?: boolean;
 };
+
+export function resolveShopAssetUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || /^data:/i.test(url)) return url;
+  const shopBase =
+    import.meta.env.VITE_SHOP_WEB_URL?.trim().replace(/\/$/, '') ||
+    'http://localhost:3000';
+  return `${shopBase}${url.startsWith('/') ? '' : '/'}${url}`;
+}
 
 export async function requestShopHandoff(): Promise<{
   handoffToken: string;
@@ -763,5 +781,50 @@ export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> 
       typeof data.message === 'string' ? data.message : 'Failed to load shop catalog',
     );
   }
-  return (Array.isArray(data) ? data : []) as ShopCatalogProduct[];
+  const items = (Array.isArray(data) ? data : []) as ShopCatalogProduct[];
+  return items.map((p) => ({
+    ...p,
+    imageUrl: resolveShopAssetUrl(p.imageUrl),
+    variants: p.variants
+      ?.filter((v) => v.available !== false && v.priceCents > 0)
+      .map((v) => ({ ...v })),
+  }));
+}
+
+export type CartHandoffLine = {
+  productId: string;
+  name: string;
+  qty: number;
+  unitPriceCents: number;
+  variantLabel: string | null;
+  imageUrl: string | null;
+};
+
+export async function consumeShopCartHandoff(token: string): Promise<{
+  lines: CartHandoffLine[];
+  subtotalCents: number;
+}> {
+  const res = await fetch(
+    `${base}/shop/cart-handoff/consume?token=${encodeURIComponent(token)}`,
+  );
+  const data = await parseJson<{
+    lines?: CartHandoffLine[];
+    subtotalCents?: number;
+    message?: string | string[];
+    code?: string;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : 'Cart import failed';
+    throw new Error(msg);
+  }
+  return {
+    lines: Array.isArray(data.lines) ? data.lines : [],
+    subtotalCents: Number(data.subtotalCents) || 0,
+  };
 }

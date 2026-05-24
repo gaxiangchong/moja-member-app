@@ -23,6 +23,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'customer-orders': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
+    'settings-shop-layout': true,
     'settings-popular-items': true,
     'settings-home-ads': true,
     'settings-system': true,
@@ -1003,6 +1004,7 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-shop-layout">Shop layout</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
@@ -2304,6 +2306,10 @@ export class AdminDashboardController {
             <div style="padding:16px 20px;max-width:640px">
               <input type="hidden" id="scId" />
               <div class="form-row-2">
+                <div class="form-section"><label for="scIdVisible">Product ID (slug)</label><input type="text" id="scIdVisible" placeholder="e.g. caramel-espresso-gateau" /></div>
+                <div class="form-section"><label for="scCategoryLabel">Storefront category label</label><input type="text" id="scCategoryLabel" placeholder="e.g. Premium Cake" /></div>
+              </div>
+              <div class="form-row-2">
                 <div class="form-section"><label for="scName">Name</label><input type="text" id="scName" /></div>
                 <div class="form-section"><label for="scCategory">Category</label>
                   <select id="scCategory">
@@ -2316,17 +2322,100 @@ export class AdminDashboardController {
               </div>
               <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
               <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
-              <div class="form-section"><label for="scImageUrl">Image URL</label><input type="text" id="scImageUrl" placeholder="https://..." /></div>
+              <div class="form-section"><label for="scImageUrl">Image URL</label><input type="text" id="scImageUrl" placeholder="/images/products/… or https://..." /></div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
-                <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
+                <div class="form-section"><label for="scPriceDisplay">Price label</label><input type="text" id="scPriceDisplay" placeholder="RM168.00" /></div>
               </div>
-              <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in client app</label></div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
+                <div class="form-section"><label for="scBadge">Badge (optional)</label><input type="text" id="scBadge" placeholder="New, Best seller…" /></div>
+              </div>
+              <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in shop</label></div>
+              <div class="form-section"><label><input type="checkbox" id="scSoldOut" style="width:auto;margin-right:8px" /> Mark sold out</label></div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
                 <button type="button" class="btn-outline" id="scNewBtn">New product</button>
               </div>
               <p class="field-hint" id="scSaveResult"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings-shop-layout" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Shop layout (moja-sites)</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshShopLayoutBtn">Refresh</button>
+                <button type="button" class="btn-primary" id="saveShopLayoutBtn">Save layout</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px 4px 20px;color:#64748b;font-size:13px">
+              Controls the public shop site home featured products and <code>/shop</code> section groupings. Product data comes from Shopping catalog.
+            </div>
+            <p class="field-hint" id="shopLayoutSaveResult" style="padding:0 20px"></p>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Home featured products</h2></div>
+            <div style="padding:12px 20px 4px 20px;color:#64748b;font-size:13px">
+              Shown on the moja-sites home page “Best sellers” grid. Drag order with arrows.
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:72px">Order</th><th style="width:64px">Image</th><th>Name</th><th>Category</th><th style="width:140px">Move</th><th style="width:90px">Remove</th></tr></thead>
+                <tbody id="slFeaturedSelectedBody"></tbody>
+              </table>
+            </div>
+            <div style="padding:10px 20px">
+              <input type="text" id="slFeaturedFilter" placeholder="Search catalog to add…" style="width:100%" />
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:64px">Image</th><th>Name</th><th>Category</th><th style="width:110px">Add</th></tr></thead>
+                <tbody id="slFeaturedAvailableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Shop page sections</h2>
+              <div class="sheet-actions"><button type="button" class="btn-outline" id="slAddSectionBtn">Add section</button></div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Section ID</th><th>Title</th><th>Products</th><th style="width:160px">Actions</th></tr></thead>
+                <tbody id="slSectionsBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="slSectionPanel" class="sheet hidden" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit section</h2></div>
+            <div style="padding:16px 20px;max-width:720px">
+              <div class="form-row-2">
+                <div class="form-section"><label for="slSectionId">Section ID (URL anchor)</label><input type="text" id="slSectionId" placeholder="premium-cake" /></div>
+                <div class="form-section"><label for="slSectionTitle">Title</label><input type="text" id="slSectionTitle" /></div>
+              </div>
+              <div class="form-section"><label for="slSectionDesc">Description</label><textarea id="slSectionDesc"></textarea></div>
+              <p class="field-hint">Changes apply when you click <strong>Save layout</strong> above.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:72px">Order</th><th style="width:64px">Image</th><th>Name</th><th style="width:140px">Move</th><th style="width:90px">Remove</th></tr></thead>
+                <tbody id="slSectionSelectedBody"></tbody>
+              </table>
+            </div>
+            <div style="padding:10px 20px">
+              <input type="text" id="slSectionFilter" placeholder="Search catalog to add to this section…" style="width:100%" />
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th style="width:64px">Image</th><th>Name</th><th style="width:110px">Add</th></tr></thead>
+                <tbody id="slSectionAvailableBody"></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -2616,7 +2705,7 @@ export class AdminDashboardController {
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-popular-items', 'settings-home-ads',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -2685,6 +2774,7 @@ export class AdminDashboardController {
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
+      'settings-shop-layout': '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
       'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
       audit: iconAudit,
@@ -2725,6 +2815,7 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
+      'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
       audit: 'Audit · Audit logs',
@@ -2737,6 +2828,9 @@ export class AdminDashboardController {
     let lastHomeAdSlides = [];
     let popularSelectedIds = [];
     let popularMaxLimit = 5;
+    let shopLayoutFeaturedIds = [];
+    let shopLayoutSections = [];
+    let shopLayoutEditingSectionIdx = -1;
     let lastSalesAnalytics = null;
     let saChartMetric = 'gmv';
 
@@ -4195,7 +4289,7 @@ export class AdminDashboardController {
       lastShopCatalogProducts = data || [];
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       document.getElementById('shopCatalogBody').innerHTML = (data || []).map(function (p) {
-        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.category) + '</td><td>' + fmt(p.basePriceCents) + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + slFormatPrice(p.basePriceCents, p.priceDisplay) + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
@@ -4294,6 +4388,202 @@ export class AdminDashboardController {
       popularSelectedIds = Array.isArray(cfg && cfg.productIds) ? cfg.productIds.slice() : [];
       popularMaxLimit = Math.max(1, Math.min(5, Number(cfg && cfg.maxLimit) || 5));
       refreshPopularUi();
+    }
+
+    function slProductById(id) {
+      return (lastShopCatalogProducts || []).find(function (p) { return p.id === id; });
+    }
+
+    function slFormatPrice(cents, display) {
+      if (display && String(display).trim()) return String(display).trim();
+      var n = Number(cents);
+      if (!Number.isFinite(n)) return '-';
+      return 'RM ' + (n / 100).toFixed(2);
+    }
+
+    function slThumb(url) {
+      return popularThumb(url);
+    }
+
+    function renderShopLayoutFeaturedSelected() {
+      var body = document.getElementById('slFeaturedSelectedBody');
+      if (!body) return;
+      if (shopLayoutFeaturedIds.length === 0) {
+        body.innerHTML = '<tr><td colspan="6">No featured products. Add from the list below.</td></tr>';
+        return;
+      }
+      body.innerHTML = shopLayoutFeaturedIds.map(function (id, idx) {
+        var p = slProductById(id) || { id: id, name: id + ' (missing)', category: '-', imageUrl: '', basePriceCents: 0 };
+        var upDisabled = idx === 0 ? ' disabled' : '';
+        var downDisabled = idx === shopLayoutFeaturedIds.length - 1 ? ' disabled' : '';
+        return '<tr>' +
+          '<td><strong>#' + (idx + 1) + '</strong></td>' +
+          '<td>' + slThumb(p.imageUrl) + '</td>' +
+          '<td>' + fmt(p.name) + '</td>' +
+          '<td>' + fmt(p.categoryLabel || p.category) + '</td>' +
+          '<td class="td-actions">' +
+            '<button type="button" class="btn-outline sl-feat-up-btn" data-id="' + fmt(p.id) + '"' + upDisabled + '>↑</button> ' +
+            '<button type="button" class="btn-outline sl-feat-down-btn" data-id="' + fmt(p.id) + '"' + downDisabled + '>↓</button>' +
+          '</td>' +
+          '<td class="td-actions"><button type="button" class="btn-outline sl-feat-remove-btn" data-id="' + fmt(p.id) + '">Remove</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function renderShopLayoutFeaturedAvailable() {
+      var body = document.getElementById('slFeaturedAvailableBody');
+      if (!body) return;
+      var q = (document.getElementById('slFeaturedFilter').value || '').trim().toLowerCase();
+      var selected = new Set(shopLayoutFeaturedIds);
+      var candidates = (lastShopCatalogProducts || []).filter(function (p) {
+        if (selected.has(p.id)) return false;
+        if (!q) return true;
+        return ((p.name || '') + ' ' + (p.category || '') + ' ' + (p.categoryLabel || '') + ' ' + (p.shortDescription || ''))
+          .toLowerCase().indexOf(q) !== -1;
+      });
+      if (candidates.length === 0) {
+        body.innerHTML = '<tr><td colspan="4">' + (q ? 'No matches.' : 'All items are already featured.') + '</td></tr>';
+        return;
+      }
+      body.innerHTML = candidates.map(function (p) {
+        return '<tr>' +
+          '<td>' + slThumb(p.imageUrl) + '</td>' +
+          '<td>' + fmt(p.name) + '</td>' +
+          '<td>' + fmt(p.categoryLabel || p.category) + '</td>' +
+          '<td class="td-actions"><button type="button" class="btn-primary sl-feat-add-btn" data-id="' + fmt(p.id) + '">Add</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function refreshShopLayoutFeaturedUi() {
+      renderShopLayoutFeaturedSelected();
+      renderShopLayoutFeaturedAvailable();
+    }
+
+    function renderShopLayoutSections() {
+      var body = document.getElementById('slSectionsBody');
+      if (!body) return;
+      if (!shopLayoutSections.length) {
+        body.innerHTML = '<tr><td colspan="4">No sections yet. Click “Add section”.</td></tr>';
+        return;
+      }
+      body.innerHTML = shopLayoutSections.map(function (s, idx) {
+        return '<tr>' +
+          '<td><code>' + fmt(s.id) + '</code></td>' +
+          '<td>' + fmt(s.title) + '</td>' +
+          '<td>' + fmt((s.productIds || []).length) + '</td>' +
+          '<td class="td-actions">' +
+            '<button type="button" class="btn-outline sl-section-edit-btn" data-idx="' + idx + '">Edit</button> ' +
+            '<button type="button" class="btn-outline sl-section-up-btn" data-idx="' + idx + '"' + (idx === 0 ? ' disabled' : '') + '>↑</button> ' +
+            '<button type="button" class="btn-outline sl-section-down-btn" data-idx="' + idx + '"' + (idx === shopLayoutSections.length - 1 ? ' disabled' : '') + '>↓</button> ' +
+            '<button type="button" class="btn-outline sl-section-remove-btn" data-idx="' + idx + '">Remove</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function slSyncSectionFieldsFromState() {
+      if (shopLayoutEditingSectionIdx < 0 || !shopLayoutSections[shopLayoutEditingSectionIdx]) return;
+      var s = shopLayoutSections[shopLayoutEditingSectionIdx];
+      document.getElementById('slSectionId').value = s.id || '';
+      document.getElementById('slSectionTitle').value = s.title || '';
+      document.getElementById('slSectionDesc').value = s.description || '';
+    }
+
+    function slSyncSectionStateFromFields() {
+      if (shopLayoutEditingSectionIdx < 0 || !shopLayoutSections[shopLayoutEditingSectionIdx]) return;
+      var s = shopLayoutSections[shopLayoutEditingSectionIdx];
+      s.id = document.getElementById('slSectionId').value.trim() || s.id;
+      s.title = document.getElementById('slSectionTitle').value.trim() || s.title;
+      s.description = document.getElementById('slSectionDesc').value.trim();
+    }
+
+    function renderShopLayoutSectionProducts() {
+      var selectedBody = document.getElementById('slSectionSelectedBody');
+      var availableBody = document.getElementById('slSectionAvailableBody');
+      if (!selectedBody || !availableBody) return;
+      if (shopLayoutEditingSectionIdx < 0 || !shopLayoutSections[shopLayoutEditingSectionIdx]) {
+        selectedBody.innerHTML = '<tr><td colspan="5">Select a section to edit.</td></tr>';
+        availableBody.innerHTML = '<tr><td colspan="3">—</td></tr>';
+        return;
+      }
+      slSyncSectionStateFromFields();
+      var section = shopLayoutSections[shopLayoutEditingSectionIdx];
+      var ids = section.productIds || [];
+      if (ids.length === 0) {
+        selectedBody.innerHTML = '<tr><td colspan="5">No products in this section.</td></tr>';
+      } else {
+        selectedBody.innerHTML = ids.map(function (id, idx) {
+          var p = slProductById(id) || { id: id, name: id + ' (missing)', imageUrl: '' };
+          return '<tr>' +
+            '<td><strong>#' + (idx + 1) + '</strong></td>' +
+            '<td>' + slThumb(p.imageUrl) + '</td>' +
+            '<td>' + fmt(p.name) + '</td>' +
+            '<td class="td-actions">' +
+              '<button type="button" class="btn-outline sl-sec-prod-up-btn" data-id="' + fmt(id) + '"' + (idx === 0 ? ' disabled' : '') + '>↑</button> ' +
+              '<button type="button" class="btn-outline sl-sec-prod-down-btn" data-id="' + fmt(id) + '"' + (idx === ids.length - 1 ? ' disabled' : '') + '>↓</button>' +
+            '</td>' +
+            '<td class="td-actions"><button type="button" class="btn-outline sl-sec-prod-remove-btn" data-id="' + fmt(id) + '">Remove</button></td>' +
+          '</tr>';
+        }).join('');
+      }
+      var q = (document.getElementById('slSectionFilter').value || '').trim().toLowerCase();
+      var selected = new Set(ids);
+      var candidates = (lastShopCatalogProducts || []).filter(function (p) {
+        if (selected.has(p.id)) return false;
+        if (!q) return true;
+        return ((p.name || '') + ' ' + (p.id || '') + ' ' + (p.shortDescription || '')).toLowerCase().indexOf(q) !== -1;
+      });
+      availableBody.innerHTML = candidates.length
+        ? candidates.map(function (p) {
+            return '<tr><td>' + slThumb(p.imageUrl) + '</td><td>' + fmt(p.name) + '</td>' +
+              '<td class="td-actions"><button type="button" class="btn-primary sl-sec-prod-add-btn" data-id="' + fmt(p.id) + '">Add</button></td></tr>';
+          }).join('')
+        : '<tr><td colspan="3">' + (q ? 'No matches.' : 'All catalog items are already in this section.') + '</td></tr>';
+    }
+
+    function openShopLayoutSectionEditor(idx) {
+      shopLayoutEditingSectionIdx = idx;
+      var panel = document.getElementById('slSectionPanel');
+      if (panel) panel.classList.remove('hidden');
+      slSyncSectionFieldsFromState();
+      renderShopLayoutSectionProducts();
+    }
+
+    function refreshShopLayoutUi() {
+      refreshShopLayoutFeaturedUi();
+      renderShopLayoutSections();
+      if (shopLayoutEditingSectionIdx >= 0) {
+        slSyncSectionFieldsFromState();
+        renderShopLayoutSectionProducts();
+      }
+    }
+
+    async function loadShopLayout() {
+      const [layout, products] = await Promise.all([
+        api('/admin/shop-catalog/layout'),
+        api('/admin/shop-catalog/products'),
+      ]);
+      lastShopCatalogProducts = products || [];
+      shopLayoutFeaturedIds = Array.isArray(layout && layout.homeFeaturedProductIds)
+        ? layout.homeFeaturedProductIds.slice()
+        : [];
+      shopLayoutSections = Array.isArray(layout && layout.shopSections)
+        ? layout.shopSections.map(function (s) {
+            return {
+              id: String(s.id || ''),
+              title: String(s.title || ''),
+              description: String(s.description || ''),
+              productIds: Array.isArray(s.productIds) ? s.productIds.slice() : [],
+            };
+          })
+        : [];
+      if (shopLayoutEditingSectionIdx >= shopLayoutSections.length) {
+        shopLayoutEditingSectionIdx = -1;
+        var panel = document.getElementById('slSectionPanel');
+        if (panel) panel.classList.add('hidden');
+      }
+      refreshShopLayoutUi();
     }
 
     async function loadHomeAdSlides() {
@@ -4722,6 +5012,7 @@ export class AdminDashboardController {
         loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
+        loadShopLayout(),
         loadHomeAdSlides(),
         loadPopularItems(),
       ];
@@ -5156,6 +5447,159 @@ export class AdminDashboardController {
     });
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
 
+    (function wireShopLayoutHandlers() {
+      const refreshBtn = document.getElementById('refreshShopLayoutBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', function () {
+        loadShopLayout().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+      const saveBtn = document.getElementById('saveShopLayoutBtn');
+      const saveResult = document.getElementById('shopLayoutSaveResult');
+      if (saveBtn) saveBtn.addEventListener('click', async function () {
+        if (shopLayoutEditingSectionIdx >= 0) slSyncSectionStateFromFields();
+        if (saveResult) saveResult.textContent = 'Saving…';
+        try {
+          const layout = await apiPatch('/admin/shop-catalog/layout', {
+            homeFeaturedProductIds: shopLayoutFeaturedIds,
+            shopSections: shopLayoutSections,
+          });
+          shopLayoutFeaturedIds = Array.isArray(layout && layout.homeFeaturedProductIds)
+            ? layout.homeFeaturedProductIds.slice()
+            : shopLayoutFeaturedIds;
+          shopLayoutSections = Array.isArray(layout && layout.shopSections)
+            ? layout.shopSections.map(function (s) {
+                return {
+                  id: String(s.id || ''),
+                  title: String(s.title || ''),
+                  description: String(s.description || ''),
+                  productIds: Array.isArray(s.productIds) ? s.productIds.slice() : [],
+                };
+              })
+            : shopLayoutSections;
+          refreshShopLayoutUi();
+          if (saveResult) saveResult.textContent = 'Layout saved.';
+        } catch (e) {
+          if (saveResult) saveResult.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
+        }
+      });
+      const featFilter = document.getElementById('slFeaturedFilter');
+      if (featFilter) featFilter.addEventListener('input', function () { renderShopLayoutFeaturedAvailable(); });
+      const secFilter = document.getElementById('slSectionFilter');
+      if (secFilter) secFilter.addEventListener('input', function () { renderShopLayoutSectionProducts(); });
+      ['slSectionId', 'slSectionTitle', 'slSectionDesc'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', function () { slSyncSectionStateFromFields(); renderShopLayoutSections(); });
+      });
+      const featSel = document.getElementById('slFeaturedSelectedBody');
+      if (featSel) featSel.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.dataset || !t.dataset.id) return;
+        var id = t.dataset.id;
+        var idx = shopLayoutFeaturedIds.indexOf(id);
+        if (idx < 0) return;
+        if (t.classList.contains('sl-feat-up-btn') && idx > 0) {
+          var tmp = shopLayoutFeaturedIds[idx - 1];
+          shopLayoutFeaturedIds[idx - 1] = shopLayoutFeaturedIds[idx];
+          shopLayoutFeaturedIds[idx] = tmp;
+          refreshShopLayoutFeaturedUi();
+        } else if (t.classList.contains('sl-feat-down-btn') && idx < shopLayoutFeaturedIds.length - 1) {
+          var tmp2 = shopLayoutFeaturedIds[idx + 1];
+          shopLayoutFeaturedIds[idx + 1] = shopLayoutFeaturedIds[idx];
+          shopLayoutFeaturedIds[idx] = tmp2;
+          refreshShopLayoutFeaturedUi();
+        } else if (t.classList.contains('sl-feat-remove-btn')) {
+          shopLayoutFeaturedIds.splice(idx, 1);
+          refreshShopLayoutFeaturedUi();
+        }
+      });
+      const featAvail = document.getElementById('slFeaturedAvailableBody');
+      if (featAvail) featAvail.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.classList.contains('sl-feat-add-btn') || !t.dataset.id) return;
+        if (shopLayoutFeaturedIds.indexOf(t.dataset.id) !== -1) return;
+        shopLayoutFeaturedIds.push(t.dataset.id);
+        refreshShopLayoutFeaturedUi();
+      });
+      const secBody = document.getElementById('slSectionsBody');
+      if (secBody) secBody.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || t.dataset.idx == null) return;
+        var idx = parseInt(t.dataset.idx, 10);
+        if (!Number.isFinite(idx) || idx < 0 || idx >= shopLayoutSections.length) return;
+        if (t.classList.contains('sl-section-edit-btn')) {
+          openShopLayoutSectionEditor(idx);
+        } else if (t.classList.contains('sl-section-up-btn') && idx > 0) {
+          var tmp = shopLayoutSections[idx - 1];
+          shopLayoutSections[idx - 1] = shopLayoutSections[idx];
+          shopLayoutSections[idx] = tmp;
+          if (shopLayoutEditingSectionIdx === idx) shopLayoutEditingSectionIdx = idx - 1;
+          else if (shopLayoutEditingSectionIdx === idx - 1) shopLayoutEditingSectionIdx = idx;
+          refreshShopLayoutUi();
+        } else if (t.classList.contains('sl-section-down-btn') && idx < shopLayoutSections.length - 1) {
+          var tmp2 = shopLayoutSections[idx + 1];
+          shopLayoutSections[idx + 1] = shopLayoutSections[idx];
+          shopLayoutSections[idx] = tmp2;
+          if (shopLayoutEditingSectionIdx === idx) shopLayoutEditingSectionIdx = idx + 1;
+          else if (shopLayoutEditingSectionIdx === idx + 1) shopLayoutEditingSectionIdx = idx;
+          refreshShopLayoutUi();
+        } else if (t.classList.contains('sl-section-remove-btn')) {
+          shopLayoutSections.splice(idx, 1);
+          if (shopLayoutEditingSectionIdx === idx) {
+            shopLayoutEditingSectionIdx = -1;
+            document.getElementById('slSectionPanel').classList.add('hidden');
+          } else if (shopLayoutEditingSectionIdx > idx) shopLayoutEditingSectionIdx -= 1;
+          refreshShopLayoutUi();
+        }
+      });
+      const addSecBtn = document.getElementById('slAddSectionBtn');
+      if (addSecBtn) addSecBtn.addEventListener('click', function () {
+        var n = shopLayoutSections.length + 1;
+        shopLayoutSections.push({
+          id: 'section-' + n,
+          title: 'New section ' + n,
+          description: '',
+          productIds: [],
+        });
+        openShopLayoutSectionEditor(shopLayoutSections.length - 1);
+        refreshShopLayoutUi();
+      });
+      const secSel = document.getElementById('slSectionSelectedBody');
+      if (secSel) secSel.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.dataset || !t.dataset.id || shopLayoutEditingSectionIdx < 0) return;
+        var section = shopLayoutSections[shopLayoutEditingSectionIdx];
+        if (!section) return;
+        var ids = section.productIds || [];
+        var id = t.dataset.id;
+        var idx = ids.indexOf(id);
+        if (idx < 0) return;
+        if (t.classList.contains('sl-sec-prod-up-btn') && idx > 0) {
+          var tmp = ids[idx - 1];
+          ids[idx - 1] = ids[idx];
+          ids[idx] = tmp;
+          renderShopLayoutSectionProducts();
+        } else if (t.classList.contains('sl-sec-prod-down-btn') && idx < ids.length - 1) {
+          var tmp2 = ids[idx + 1];
+          ids[idx + 1] = ids[idx];
+          ids[idx] = tmp2;
+          renderShopLayoutSectionProducts();
+        } else if (t.classList.contains('sl-sec-prod-remove-btn')) {
+          ids.splice(idx, 1);
+          renderShopLayoutSectionProducts();
+        }
+      });
+      const secAvail = document.getElementById('slSectionAvailableBody');
+      if (secAvail) secAvail.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.classList.contains('sl-sec-prod-add-btn') || !t.dataset.id || shopLayoutEditingSectionIdx < 0) return;
+        var section = shopLayoutSections[shopLayoutEditingSectionIdx];
+        if (!section) return;
+        if (!Array.isArray(section.productIds)) section.productIds = [];
+        if (section.productIds.indexOf(t.dataset.id) !== -1) return;
+        section.productIds.push(t.dataset.id);
+        renderShopLayoutSectionProducts();
+      });
+    })();
+
     (function wirePopularItemsHandlers() {
       const refreshBtn = document.getElementById('refreshPopularBtn');
       if (refreshBtn) refreshBtn.addEventListener('click', function () {
@@ -5568,42 +6012,59 @@ export class AdminDashboardController {
       var p = lastShopCatalogProducts.find(function (x) { return x.id === id; });
       if (!p) return;
       document.getElementById('scId').value = p.id || '';
+      document.getElementById('scIdVisible').value = p.id || '';
+      document.getElementById('scIdVisible').readOnly = true;
       document.getElementById('scName').value = p.name || '';
       document.getElementById('scCategory').value = p.category || 'specials';
+      document.getElementById('scCategoryLabel').value = p.categoryLabel || '';
       document.getElementById('scShort').value = p.shortDescription || '';
       document.getElementById('scDesc').value = p.description || '';
       document.getElementById('scImageUrl').value = p.imageUrl || '';
       document.getElementById('scPrice').value = p.basePriceCents != null ? String(p.basePriceCents) : '0';
+      document.getElementById('scPriceDisplay').value = p.priceDisplay || '';
       document.getElementById('scSort').value = p.sortOrder != null ? String(p.sortOrder) : '0';
+      document.getElementById('scBadge').value = p.badge || '';
       document.getElementById('scActive').checked = !!p.isActive;
+      document.getElementById('scSoldOut').checked = !!p.soldOut;
       document.getElementById('scSaveResult').textContent = '';
     });
 
     document.getElementById('scNewBtn').addEventListener('click', () => {
       document.getElementById('scId').value = '';
+      document.getElementById('scIdVisible').value = '';
+      document.getElementById('scIdVisible').readOnly = false;
       document.getElementById('scName').value = '';
       document.getElementById('scCategory').value = 'specials';
+      document.getElementById('scCategoryLabel').value = '';
       document.getElementById('scShort').value = '';
       document.getElementById('scDesc').value = '';
       document.getElementById('scImageUrl').value = '';
       document.getElementById('scPrice').value = '0';
+      document.getElementById('scPriceDisplay').value = '';
       document.getElementById('scSort').value = '0';
+      document.getElementById('scBadge').value = '';
       document.getElementById('scActive').checked = true;
+      document.getElementById('scSoldOut').checked = false;
       document.getElementById('scSaveResult').textContent = '';
     });
 
     document.getElementById('scSaveBtn').addEventListener('click', () => {
       var id = document.getElementById('scId').value.trim();
+      var slug = document.getElementById('scIdVisible').value.trim();
       var out = document.getElementById('scSaveResult');
       var body = {
         name: document.getElementById('scName').value.trim(),
         category: document.getElementById('scCategory').value,
+        categoryLabel: document.getElementById('scCategoryLabel').value.trim() || undefined,
         shortDescription: document.getElementById('scShort').value.trim(),
         description: document.getElementById('scDesc').value.trim(),
         imageUrl: document.getElementById('scImageUrl').value.trim(),
         basePriceCents: parseInt(document.getElementById('scPrice').value, 10) || 0,
+        priceDisplay: document.getElementById('scPriceDisplay').value.trim() || undefined,
         sortOrder: parseInt(document.getElementById('scSort').value, 10) || 0,
+        badge: document.getElementById('scBadge').value.trim() || undefined,
         isActive: document.getElementById('scActive').checked,
+        soldOut: document.getElementById('scSoldOut').checked,
       };
       if (!body.name) {
         out.textContent = 'Name is required.';
@@ -5612,7 +6073,7 @@ export class AdminDashboardController {
       out.textContent = 'Saving…';
       var req = id
         ? apiPatch('/admin/shop-catalog/products/' + encodeURIComponent(id), body)
-        : apiPost('/admin/shop-catalog/products', body);
+        : apiPost('/admin/shop-catalog/products', Object.assign({ id: slug || undefined }, body));
       req
         .then(function () {
           out.textContent = id ? 'Updated.' : 'Created.';

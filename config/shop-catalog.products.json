@@ -1,0 +1,578 @@
+[
+  {
+    "id": "caramel-espresso-gateau",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Caramel Espresso Gateau",
+    "shortDescription": "Buttery vanilla layers swirled with rich salted caramel and topped with a generous scatter of toasted macadamia nuts. Nutty, indulgent, and beautifully balanced.",
+    "description": "Buttery vanilla layers swirled with rich salted caramel and topped with a generous scatter of toasted macadamia nuts. Nutty, indulgent, and beautifully balanced.",
+    "imageUrl": "/images/products/caramel_macadamia_cake.png",
+    "images": [
+      {
+        "src": "/images/products/caramel_macadamia_cake.png",
+        "alt": "Caramel Espresso Gateau"
+      },
+      {
+        "src": "/images/products/caramel_macadamia_cake_v2.png",
+        "alt": "Caramel Espresso Gateau — alternative angle"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "caramel-espresso-gateau__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "caramel-espresso-gateau__8-inch",
+        "label": "8 inch",
+        "priceCents": 22800,
+        "available": true,
+        "priceDisplay": "RM228.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 10
+  },
+  {
+    "id": "lemon-yuzu-cake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Lemon Yuzu Cake",
+    "shortDescription": "A bright, citrus-forward sponge that pairs Mediterranean lemon with the floral zing of Japanese yuzu. Light, refreshing, and impossible to resist.",
+    "description": "A bright, citrus-forward sponge that pairs Mediterranean lemon with the floral zing of Japanese yuzu. Light, refreshing, and impossible to resist.",
+    "imageUrl": "/images/products/lemon_yuzu_cake.png",
+    "images": [
+      {
+        "src": "/images/products/lemon_yuzu_cake.png",
+        "alt": "Lemon Yuzu Cake"
+      },
+      {
+        "src": "/images/products/lemon_yuzu_cake_v2.png",
+        "alt": "Lemon Yuzu Cake — alternative angle"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "lemon-yuzu-cake__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "lemon-yuzu-cake__8-inch",
+        "label": "8 inch",
+        "priceCents": 22800,
+        "available": true,
+        "priceDisplay": "RM228.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 20
+  },
+  {
+    "id": "matcha-marmalade",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Matcha Marmalade",
+    "shortDescription": "Earthy ceremonial-grade matcha cake layered with a tangy yuzu-citrus marmalade. A grown-up balance of bitter, sweet, and bright.",
+    "description": "Earthy ceremonial-grade matcha cake layered with a tangy yuzu-citrus marmalade. A grown-up balance of bitter, sweet, and bright.",
+    "imageUrl": "/images/products/matcha_crepe_cake.png",
+    "images": [
+      {
+        "src": "/images/products/matcha_crepe_cake.png",
+        "alt": "Matcha Marmalade"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "matcha-marmalade__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "matcha-marmalade__8-inch",
+        "label": "8 inch",
+        "priceCents": 0,
+        "available": false,
+        "priceDisplay": null
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 30
+  },
+  {
+    "id": "strawberry-shortcake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Strawberry Shortcake",
+    "shortDescription": "Classic Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
+    "description": "Classic Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
+    "imageUrl": "/images/products/strawberry_shortcake.png",
+    "images": [
+      {
+        "src": "/images/products/strawberry_shortcake.png",
+        "alt": "Strawberry Shortcake"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "strawberry-shortcake__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "strawberry-shortcake__8-inch",
+        "label": "8 inch",
+        "priceCents": 0,
+        "available": false,
+        "priceDisplay": null
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 40
+  },
+  {
+    "id": "mixed-fruit-basque-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Mixed Fruit Basque Cheesecake",
+    "shortDescription": "Our signature burnt Basque cheesecake topped with a colourful medley of seasonal fruits. Caramelised on top, custardy in the centre, and bursting with freshness.",
+    "description": "Our signature burnt Basque cheesecake topped with a colourful medley of seasonal fruits. Caramelised on top, custardy in the centre, and bursting with freshness.",
+    "imageUrl": "/images/products/mixed_fruit_shortcake.png",
+    "images": [
+      {
+        "src": "/images/products/mixed_fruit_shortcake.png",
+        "alt": "Mixed Fruit Basque Cheesecake"
+      },
+      {
+        "src": "/images/products/mixed_fruit_shortcake_v2.png",
+        "alt": "Mixed Fruit Basque Cheesecake — alternative angle"
+      }
+    ],
+    "basePriceCents": 19900,
+    "priceDisplay": "RM199.00",
+    "variants": [
+      {
+        "id": "mixed-fruit-basque-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 19900,
+        "available": true,
+        "priceDisplay": "RM199.00"
+      },
+      {
+        "id": "mixed-fruit-basque-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 0,
+        "available": false,
+        "priceDisplay": null
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 50
+  },
+  {
+    "id": "jasmine-blanc-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Jasmine Blanc Cheesecake",
+    "shortDescription": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
+    "description": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
+    "imageUrl": "/images/products/lemon_yuzu_cake.png",
+    "images": [
+      {
+        "src": "/images/products/lemon_yuzu_cake.png",
+        "alt": "Jasmine Blanc Cheesecake"
+      }
+    ],
+    "basePriceCents": 19900,
+    "priceDisplay": "RM199.00",
+    "variants": [
+      {
+        "id": "jasmine-blanc-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 19900,
+        "available": true,
+        "priceDisplay": "RM199.00"
+      },
+      {
+        "id": "jasmine-blanc-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 20800,
+        "available": true,
+        "priceDisplay": "RM208.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 60
+  },
+  {
+    "id": "pistachio-noir-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Pistachio Noir Cheesecake",
+    "shortDescription": "Finely ground pistachios folded through our burnt Basque cheesecake, finished with a deeply caramelised top and a whisper of dark chocolate. Nutty, rich, and quietly luxurious.",
+    "description": "Finely ground pistachios folded through our burnt Basque cheesecake, finished with a deeply caramelised top and a whisper of dark chocolate. Nutty, rich, and quietly luxurious.",
+    "imageUrl": "/images/products/matcha_marmalade.png",
+    "images": [
+      {
+        "src": "/images/products/matcha_marmalade.png",
+        "alt": "Pistachio Noir Cheesecake"
+      }
+    ],
+    "basePriceCents": 14900,
+    "priceDisplay": "RM149.00",
+    "variants": [
+      {
+        "id": "pistachio-noir-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 14900,
+        "available": true,
+        "priceDisplay": "RM149.00"
+      },
+      {
+        "id": "pistachio-noir-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 20800,
+        "available": true,
+        "priceDisplay": "RM208.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 70
+  },
+  {
+    "id": "tiramisu-noir-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Tiramisu Noir Cheesecake",
+    "shortDescription": "The Italian classic reimagined as a burnt Basque cheesecake — espresso-soaked layers, mascarpone cream, and a dusting of cocoa over a caramelised top.",
+    "description": "The Italian classic reimagined as a burnt Basque cheesecake — espresso-soaked layers, mascarpone cream, and a dusting of cocoa over a caramelised top.",
+    "imageUrl": "/images/products/tiramisu_noir.png",
+    "images": [
+      {
+        "src": "/images/products/tiramisu_noir.png",
+        "alt": "Tiramisu Noir Cheesecake"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "tiramisu-noir-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "tiramisu-noir-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 22800,
+        "available": true,
+        "priceDisplay": "RM228.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 80
+  },
+  {
+    "id": "citron-basque-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Citron Basque Cheesecake",
+    "shortDescription": "Bright lemon zest folded through our signature burnt Basque cheesecake. Tangy, creamy, and gently caramelised — a dessert that wakes you up.",
+    "description": "Bright lemon zest folded through our signature burnt Basque cheesecake. Tangy, creamy, and gently caramelised — a dessert that wakes you up.",
+    "imageUrl": "/images/products/carrot_cake_slice.png",
+    "images": [
+      {
+        "src": "/images/products/carrot_cake_slice.png",
+        "alt": "Citron Basque Cheesecake (placeholder image)"
+      }
+    ],
+    "basePriceCents": 13900,
+    "priceDisplay": "RM139.00",
+    "variants": [
+      {
+        "id": "citron-basque-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 13900,
+        "available": true,
+        "priceDisplay": "RM139.00"
+      },
+      {
+        "id": "citron-basque-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 20800,
+        "available": true,
+        "priceDisplay": "RM208.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 90
+  },
+  {
+    "id": "truffle-basque-cheesecake",
+    "category": "whole_cakes",
+    "categoryLabel": "Premium Cake",
+    "name": "Truffle Basque Cheesecake",
+    "shortDescription": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
+    "description": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
+    "imageUrl": "/images/products/lotus_biscoff_crepe_cake_slice.png",
+    "images": [
+      {
+        "src": "/images/products/lotus_biscoff_crepe_cake_slice.png",
+        "alt": "Truffle Basque Cheesecake"
+      }
+    ],
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
+    "variants": [
+      {
+        "id": "truffle-basque-cheesecake__6-inch",
+        "label": "6 inch",
+        "priceCents": 16800,
+        "available": true,
+        "priceDisplay": "RM168.00"
+      },
+      {
+        "id": "truffle-basque-cheesecake__8-inch",
+        "label": "8 inch",
+        "priceCents": 22800,
+        "available": true,
+        "priceDisplay": "RM228.00"
+      }
+    ],
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 100
+  },
+  {
+    "id": "lemon-pound-cake",
+    "category": "cake_slices",
+    "categoryLabel": "Collection Cake",
+    "name": "Lemon Pound Cake",
+    "shortDescription": "A classic loaf with a buttery, dense crumb and a punchy lemon glaze. Comforting and timeless — perfect with coffee or tea.",
+    "description": "A classic loaf with a buttery, dense crumb and a punchy lemon glaze. Comforting and timeless — perfect with coffee or tea.",
+    "imageUrl": "/images/products/lemon_pound_cake.png",
+    "images": [
+      {
+        "src": "/images/products/lemon_pound_cake.png",
+        "alt": "Lemon Pound Cake"
+      }
+    ],
+    "basePriceCents": 8800,
+    "priceDisplay": "RM88.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 110
+  },
+  {
+    "id": "banana-walnut-loaf",
+    "category": "cake_slices",
+    "categoryLabel": "Collection Cake",
+    "name": "Banana Walnut Loaf",
+    "shortDescription": "Ripe bananas folded into a moist, tender loaf with toasted walnuts in every slice. Warm, comforting, and impossibly moreish.",
+    "description": "Ripe bananas folded into a moist, tender loaf with toasted walnuts in every slice. Warm, comforting, and impossibly moreish.",
+    "imageUrl": "/images/products/banana_walnut_loaf.png",
+    "images": [
+      {
+        "src": "/images/products/banana_walnut_loaf.png",
+        "alt": "Banana Walnut Loaf"
+      }
+    ],
+    "basePriceCents": 9900,
+    "priceDisplay": "RM99.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 120
+  },
+  {
+    "id": "chocolate-brownie",
+    "category": "cake_slices",
+    "categoryLabel": "Collection Cake",
+    "name": "Chocolate Brownie",
+    "shortDescription": "Fudgy on the inside, lightly crisp on top, and made with a generous hit of dark chocolate. Intense, satisfying, and best enjoyed warm.",
+    "description": "Fudgy on the inside, lightly crisp on top, and made with a generous hit of dark chocolate. Intense, satisfying, and best enjoyed warm.",
+    "imageUrl": "/images/products/chocolate_brownies.png",
+    "images": [
+      {
+        "src": "/images/products/chocolate_brownies.png",
+        "alt": "Chocolate Brownie"
+      }
+    ],
+    "basePriceCents": 1390,
+    "priceDisplay": "RM13.90 each",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 130
+  },
+  {
+    "id": "chocolate-chip-soft-cookies",
+    "category": "cake_slices",
+    "categoryLabel": "Collection Cake",
+    "name": "Chocolate Chip Soft Cookies",
+    "shortDescription": "Thick, soft-baked cookies with pools of melted dark chocolate. Soft centre, golden edges — best enjoyed warm with a glass of cold milk.",
+    "description": "Thick, soft-baked cookies with pools of melted dark chocolate. Soft centre, golden edges — best enjoyed warm with a glass of cold milk.",
+    "imageUrl": "/images/products/chocolate_chip_cookie.png",
+    "images": [
+      {
+        "src": "/images/products/chocolate_chip_cookie.png",
+        "alt": "Chocolate Chip Soft Cookies"
+      },
+      {
+        "src": "/images/products/chocolate_chip_cookie_v2.png",
+        "alt": "Chocolate Chip Soft Cookies — alternative angle"
+      }
+    ],
+    "basePriceCents": 1390,
+    "priceDisplay": "RM13.90 each",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 140
+  },
+  {
+    "id": "matcha-pistachio-soft-cookies",
+    "category": "cake_slices",
+    "categoryLabel": "Collection Cake",
+    "name": "Matcha Pistachio Soft Cookies",
+    "shortDescription": "Buttery soft cookies infused with ceremonial-grade matcha and studded with chopped pistachios. Earthy, nutty, and gently sweet.",
+    "description": "Buttery soft cookies infused with ceremonial-grade matcha and studded with chopped pistachios. Earthy, nutty, and gently sweet.",
+    "imageUrl": "/images/products/matcha_cookie.png",
+    "images": [
+      {
+        "src": "/images/products/matcha_cookie.png",
+        "alt": "Matcha Pistachio Soft Cookies"
+      }
+    ],
+    "basePriceCents": 1490,
+    "priceDisplay": "RM14.90 each",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 150
+  },
+  {
+    "id": "assorted-cookies-jar",
+    "category": "specials",
+    "categoryLabel": "Box Edition",
+    "name": "Assorted Cookies Jar",
+    "shortDescription": "A curated jar bringing together our most-loved cookies — chocolate chip, butter, matcha and more. Perfect for gifting or sharing at home.",
+    "description": "A curated jar bringing together our most-loved cookies — chocolate chip, butter, matcha and more. Perfect for gifting or sharing at home.",
+    "imageUrl": "/images/products/assorted_cookies_jar.png",
+    "images": [
+      {
+        "src": "/images/products/assorted_cookies_jar.png",
+        "alt": "Assorted Cookies Jar"
+      }
+    ],
+    "basePriceCents": 2800,
+    "priceDisplay": "RM28.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 160
+  },
+  {
+    "id": "butter-cookies-jar",
+    "category": "specials",
+    "categoryLabel": "Box Edition",
+    "name": "Butter Cookies Jar",
+    "shortDescription": "A jar of crumbly, melt-in-the-mouth butter cookies made with French cultured butter. Simple, timeless, and always welcome.",
+    "description": "A jar of crumbly, melt-in-the-mouth butter cookies made with French cultured butter. Simple, timeless, and always welcome.",
+    "imageUrl": "/images/products/butter_cookies_jar.png",
+    "images": [
+      {
+        "src": "/images/products/butter_cookies_jar.png",
+        "alt": "Butter Cookies Jar"
+      }
+    ],
+    "basePriceCents": 2800,
+    "priceDisplay": "RM28.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 170
+  },
+  {
+    "id": "chocolate-chip-cookies-jar",
+    "category": "specials",
+    "categoryLabel": "Box Edition",
+    "name": "Chocolate Chip Cookies Jar",
+    "shortDescription": "Our signature chocolate chip cookies packed into a generous jar. Soft centres, golden edges, and plenty of dark chocolate in every bite.",
+    "description": "Our signature chocolate chip cookies packed into a generous jar. Soft centres, golden edges, and plenty of dark chocolate in every bite.",
+    "imageUrl": "/images/products/chocolate_chip_cookies_jar.png",
+    "images": [
+      {
+        "src": "/images/products/chocolate_chip_cookies_jar.png",
+        "alt": "Chocolate Chip Cookies Jar"
+      }
+    ],
+    "basePriceCents": 2800,
+    "priceDisplay": "RM28.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 180
+  },
+  {
+    "id": "chocolate-cookies-jar",
+    "category": "specials",
+    "categoryLabel": "Box Edition",
+    "name": "Chocolate Cookies Jar",
+    "shortDescription": "Deep cocoa cookies with rich dark chocolate chunks, baked until just chewy. For anyone who likes their chocolate doubled.",
+    "description": "Deep cocoa cookies with rich dark chocolate chunks, baked until just chewy. For anyone who likes their chocolate doubled.",
+    "imageUrl": "/images/products/chocolate_cookies_jar.png",
+    "images": [
+      {
+        "src": "/images/products/chocolate_cookies_jar.png",
+        "alt": "Chocolate Cookies Jar"
+      }
+    ],
+    "basePriceCents": 2800,
+    "priceDisplay": "RM28.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 190
+  },
+  {
+    "id": "matcha-cookies-jar",
+    "category": "specials",
+    "categoryLabel": "Box Edition",
+    "name": "Matcha Cookies Jar",
+    "shortDescription": "Buttery matcha cookies tucked into a jar — earthy, gently sweet, and impossible to stop at one.",
+    "description": "Buttery matcha cookies tucked into a jar — earthy, gently sweet, and impossible to stop at one.",
+    "imageUrl": "/images/products/matcha_cookies_jar.png",
+    "images": [
+      {
+        "src": "/images/products/matcha_cookies_jar.png",
+        "alt": "Matcha Cookies Jar"
+      }
+    ],
+    "basePriceCents": 2800,
+    "priceDisplay": "RM28.00",
+    "soldOut": false,
+    "isActive": true,
+    "sortOrder": 200
+  }
+]

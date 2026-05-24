@@ -21,8 +21,20 @@ async function bootstrap() {
   const clientOrigins = process.env.CLIENT_WEB_ORIGIN?.split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const shopOrigin = process.env.SHOP_WEB_BASE_URL?.trim();
+  const corsOrigins = [...(clientOrigins ?? [])];
+  if (shopOrigin) {
+    try {
+      const origin = new URL(
+        shopOrigin.endsWith('/') ? shopOrigin : `${shopOrigin}/`,
+      ).origin;
+      if (!corsOrigins.includes(origin)) corsOrigins.push(origin);
+    } catch {
+      /* ignore invalid SHOP_WEB_BASE_URL */
+    }
+  }
   app.enableCors({
-    origin: clientOrigins?.length ? clientOrigins : true,
+    origin: corsOrigins.length ? corsOrigins : true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

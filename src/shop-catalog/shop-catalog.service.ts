@@ -3,61 +3,53 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+export type ShopCatalogProductImage = {
+  src: string;
+  alt: string;
+};
+
+export type ShopCatalogProductVariant = {
+  id: string;
+  label: string;
+  priceCents: number;
+  available?: boolean;
+  priceDisplay?: string | null;
+};
+
 export type ShopCatalogProduct = {
+  /** Canonical product id (same as storefront slug). */
   id: string;
   category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials';
+  /** Display category for the public shop site, e.g. "Premium Cake". */
+  categoryLabel?: string;
   name: string;
   shortDescription: string;
   description: string;
   imageUrl: string;
+  images?: ShopCatalogProductImage[];
   basePriceCents: number;
-  variants?: Array<{ id: string; label: string; priceCents: number }>;
+  /** Human-readable price label, e.g. "RM168.00" or "RM13.90 each". */
+  priceDisplay?: string;
+  variants?: ShopCatalogProductVariant[];
+  badge?: string;
+  soldOut?: boolean;
   isActive: boolean;
   sortOrder: number;
 };
 
-const DEFAULT_PRODUCTS: ShopCatalogProduct[] = [
-  {
-    id: 'wc-basque',
-    category: 'whole_cakes',
-    name: 'Burnt Basque Cheesecake',
-    shortDescription: 'Caramelised top, creamy center',
-    description: 'Signature whole cake, rich cream cheese with a deep caramelized top.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=800&q=80',
-    basePriceCents: 18800,
-    variants: [
-      { id: 'wc-basque-6', label: '6"', priceCents: 14800 },
-      { id: 'wc-basque-8', label: '8"', priceCents: 18800 },
-    ],
-    isActive: true,
-    sortOrder: 10,
-  },
-  {
-    id: 'cs-redvelvet',
-    category: 'cake_slices',
-    name: 'Red Velvet Slice',
-    shortDescription: 'Classic with cream cheese frosting',
-    description: 'Moist cocoa-buttermilk layers with whipped cream cheese frosting.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1586985289686-ca1b91c2db5b?auto=format&fit=crop&w=800&q=80',
-    basePriceCents: 1900,
-    isActive: true,
-    sortOrder: 20,
-  },
-  {
-    id: 'dr-coldbrew',
-    category: 'drinks',
-    name: 'Oat Cold Brew',
-    shortDescription: 'Slow-steeped, smooth',
-    description: '16oz cold brew with oat milk.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80',
-    basePriceCents: 1450,
-    isActive: true,
-    sortOrder: 30,
-  },
-];
+export type ShopCatalogSection = {
+  id: string;
+  title: string;
+  description: string;
+  productIds: string[];
+};
+
+export type ShopCatalogLayout = {
+  homeFeaturedProductIds: string[];
+  shopSections: ShopCatalogSection[];
+};
+
+const DEFAULT_PRODUCTS: ShopCatalogProduct[] = [];
 
 export type HomePopularConfig = {
   productIds: string[];
@@ -69,6 +61,11 @@ const DEFAULT_POPULAR: HomePopularConfig = {
   maxLimit: 5,
 };
 
+const DEFAULT_LAYOUT: ShopCatalogLayout = {
+  homeFeaturedProductIds: [],
+  shopSections: [],
+};
+
 const POPULAR_HARD_MAX = 5;
 
 @Injectable()
@@ -77,14 +74,34 @@ export class ShopCatalogService {
     return resolve(process.cwd(), 'data', 'shop-catalog.products.json');
   }
 
+  private layoutFilePath(): string {
+    return resolve(process.cwd(), 'data', 'shop-catalog.layout.json');
+  }
+
   private popularFilePath(): string {
     return resolve(process.cwd(), 'data', 'home-popular.json');
+  }
+
+  private seedFilePath(): string {
+    return resolve(process.cwd(), 'config', 'shop-catalog.products.json');
+  }
+
+  private layoutSeedFilePath(): string {
+    return resolve(process.cwd(), 'config', 'shop-catalog.layout.json');
+  }
+
+  private popularSeedFilePath(): string {
+    return resolve(process.cwd(), 'config', 'home-popular.json');
   }
 
   private ensureFile(): void {
     const p = this.filePath();
     if (existsSync(p)) return;
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    if (existsSync(this.seedFilePath())) {
+      writeFileSync(p, readFileSync(this.seedFilePath(), 'utf-8'), 'utf-8');
+      return;
+    }
     writeFileSync(p, JSON.stringify(DEFAULT_PRODUCTS, null, 2), 'utf-8');
   }
 
@@ -92,6 +109,10 @@ export class ShopCatalogService {
     const p = this.popularFilePath();
     if (existsSync(p)) return;
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    if (existsSync(this.popularSeedFilePath())) {
+      writeFileSync(p, readFileSync(this.popularSeedFilePath(), 'utf-8'), 'utf-8');
+      return;
+    }
     writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
   }
 
@@ -112,6 +133,155 @@ export class ShopCatalogService {
     writeFileSync(this.filePath(), JSON.stringify(items, null, 2), 'utf-8');
   }
 
+  private ensureLayoutFile(): void {
+    const p = this.layoutFilePath();
+    if (existsSync(p)) return;
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    if (existsSync(this.layoutSeedFilePath())) {
+      writeFileSync(p, readFileSync(this.layoutSeedFilePath(), 'utf-8'), 'utf-8');
+      return;
+    }
+    writeFileSync(p, JSON.stringify(DEFAULT_LAYOUT, null, 2), 'utf-8');
+  }
+
+  private readLayout(): ShopCatalogLayout {
+    this.ensureLayoutFile();
+    try {
+      const raw = readFileSync(this.layoutFilePath(), 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_LAYOUT };
+      const homeFeaturedProductIds = Array.isArray(parsed.homeFeaturedProductIds)
+        ? parsed.homeFeaturedProductIds
+            .map((x: unknown) => String(x ?? '').trim())
+            .filter(Boolean)
+        : [];
+      const shopSections = Array.isArray(parsed.shopSections)
+        ? parsed.shopSections
+            .map((s: ShopCatalogSection) => ({
+              id: String(s.id ?? '').trim(),
+              title: String(s.title ?? '').trim(),
+              description: String(s.description ?? '').trim(),
+              productIds: Array.isArray(s.productIds)
+                ? s.productIds.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+                : [],
+            }))
+            .filter((s: ShopCatalogSection) => s.id && s.title)
+        : [];
+      return { homeFeaturedProductIds, shopSections };
+    } catch {
+      return { ...DEFAULT_LAYOUT };
+    }
+  }
+
+  getPublicLayout(): ShopCatalogLayout {
+    const layout = this.readLayout();
+    const activeIds = new Set(this.listPublicProducts().map((p) => p.id));
+    return {
+      homeFeaturedProductIds: layout.homeFeaturedProductIds.filter((id) =>
+        activeIds.has(id),
+      ),
+      shopSections: layout.shopSections.map((section) => ({
+        ...section,
+        productIds: section.productIds.filter((id) => activeIds.has(id)),
+      })),
+    };
+  }
+
+  listHomeFeaturedProducts(): ShopCatalogProduct[] {
+    const ids = this.readLayout().homeFeaturedProductIds;
+    if (ids.length === 0) return this.listPopularProducts();
+    const byId = new Map(this.readAll().map((p) => [p.id, p]));
+    const out: ShopCatalogProduct[] = [];
+    for (const id of ids) {
+      const p = byId.get(id);
+      if (p && p.isActive !== false) out.push(p);
+    }
+    return out;
+  }
+
+  getAdminLayout(): ShopCatalogLayout {
+    return this.readLayout();
+  }
+
+  setLayout(input: Partial<ShopCatalogLayout>): ShopCatalogLayout {
+    const cur = this.readLayout();
+    const validIds = new Set(this.readAll().map((p) => p.id));
+
+    const dedupe = (ids: string[]) => {
+      const out: string[] = [];
+      for (const raw of ids) {
+        const id = String(raw ?? '').trim();
+        if (!id || !validIds.has(id) || out.includes(id)) continue;
+        out.push(id);
+      }
+      return out;
+    };
+
+    const homeFeaturedProductIds = dedupe(
+      Array.isArray(input.homeFeaturedProductIds)
+        ? input.homeFeaturedProductIds
+        : cur.homeFeaturedProductIds,
+    ).slice(0, 24);
+
+    const rawSections = Array.isArray(input.shopSections)
+      ? input.shopSections
+      : cur.shopSections;
+    const shopSections: ShopCatalogSection[] = [];
+    const seenSectionIds = new Set<string>();
+    for (const section of rawSections) {
+      const id = String(section.id ?? '').trim();
+      const title = String(section.title ?? '').trim();
+      if (!id || !title || seenSectionIds.has(id)) continue;
+      seenSectionIds.add(id);
+      shopSections.push({
+        id,
+        title,
+        description: String(section.description ?? '').trim(),
+        productIds: dedupe(Array.isArray(section.productIds) ? section.productIds : []),
+      });
+    }
+
+    const next: ShopCatalogLayout = { homeFeaturedProductIds, shopSections };
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    writeFileSync(this.layoutFilePath(), JSON.stringify(next, null, 2), 'utf-8');
+    return next;
+  }
+
+  private normalizeProduct(raw: Partial<ShopCatalogProduct>, cur?: ShopCatalogProduct): ShopCatalogProduct {
+    const base = cur ?? ({} as ShopCatalogProduct);
+    return {
+      id: (raw.id ?? base.id ?? randomUUID()).trim(),
+      category: (raw.category as ShopCatalogProduct['category']) ?? base.category ?? 'specials',
+      categoryLabel:
+        raw.categoryLabel != null
+          ? String(raw.categoryLabel).trim()
+          : base.categoryLabel,
+      name: raw.name != null ? String(raw.name).trim() : base.name ?? 'Untitled product',
+      shortDescription:
+        raw.shortDescription != null
+          ? String(raw.shortDescription).trim()
+          : base.shortDescription ?? '',
+      description:
+        raw.description != null ? String(raw.description).trim() : base.description ?? '',
+      imageUrl: raw.imageUrl != null ? String(raw.imageUrl).trim() : base.imageUrl ?? '',
+      images: raw.images != null ? raw.images : base.images,
+      basePriceCents:
+        raw.basePriceCents != null && Number.isFinite(Number(raw.basePriceCents))
+          ? Number(raw.basePriceCents)
+          : base.basePriceCents ?? 0,
+      priceDisplay:
+        raw.priceDisplay != null ? String(raw.priceDisplay).trim() : base.priceDisplay,
+      variants: raw.variants != null ? raw.variants : base.variants,
+      badge: raw.badge != null ? String(raw.badge).trim() : base.badge,
+      soldOut: raw.soldOut != null ? Boolean(raw.soldOut) : base.soldOut,
+      isActive: raw.isActive != null ? Boolean(raw.isActive) : base.isActive !== false,
+      sortOrder:
+        raw.sortOrder != null && Number.isFinite(Number(raw.sortOrder))
+          ? Number(raw.sortOrder)
+          : base.sortOrder ?? 0,
+    };
+  }
+
   listPublicProducts(): ShopCatalogProduct[] {
     return this.readAll()
       .filter((p) => p.isActive !== false)
@@ -124,18 +294,7 @@ export class ShopCatalogService {
 
   createProduct(input: Partial<ShopCatalogProduct>): ShopCatalogProduct {
     const all = this.readAll();
-    const next: ShopCatalogProduct = {
-      id: input.id?.trim() || randomUUID(),
-      category: (input.category as ShopCatalogProduct['category']) || 'specials',
-      name: input.name?.trim() || 'Untitled product',
-      shortDescription: input.shortDescription?.trim() || '',
-      description: input.description?.trim() || '',
-      imageUrl: input.imageUrl?.trim() || '',
-      basePriceCents: Number.isFinite(input.basePriceCents) ? Number(input.basePriceCents) : 0,
-      variants: Array.isArray(input.variants) ? input.variants : undefined,
-      isActive: input.isActive !== false,
-      sortOrder: Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : 0,
-    };
+    const next = this.normalizeProduct(input);
     all.push(next);
     this.writeAll(all);
     return next;
@@ -145,33 +304,7 @@ export class ShopCatalogService {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
     if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    const cur = all[idx];
-    const next: ShopCatalogProduct = {
-      ...cur,
-      id: cur.id,
-      category:
-        input.category != null
-          ? (input.category as ShopCatalogProduct['category'])
-          : cur.category,
-      name: input.name != null ? String(input.name).trim() : cur.name,
-      shortDescription:
-        input.shortDescription != null
-          ? String(input.shortDescription).trim()
-          : cur.shortDescription,
-      description:
-        input.description != null ? String(input.description).trim() : cur.description,
-      imageUrl: input.imageUrl != null ? String(input.imageUrl).trim() : cur.imageUrl,
-      basePriceCents:
-        input.basePriceCents != null && Number.isFinite(Number(input.basePriceCents))
-          ? Number(input.basePriceCents)
-          : cur.basePriceCents,
-      sortOrder:
-        input.sortOrder != null && Number.isFinite(Number(input.sortOrder))
-          ? Number(input.sortOrder)
-          : cur.sortOrder,
-      isActive: input.isActive != null ? Boolean(input.isActive) : cur.isActive,
-      variants: input.variants != null ? input.variants : cur.variants,
-    };
+    const next = this.normalizeProduct(input, all[idx]);
     all[idx] = next;
     this.writeAll(all);
     return next;

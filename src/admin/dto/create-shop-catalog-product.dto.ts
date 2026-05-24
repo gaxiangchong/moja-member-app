@@ -55,4 +55,24 @@ export class CreateShopCatalogProductDto {
   @Type(() => Boolean)
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  categoryLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  priceDisplay?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  badge?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  soldOut?: boolean;
 }

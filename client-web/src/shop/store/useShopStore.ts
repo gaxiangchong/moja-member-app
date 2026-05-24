@@ -29,6 +29,16 @@ type ShopState = {
   setLineQty: (lineId: string, qty: number) => void;
   removeLine: (lineId: string) => void;
   clearCart: () => void;
+  importExternalCart: (
+    lines: Array<{
+      productId: string;
+      name: string;
+      imageUrl: string;
+      unitPriceCents: number;
+      qty: number;
+      variantLabel?: string;
+    }>,
+  ) => void;
 
   setFulfillmentMethod: (m: FulfillmentMethod | null) => void;
   setPickupDate: (isoDate: string | null) => void;
@@ -109,6 +119,28 @@ export const useShopStore = create<ShopState>((set, get) => ({
   },
 
   clearCart: () => set({ cart: [] }),
+
+  importExternalCart: (lines) => {
+    const cart: CartLine[] = lines.map((input) => ({
+      lineId: newLineId(),
+      productId: input.productId,
+      name: input.name,
+      imageUrl: input.imageUrl,
+      unitPriceCents: input.unitPriceCents,
+      qty: input.qty,
+      variantLabel: input.variantLabel?.trim() || undefined,
+    }));
+    set({
+      cart,
+      fulfillmentMethod: null,
+      pickupDate: null,
+      pickupTime: null,
+      deliveryCompany: null,
+      deliveryPickupTime: null,
+      appliedVoucher: null,
+      appliedReward: null,
+    });
+  },
 
   setFulfillmentMethod: (m) =>
     set({
