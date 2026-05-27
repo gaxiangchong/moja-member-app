@@ -2357,6 +2357,17 @@ export class AdminDashboardController {
                 <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
                 <div class="form-section"><label for="scPriceDisplay">Price label</label><input type="text" id="scPriceDisplay" placeholder="RM168.00" /></div>
               </div>
+              <div class="form-section">
+                <label>Variants (sizes)</label>
+                <div class="table-wrap">
+                  <table class="data" style="margin-bottom:8px">
+                    <thead><tr><th>Label</th><th style="width:140px">Price (RM)</th><th style="width:100px;text-align:center">Available</th><th style="width:60px">Remove</th></tr></thead>
+                    <tbody id="scVariantsBody"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn-outline" id="scAddVariantBtn">Add variant</button>
+                <p class="field-hint">Add one row per size (e.g. <code>6 inch</code>, <code>8 inch</code>). The storefront shows the lowest available variant price. Leave empty for single-size products and rely on the Base price above.</p>
+              </div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
                 <div class="form-section"><label for="scBadge">Badge (optional)</label><input type="text" id="scBadge" placeholder="New, Best seller…" /></div>
@@ -4347,7 +4358,19 @@ export class AdminDashboardController {
       lastShopCatalogProducts = data || [];
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       document.getElementById('shopCatalogBody').innerHTML = (data || []).map(function (p) {
-        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + slFormatPrice(p.basePriceCents, p.priceDisplay) + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+        var priceCell;
+        if (Array.isArray(p.variants) && p.variants.length > 0) {
+          priceCell = p.variants.map(function (v) {
+            var lbl = fmt(v.label);
+            var price = (v.available !== false && v.priceCents > 0)
+              ? (v.priceDisplay && String(v.priceDisplay).trim() ? fmt(v.priceDisplay) : 'RM' + (v.priceCents / 100).toFixed(2))
+              : '<span style="color:#94a3b8">unavailable</span>';
+            return '<div style="white-space:nowrap"><span style="color:#64748b">' + lbl + ':</span> ' + price + '</div>';
+          }).join('');
+        } else {
+          priceCell = slFormatPrice(p.basePriceCents, p.priceDisplay);
+        }
+        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
@@ -6063,6 +6086,37 @@ export class AdminDashboardController {
         .catch(function (err) { out.textContent = err.message; });
     });
 
+    function scRenderVariants(variants) {
+      var body = document.getElementById('scVariantsBody');
+      var rows = (variants || []).map(function (v) {
+        var label = (v && v.label) || '';
+        var rm = v && v.priceCents != null ? (Number(v.priceCents) / 100).toFixed(2) : '';
+        var checked = v && v.available === false ? '' : 'checked';
+        return '<tr class="sc-variant-row">' +
+          '<td><input type="text" class="sc-var-label" value="' + fmt(label) + '" placeholder="6 inch" /></td>' +
+          '<td><input type="number" class="sc-var-price" min="0" step="0.01" value="' + fmt(rm) + '" placeholder="0.00" /></td>' +
+          '<td style="text-align:center"><input type="checkbox" class="sc-var-avail" ' + checked + ' /></td>' +
+          '<td class="td-actions"><button type="button" class="icon-btn sc-var-remove" title="Remove">×</button></td>' +
+          '</tr>';
+      }).join('');
+      body.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:12px">No variants. Click <strong>Add variant</strong> to add one (e.g. 6 inch, 8 inch).</td></tr>';
+    }
+
+    function scCollectVariants() {
+      var rows = document.querySelectorAll('#scVariantsBody tr.sc-variant-row');
+      var out = [];
+      rows.forEach(function (row) {
+        var label = (row.querySelector('.sc-var-label').value || '').trim();
+        var priceStr = (row.querySelector('.sc-var-price').value || '').trim();
+        if (!label && !priceStr) return;
+        var rm = parseFloat(priceStr);
+        var priceCents = Number.isFinite(rm) ? Math.round(rm * 100) : 0;
+        var available = row.querySelector('.sc-var-avail').checked;
+        out.push({ label: label, priceCents: priceCents, available: available });
+      });
+      return out;
+    }
+
     document.getElementById('shopCatalogBody').addEventListener('click', (e) => {
       var btn = e.target.closest('.sc-edit-btn');
       if (!btn) return;
@@ -6084,6 +6138,7 @@ export class AdminDashboardController {
       document.getElementById('scBadge').value = p.badge || '';
       document.getElementById('scActive').checked = !!p.isActive;
       document.getElementById('scSoldOut').checked = !!p.soldOut;
+      scRenderVariants(Array.isArray(p.variants) ? p.variants : []);
       document.getElementById('scSaveResult').textContent = '';
     });
 
@@ -6103,13 +6158,34 @@ export class AdminDashboardController {
       document.getElementById('scBadge').value = '';
       document.getElementById('scActive').checked = true;
       document.getElementById('scSoldOut').checked = false;
+      scRenderVariants([]);
       document.getElementById('scSaveResult').textContent = '';
     });
+
+    document.getElementById('scAddVariantBtn').addEventListener('click', () => {
+      var existing = scCollectVariants();
+      var nextLabel = existing.length === 0 ? '6 inch' : existing.length === 1 ? '8 inch' : '';
+      existing.push({ label: nextLabel, priceCents: 0, available: true });
+      scRenderVariants(existing);
+    });
+
+    document.getElementById('scVariantsBody').addEventListener('click', (e) => {
+      var btn = e.target.closest('.sc-var-remove');
+      if (!btn) return;
+      var row = btn.closest('tr.sc-variant-row');
+      if (!row) return;
+      row.remove();
+      var remaining = document.querySelectorAll('#scVariantsBody tr.sc-variant-row').length;
+      if (remaining === 0) scRenderVariants([]);
+    });
+
+    scRenderVariants([]);
 
     document.getElementById('scSaveBtn').addEventListener('click', () => {
       var id = document.getElementById('scId').value.trim();
       var slug = document.getElementById('scIdVisible').value.trim();
       var out = document.getElementById('scSaveResult');
+      var variants = scCollectVariants();
       var body = {
         name: document.getElementById('scName').value.trim(),
         category: document.getElementById('scCategory').value,
@@ -6123,10 +6199,17 @@ export class AdminDashboardController {
         badge: document.getElementById('scBadge').value.trim() || undefined,
         isActive: document.getElementById('scActive').checked,
         soldOut: document.getElementById('scSoldOut').checked,
+        variants: variants,
       };
       if (!body.name) {
         out.textContent = 'Name is required.';
         return;
+      }
+      for (var i = 0; i < variants.length; i++) {
+        if (!variants[i].label) {
+          out.textContent = 'Variant ' + (i + 1) + ' is missing a label.';
+          return;
+        }
       }
       out.textContent = 'Saving…';
       var req = id

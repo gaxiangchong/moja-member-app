@@ -1895,6 +1895,29 @@ code {
   margin-top: 10px;
 }
 
+.shopVoucherCodeRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.shopVoucherCodeRow input {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.shopVoucherCodeRow button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.shopVoucherCodeError {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #9f2f2f;
+}
+
 .shopSummaryList {
   list-style: none;
   margin: 0 0 12px;

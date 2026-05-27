@@ -3,12 +3,19 @@ import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, spacing } from '../../constants/theme';
+import {
+  PICKUP_TIME_SLOTS,
+  pickupTimeSlotLabel,
+  type PickupTimeSlot,
+} from '../../lib/pickupTimeSlots';
 
 type Props = {
   value: string | null;
   onChange: (hhmm: string | null) => void;
   /** Field label (e.g. pickup vs delivery rider time) */
   label?: string;
+  /** Fixed pickup windows; omit for free-form entry (e.g. delivery rider time). */
+  slots?: PickupTimeSlot[] | null;
 };
 
 function dateFromHhmm(hhmm: string | null): Date {
@@ -26,13 +33,42 @@ function toHhmm(d: Date): string {
   const h = `${d.getHours()}`.padStart(2, '0');
   const m = `${d.getMinutes()}`.padStart(2, '0');
   return `${h}:${m}`;
-}
+};
 
-export function PickupTimePicker({
+function PickupSlotPicker({
   value,
   onChange,
-  label = 'Pickup time',
-}: Props) {
+  label,
+  slots,
+}: Required<Pick<Props, 'value' | 'onChange' | 'label' | 'slots'>>) {
+  return (
+    <View style={styles.box}>
+      <Text style={styles.label}>{label}</Text>
+      {slots.map((slot) => {
+        const selected = value === slot.value;
+        return (
+          <Pressable
+            key={slot.value}
+            onPress={() => onChange(slot.value)}
+            style={[styles.slot, selected && styles.slotSelected]}
+          >
+            <Text style={[styles.slotText, selected && styles.slotTextSelected]}>
+              {slot.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+      {value && !slots.some((s) => s.value === value) ? (
+        <Text style={styles.legacyNote}>
+          Previously selected:{' '}
+          {pickupTimeSlotLabel(value) !== value ? pickupTimeSlotLabel(value) : value}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function FreeformTimePicker({ value, onChange, label }: Pick<Props, 'value' | 'onChange' | 'label'>) {
   const [open, setOpen] = useState(false);
   const display = value ?? 'Select time';
 
@@ -85,6 +121,25 @@ export function PickupTimePicker({
   );
 }
 
+export function PickupTimePicker({
+  value,
+  onChange,
+  label = 'Pickup time',
+  slots = PICKUP_TIME_SLOTS,
+}: Props) {
+  if (slots && slots.length > 0) {
+    return (
+      <PickupSlotPicker
+        value={value}
+        onChange={onChange}
+        label={label}
+        slots={slots}
+      />
+    );
+  }
+  return <FreeformTimePicker value={value} onChange={onChange} label={label} />;
+}
+
 const styles = StyleSheet.create({
   box: { marginBottom: spacing.md },
   label: {
@@ -92,6 +147,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.xs,
+  },
+  slot: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.xs,
+  },
+  slotSelected: {
+    borderColor: colors.accent,
+    backgroundColor: `${colors.accent}18`,
+  },
+  slotText: { fontSize: 15, color: colors.text },
+  slotTextSelected: { fontWeight: '700', color: colors.accent },
+  legacyNote: {
+    marginTop: spacing.xs,
+    fontSize: 12,
+    color: colors.textMuted,
   },
   trigger: {
     borderWidth: 1,

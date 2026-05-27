@@ -5,9 +5,6 @@ export type CheckoutDraft = {
   fulfillmentMethod: FulfillmentMethod | null;
   pickupDate: string | null;
   pickupTime: string | null;
-  deliveryPickupTime: string | null;
-  /** Optional notes for customer-arranged delivery */
-  deliveryRemarks?: string | null;
 };
 
 export type CheckoutValidationResult = {
@@ -23,7 +20,7 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   }
 
   if (!state.fulfillmentMethod) {
-    errors.push('Choose Self Pickup, In store, or Delivery.');
+    errors.push('Choose Self pickup or In store.');
   }
 
   if (state.fulfillmentMethod === 'in_store') {
@@ -39,12 +36,6 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
     }
   }
 
-  if (state.fulfillmentMethod === 'delivery') {
-    if (!state.deliveryPickupTime?.trim()) {
-      errors.push('Enter the expected rider pickup time.');
-    }
-  }
-
   return { valid: errors.length === 0, errors };
 }
 
@@ -55,23 +46,12 @@ export function fulfillmentSummaryLines(
   method: FulfillmentMethod | null,
   pickupDate: string | null,
   pickupTime: string | null,
-  deliveryPickupTime: string | null,
-  deliveryRemarks?: string | null,
 ): string[] {
   if (!method) return ['Not selected'];
   if (method === 'in_store') {
     return [IN_STORE_FULFILLMENT_HEAD];
   }
-  if (method === 'pickup') {
-    const d = pickupDate ?? '—';
-    const t = pickupTime ?? '—';
-    return ['Self pickup', `Date: ${d}`, `Time: ${t}`];
-  }
-  const lines = [
-    'Delivery (customer-arranged)',
-    `Rider pickup: ${deliveryPickupTime ?? '—'}`,
-  ];
-  const note = deliveryRemarks?.trim();
-  if (note) lines.push(`Remarks: ${note}`);
-  return lines;
+  const d = pickupDate ?? '—';
+  const t = pickupTime ?? '—';
+  return ['Self pickup', `Date: ${d}`, `Time: ${t}`];
 }

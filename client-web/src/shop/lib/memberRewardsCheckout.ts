@@ -22,6 +22,16 @@ export function checkoutIssuedVouchers(data: MemberRewardsPayload | null | undef
     }));
 }
 
+/** Match a typed code against issued vouchers in the member wallet (case-insensitive). */
+export function findIssuedVoucherByCode(
+  data: MemberRewardsPayload | null | undefined,
+  codeRaw: string,
+): MockVoucher | null {
+  const norm = codeRaw.trim().toUpperCase();
+  if (!norm) return null;
+  return checkoutIssuedVouchers(data).find((v) => v.code.toUpperCase() === norm) ?? null;
+}
+
 /** Points catalog rewards (same pool as Perks → Rewards). */
 export function checkoutCatalogRewards(data: MemberRewardsPayload | null | undefined): MockReward[] {
   if (!data?.rewards?.length) return [];

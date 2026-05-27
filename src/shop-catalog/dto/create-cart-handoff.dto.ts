@@ -3,10 +3,12 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -44,6 +46,30 @@ export class CartHandoffLineDto {
   imageUrl?: string | null;
 }
 
+export class CartHandoffFulfillmentDto {
+  /** Fulfilment mode chosen on the public shop site. Only `pickup` is offered at the moment. */
+  @IsOptional()
+  @IsIn(['pickup'])
+  method?: 'pickup';
+
+  /**
+   * Preferred slot start time in 24h HH:mm. Member-app prefills
+   * `pickupTime` / `deliveryPickupTime` with this value.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'preferredTime must be HH:mm (24h)',
+  })
+  preferredTime?: string | null;
+
+  /** Original human-readable slot label shown on the shop site (for display only). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  preferredTimeLabel?: string | null;
+}
+
 export class CreateCartHandoffDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -58,4 +84,10 @@ export class CreateCartHandoffDto {
   @MaxLength(500)
   @IsUrl({ require_tld: false })
   sourceUrl?: string;
+
+  /** Delivery / pickup selection synced from the public shop site. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CartHandoffFulfillmentDto)
+  fulfillment?: CartHandoffFulfillmentDto;
 }

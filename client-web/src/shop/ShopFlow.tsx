@@ -8,8 +8,14 @@ import {
   type Product,
   type ProductCategory,
 } from './types';
-import { formatRm, MOCK_REWARDS, MOCK_VOUCHERS } from './data/mockCatalog';
+import type { MemberRewardsPayload } from '../api';
+import { formatRm } from './data/mockCatalog';
 import { fulfillmentSummaryLines, validateCheckout } from './lib/checkoutValidation';
+import {
+  checkoutCatalogRewards,
+  checkoutIssuedVouchers,
+  findIssuedVoucherByCode,
+} from './lib/memberRewardsCheckout';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
 import { useShopStore } from './store/useShopStore';
 import {
@@ -20,20 +26,8 @@ import {
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
 } from '../api';
+import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
-const PICKUP_TIMES = [
-  '10:00',
-  '11:00',
-  '12:00',
-  '13:00',
-  '14:00',
-  '15:00',
-  '16:00',
-  '17:00',
-  '18:00',
-];
-
-const DELIVERY_PRESETS = ['GrabFood', 'Foodpanda', 'Lalamove', 'Other'] as const;
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
 type PaymentMethodMode = 'channel' | 'card_token';
@@ -70,10 +64,12 @@ function paymentChannelIcon(code: string): string {
 
 export function ShopFlow({
   pointsBalance,
+  memberRewards,
   initialScreen,
   onInitialScreenApplied,
 }: {
   pointsBalance: number;
+  memberRewards?: MemberRewardsPayload | null;
   initialScreen?: Screen | null;
   onInitialScreenApplied?: () => void;
 }) {
@@ -82,7 +78,6 @@ export function ShopFlow({
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
-  const [deliveryOther, setDeliveryOther] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -101,6 +96,8 @@ export function ShopFlow({
   const [cardInitAttempted, setCardInitAttempted] = useState(false);
   const [demoCheckout, setDemoCheckout] = useState<DemoCheckoutSnapshot | null>(null);
   const [demoCompleting, setDemoCompleting] = useState(false);
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [voucherCodeError, setVoucherCodeError] = useState<string | null>(null);
   const cardContainerRef = useRef<HTMLDivElement | null>(null);
   const xenditComponentsRef = useRef<{
     submit: () => void;
@@ -119,10 +116,6 @@ export function ShopFlow({
   const setPickupDate = useShopStore((s) => s.setPickupDate);
   const pickupTime = useShopStore((s) => s.pickupTime);
   const setPickupTime = useShopStore((s) => s.setPickupTime);
-  const deliveryCompany = useShopStore((s) => s.deliveryCompany);
-  const setDeliveryCompany = useShopStore((s) => s.setDeliveryCompany);
-  const deliveryPickupTime = useShopStore((s) => s.deliveryPickupTime);
-  const setDeliveryPickupTime = useShopStore((s) => s.setDeliveryPickupTime);
   const appliedVoucher = useShopStore((s) => s.appliedVoucher);
   const appliedReward = useShopStore((s) => s.appliedReward);
   const applyVoucher = useShopStore((s) => s.applyVoucher);
@@ -137,6 +130,19 @@ export function ShopFlow({
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
   const total = getTotalCents();
+  const issuedVouchers = useMemo(
+    () => checkoutIssuedVouchers(memberRewards),
+    [memberRewards],
+  );
+  const catalogRewards = useMemo(
+    () => checkoutCatalogRewards(memberRewards),
+    [memberRewards],
+  );
+  const showPromoSection = issuedVouchers.length > 0 || catalogRewards.length > 0;
+
+  useEffect(() => {
+    if (!appliedVoucher) setVoucherCodeInput('');
+  }, [appliedVoucher]);
 
   useEffect(() => {
     if (!initialScreen) return;
@@ -311,15 +317,29 @@ export function ShopFlow({
     }
   };
 
+  const handleApplyVoucherCode = () => {
+    const code = voucherCodeInput.trim();
+    if (!code) {
+      setVoucherCodeError(null);
+      applyVoucher(null);
+      return;
+    }
+    const match = findIssuedVoucherByCode(memberRewards, code);
+    if (!match) {
+      setVoucherCodeError('This code is not in your wallet or has expired.');
+      applyVoucher(null);
+      return;
+    }
+    setVoucherCodeError(null);
+    applyVoucher(match);
+  };
+
   const handlePlaceOrder = async () => {
     const draft = {
       cart,
       fulfillmentMethod,
       pickupDate,
       pickupTime,
-      deliveryCompany:
-        deliveryCompany === 'Other' ? deliveryOther.trim() || null : deliveryCompany,
-      deliveryPickupTime,
     };
     const { valid, errors } = validateCheckout(draft);
     if (!valid) {
@@ -346,8 +366,6 @@ export function ShopFlow({
       draft.fulfillmentMethod,
       draft.pickupDate,
       draft.pickupTime,
-      draft.deliveryCompany,
-      draft.deliveryPickupTime,
     );
     const linePayload = cart.map((l) => ({
       productId: l.productId,
@@ -363,8 +381,11 @@ export function ShopFlow({
         ...(paymentMethodMode === 'card_token'
           ? { paymentTokenId: cardPaymentTokenId.trim() }
           : { channelCode: selectedChannelCode.trim() }),
+        ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
+        idempotencyKey: crypto.randomUUID(),
         order: {
           totalCents: total,
+          discountCents: discount,
           fulfillmentSummary: lines,
           lines: linePayload,
         },
@@ -457,15 +478,6 @@ export function ShopFlow({
     } finally {
       setDemoCompleting(false);
     }
-  };
-
-  const selectDeliveryPreset = (p: (typeof DELIVERY_PRESETS)[number]) => {
-    if (p === 'Other') {
-      setDeliveryCompany('Other');
-      return;
-    }
-    setDeliveryOther('');
-    setDeliveryCompany(p);
   };
 
   return (
@@ -607,15 +619,6 @@ export function ShopFlow({
               >
                 Self pickup
               </button>
-              <button
-                type="button"
-                className={
-                  fulfillmentMethod === 'delivery' ? 'chip active shopFulfillmentChip' : 'chip shopFulfillmentChip'
-                }
-                onClick={() => setFulfillmentMethod('delivery')}
-              >
-                Delivery
-              </button>
             </div>
             {fulfillmentMethod === 'in_store' ? (
               <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
@@ -639,105 +642,102 @@ export function ShopFlow({
                   onChange={(e) => setPickupTime(e.target.value || null)}
                 >
                   <option value="">Select time</option>
-                  {PICKUP_TIMES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  {PICKUP_TIME_SLOTS.map((slot) => (
+                    <option key={slot.value} value={slot.value}>
+                      {slot.label}
                     </option>
                   ))}
                 </select>
               </div>
             ) : null}
-            {fulfillmentMethod === 'delivery' ? (
-              <div className="shopFieldGrid">
-                <span className="caption" style={{ marginBottom: 4 }}>
-                  Platform / company
-                </span>
-                <div className="chips">
-                  {DELIVERY_PRESETS.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      className={deliveryCompany === p ? 'chip active' : 'chip'}
-                      onClick={() => selectDeliveryPreset(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                {deliveryCompany === 'Other' ? (
-                  <>
-                    <label htmlFor="deliveryOther">Custom name</label>
-                    <input
-                      id="deliveryOther"
-                      placeholder="e.g. Borong rider"
-                      value={deliveryOther}
-                      onChange={(e) => setDeliveryOther(e.target.value)}
-                    />
-                  </>
-                ) : null}
-                <label htmlFor="riderTime">Expected rider pickup</label>
-                <input
-                  id="riderTime"
-                  type="time"
-                  value={deliveryPickupTime ?? ''}
-                  onChange={(e) => setDeliveryPickupTime(e.target.value || null)}
-                />
-              </div>
-            ) : null}
+            <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+              We don&apos;t offer delivery at the moment — orders are collected at our store.
+            </p>
           </section>
 
+          {showPromoSection ? (
           <section className="pmCard">
             <h3 className="shopSectionTitle">Voucher or reward</h3>
             <p className="caption" style={{ marginTop: 0 }}>
               Apply one voucher or one points reward — not both.
             </p>
             <div className="shopPromoGrid">
-              <div>
-                <p className="caption">Vouchers</p>
-                <div className="shopPromoList">
-                  {MOCK_VOUCHERS.map((v: MockVoucher) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
-                      onClick={() => applyVoucher(appliedVoucher?.id === v.id ? null : v)}
-                    >
-                      <strong>{v.title}</strong>
-                      <small>{v.code}</small>
+              {issuedVouchers.length > 0 ? (
+                <div>
+                  <p className="caption">Voucher code</p>
+                  <p className="caption" style={{ marginTop: 0, marginBottom: 8 }}>
+                    Enter a code from your wallet (Perks → Vouchers).
+                  </p>
+                  <div className="shopVoucherCodeRow">
+                    <input
+                      id="voucherCode"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="e.g. WELCOME10"
+                      value={voucherCodeInput}
+                      onChange={(e) => {
+                        setVoucherCodeInput(e.target.value);
+                        if (voucherCodeError) setVoucherCodeError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyVoucherCode();
+                        }
+                      }}
+                    />
+                    <button type="button" onClick={handleApplyVoucherCode}>
+                      Apply
                     </button>
-                  ))}
+                  </div>
+                  {voucherCodeError ? (
+                    <p className="shopVoucherCodeError" role="alert">
+                      {voucherCodeError}
+                    </p>
+                  ) : null}
+                  {appliedVoucher ? (
+                    <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+                      Applied: <strong>{appliedVoucher.title}</strong> ({appliedVoucher.code})
+                    </p>
+                  ) : null}
                 </div>
-              </div>
-              <div>
-                <p className="caption">Rewards ({pointsBalance} pts)</p>
-                <div className="shopPromoList">
-                  {MOCK_REWARDS.map((r: MockReward) => {
-                    const affordable = pointsBalance >= r.pointsCost;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        disabled={!affordable}
-                        className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
-                        onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
-                      >
-                        <strong>{r.title}</strong>
-                        <small>{r.pointsCost} pts · up to {formatRm(r.valueCents)}</small>
-                      </button>
-                    );
-                  })}
+              ) : null}
+              {catalogRewards.length > 0 ? (
+                <div>
+                  <p className="caption">Rewards ({pointsBalance} pts)</p>
+                  <div className="shopPromoList">
+                    {catalogRewards.map((r: MockReward) => {
+                      const affordable = pointsBalance >= r.pointsCost;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          disabled={!affordable}
+                          className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
+                          onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
+                        >
+                          <strong>{r.title}</strong>
+                          <small>{r.pointsCost} pts{r.valueCents > 0 ? ` · up to ${formatRm(r.valueCents)}` : ''}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
             {(appliedVoucher || appliedReward) && (
               <button type="button" className="ghost shopClearPromo" onClick={() => {
                 applyVoucher(null);
                 applyReward(null);
+                setVoucherCodeInput('');
+                setVoucherCodeError(null);
               }}>
                 Clear promotion
               </button>
             )}
           </section>
+          ) : null}
 
           <section className="pmCard">
             <h3 className="shopSectionTitle">Payment</h3>

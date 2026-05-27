@@ -165,6 +165,7 @@ export default function CheckoutScreen() {
               label="Expected rider pickup time"
               value={deliveryPickupTime}
               onChange={setDeliveryPickupTime}
+              slots={null}
             />
             <Text style={styles.fieldLabel}>Order remarks (optional)</Text>
             <TextInput

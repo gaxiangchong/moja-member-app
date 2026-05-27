@@ -59,7 +59,10 @@ export async function fetchPopularProducts(): Promise<PopularProduct[]> {
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data)) return [];
-    return data as PopularProduct[];
+    return (data as PopularProduct[]).map((p) => ({
+      ...p,
+      imageUrl: resolveShopAssetUrl(p.imageUrl),
+    }));
   } catch {
     return [];
   }
@@ -803,9 +806,16 @@ export type CartHandoffLine = {
   imageUrl: string | null;
 };
 
+export type CartHandoffFulfillment = {
+  method: 'pickup' | null;
+  preferredTime: string | null;
+  preferredTimeLabel: string | null;
+};
+
 export async function consumeShopCartHandoff(token: string): Promise<{
   lines: CartHandoffLine[];
   subtotalCents: number;
+  fulfillment: CartHandoffFulfillment | null;
 }> {
   const res = await fetch(
     `${base}/shop/cart-handoff/consume?token=${encodeURIComponent(token)}`,
@@ -813,6 +823,7 @@ export async function consumeShopCartHandoff(token: string): Promise<{
   const data = await parseJson<{
     lines?: CartHandoffLine[];
     subtotalCents?: number;
+    fulfillment?: CartHandoffFulfillment | null;
     message?: string | string[];
     code?: string;
   }>(res);
@@ -829,5 +840,6 @@ export async function consumeShopCartHandoff(token: string): Promise<{
   return {
     lines: Array.isArray(data.lines) ? data.lines : [],
     subtotalCents: Number(data.subtotalCents) || 0,
+    fulfillment: data.fulfillment ?? null,
   };
 }

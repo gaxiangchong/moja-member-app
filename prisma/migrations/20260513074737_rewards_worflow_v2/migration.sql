@@ -309,11 +309,11 @@ CREATE UNIQUE INDEX "gift_voucher_codes_code_key" ON "gift_voucher_codes"("code"
 -- CreateIndex
 CREATE INDEX "gift_voucher_codes_status_expires_at_idx" ON "gift_voucher_codes"("status", "expires_at");
 
--- CreateIndex
-CREATE UNIQUE INDEX "customers_referral_code_key" ON "customers"("referral_code");
+-- customers_referral_code_key already exists from 20260411120000_member_orders_referrals
+-- (partial unique index). Skip duplicate create.
 
 -- CreateIndex
-CREATE UNIQUE INDEX "payment_intents_idempotency_key_key" ON "payment_intents"("idempotency_key");
+CREATE UNIQUE INDEX IF NOT EXISTS "payment_intents_idempotency_key_key" ON "payment_intents"("idempotency_key");
 
 -- AddForeignKey
 ALTER TABLE "user_wallet_balance" ADD CONSTRAINT "user_wallet_balance_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -12,8 +12,6 @@ type ShopState = {
   fulfillmentMethod: FulfillmentMethod | null;
   pickupDate: string | null;
   pickupTime: string | null;
-  deliveryCompany: string | null;
-  deliveryPickupTime: string | null;
   appliedVoucher: MockVoucher | null;
   appliedReward: MockReward | null;
 
@@ -43,8 +41,6 @@ type ShopState = {
   setFulfillmentMethod: (m: FulfillmentMethod | null) => void;
   setPickupDate: (isoDate: string | null) => void;
   setPickupTime: (timeHHmm: string | null) => void;
-  setDeliveryCompany: (s: string | null) => void;
-  setDeliveryPickupTime: (s: string | null) => void;
 
   applyVoucher: (v: MockVoucher | null) => void;
   applyReward: (r: MockReward | null) => void;
@@ -63,8 +59,6 @@ export const useShopStore = create<ShopState>((set, get) => ({
   fulfillmentMethod: null,
   pickupDate: null,
   pickupTime: null,
-  deliveryCompany: null,
-  deliveryPickupTime: null,
   appliedVoucher: null,
   appliedReward: null,
 
@@ -135,8 +129,6 @@ export const useShopStore = create<ShopState>((set, get) => ({
       fulfillmentMethod: null,
       pickupDate: null,
       pickupTime: null,
-      deliveryCompany: null,
-      deliveryPickupTime: null,
       appliedVoucher: null,
       appliedReward: null,
     });
@@ -145,24 +137,11 @@ export const useShopStore = create<ShopState>((set, get) => ({
   setFulfillmentMethod: (m) =>
     set({
       fulfillmentMethod: m,
-      ...(m === 'pickup'
-        ? { deliveryCompany: null, deliveryPickupTime: null }
-        : m === 'delivery'
-          ? { pickupDate: null, pickupTime: null }
-          : m === 'in_store'
-            ? {
-                pickupDate: null,
-                pickupTime: null,
-                deliveryCompany: null,
-                deliveryPickupTime: null,
-              }
-            : {}),
+      ...(m === 'in_store' ? { pickupDate: null, pickupTime: null } : {}),
     }),
 
   setPickupDate: (d) => set({ pickupDate: d }),
   setPickupTime: (t) => set({ pickupTime: t }),
-  setDeliveryCompany: (s) => set({ deliveryCompany: s }),
-  setDeliveryPickupTime: (s) => set({ deliveryPickupTime: s }),
 
   applyVoucher: (v) => set({ appliedVoucher: v, appliedReward: null }),
   applyReward: (r) => set({ appliedReward: r, appliedVoucher: null }),
@@ -172,8 +151,6 @@ export const useShopStore = create<ShopState>((set, get) => ({
       fulfillmentMethod: null,
       pickupDate: null,
       pickupTime: null,
-      deliveryCompany: null,
-      deliveryPickupTime: null,
       appliedVoucher: null,
       appliedReward: null,
     }),
@@ -184,8 +161,6 @@ export const useShopStore = create<ShopState>((set, get) => ({
       fulfillmentMethod: null,
       pickupDate: null,
       pickupTime: null,
-      deliveryCompany: null,
-      deliveryPickupTime: null,
       appliedVoucher: null,
       appliedReward: null,
     }),

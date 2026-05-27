@@ -49,6 +49,10 @@ export type ShopCatalogLayout = {
   shopSections: ShopCatalogSection[];
 };
 
+export type ShopCatalogProductInput = Omit<Partial<ShopCatalogProduct>, 'variants'> & {
+  variants?: Partial<ShopCatalogProductVariant>[];
+};
+
 const DEFAULT_PRODUCTS: ShopCatalogProduct[] = [];
 
 export type HomePopularConfig = {
@@ -247,10 +251,63 @@ export class ShopCatalogService {
     return next;
   }
 
-  private normalizeProduct(raw: Partial<ShopCatalogProduct>, cur?: ShopCatalogProduct): ShopCatalogProduct {
+  private slugifyVariantLabel(label: string): string {
+    return label
+      .toLowerCase()
+      .trim()
+      .replace(/"/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
+  private formatRm(priceCents: number): string {
+    if (!Number.isFinite(priceCents) || priceCents <= 0) return '';
+    return `RM${(priceCents / 100).toFixed(2)}`;
+  }
+
+  private normalizeVariants(
+    productId: string,
+    raw: Partial<ShopCatalogProductVariant>[],
+  ): ShopCatalogProductVariant[] {
+    const out: ShopCatalogProductVariant[] = [];
+    const usedIds = new Set<string>();
+    for (const v of raw) {
+      const label = String(v?.label ?? '').trim();
+      if (!label) continue;
+      const priceCents = Number.isFinite(Number(v?.priceCents))
+        ? Math.max(0, Math.round(Number(v?.priceCents)))
+        : 0;
+      const available = v?.available !== false;
+      let id = String(v?.id ?? '').trim();
+      if (!id) {
+        const base = `${productId}__${this.slugifyVariantLabel(label)}`;
+        id = base;
+        let i = 2;
+        while (usedIds.has(id)) {
+          id = `${base}-${i++}`;
+        }
+      }
+      usedIds.add(id);
+      const priceDisplay =
+        v?.priceDisplay != null && String(v.priceDisplay).trim() !== ''
+          ? String(v.priceDisplay).trim()
+          : available && priceCents > 0
+            ? this.formatRm(priceCents)
+            : null;
+      out.push({ id, label, priceCents, available, priceDisplay });
+    }
+    return out;
+  }
+
+  private normalizeProduct(raw: ShopCatalogProductInput, cur?: ShopCatalogProduct): ShopCatalogProduct {
     const base = cur ?? ({} as ShopCatalogProduct);
+    const id = (raw.id ?? base.id ?? randomUUID()).trim();
+    const variants =
+      raw.variants != null
+        ? this.normalizeVariants(id, raw.variants)
+        : base.variants;
     return {
-      id: (raw.id ?? base.id ?? randomUUID()).trim(),
+      id,
       category: (raw.category as ShopCatalogProduct['category']) ?? base.category ?? 'specials',
       categoryLabel:
         raw.categoryLabel != null
@@ -271,7 +328,7 @@ export class ShopCatalogService {
           : base.basePriceCents ?? 0,
       priceDisplay:
         raw.priceDisplay != null ? String(raw.priceDisplay).trim() : base.priceDisplay,
-      variants: raw.variants != null ? raw.variants : base.variants,
+      variants,
       badge: raw.badge != null ? String(raw.badge).trim() : base.badge,
       soldOut: raw.soldOut != null ? Boolean(raw.soldOut) : base.soldOut,
       isActive: raw.isActive != null ? Boolean(raw.isActive) : base.isActive !== false,
@@ -292,7 +349,7 @@ export class ShopCatalogService {
     return this.readAll().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }
 
-  createProduct(input: Partial<ShopCatalogProduct>): ShopCatalogProduct {
+  createProduct(input: ShopCatalogProductInput): ShopCatalogProduct {
     const all = this.readAll();
     const next = this.normalizeProduct(input);
     all.push(next);
@@ -300,7 +357,7 @@ export class ShopCatalogService {
     return next;
   }
 
-  updateProduct(id: string, input: Partial<ShopCatalogProduct>): ShopCatalogProduct {
+  updateProduct(id: string, input: ShopCatalogProductInput): ShopCatalogProduct {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
     if (idx < 0) throw new NotFoundException('Shop catalog product not found');

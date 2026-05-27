@@ -4,28 +4,28 @@
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
     "name": "Caramel Espresso Gateau",
-    "shortDescription": "Buttery vanilla layers swirled with rich salted caramel and topped with a generous scatter of toasted macadamia nuts. Nutty, indulgent, and beautifully balanced.",
-    "description": "Buttery vanilla layers swirled with rich salted caramel and topped with a generous scatter of toasted macadamia nuts. Nutty, indulgent, and beautifully balanced.",
-    "imageUrl": "/images/products/caramel_macadamia_cake.png",
+    "shortDescription": "Espresso-infused sponge layered with rich salted caramel and a generous scatter of toasted macadamia nuts. Bold, indulgent, and beautifully balanced.",
+    "description": "Espresso-infused sponge layered with rich salted caramel and a generous scatter of toasted macadamia nuts. Bold, indulgent, and beautifully balanced.",
+    "imageUrl": "/images/products/caramel_macadamia_cake_v2.png",
     "images": [
       {
-        "src": "/images/products/caramel_macadamia_cake.png",
+        "src": "/images/products/caramel_macadamia_cake_v2.png",
         "alt": "Caramel Espresso Gateau"
       },
       {
-        "src": "/images/products/caramel_macadamia_cake_v2.png",
+        "src": "/images/products/caramel_macadamia_cake.png",
         "alt": "Caramel Espresso Gateau — alternative angle"
       }
     ],
-    "basePriceCents": 16800,
-    "priceDisplay": "RM168.00",
+    "basePriceCents": 15900,
+    "priceDisplay": "RM159.00",
     "variants": [
       {
         "id": "caramel-espresso-gateau__6-inch",
         "label": "6 inch",
-        "priceCents": 16800,
+        "priceCents": 15900,
         "available": true,
-        "priceDisplay": "RM168.00"
+        "priceDisplay": "RM159.00"
       },
       {
         "id": "caramel-espresso-gateau__8-inch",
@@ -43,36 +43,36 @@
     "id": "lemon-yuzu-cake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Lemon Yuzu Cake",
-    "shortDescription": "A bright, citrus-forward sponge that pairs Mediterranean lemon with the floral zing of Japanese yuzu. Light, refreshing, and impossible to resist.",
-    "description": "A bright, citrus-forward sponge that pairs Mediterranean lemon with the floral zing of Japanese yuzu. Light, refreshing, and impossible to resist.",
-    "imageUrl": "/images/products/lemon_yuzu_cake.png",
+    "name": "Osmanthus Longan Chantilly",
+    "shortDescription": "Fragrant osmanthus-infused chantilly cream paired with sweet longan and a delicate floral sponge. Light, elegant, and quietly exotic.",
+    "description": "Fragrant osmanthus-infused chantilly cream paired with sweet longan and a delicate floral sponge. Light, elegant, and quietly exotic.",
+    "imageUrl": "/images/products/lemon_yuzu_cake_v2.png",
     "images": [
       {
-        "src": "/images/products/lemon_yuzu_cake.png",
-        "alt": "Lemon Yuzu Cake"
+        "src": "/images/products/lemon_yuzu_cake_v2.png",
+        "alt": "Osmanthus Longan Chantilly"
       },
       {
-        "src": "/images/products/lemon_yuzu_cake_v2.png",
-        "alt": "Lemon Yuzu Cake — alternative angle"
+        "src": "/images/products/lemon_yuzu_cake.png",
+        "alt": "Osmanthus Longan Chantilly — alternative angle"
       }
     ],
-    "basePriceCents": 16800,
-    "priceDisplay": "RM168.00",
+    "basePriceCents": 14900,
+    "priceDisplay": "RM149.00",
     "variants": [
       {
         "id": "lemon-yuzu-cake__6-inch",
         "label": "6 inch",
-        "priceCents": 16800,
+        "priceCents": 14900,
         "available": true,
-        "priceDisplay": "RM168.00"
+        "priceDisplay": "RM149.00"
       },
       {
         "id": "lemon-yuzu-cake__8-inch",
         "label": "8 inch",
-        "priceCents": 22800,
+        "priceCents": 20800,
         "available": true,
-        "priceDisplay": "RM228.00"
+        "priceDisplay": "RM208.00"
       }
     ],
     "soldOut": false,
@@ -86,29 +86,29 @@
     "name": "Matcha Marmalade",
     "shortDescription": "Earthy ceremonial-grade matcha cake layered with a tangy yuzu-citrus marmalade. A grown-up balance of bitter, sweet, and bright.",
     "description": "Earthy ceremonial-grade matcha cake layered with a tangy yuzu-citrus marmalade. A grown-up balance of bitter, sweet, and bright.",
-    "imageUrl": "/images/products/matcha_crepe_cake.png",
+    "imageUrl": "/images/products/matcha_marmalade.jpeg",
     "images": [
       {
-        "src": "/images/products/matcha_crepe_cake.png",
+        "src": "/images/products/matcha_marmalade.jpeg",
         "alt": "Matcha Marmalade"
       }
     ],
-    "basePriceCents": 16800,
-    "priceDisplay": "RM168.00",
+    "basePriceCents": 15900,
+    "priceDisplay": "RM159.00",
     "variants": [
       {
         "id": "matcha-marmalade__6-inch",
         "label": "6 inch",
-        "priceCents": 16800,
+        "priceCents": 15900,
         "available": true,
-        "priceDisplay": "RM168.00"
+        "priceDisplay": "RM159.00"
       },
       {
         "id": "matcha-marmalade__8-inch",
         "label": "8 inch",
-        "priceCents": 0,
-        "available": false,
-        "priceDisplay": null
+        "priceCents": 22800,
+        "available": true,
+        "priceDisplay": "RM228.00"
       }
     ],
     "soldOut": false,
@@ -119,32 +119,32 @@
     "id": "strawberry-shortcake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Strawberry Shortcake",
-    "shortDescription": "Classic Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
-    "description": "Classic Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
+    "name": "Maison Strawberry Short Cake",
+    "shortDescription": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
+    "description": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
     "imageUrl": "/images/products/strawberry_shortcake.png",
     "images": [
       {
         "src": "/images/products/strawberry_shortcake.png",
-        "alt": "Strawberry Shortcake"
+        "alt": "Maison Strawberry Short Cake"
       }
     ],
-    "basePriceCents": 16800,
-    "priceDisplay": "RM168.00",
+    "basePriceCents": 14900,
+    "priceDisplay": "RM149.00",
     "variants": [
       {
         "id": "strawberry-shortcake__6-inch",
         "label": "6 inch",
-        "priceCents": 16800,
+        "priceCents": 14900,
         "available": true,
-        "priceDisplay": "RM168.00"
+        "priceDisplay": "RM149.00"
       },
       {
         "id": "strawberry-shortcake__8-inch",
         "label": "8 inch",
-        "priceCents": 0,
-        "available": false,
-        "priceDisplay": null
+        "priceCents": 20800,
+        "available": true,
+        "priceDisplay": "RM208.00"
       }
     ],
     "soldOut": false,
@@ -155,36 +155,36 @@
     "id": "mixed-fruit-basque-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Mixed Fruit Basque Cheesecake",
-    "shortDescription": "Our signature burnt Basque cheesecake topped with a colourful medley of seasonal fruits. Caramelised on top, custardy in the centre, and bursting with freshness.",
-    "description": "Our signature burnt Basque cheesecake topped with a colourful medley of seasonal fruits. Caramelised on top, custardy in the centre, and bursting with freshness.",
+    "name": "Original Basque",
+    "shortDescription": "Our signature burnt Basque cheesecake — deeply caramelised on top, soft and custardy in the centre. Simple, timeless, and impossibly good.",
+    "description": "Our signature burnt Basque cheesecake — deeply caramelised on top, soft and custardy in the centre. Simple, timeless, and impossibly good.",
     "imageUrl": "/images/products/mixed_fruit_shortcake.png",
     "images": [
       {
         "src": "/images/products/mixed_fruit_shortcake.png",
-        "alt": "Mixed Fruit Basque Cheesecake"
+        "alt": "Original Basque"
       },
       {
         "src": "/images/products/mixed_fruit_shortcake_v2.png",
-        "alt": "Mixed Fruit Basque Cheesecake — alternative angle"
+        "alt": "Original Basque — alternative angle"
       }
     ],
-    "basePriceCents": 19900,
-    "priceDisplay": "RM199.00",
+    "basePriceCents": 13900,
+    "priceDisplay": "RM139.00",
     "variants": [
       {
         "id": "mixed-fruit-basque-cheesecake__6-inch",
         "label": "6 inch",
-        "priceCents": 19900,
+        "priceCents": 13900,
         "available": true,
-        "priceDisplay": "RM199.00"
+        "priceDisplay": "RM139.00"
       },
       {
         "id": "mixed-fruit-basque-cheesecake__8-inch",
         "label": "8 inch",
-        "priceCents": 0,
-        "available": false,
-        "priceDisplay": null
+        "priceCents": 20800,
+        "available": true,
+        "priceDisplay": "RM208.00"
       }
     ],
     "soldOut": false,
@@ -195,32 +195,32 @@
     "id": "jasmine-blanc-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Jasmine Blanc Cheesecake",
+    "name": "Jasmine Blanc",
     "shortDescription": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
     "description": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
-    "imageUrl": "/images/products/lemon_yuzu_cake.png",
+    "imageUrl": "/images/products/matcha_crepe_cake.png",
     "images": [
       {
-        "src": "/images/products/lemon_yuzu_cake.png",
-        "alt": "Jasmine Blanc Cheesecake"
+        "src": "/images/products/matcha_crepe_cake.png",
+        "alt": "Jasmine Blanc"
       }
     ],
-    "basePriceCents": 19900,
-    "priceDisplay": "RM199.00",
+    "basePriceCents": 16800,
+    "priceDisplay": "RM168.00",
     "variants": [
       {
         "id": "jasmine-blanc-cheesecake__6-inch",
         "label": "6 inch",
-        "priceCents": 19900,
+        "priceCents": 16800,
         "available": true,
-        "priceDisplay": "RM199.00"
+        "priceDisplay": "RM168.00"
       },
       {
         "id": "jasmine-blanc-cheesecake__8-inch",
         "label": "8 inch",
-        "priceCents": 20800,
+        "priceCents": 22800,
         "available": true,
-        "priceDisplay": "RM208.00"
+        "priceDisplay": "RM228.00"
       }
     ],
     "soldOut": false,
@@ -231,32 +231,32 @@
     "id": "pistachio-noir-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Pistachio Noir Cheesecake",
+    "name": "Pistachio Noir",
     "shortDescription": "Finely ground pistachios folded through our burnt Basque cheesecake, finished with a deeply caramelised top and a whisper of dark chocolate. Nutty, rich, and quietly luxurious.",
     "description": "Finely ground pistachios folded through our burnt Basque cheesecake, finished with a deeply caramelised top and a whisper of dark chocolate. Nutty, rich, and quietly luxurious.",
-    "imageUrl": "/images/products/matcha_marmalade.png",
+    "imageUrl": "/images/products/pistachio_cheesecake.jpeg",
     "images": [
       {
-        "src": "/images/products/matcha_marmalade.png",
-        "alt": "Pistachio Noir Cheesecake"
+        "src": "/images/products/pistachio_cheesecake.jpeg",
+        "alt": "Pistachio Noir"
       }
     ],
-    "basePriceCents": 14900,
-    "priceDisplay": "RM149.00",
+    "basePriceCents": 22800,
+    "priceDisplay": "RM228.00",
     "variants": [
       {
         "id": "pistachio-noir-cheesecake__6-inch",
         "label": "6 inch",
-        "priceCents": 14900,
+        "priceCents": 22800,
         "available": true,
-        "priceDisplay": "RM149.00"
+        "priceDisplay": "RM228.00"
       },
       {
         "id": "pistachio-noir-cheesecake__8-inch",
         "label": "8 inch",
-        "priceCents": 20800,
+        "priceCents": 26800,
         "available": true,
-        "priceDisplay": "RM208.00"
+        "priceDisplay": "RM268.00"
       }
     ],
     "soldOut": false,
@@ -267,14 +267,14 @@
     "id": "tiramisu-noir-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Tiramisu Noir Cheesecake",
+    "name": "Tiramisu Noir",
     "shortDescription": "The Italian classic reimagined as a burnt Basque cheesecake — espresso-soaked layers, mascarpone cream, and a dusting of cocoa over a caramelised top.",
     "description": "The Italian classic reimagined as a burnt Basque cheesecake — espresso-soaked layers, mascarpone cream, and a dusting of cocoa over a caramelised top.",
-    "imageUrl": "/images/products/tiramisu_noir.png",
+    "imageUrl": "/images/products/tiramisu_crepe_cake.png",
     "images": [
       {
-        "src": "/images/products/tiramisu_noir.png",
-        "alt": "Tiramisu Noir Cheesecake"
+        "src": "/images/products/tiramisu_crepe_cake.png",
+        "alt": "Tiramisu Noir"
       }
     ],
     "basePriceCents": 16800,
@@ -303,14 +303,14 @@
     "id": "citron-basque-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Citron Basque Cheesecake",
+    "name": "Citron Basque",
     "shortDescription": "Bright lemon zest folded through our signature burnt Basque cheesecake. Tangy, creamy, and gently caramelised — a dessert that wakes you up.",
     "description": "Bright lemon zest folded through our signature burnt Basque cheesecake. Tangy, creamy, and gently caramelised — a dessert that wakes you up.",
-    "imageUrl": "/images/products/carrot_cake_slice.png",
+    "imageUrl": "/images/products/citron_pavot.png",
     "images": [
       {
-        "src": "/images/products/carrot_cake_slice.png",
-        "alt": "Citron Basque Cheesecake (placeholder image)"
+        "src": "/images/products/citron_pavot.png",
+        "alt": "Citron Basque"
       }
     ],
     "basePriceCents": 13900,
@@ -339,14 +339,14 @@
     "id": "truffle-basque-cheesecake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
-    "name": "Truffle Basque Cheesecake",
+    "name": "Truffle Noir",
     "shortDescription": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
     "description": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
-    "imageUrl": "/images/products/lotus_biscoff_crepe_cake_slice.png",
+    "imageUrl": "/images/products/truffle_cheesecake.jpeg",
     "images": [
       {
-        "src": "/images/products/lotus_biscoff_crepe_cake_slice.png",
-        "alt": "Truffle Basque Cheesecake"
+        "src": "/images/products/truffle_cheesecake.jpeg",
+        "alt": "Truffle Noir"
       }
     ],
     "basePriceCents": 16800,

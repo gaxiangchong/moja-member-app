@@ -18,12 +18,19 @@ export type CartHandoffLine = {
   imageUrl?: string | null;
 };
 
+export type CartHandoffFulfillment = {
+  method: 'pickup' | null;
+  preferredTime: string | null;
+  preferredTimeLabel: string | null;
+};
+
 type CartHandoffJwtPayload = {
   sub: 'shop_cart';
   aud: string;
   iss: string;
   jti: string;
   lines: CartHandoffLine[];
+  fulfillment?: CartHandoffFulfillment;
 };
 
 @Injectable()
@@ -108,6 +115,24 @@ export class ShopCartHandoffService {
     return lines;
   }
 
+  private normalizeFulfillment(
+    raw: CreateCartHandoffDto['fulfillment'],
+  ): CartHandoffFulfillment | undefined {
+    if (!raw) return undefined;
+    const method = raw.method === 'pickup' ? 'pickup' : null;
+    const preferredTime =
+      typeof raw.preferredTime === 'string' &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(raw.preferredTime.trim())
+        ? raw.preferredTime.trim()
+        : null;
+    const preferredTimeLabel =
+      typeof raw.preferredTimeLabel === 'string' && raw.preferredTimeLabel.trim()
+        ? raw.preferredTimeLabel.trim().slice(0, 120)
+        : null;
+    if (!method && !preferredTime && !preferredTimeLabel) return undefined;
+    return { method, preferredTime, preferredTimeLabel };
+  }
+
   async createHandoff(dto: CreateCartHandoffDto) {
     const shopBase = this.config.get<string>('SHOP_WEB_BASE_URL')?.trim();
     if (!shopBase) {
@@ -118,6 +143,7 @@ export class ShopCartHandoffService {
     }
 
     const lines = this.normalizeLines(dto);
+    const fulfillment = this.normalizeFulfillment(dto.fulfillment);
     const ttlSec = this.ttlSec();
     const issuer = this.handoffIssuer();
     const audience = this.handoffAudience();
@@ -128,6 +154,7 @@ export class ShopCartHandoffService {
       iss: issuer,
       jti,
       lines,
+      ...(fulfillment ? { fulfillment } : {}),
     };
 
     const handoffToken = await this.jwt.signAsync(payload, {
@@ -197,6 +224,23 @@ export class ShopCartHandoffService {
       });
     }
 
+    const fulfillment =
+      payload.fulfillment && typeof payload.fulfillment === 'object'
+        ? {
+            method:
+              payload.fulfillment.method === 'pickup' ? 'pickup' : null,
+            preferredTime:
+              typeof payload.fulfillment.preferredTime === 'string' &&
+              /^([01]\d|2[0-3]):[0-5]\d$/.test(payload.fulfillment.preferredTime)
+                ? payload.fulfillment.preferredTime
+                : null,
+            preferredTimeLabel:
+              typeof payload.fulfillment.preferredTimeLabel === 'string'
+                ? payload.fulfillment.preferredTimeLabel
+                : null,
+          }
+        : null;
+
     return {
       lines: lines.map((l) => ({
         productId: String(l.productId).trim(),
@@ -210,6 +254,7 @@ export class ShopCartHandoffService {
         (sum, l) => sum + Math.floor(l.unitPriceCents) * Math.floor(l.qty),
         0,
       ),
+      fulfillment,
     };
   }
 }

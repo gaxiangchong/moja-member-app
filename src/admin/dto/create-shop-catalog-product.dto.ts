@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -7,7 +8,9 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { ShopCatalogVariantDto } from './shop-catalog-variant.dto';
 
 const SHOP_CATEGORIES = [
   'whole_cakes',
@@ -75,4 +78,10 @@ export class CreateShopCatalogProductDto {
   @Type(() => Boolean)
   @IsBoolean()
   soldOut?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ShopCatalogVariantDto)
+  variants?: ShopCatalogVariantDto[];
 }

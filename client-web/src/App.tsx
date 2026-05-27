@@ -443,11 +443,12 @@ function App() {
     sessionStorage.removeItem(PENDING_SHOP_SCREEN_KEY);
 
     void consumeShopCartHandoff(token)
-      .then(({ lines }) => {
+      .then(({ lines, fulfillment }) => {
         if (lines.length === 0) {
           throw new Error('Cart handoff contained no items');
         }
-        useShopStore.getState().importExternalCart(
+        const store = useShopStore.getState();
+        store.importExternalCart(
           lines.map((l) => ({
             productId: l.productId,
             name: l.name,
@@ -457,6 +458,12 @@ function App() {
             variantLabel: l.variantLabel ?? undefined,
           })),
         );
+        if (fulfillment?.method === 'pickup') {
+          store.setFulfillmentMethod('pickup');
+          if (fulfillment.preferredTime) {
+            store.setPickupTime(fulfillment.preferredTime);
+          }
+        }
         setTab('shop');
         setShopInitialScreen(
           pendingScreen === 'checkout' ? 'checkout' : 'cart',
@@ -1219,7 +1226,7 @@ function App() {
                     </div>
                     <ul className="popularList">
                       {popularItems.map((item) => {
-                        const img = resolveApiAssetUrl(item.imageUrl || '');
+                        const img = item.imageUrl || '';
                         const price = Number.isFinite(item.basePriceCents)
                           ? `RM ${(item.basePriceCents / 100).toFixed(2)}`
                           : '';
@@ -1361,6 +1368,7 @@ function App() {
             {tab === 'shop' && (
               <ShopFlow
                 pointsBalance={pointsBalance}
+                memberRewards={rewardsData}
                 initialScreen={shopInitialScreen}
                 onInitialScreenApplied={() => setShopInitialScreen(null)}
               />
