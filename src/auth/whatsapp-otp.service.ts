@@ -46,7 +46,9 @@ export class WhatsappOtpService {
    * (code must appear in body + url button). Explicit `false` for body-only utility templates.
    */
   private resolveMetaIncludeAuthButton(): boolean {
-    const raw = this.config.get<string>('WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON');
+    const raw = this.config.get<string>(
+      'WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON',
+    );
     if (raw === undefined || raw.trim() === '') {
       return true;
     }
@@ -80,7 +82,9 @@ export class WhatsappOtpService {
       throw new Error('Invalid phone for WhatsApp delivery');
     }
 
-    const templateName = this.config.get<string>('WHATSAPP_OTP_TEMPLATE_NAME')?.trim();
+    const templateName = this.config
+      .get<string>('WHATSAPP_OTP_TEMPLATE_NAME')
+      ?.trim();
     const templateLang =
       this.config.get<string>('WHATSAPP_OTP_TEMPLATE_LANG', 'en')?.trim() ||
       'en';
@@ -160,9 +164,7 @@ export class WhatsappOtpService {
     const sid = this.config.get<string>('TWILIO_ACCOUNT_SID');
     const token = this.config.get<string>('TWILIO_AUTH_TOKEN');
     const from = this.config.get<string>('TWILIO_WHATSAPP_FROM')?.trim();
-    const mss = this.config
-      .get<string>('TWILIO_MESSAGING_SERVICE_SID')
-      ?.trim();
+    const mss = this.config.get<string>('TWILIO_MESSAGING_SERVICE_SID')?.trim();
     return Boolean(sid?.trim() && token?.trim() && (from || mss));
   }
 

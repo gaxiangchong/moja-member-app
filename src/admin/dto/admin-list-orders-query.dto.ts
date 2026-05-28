@@ -39,7 +39,14 @@ export class AdminListOrdersQueryDto {
   productId?: string;
 
   @IsOptional()
-  @IsIn(['placed_desc', 'placed_asc', 'total_desc', 'total_asc', 'completed_desc', 'completed_asc'])
+  @IsIn([
+    'placed_desc',
+    'placed_asc',
+    'total_desc',
+    'total_asc',
+    'completed_desc',
+    'completed_asc',
+  ])
   sort?:
     | 'placed_desc'
     | 'placed_asc'

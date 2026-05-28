@@ -43,7 +43,10 @@ export class PaymentsController {
     @CurrentUser() user: AuthUser,
     @Param('paymentSessionId') paymentSessionId: string,
   ) {
-    return this.payments.getCardTokenSessionStatus(user.customerId, paymentSessionId);
+    return this.payments.getCardTokenSessionStatus(
+      user.customerId,
+      paymentSessionId,
+    );
   }
 
   /**

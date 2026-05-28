@@ -103,7 +103,8 @@ function validatePerksCampaignRuleFields(input: {
     if (input.rebateValueSen == null || input.rebateValueSen < 1) {
       throw new BadRequestException({
         code: 'PERKS_REBATE_REQUIRED',
-        message: 'Voucher rebate rules require a rebate value greater than RM 0',
+        message:
+          'Voucher rebate rules require a rebate value greater than RM 0',
       });
     }
   } else if (input.rebateValueSen != null && input.rebateValueSen > 0) {
@@ -124,7 +125,8 @@ function validatePerksCampaignRuleFields(input: {
     if (pc == null || pc < 1) {
       throw new BadRequestException({
         code: 'PERKS_POINTS_COST',
-        message: 'Pick a voucher definition with a points cost (catalog redeemable)',
+        message:
+          'Pick a voucher definition with a points cost (catalog redeemable)',
       });
     }
   }
@@ -141,7 +143,10 @@ function validatePerksCampaignRuleFields(input: {
       }
       break;
     case PerksCriteriaKind.SINGLE_PURCHASE_MIN_RM:
-      if (input.minPurchaseAmountSen == null || input.minPurchaseAmountSen < 1) {
+      if (
+        input.minPurchaseAmountSen == null ||
+        input.minPurchaseAmountSen < 1
+      ) {
         throw new BadRequestException({
           code: 'PERKS_MIN_PURCHASE',
           message: 'Enter minimum purchase (RM) for single-order criteria',
@@ -149,7 +154,10 @@ function validatePerksCampaignRuleFields(input: {
       }
       break;
     case PerksCriteriaKind.TIER_AND_PURCHASE_MIN_RM:
-      if (input.minPurchaseAmountSen == null || input.minPurchaseAmountSen < 1) {
+      if (
+        input.minPurchaseAmountSen == null ||
+        input.minPurchaseAmountSen < 1
+      ) {
         throw new BadRequestException({
           code: 'PERKS_MIN_PURCHASE',
           message: 'Enter minimum purchase (RM) for tier + purchase criteria',
@@ -397,8 +405,14 @@ export class AdminService {
     auth: AdminAuthState,
   ) {
     const base = auditActorBase(auth);
-    const canProfile = hasPermission(auth.permissions, P.CUSTOMER_WRITE_PROFILE);
-    const canIdentity = hasPermission(auth.permissions, P.CUSTOMER_WRITE_IDENTITY);
+    const canProfile = hasPermission(
+      auth.permissions,
+      P.CUSTOMER_WRITE_PROFILE,
+    );
+    const canIdentity = hasPermission(
+      auth.permissions,
+      P.CUSTOMER_WRITE_IDENTITY,
+    );
     const canPhone = hasPermission(auth.permissions, P.CUSTOMER_PHONE_CHANGE);
     if (!canProfile && !canIdentity && !canPhone) {
       throw new ForbiddenException({
@@ -460,7 +474,8 @@ export class AdminService {
       }
       if (phoneChanging) {
         const allow =
-          this.config.get<string>('ADMIN_ALLOW_PHONE_CHANGE', 'false')
+          this.config
+            .get<string>('ADMIN_ALLOW_PHONE_CHANGE', 'false')
             .toLowerCase()
             .trim() === 'true';
         if (!allow) {
@@ -691,7 +706,9 @@ export class AdminService {
       reason: dto.reason,
       createdByType: 'admin',
       createdBy: auth.actorLabel,
-      metadata: dto.campaignCode ? { campaignCode: dto.campaignCode } : undefined,
+      metadata: dto.campaignCode
+        ? { campaignCode: dto.campaignCode }
+        : undefined,
     });
     const summary = await this.wallet.getSummary(customerId);
 
@@ -943,7 +960,8 @@ export class AdminService {
   }
 
   private goodwillVoucherCodeSet(): Set<string> {
-    const raw = this.config.get<string>('SUPPORT_GOODWILL_VOUCHER_CODES', '') ?? '';
+    const raw =
+      this.config.get<string>('SUPPORT_GOODWILL_VOUCHER_CODES', '') ?? '';
     return new Set(
       raw
         .split(',')
@@ -1228,10 +1246,7 @@ export class AdminService {
     const utcYearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
     const utcYearEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
 
-    const topSpenderSql = (
-      from: Date,
-      to: Date,
-    ) => this.prisma.$queryRaw<
+    const topSpenderSql = (from: Date, to: Date) => this.prisma.$queryRaw<
       {
         customer_id: string;
         phone_e164: string;
@@ -1272,7 +1287,9 @@ export class AdminService {
         by: ['signupSource'],
         _count: { _all: true },
       }),
-      this.prisma.customer.count({ where: { status: CustomerStatus.SUSPENDED } }),
+      this.prisma.customer.count({
+        where: { status: CustomerStatus.SUSPENDED },
+      }),
       this.prisma.storedWallet.aggregate({
         _sum: {
           balanceCents: true,
@@ -1298,9 +1315,7 @@ export class AdminService {
           createdAt: { gte: monthAgo },
         },
       }),
-      this.prisma.$queryRaw<
-        { day: Date; referred: bigint; organic: bigint }[]
-      >`
+      this.prisma.$queryRaw<{ day: Date; referred: bigint; organic: bigint }[]>`
         SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date AS day,
                COUNT(*) FILTER (WHERE referred_by_customer_id IS NOT NULL)::bigint AS referred,
                COUNT(*) FILTER (WHERE referred_by_customer_id IS NULL)::bigint AS organic
@@ -1433,7 +1448,9 @@ export class AdminService {
     };
   }
 
-  async getSalesAnalytics(query: SalesAnalyticsQueryDto): Promise<SalesAnalyticsResult> {
+  async getSalesAnalytics(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<SalesAnalyticsResult> {
     const now = new Date();
     const to = query.to ? new Date(query.to) : now;
     const from = query.from
@@ -1659,7 +1676,9 @@ export class AdminService {
     lines.push(['meta', 'from', payload.meta.from].map(esc).join(','));
     lines.push(['meta', 'to', payload.meta.to].map(esc).join(','));
     lines.push(['meta', 'bucket', payload.meta.bucket].map(esc).join(','));
-    lines.push(['meta', 'generatedAt', payload.meta.generatedAt].map(esc).join(','));
+    lines.push(
+      ['meta', 'generatedAt', payload.meta.generatedAt].map(esc).join(','),
+    );
     for (const [k, v] of Object.entries(payload.summary)) {
       lines.push(['summary', k, v].map(esc).join(','));
     }
@@ -1804,7 +1823,9 @@ export class AdminService {
         completedAt: o.completedAt?.toISOString() ?? null,
         totalCents: o.totalCents,
         status: o.status,
-        fulfillmentSummary: this.fulfillmentSummaryStrings(o.fulfillmentSummary),
+        fulfillmentSummary: this.fulfillmentSummaryStrings(
+          o.fulfillmentSummary,
+        ),
         customerDisplayName: o.customer.displayName,
         customerPhoneMasked: this.maskOrderPhone(o.customer.phoneE164),
         lineCount: o.lines.length,
@@ -1850,7 +1871,9 @@ export class AdminService {
       ORDER BY qty_sold DESC
     `;
 
-    const totals = await this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+    const totals = await this.prisma.$queryRaw<
+      { orders: bigint; gmv: bigint }[]
+    >`
       SELECT COUNT(*)::bigint AS orders,
              COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
       FROM customer_orders o
@@ -1954,7 +1977,10 @@ export class AdminService {
       action: 'voucher_push_rule.created',
       entityType: 'voucher_push_rule',
       entityId: created.id,
-      afterValue: { name: created.name, triggerType: created.triggerType } as object,
+      afterValue: {
+        name: created.name,
+        triggerType: created.triggerType,
+      } as object,
     });
     return created;
   }
@@ -2117,7 +2143,10 @@ export class AdminService {
       action: 'perks_campaign_rule.created',
       entityType: 'perks_campaign_rule',
       entityId: created.id,
-      afterValue: { name: created.name, programKind: created.programKind } as object,
+      afterValue: {
+        name: created.name,
+        programKind: created.programKind,
+      } as object,
     });
     return created;
   }
@@ -2171,7 +2200,9 @@ export class AdminService {
           ? dto.minPurchaseAmountSen
           : before.minPurchaseAmountSen,
       rebateValueSen:
-        dto.rebateValueSen !== undefined ? dto.rebateValueSen : before.rebateValueSen,
+        dto.rebateValueSen !== undefined
+          ? dto.rebateValueSen
+          : before.rebateValueSen,
       minWalletTopupSen:
         dto.minWalletTopupSen !== undefined
           ? dto.minWalletTopupSen

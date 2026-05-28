@@ -22,10 +22,15 @@ export class AdminPermissionsGuard implements CanActivate {
 
     if (!required.length) return true;
 
-    const req = context.switchToHttp().getRequest<{ adminAuth?: AdminAuthState }>();
+    const req = context
+      .switchToHttp()
+      .getRequest<{ adminAuth?: AdminAuthState }>();
     const auth = req.adminAuth;
     if (!auth) {
-      throw new ForbiddenException({ code: 'ADMIN_AUTH_MISSING', message: 'Not authenticated' });
+      throw new ForbiddenException({
+        code: 'ADMIN_AUTH_MISSING',
+        message: 'Not authenticated',
+      });
     }
     if (auth.isSuper || auth.permissions.has(P.ALL)) return true;
 

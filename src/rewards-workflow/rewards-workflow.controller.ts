@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -38,7 +31,10 @@ export class RewardsWorkflowController {
   }
 
   @Post('me/redeem-gift-code')
-  redeemGiftCode(@CurrentUser() user: AuthUser, @Body() dto: RedeemGiftCodeDto) {
+  redeemGiftCode(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RedeemGiftCodeDto,
+  ) {
     return this.workflow.redeemGiftVoucherCode(
       user.customerId,
       dto.code,
@@ -47,7 +43,10 @@ export class RewardsWorkflowController {
   }
 
   @Post('me/vouchers/validate-lock')
-  validateAndLockVoucher(@CurrentUser() user: AuthUser, @Body() dto: ValidateVoucherDto) {
+  validateAndLockVoucher(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ValidateVoucherDto,
+  ) {
     return this.workflow.validateAndLockVoucher({
       customerId: user.customerId,
       voucherId: dto.voucherId,

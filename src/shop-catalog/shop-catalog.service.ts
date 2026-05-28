@@ -1,7 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import {
+  applySyncToMemberCatalog,
+  buildSyncPreview,
+  sitesCatalogToLayout,
+} from './sites-catalog-sync.util';
+import type {
+  ShopCatalogSyncMode,
+  ShopCatalogSyncPreview,
+  SitesCatalog,
+} from './sites-catalog.types';
 
 export type ShopCatalogProductImage = {
   src: string;
@@ -49,7 +63,10 @@ export type ShopCatalogLayout = {
   shopSections: ShopCatalogSection[];
 };
 
-export type ShopCatalogProductInput = Omit<Partial<ShopCatalogProduct>, 'variants'> & {
+export type ShopCatalogProductInput = Omit<
+  Partial<ShopCatalogProduct>,
+  'variants'
+> & {
   variants?: Partial<ShopCatalogProductVariant>[];
 };
 
@@ -114,7 +131,11 @@ export class ShopCatalogService {
     if (existsSync(p)) return;
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     if (existsSync(this.popularSeedFilePath())) {
-      writeFileSync(p, readFileSync(this.popularSeedFilePath(), 'utf-8'), 'utf-8');
+      writeFileSync(
+        p,
+        readFileSync(this.popularSeedFilePath(), 'utf-8'),
+        'utf-8',
+      );
       return;
     }
     writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
@@ -142,7 +163,11 @@ export class ShopCatalogService {
     if (existsSync(p)) return;
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     if (existsSync(this.layoutSeedFilePath())) {
-      writeFileSync(p, readFileSync(this.layoutSeedFilePath(), 'utf-8'), 'utf-8');
+      writeFileSync(
+        p,
+        readFileSync(this.layoutSeedFilePath(), 'utf-8'),
+        'utf-8',
+      );
       return;
     }
     writeFileSync(p, JSON.stringify(DEFAULT_LAYOUT, null, 2), 'utf-8');
@@ -154,7 +179,9 @@ export class ShopCatalogService {
       const raw = readFileSync(this.layoutFilePath(), 'utf-8');
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_LAYOUT };
-      const homeFeaturedProductIds = Array.isArray(parsed.homeFeaturedProductIds)
+      const homeFeaturedProductIds = Array.isArray(
+        parsed.homeFeaturedProductIds,
+      )
         ? parsed.homeFeaturedProductIds
             .map((x: unknown) => String(x ?? '').trim())
             .filter(Boolean)
@@ -166,7 +193,9 @@ export class ShopCatalogService {
               title: String(s.title ?? '').trim(),
               description: String(s.description ?? '').trim(),
               productIds: Array.isArray(s.productIds)
-                ? s.productIds.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+                ? s.productIds
+                    .map((x: unknown) => String(x ?? '').trim())
+                    .filter(Boolean)
                 : [],
             }))
             .filter((s: ShopCatalogSection) => s.id && s.title)
@@ -241,13 +270,19 @@ export class ShopCatalogService {
         id,
         title,
         description: String(section.description ?? '').trim(),
-        productIds: dedupe(Array.isArray(section.productIds) ? section.productIds : []),
+        productIds: dedupe(
+          Array.isArray(section.productIds) ? section.productIds : [],
+        ),
       });
     }
 
     const next: ShopCatalogLayout = { homeFeaturedProductIds, shopSections };
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(this.layoutFilePath(), JSON.stringify(next, null, 2), 'utf-8');
+    writeFileSync(
+      this.layoutFilePath(),
+      JSON.stringify(next, null, 2),
+      'utf-8',
+    );
     return next;
   }
 
@@ -299,7 +334,10 @@ export class ShopCatalogService {
     return out;
   }
 
-  private normalizeProduct(raw: ShopCatalogProductInput, cur?: ShopCatalogProduct): ShopCatalogProduct {
+  private normalizeProduct(
+    raw: ShopCatalogProductInput,
+    cur?: ShopCatalogProduct,
+  ): ShopCatalogProduct {
     const base = cur ?? ({} as ShopCatalogProduct);
     const id = (raw.id ?? base.id ?? randomUUID()).trim();
     const variants =
@@ -308,34 +346,49 @@ export class ShopCatalogService {
         : base.variants;
     return {
       id,
-      category: (raw.category as ShopCatalogProduct['category']) ?? base.category ?? 'specials',
+      category:
+        (raw.category as ShopCatalogProduct['category']) ??
+        base.category ??
+        'specials',
       categoryLabel:
         raw.categoryLabel != null
           ? String(raw.categoryLabel).trim()
           : base.categoryLabel,
-      name: raw.name != null ? String(raw.name).trim() : base.name ?? 'Untitled product',
+      name:
+        raw.name != null
+          ? String(raw.name).trim()
+          : (base.name ?? 'Untitled product'),
       shortDescription:
         raw.shortDescription != null
           ? String(raw.shortDescription).trim()
-          : base.shortDescription ?? '',
+          : (base.shortDescription ?? ''),
       description:
-        raw.description != null ? String(raw.description).trim() : base.description ?? '',
-      imageUrl: raw.imageUrl != null ? String(raw.imageUrl).trim() : base.imageUrl ?? '',
+        raw.description != null
+          ? String(raw.description).trim()
+          : (base.description ?? ''),
+      imageUrl:
+        raw.imageUrl != null
+          ? String(raw.imageUrl).trim()
+          : (base.imageUrl ?? ''),
       images: raw.images != null ? raw.images : base.images,
       basePriceCents:
-        raw.basePriceCents != null && Number.isFinite(Number(raw.basePriceCents))
+        raw.basePriceCents != null &&
+        Number.isFinite(Number(raw.basePriceCents))
           ? Number(raw.basePriceCents)
-          : base.basePriceCents ?? 0,
+          : (base.basePriceCents ?? 0),
       priceDisplay:
-        raw.priceDisplay != null ? String(raw.priceDisplay).trim() : base.priceDisplay,
+        raw.priceDisplay != null
+          ? String(raw.priceDisplay).trim()
+          : base.priceDisplay,
       variants,
       badge: raw.badge != null ? String(raw.badge).trim() : base.badge,
       soldOut: raw.soldOut != null ? Boolean(raw.soldOut) : base.soldOut,
-      isActive: raw.isActive != null ? Boolean(raw.isActive) : base.isActive !== false,
+      isActive:
+        raw.isActive != null ? Boolean(raw.isActive) : base.isActive !== false,
       sortOrder:
         raw.sortOrder != null && Number.isFinite(Number(raw.sortOrder))
           ? Number(raw.sortOrder)
-          : base.sortOrder ?? 0,
+          : (base.sortOrder ?? 0),
     };
   }
 
@@ -346,7 +399,9 @@ export class ShopCatalogService {
   }
 
   listAdminProducts(): ShopCatalogProduct[] {
-    return this.readAll().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return this.readAll().sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
   }
 
   createProduct(input: ShopCatalogProductInput): ShopCatalogProduct {
@@ -357,7 +412,10 @@ export class ShopCatalogService {
     return next;
   }
 
-  updateProduct(id: string, input: ShopCatalogProductInput): ShopCatalogProduct {
+  updateProduct(
+    id: string,
+    input: ShopCatalogProductInput,
+  ): ShopCatalogProduct {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
     if (idx < 0) throw new NotFoundException('Shop catalog product not found');
@@ -420,7 +478,11 @@ export class ShopCatalogService {
     }
     const next: HomePopularConfig = { productIds: dedup, maxLimit };
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(this.popularFilePath(), JSON.stringify(next, null, 2), 'utf-8');
+    writeFileSync(
+      this.popularFilePath(),
+      JSON.stringify(next, null, 2),
+      'utf-8',
+    );
     return next;
   }
 
@@ -436,5 +498,167 @@ export class ShopCatalogService {
     }
     return out;
   }
-}
 
+  private defaultSitesCatalogPath(): string {
+    const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
+    if (envPath) return resolve(envPath);
+    return resolve(
+      process.cwd(),
+      '..',
+      'moja-sites',
+      'config',
+      'products.catalog.json',
+    );
+  }
+
+  private parseSitesCatalog(raw: string): SitesCatalog {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BadRequestException('Invalid moja-sites catalog JSON');
+    }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !Array.isArray((parsed as SitesCatalog).products)
+    ) {
+      throw new BadRequestException(
+        'Catalog JSON must include a products array (moja-sites products.catalog.json shape)',
+      );
+    }
+    return parsed as SitesCatalog;
+  }
+
+  async loadSitesCatalog(catalog?: SitesCatalog): Promise<{
+    catalog: SitesCatalog;
+    source: ShopCatalogSyncPreview['source'];
+    sourceLabel: string;
+  }> {
+    if (catalog) {
+      if (!Array.isArray(catalog.products)) {
+        throw new BadRequestException('catalog.products must be an array');
+      }
+      return {
+        catalog,
+        source: 'body',
+        sourceLabel: 'Uploaded / request body',
+      };
+    }
+
+    const url = process.env.MOJA_SITES_CATALOG_URL?.trim();
+    if (url) {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new BadRequestException(
+          `Failed to fetch moja-sites catalog (${res.status}) from MOJA_SITES_CATALOG_URL`,
+        );
+      }
+      const text = await res.text();
+      return {
+        catalog: this.parseSitesCatalog(text),
+        source: 'url',
+        sourceLabel: url,
+      };
+    }
+
+    const path = this.defaultSitesCatalogPath();
+    if (!existsSync(path)) {
+      throw new BadRequestException(
+        `moja-sites catalog not found at ${path}. Set MOJA_SITES_CATALOG_PATH or MOJA_SITES_CATALOG_URL, or upload catalog JSON in the sync request.`,
+      );
+    }
+    return {
+      catalog: this.parseSitesCatalog(readFileSync(path, 'utf-8')),
+      source: 'path',
+      sourceLabel: path,
+    };
+  }
+
+  previewSyncFromSites(input: {
+    catalog?: SitesCatalog;
+    mode?: ShopCatalogSyncMode;
+    syncLayout?: boolean;
+  }): Promise<ShopCatalogSyncPreview> {
+    return this.loadSitesCatalog(input.catalog).then(
+      ({ catalog, source, sourceLabel }) => {
+        const mode = input.mode ?? 'pricing_and_media';
+        return buildSyncPreview(
+          this.readAll(),
+          catalog,
+          mode,
+          source,
+          sourceLabel,
+          Boolean(input.syncLayout),
+        );
+      },
+    );
+  }
+
+  async applySyncFromSites(input: {
+    catalog?: SitesCatalog;
+    mode?: ShopCatalogSyncMode;
+    createMissing?: boolean;
+    syncLayout?: boolean;
+    writeSeedConfig?: boolean;
+  }): Promise<{
+    preview: ShopCatalogSyncPreview;
+    productsUpdated: number;
+    productsCreated: number;
+    layoutUpdated: boolean;
+  }> {
+    const { catalog, source, sourceLabel } = await this.loadSitesCatalog(
+      input.catalog,
+    );
+    const mode = input.mode ?? 'pricing_and_media';
+    const createMissing = input.createMissing !== false;
+    const syncLayout = Boolean(input.syncLayout);
+    const writeSeedConfig = Boolean(input.writeSeedConfig);
+
+    const preview = buildSyncPreview(
+      this.readAll(),
+      catalog,
+      mode,
+      source,
+      sourceLabel,
+      syncLayout,
+    );
+
+    const next = applySyncToMemberCatalog(
+      this.readAll(),
+      catalog,
+      mode,
+      createMissing,
+    );
+    this.writeAll(next);
+
+    if (writeSeedConfig) {
+      mkdirSync(resolve(process.cwd(), 'config'), { recursive: true });
+      writeFileSync(
+        this.seedFilePath(),
+        JSON.stringify(next, null, 2),
+        'utf-8',
+      );
+    }
+
+    let layoutUpdated = false;
+    if (syncLayout) {
+      this.setLayout(sitesCatalogToLayout(catalog));
+      layoutUpdated = true;
+      if (writeSeedConfig) {
+        writeFileSync(
+          this.layoutSeedFilePath(),
+          JSON.stringify(sitesCatalogToLayout(catalog), null, 2),
+          'utf-8',
+        );
+      }
+    }
+
+    return {
+      preview,
+      productsUpdated: preview.summary.toUpdate,
+      productsCreated: createMissing ? preview.summary.toCreate : 0,
+      layoutUpdated,
+    };
+  }
+}

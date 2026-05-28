@@ -60,9 +60,7 @@ export class SegmentationService {
     }
 
     if (f.status) {
-      parts.push(
-        Prisma.sql`c.status = ${f.status}::"CustomerStatus"`,
-      );
+      parts.push(Prisma.sql`c.status = ${f.status}::"CustomerStatus"`);
     }
     if (f.memberTier) {
       parts.push(Prisma.sql`c.member_tier = ${f.memberTier}`);
@@ -149,14 +147,10 @@ export class SegmentationService {
     }
 
     if (f.minPoints != null) {
-      parts.push(
-        Prisma.sql`COALESCE(lw.points_cached, 0) >= ${f.minPoints}`,
-      );
+      parts.push(Prisma.sql`COALESCE(lw.points_cached, 0) >= ${f.minPoints}`);
     }
     if (f.maxPoints != null) {
-      parts.push(
-        Prisma.sql`COALESCE(lw.points_cached, 0) <= ${f.maxPoints}`,
-      );
+      parts.push(Prisma.sql`COALESCE(lw.points_cached, 0) <= ${f.maxPoints}`);
     }
 
     if (f.minWalletCents != null) {
@@ -257,7 +251,10 @@ export class SegmentationService {
   async getAudience(id: string) {
     const a = await this.prisma.segmentAudience.findUnique({ where: { id } });
     if (!a) {
-      throw new NotFoundException({ code: 'AUDIENCE_NOT_FOUND', message: 'Audience not found' });
+      throw new NotFoundException({
+        code: 'AUDIENCE_NOT_FOUND',
+        message: 'Audience not found',
+      });
     }
     return a;
   }
@@ -282,7 +279,8 @@ export class SegmentationService {
       data: {
         name: dto.name,
         description: dto.description,
-        filters: dto.filters !== undefined ? (dto.filters as object) : undefined,
+        filters:
+          dto.filters !== undefined ? (dto.filters as object) : undefined,
       },
     });
   }
@@ -388,7 +386,10 @@ export class SegmentationService {
 
   private parseFilters(raw: unknown): SegmentFiltersDto {
     if (!raw || typeof raw !== 'object') {
-      throw new BadRequestException({ code: 'INVALID_FILTERS', message: 'Invalid filters' });
+      throw new BadRequestException({
+        code: 'INVALID_FILTERS',
+        message: 'Invalid filters',
+      });
     }
     return raw as SegmentFiltersDto;
   }
@@ -410,7 +411,9 @@ export class SegmentationService {
     }
 
     const matched = await this.countSegment(filters);
-    const asyncOn = envFlagTrue(this.config.get<string>('FEATURE_CAMPAIGN_ASYNC'));
+    const asyncOn = envFlagTrue(
+      this.config.get<string>('FEATURE_CAMPAIGN_ASYNC'),
+    );
 
     const run = await this.prisma.campaignRun.create({
       data: {
@@ -425,7 +428,7 @@ export class SegmentationService {
       },
     });
 
-    const payloadObj = dto.payload as Record<string, unknown>;
+    const payloadObj = dto.payload;
 
     if (asyncOn) {
       void this.runCampaignJob(
@@ -472,7 +475,9 @@ export class SegmentationService {
         customerFailed: batchResult.failed,
         customerProcessed: batchResult.processed,
         duplicatesSkipped: batchResult.duplicatesSkipped,
-        errors: batchResult.errors.length ? batchResult.errors.slice(0, 500) : undefined,
+        errors: batchResult.errors.length
+          ? batchResult.errors.slice(0, 500)
+          : undefined,
         status: CampaignRunStatus.COMPLETED,
         finishedAt: new Date(),
       },
@@ -509,7 +514,9 @@ export class SegmentationService {
   }
 
   async getCampaignRunStatus(runId: string) {
-    const r = await this.prisma.campaignRun.findUnique({ where: { id: runId } });
+    const r = await this.prisma.campaignRun.findUnique({
+      where: { id: runId },
+    });
     if (!r) {
       throw new NotFoundException({
         code: 'CAMPAIGN_RUN_NOT_FOUND',
@@ -560,7 +567,9 @@ export class SegmentationService {
         customerFailed: batchResult.failed,
         customerProcessed: batchResult.processed,
         duplicatesSkipped: batchResult.duplicatesSkipped,
-        errors: batchResult.errors.length ? batchResult.errors.slice(0, 500) : undefined,
+        errors: batchResult.errors.length
+          ? batchResult.errors.slice(0, 500)
+          : undefined,
         status: CampaignRunStatus.COMPLETED,
         finishedAt: new Date(),
       },

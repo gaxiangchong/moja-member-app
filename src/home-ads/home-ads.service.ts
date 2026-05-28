@@ -96,7 +96,9 @@ export class HomeAdsService {
   }
 
   listAdminSlides(): HomeAdSlide[] {
-    return this.readAll().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return this.readAll().sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
   }
 
   createSlide(input: Partial<HomeAdSlide>): HomeAdSlide {
@@ -180,7 +182,12 @@ export class HomeAdsService {
 
   attachImage(
     id: string,
-    file: { buffer: Buffer; mimetype: string; originalname?: string; size: number },
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname?: string;
+      size: number;
+    },
   ): HomeAdSlide {
     if (!file || !file.buffer || !file.buffer.length) {
       throw new BadRequestException('No file provided');

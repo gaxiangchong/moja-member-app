@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator';
 import { RequirePermissions } from '../admin-auth/decorators/require-permissions.decorator';

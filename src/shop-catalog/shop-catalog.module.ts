@@ -11,4 +11,3 @@ import { ShopCatalogService } from './shop-catalog.service';
   exports: [ShopCatalogService, ShopCartHandoffService],
 })
 export class ShopCatalogModule {}
-

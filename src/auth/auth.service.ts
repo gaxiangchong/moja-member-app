@@ -53,7 +53,10 @@ export class AuthService {
     purposeInput?: 'register' | 'recovery',
   ) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
-    const purpose = await this.resolveOtpRequestPurpose(phoneE164, purposeInput);
+    const purpose = await this.resolveOtpRequestPurpose(
+      phoneE164,
+      purposeInput,
+    );
 
     const windowMinutes = this.config.get<number>(
       'OTP_REQUEST_WINDOW_MINUTES',
@@ -429,7 +432,9 @@ export class AuthService {
   }
 
   private resolveOtpMode(): 'mock' | 'whatsapp' | 'auto' {
-    const raw = this.config.get<string>('OTP_DELIVERY_MODE', 'auto').toLowerCase();
+    const raw = this.config
+      .get<string>('OTP_DELIVERY_MODE', 'auto')
+      .toLowerCase();
     if (raw === 'mock' || raw === 'whatsapp') {
       return raw;
     }

@@ -54,7 +54,8 @@ export class SegmentationController {
   @RequirePermissions(P.SEGMENT_MANAGE)
   updateAudience(
     @Param('id') id: string,
-    @Body() dto: Partial<Pick<SaveAudienceDto, 'name' | 'description' | 'filters'>>,
+    @Body()
+    dto: Partial<Pick<SaveAudienceDto, 'name' | 'description' | 'filters'>>,
   ) {
     return this.segmentation.updateAudience(id, dto);
   }

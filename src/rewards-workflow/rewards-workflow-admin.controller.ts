@@ -26,7 +26,9 @@ export class RewardsWorkflowAdminController {
   @Get('reward-catalog')
   @RequirePermissions(P.VOUCHER_READ)
   listRewardCatalog() {
-    return this.prisma.rewardCatalog.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    return this.prisma.rewardCatalog.findMany({
+      orderBy: [{ createdAt: 'desc' }],
+    });
   }
 
   @Post('reward-catalog')
@@ -53,7 +55,9 @@ export class RewardsWorkflowAdminController {
   @Get('voucher-campaigns')
   @RequirePermissions(P.VOUCHER_READ)
   listVoucherCampaigns() {
-    return this.prisma.voucherCampaign.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    return this.prisma.voucherCampaign.findMany({
+      orderBy: [{ createdAt: 'desc' }],
+    });
   }
 
   @Post('voucher-campaigns')
@@ -115,23 +119,24 @@ export class RewardsWorkflowAdminController {
   @Get('user-wallet/:customerId')
   @RequirePermissions(P.CUSTOMER_READ)
   async getUserWallet(@Param('customerId') customerId: string) {
-    const [wallet, points, walletTxns, vouchers] = await this.prisma.$transaction([
-      this.prisma.userWalletBalance.findUnique({ where: { customerId } }),
-      this.prisma.rewardsPointsLedger.findMany({
-        where: { customerId },
-        orderBy: [{ createdAt: 'desc' }],
-        take: 100,
-      }),
-      this.prisma.walletTransaction.findMany({
-        where: { customerId },
-        orderBy: [{ createdAt: 'desc' }],
-        take: 100,
-      }),
-      this.prisma.voucher.findMany({
-        where: { customerId },
-        orderBy: [{ updatedAt: 'desc' }],
-      }),
-    ]);
+    const [wallet, points, walletTxns, vouchers] =
+      await this.prisma.$transaction([
+        this.prisma.userWalletBalance.findUnique({ where: { customerId } }),
+        this.prisma.rewardsPointsLedger.findMany({
+          where: { customerId },
+          orderBy: [{ createdAt: 'desc' }],
+          take: 100,
+        }),
+        this.prisma.walletTransaction.findMany({
+          where: { customerId },
+          orderBy: [{ createdAt: 'desc' }],
+          take: 100,
+        }),
+        this.prisma.voucher.findMany({
+          where: { customerId },
+          orderBy: [{ updatedAt: 'desc' }],
+        }),
+      ]);
     return { wallet, points, walletTxns, vouchers };
   }
 

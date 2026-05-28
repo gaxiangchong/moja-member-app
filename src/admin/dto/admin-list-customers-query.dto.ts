@@ -65,7 +65,13 @@ export class AdminListCustomersQueryDto {
 
   @IsOptional()
   @IsIn(['createdAt', 'lastLoginAt', 'points', 'spent', 'name', 'referrals'])
-  sortBy?: 'createdAt' | 'lastLoginAt' | 'points' | 'spent' | 'name' | 'referrals';
+  sortBy?:
+    | 'createdAt'
+    | 'lastLoginAt'
+    | 'points'
+    | 'spent'
+    | 'name'
+    | 'referrals';
 
   @IsOptional()
   @IsIn(['asc', 'desc'])

@@ -3,11 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Employee,
-  Prisma,
-  WorkCalendarDayType,
-} from '@prisma/client';
+import { Employee, Prisma, WorkCalendarDayType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 function isoDateOnly(d: Date): string {
@@ -412,13 +408,10 @@ export class EmployeesService {
       if (!en.clockOutAt) continue;
       const mins = Math.max(
         0,
-        Math.round(
-          (en.clockOutAt.getTime() - en.clockInAt.getTime()) / 60_000,
-        ),
+        Math.round((en.clockOutAt.getTime() - en.clockInAt.getTime()) / 60_000),
       );
       const dayKey = isoDateOnly(en.clockInAt);
-      const dayType =
-        calendarMap.get(dayKey) ?? WorkCalendarDayType.REGULAR;
+      const dayType = calendarMap.get(dayKey) ?? WorkCalendarDayType.REGULAR;
       const cur = byDay.get(dayKey) ?? {
         date: dayKey,
         dayType,

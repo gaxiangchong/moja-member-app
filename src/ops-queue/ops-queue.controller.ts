@@ -33,7 +33,9 @@ export class OpsQueueController {
   }
 
   @Patch('orders/by-number/:orderNumber/complete')
-  async completeByNumber(@Param('orderNumber', ParseIntPipe) orderNumber: number) {
+  async completeByNumber(
+    @Param('orderNumber', ParseIntPipe) orderNumber: number,
+  ) {
     const o = await this.ops.completeOrderByNumber(orderNumber);
     return { id: o.id, orderNumber: o.orderNumber, status: o.status };
   }

@@ -289,7 +289,9 @@ export class CustomersService {
         completedAt: o.completedAt?.toISOString() ?? null,
         totalCents: o.totalCents,
         status: o.status,
-        fulfillmentSummary: fulfillmentSummaryLinesFromJson(o.fulfillmentSummary),
+        fulfillmentSummary: fulfillmentSummaryLinesFromJson(
+          o.fulfillmentSummary,
+        ),
         lines: o.lines.map((l) => ({
           id: l.id,
           productId: l.productId,
@@ -322,7 +324,10 @@ export class CustomersService {
   /**
    * Creates a shop order awaiting payment (Xendit). Does not credit lifetime spend until finalized.
    */
-  async createPendingMemberOrder(customerId: string, dto: SubmitMemberOrderDto) {
+  async createPendingMemberOrder(
+    customerId: string,
+    dto: SubmitMemberOrderDto,
+  ) {
     this.validateMemberOrderTotals(dto);
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.customerOrder.create({

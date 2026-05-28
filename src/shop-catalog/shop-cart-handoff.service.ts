@@ -73,7 +73,10 @@ export class ShopCartHandoffService {
   private memberAppBase(): string {
     const explicit = this.config.get<string>('MEMBER_APP_PUBLIC_URL')?.trim();
     if (explicit) return explicit.replace(/\/$/, '');
-    const cors = this.config.get<string>('CLIENT_WEB_ORIGIN')?.split(',')[0]?.trim();
+    const cors = this.config
+      .get<string>('CLIENT_WEB_ORIGIN')
+      ?.split(',')[0]
+      ?.trim();
     if (cors) return cors.replace(/\/$/, '');
     return 'http://localhost:5193';
   }
@@ -126,7 +129,8 @@ export class ShopCartHandoffService {
         ? raw.preferredTime.trim()
         : null;
     const preferredTimeLabel =
-      typeof raw.preferredTimeLabel === 'string' && raw.preferredTimeLabel.trim()
+      typeof raw.preferredTimeLabel === 'string' &&
+      raw.preferredTimeLabel.trim()
         ? raw.preferredTimeLabel.trim().slice(0, 120)
         : null;
     if (!method && !preferredTime && !preferredTimeLabel) return undefined;
@@ -198,7 +202,8 @@ export class ShopCartHandoffService {
     } catch {
       throw new UnauthorizedException({
         code: 'CART_HANDOFF_INVALID',
-        message: 'Cart handoff link expired or invalid. Return to the shop and try checkout again.',
+        message:
+          'Cart handoff link expired or invalid. Return to the shop and try checkout again.',
       });
     }
 
@@ -227,11 +232,12 @@ export class ShopCartHandoffService {
     const fulfillment =
       payload.fulfillment && typeof payload.fulfillment === 'object'
         ? {
-            method:
-              payload.fulfillment.method === 'pickup' ? 'pickup' : null,
+            method: payload.fulfillment.method === 'pickup' ? 'pickup' : null,
             preferredTime:
               typeof payload.fulfillment.preferredTime === 'string' &&
-              /^([01]\d|2[0-3]):[0-5]\d$/.test(payload.fulfillment.preferredTime)
+              /^([01]\d|2[0-3]):[0-5]\d$/.test(
+                payload.fulfillment.preferredTime,
+              )
                 ? payload.fulfillment.preferredTime
                 : null,
             preferredTimeLabel:

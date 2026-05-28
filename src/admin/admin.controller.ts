@@ -45,6 +45,10 @@ import { UpdateShopCatalogProductDto } from './dto/update-shop-catalog-product.d
 import { CreateHomeAdSlideDto } from './dto/create-home-ad-slide.dto';
 import { UpdateHomeAdSlideDto } from './dto/update-home-ad-slide.dto';
 import { UpdateHomePopularDto } from './dto/update-home-popular.dto';
+import {
+  PreviewShopCatalogSyncDto,
+  SyncShopCatalogFromSitesDto,
+} from './dto/sync-shop-catalog-from-sites.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 
@@ -148,10 +152,7 @@ export class AdminController {
 
   @Post('customers/:id/wallet/freeze')
   @RequirePermissions(P.WALLET_FREEZE)
-  freezeWallet(
-    @Param('id') id: string,
-    @CurrentAdmin() auth: AdminAuthState,
-  ) {
+  freezeWallet(@Param('id') id: string, @CurrentAdmin() auth: AdminAuthState) {
     return this.admin.setWalletFreeze(id, true, auth);
   }
 
@@ -351,6 +352,28 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateShopCatalogLayout(@Body() dto: UpdateShopCatalogLayoutDto) {
     return this.shopCatalog.setLayout(dto);
+  }
+
+  @Post('shop-catalog/sync/preview')
+  @RequirePermissions(P.VOUCHER_READ)
+  previewShopCatalogSync(@Body() dto: PreviewShopCatalogSyncDto) {
+    return this.shopCatalog.previewSyncFromSites({
+      catalog: dto.catalog,
+      mode: dto.mode,
+      syncLayout: dto.syncLayout,
+    });
+  }
+
+  @Post('shop-catalog/sync/apply')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  applyShopCatalogSync(@Body() dto: SyncShopCatalogFromSitesDto) {
+    return this.shopCatalog.applySyncFromSites({
+      catalog: dto.catalog,
+      mode: dto.mode,
+      createMissing: dto.createMissing,
+      syncLayout: dto.syncLayout,
+      writeSeedConfig: dto.writeSeedConfig,
+    });
   }
 
   @Get('home-ads/slides')

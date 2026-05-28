@@ -47,4 +47,3 @@ export class ShopCatalogController {
     return this.cartHandoff.consumeHandoff(token);
   }
 }
-

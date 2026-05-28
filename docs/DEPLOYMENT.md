@@ -86,7 +86,7 @@ Copy **`.env.example`** to **`.env`** on the server (or inject equivalent keys f
 | `ADMIN_JWT_EXPIRES_IN_SEC` | Admin JWT lifetime. |
 | `OPS_QUEUE_API_KEY` | Secret for `x-ops-api-key` on ops queue endpoints; ops UI stores or prompts for this. |
 | `OTP_DELIVERY_MODE` | Production: typically **`whatsapp`** or **`auto`** with WhatsApp configured. **`mock`** is unsafe for real users. |
-| `WHATSAPP_PROVIDER` | `meta` (default) or `twilio`. Selects which WhatsApp transport to use. |
+| `WHATSAPP_PROVIDER` | `meta` (default) or `twilio`. Selects which WhatsApp transport to use. OTP is sent only on first-time registration and forgot-PIN recovery; routine sign-in always uses PIN. |
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Required for real OTP via Meta WhatsApp Cloud API (`WHATSAPP_PROVIDER=meta`). |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` or `TWILIO_MESSAGING_SERVICE_SID` | Required for real OTP via Twilio WhatsApp (`WHATSAPP_PROVIDER=twilio`). Add `TWILIO_WHATSAPP_CONTENT_SID` for production templates. |
 | `FEATURE_SHOP_SSO`, `FEATURE_CAMPAIGN_ASYNC` | Feature flags; see [rollout-checklist.md](rollout-checklist.md). |

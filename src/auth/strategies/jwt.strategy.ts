@@ -15,16 +15,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  validate(
-    payload: AccessTokenJwtPayload & { scope?: string },
-  ): AuthUser {
+  validate(payload: AccessTokenJwtPayload & { scope?: string }): AuthUser {
     if (payload.scope === 'pin_setup') {
       throw new UnauthorizedException({
         code: 'INVALID_ACCESS_TOKEN',
         message: 'Use a member access token, not a PIN setup token.',
       });
     }
-    if (typeof payload.sub !== 'string' || typeof payload.phoneE164 !== 'string') {
+    if (
+      typeof payload.sub !== 'string' ||
+      typeof payload.phoneE164 !== 'string'
+    ) {
       throw new UnauthorizedException({
         code: 'INVALID_ACCESS_TOKEN',
         message: 'Invalid token payload.',

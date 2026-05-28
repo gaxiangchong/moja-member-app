@@ -130,10 +130,7 @@ export function permissionsForRole(role: AdminRoleCode): Set<string> {
   return new Set(ROLE_PERMISSIONS[role]);
 }
 
-export function hasPermission(
-  granted: Set<string>,
-  required: string,
-): boolean {
+export function hasPermission(granted: Set<string>, required: string): boolean {
   if (granted.has(P.ALL)) return true;
   return granted.has(required);
 }

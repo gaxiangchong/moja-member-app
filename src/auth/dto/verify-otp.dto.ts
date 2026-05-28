@@ -1,4 +1,10 @@
-import { IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class VerifyOtpDto {
   @IsString()

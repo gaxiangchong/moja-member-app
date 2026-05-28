@@ -47,7 +47,8 @@ export class AdminDashboardController {
     try {
       const raw = readFileSync(path, 'utf-8');
       const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return DEFAULT_DASHBOARD_CONFIG;
+      if (!parsed || typeof parsed !== 'object')
+        return DEFAULT_DASHBOARD_CONFIG;
       const pg =
         parsed.menuGroups && typeof parsed.menuGroups === 'object'
           ? parsed.menuGroups
@@ -70,6 +71,13 @@ export class AdminDashboardController {
   @Get('admin-dashboard')
   @Header('Content-Type', 'text/html; charset=utf-8')
   getDashboard(): string {
+    const shopWebOrigin = (
+      process.env.SHOP_WEB_BASE_URL || 'http://localhost:3000'
+    )
+      .trim()
+      .replace(/\/$/, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'");
     return `
 <!doctype html>
 <html lang="en">
@@ -2331,6 +2339,53 @@ export class AdminDashboardController {
               </table>
             </div>
           </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Sync from moja-sites</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="scSyncPreviewBtn">Preview sync</button>
+                <button type="button" class="btn-primary" id="scSyncApplyBtn">Apply sync</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;max-width:960px">
+              <p class="field-hint" style="margin-top:0">
+                Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
+                Use this when the shop site and member app show different prices or pictures.
+              </p>
+              <div class="form-row-2">
+                <div class="form-section">
+                  <label for="scSyncMode">Sync mode</label>
+                  <select id="scSyncMode">
+                    <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
+                    <option value="full">Full product copy (keep visibility &amp; sort order)</option>
+                  </select>
+                </div>
+                <div class="form-section">
+                  <label for="scSyncCatalogFile">Optional catalog JSON upload</label>
+                  <input type="file" id="scSyncCatalogFile" accept=".json,application/json" />
+                </div>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncCreateMissing" style="width:auto;margin-right:8px" checked /> Add products that exist in moja-sites but not in member catalog</label>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncLayout" style="width:auto;margin-right:8px" /> Also sync shop layout (featured + sections)</label>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncWriteSeed" style="width:auto;margin-right:8px" /> Also update <code>config/</code> seed files (for git commits)</label>
+              </div>
+              <p class="field-hint" id="scSyncSourceHint">Source: server default path or <code>MOJA_SITES_CATALOG_URL</code> when set.</p>
+              <p class="field-hint" id="scSyncResult"></p>
+              <div id="scSyncSummary" style="display:none;margin:12px 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px"></div>
+              <div class="table-wrap" id="scSyncPreviewWrap" style="display:none">
+                <table class="data">
+                  <thead><tr><th style="width:64px">Image</th><th>Product</th><th style="width:110px">Status</th><th>Changes</th></tr></thead>
+                  <tbody id="scSyncPreviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
           <div class="sheet" style="margin-top:16px">
             <div class="sheet-head"><h2>Edit product</h2></div>
             <div style="padding:16px 20px;max-width:640px">
@@ -2736,6 +2791,7 @@ export class AdminDashboardController {
   </div>
 
   <script>
+    const SHOP_WEB_ORIGIN = '${shopWebOrigin}';
     const navButtons = () => document.querySelectorAll('.nav-btn');
     const views = [
       'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
@@ -4375,6 +4431,144 @@ export class AdminDashboardController {
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
 
+    var lastScSyncPreview = null;
+
+    function scResolveShopAssetUrl(url) {
+      if (!url) return '';
+      if (/^https?:\\/\\//i.test(url) || /^data:/i.test(url)) return url;
+      return SHOP_WEB_ORIGIN + (url.startsWith('/') ? '' : '/') + url;
+    }
+
+    function scSyncCollectBody() {
+      return {
+        mode: document.getElementById('scSyncMode').value || 'pricing_and_media',
+        createMissing: document.getElementById('scSyncCreateMissing').checked,
+        syncLayout: document.getElementById('scSyncLayout').checked,
+        writeSeedConfig: document.getElementById('scSyncWriteSeed').checked,
+      };
+    }
+
+    function scSyncReadUploadedCatalog() {
+      return new Promise(function (resolve, reject) {
+        var input = document.getElementById('scSyncCatalogFile');
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            resolve(JSON.parse(String(reader.result || '')));
+          } catch (e) {
+            reject(new Error('Uploaded file is not valid JSON'));
+          }
+        };
+        reader.onerror = function () { reject(new Error('Could not read uploaded file')); };
+        reader.readAsText(file);
+      });
+    }
+
+    function scSyncStatusPill(status) {
+      if (status === 'create') return statusPill('NEW');
+      if (status === 'update') return statusPill('UPDATE');
+      return '<span style="color:#64748b;font-size:12px">OK</span>';
+    }
+
+    function scSyncRenderPreview(preview) {
+      lastScSyncPreview = preview;
+      var summaryEl = document.getElementById('scSyncSummary');
+      var wrap = document.getElementById('scSyncPreviewWrap');
+      var body = document.getElementById('scSyncPreviewBody');
+      var sourceHint = document.getElementById('scSyncSourceHint');
+      if (!summaryEl || !wrap || !body) return;
+
+      var s = preview.summary || {};
+      summaryEl.style.display = 'block';
+      summaryEl.innerHTML =
+        '<strong>Preview</strong> · source: ' + fmt(preview.sourceLabel || preview.source) +
+        '<br/>Sites products: ' + fmt(s.sitesProductCount) +
+        ' · Member products: ' + fmt(s.memberProductCount) +
+        ' · To update: <strong>' + fmt(s.toUpdate) + '</strong>' +
+        ' · To create: <strong>' + fmt(s.toCreate) + '</strong>' +
+        ' · Unchanged: ' + fmt(s.unchanged) +
+        (s.onlyInMember ? ' · Only in member: ' + fmt(s.onlyInMember) : '');
+
+      if (sourceHint) {
+        sourceHint.textContent = 'Source: ' + (preview.sourceLabel || preview.source || 'unknown');
+      }
+
+      var rows = (preview.products || []).filter(function (p) {
+        return p.status !== 'unchanged';
+      });
+      if (rows.length === 0) {
+        wrap.style.display = 'none';
+        body.innerHTML = '';
+        summaryEl.innerHTML += '<br/><span style="color:#059669">No price or image differences found.</span>';
+        return;
+      }
+
+      wrap.style.display = 'block';
+      body.innerHTML = rows.map(function (p) {
+        var imageChange = (p.changes || []).find(function (c) { return c.field === 'imageUrl'; });
+        var thumbUrl = imageChange ? scResolveShopAssetUrl(imageChange.after) : '';
+        if (!thumbUrl) {
+          var existing = (lastShopCatalogProducts || []).find(function (x) { return x.id === p.id; });
+          thumbUrl = scResolveShopAssetUrl(existing && existing.imageUrl ? existing.imageUrl : '');
+        }
+        var changesHtml = (p.changes || []).map(function (c) {
+          return '<div style="margin-bottom:4px"><span style="color:#64748b">' + fmt(c.field) + ':</span> ' +
+            fmt(c.before) + ' → <strong>' + fmt(c.after) + '</strong></div>';
+        }).join('');
+        return '<tr>' +
+          '<td>' + slThumb(thumbUrl) + '</td>' +
+          '<td><strong>' + fmt(p.name) + '</strong><br/><span style="color:#64748b;font-size:12px">' + fmt(p.id) + '</span></td>' +
+          '<td>' + scSyncStatusPill(p.status) + '</td>' +
+          '<td style="font-size:12px">' + (changesHtml || '-') + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    async function scSyncPreview() {
+      var out = document.getElementById('scSyncResult');
+      if (out) out.textContent = 'Loading preview…';
+      var body = scSyncCollectBody();
+      var uploaded = await scSyncReadUploadedCatalog();
+      if (uploaded) body.catalog = uploaded;
+      var preview = await apiPost('/admin/shop-catalog/sync/preview', body);
+      scSyncRenderPreview(preview);
+      if (out) out.textContent = 'Preview ready. Review changes, then click Apply sync.';
+    }
+
+    async function scSyncApply() {
+      var out = document.getElementById('scSyncResult');
+      if (!lastScSyncPreview) {
+        if (out) out.textContent = 'Run Preview sync first.';
+        return;
+      }
+      var s = lastScSyncPreview.summary || {};
+      if (!s.toUpdate && !s.toCreate) {
+        if (out) out.textContent = 'Nothing to apply — catalog already matches.';
+        return;
+      }
+      if (!window.confirm('Apply sync? This updates live member catalog prices and images for ' +
+          fmt(s.toUpdate) + ' product(s)' + (s.toCreate ? ' and adds ' + fmt(s.toCreate) + ' new product(s)' : '') + '.')) {
+        return;
+      }
+      if (out) out.textContent = 'Applying sync…';
+      var body = scSyncCollectBody();
+      var uploaded = await scSyncReadUploadedCatalog();
+      if (uploaded) body.catalog = uploaded;
+      var result = await apiPost('/admin/shop-catalog/sync/apply', body);
+      scSyncRenderPreview(result.preview || result);
+      if (out) {
+        out.textContent = 'Sync applied. Updated ' + fmt(result.productsUpdated) +
+          ', created ' + fmt(result.productsCreated) +
+          (result.layoutUpdated ? ', layout synced.' : '.');
+      }
+      await loadShopCatalog();
+    }
+
     function haAbsoluteImageUrl(url) {
       if (!url) return '';
       return url;
@@ -5527,6 +5721,14 @@ export class AdminDashboardController {
       if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
     });
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('scSyncPreviewBtn').addEventListener('click', () => scSyncPreview().catch(function (e) {
+      var out = document.getElementById('scSyncResult');
+      if (out) out.textContent = e.message;
+    }));
+    document.getElementById('scSyncApplyBtn').addEventListener('click', () => scSyncApply().catch(function (e) {
+      var out = document.getElementById('scSyncResult');
+      if (out) out.textContent = e.message;
+    }));
 
     (function wireShopLayoutHandlers() {
       const refreshBtn = document.getElementById('refreshShopLayoutBtn');

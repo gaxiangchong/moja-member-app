@@ -42,7 +42,9 @@ export class XenditApiService {
   constructor(private readonly config: ConfigService) {}
 
   private getApiVersion(): string {
-    return this.config.get<string>('XENDIT_API_VERSION')?.trim() || '2024-11-11';
+    return (
+      this.config.get<string>('XENDIT_API_VERSION')?.trim() || '2024-11-11'
+    );
   }
 
   private getSecretKey(): string {
@@ -58,7 +60,10 @@ export class XenditApiService {
   }
 
   private getApiBase(): string {
-    return this.config.get<string>('XENDIT_API_BASE')?.trim() || 'https://api.xendit.co';
+    return (
+      this.config.get<string>('XENDIT_API_BASE')?.trim() ||
+      'https://api.xendit.co'
+    );
   }
 
   private getAuthHeader(): string {
@@ -189,7 +194,9 @@ export class XenditApiService {
     return json;
   }
 
-  async getSession(paymentSessionId: string): Promise<XenditGetSessionResponse> {
+  async getSession(
+    paymentSessionId: string,
+  ): Promise<XenditGetSessionResponse> {
     const base = this.getApiBase();
     const url = `${base.replace(/\/$/, '')}/sessions/${encodeURIComponent(paymentSessionId)}`;
     const res = await fetch(url, {

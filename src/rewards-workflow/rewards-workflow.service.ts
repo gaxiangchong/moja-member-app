@@ -236,17 +236,25 @@ export class RewardsWorkflowService {
         voucher.lockExpiresAt &&
         voucher.lockExpiresAt.getTime() > now
       ) {
-        throw new BadRequestException('Voucher is currently locked by another checkout.');
+        throw new BadRequestException(
+          'Voucher is currently locked by another checkout.',
+        );
       }
 
       const c = voucher.voucherCampaign;
       if (c?.minSpend && input.orderTotalCents < c.minSpend) {
-        throw new BadRequestException('Order does not meet voucher minimum spend.');
+        throw new BadRequestException(
+          'Order does not meet voucher minimum spend.',
+        );
       }
       if (c?.applicableOrderTypes?.length && input.orderType) {
-        const normalized = input.orderType.trim().toUpperCase() as VoucherOrderType;
+        const normalized = input.orderType
+          .trim()
+          .toUpperCase() as VoucherOrderType;
         if (!c.applicableOrderTypes.includes(normalized)) {
-          throw new BadRequestException('Voucher is not valid for this fulfillment type.');
+          throw new BadRequestException(
+            'Voucher is not valid for this fulfillment type.',
+          );
         }
       }
       if (c?.applicableProductIds?.length && input.productIds?.length) {
@@ -254,7 +262,9 @@ export class RewardsWorkflowService {
           c.applicableProductIds.includes(p),
         );
         if (!intersects) {
-          throw new BadRequestException('Voucher is not valid for current products.');
+          throw new BadRequestException(
+            'Voucher is not valid for current products.',
+          );
         }
       }
       if (c?.applicableCategories?.length && input.categories?.length) {
@@ -262,7 +272,9 @@ export class RewardsWorkflowService {
           c.applicableCategories.includes(category),
         );
         if (!intersects) {
-          throw new BadRequestException('Voucher is not valid for current categories.');
+          throw new BadRequestException(
+            'Voucher is not valid for current categories.',
+          );
         }
       }
 
@@ -319,13 +331,21 @@ export class RewardsWorkflowService {
           },
         },
       });
-      return { lockToken, voucherId: voucher.id, redemptionId: redemption.id, lockExpiresAt };
+      return {
+        lockToken,
+        voucherId: voucher.id,
+        redemptionId: redemption.id,
+        lockExpiresAt,
+      };
     });
   }
 
-  async computeLockedVoucherDiscount(input: VoucherDiscountInput): Promise<number> {
+  async computeLockedVoucherDiscount(
+    input: VoucherDiscountInput,
+  ): Promise<number> {
     if (!input.lockToken) return 0;
-    if (!Number.isInteger(input.subtotalCents) || input.subtotalCents < 0) return 0;
+    if (!Number.isInteger(input.subtotalCents) || input.subtotalCents < 0)
+      return 0;
     const row = await this.prisma.voucher.findFirst({
       where: {
         lockToken: input.lockToken,

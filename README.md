@@ -59,8 +59,12 @@ $ npm run test:cov
 
 ## WhatsApp OTP setup guide
 
-This project supports phone login with OTP delivered via WhatsApp. Two providers
-are supported, selected with `WHATSAPP_PROVIDER`:
+This project uses OTP **only for first-time registration and forgot-PIN
+recovery**. Every other sign-in uses the customer's PIN — the OTP endpoint
+returns `USE_PIN_LOGIN` when a registered phone number tries to request a
+fresh OTP without an explicit `purpose=recovery`.
+
+Two providers are supported, selected with `WHATSAPP_PROVIDER`:
 
 - `meta` (default) — Meta WhatsApp Cloud API (Graph API)
 - `twilio` — Twilio Programmable Messaging on the WhatsApp channel

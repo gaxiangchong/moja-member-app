@@ -41,13 +41,19 @@ export class PaymentsService {
   private memberPublicBase(): string {
     const explicit = this.config.get<string>('MEMBER_APP_PUBLIC_URL')?.trim();
     if (explicit) return explicit.replace(/\/$/, '');
-    const cors = this.config.get<string>('CLIENT_WEB_ORIGIN')?.split(',')[0]?.trim();
+    const cors = this.config
+      .get<string>('CLIENT_WEB_ORIGIN')
+      ?.split(',')[0]
+      ?.trim();
     if (cors) return cors.replace(/\/$/, '');
     return 'http://localhost:5193';
   }
 
   private isDemoMode(): boolean {
-    const v = this.config.get<string>('PAYMENTS_DEMO_MODE')?.trim().toLowerCase();
+    const v = this.config
+      .get<string>('PAYMENTS_DEMO_MODE')
+      ?.trim()
+      .toLowerCase();
     return v === 'true' || v === '1' || v === 'yes';
   }
 
@@ -95,9 +101,14 @@ export class PaymentsService {
       .filter(Boolean)
       .filter(
         (code) =>
-          !PaymentsService.CHANNELS_REQUIRING_CARD_DETAILS.has(code.toUpperCase()),
+          !PaymentsService.CHANNELS_REQUIRING_CARD_DETAILS.has(
+            code.toUpperCase(),
+          ),
       );
-    return [...new Set(codes)].map((code) => ({ code, label: shopChannelLabel(code) }));
+    return [...new Set(codes)].map((code) => ({
+      code,
+      label: shopChannelLabel(code),
+    }));
   }
 
   async getShopChannelsPublic() {
@@ -135,9 +146,13 @@ export class PaymentsService {
       origins: allowedOrigins,
     });
     const paymentSessionId =
-      typeof session.payment_session_id === 'string' ? session.payment_session_id : null;
+      typeof session.payment_session_id === 'string'
+        ? session.payment_session_id
+        : null;
     const componentsSdkKey =
-      typeof session.components_sdk_key === 'string' ? session.components_sdk_key : null;
+      typeof session.components_sdk_key === 'string'
+        ? session.components_sdk_key
+        : null;
     if (!paymentSessionId || !componentsSdkKey) {
       throw new BadRequestException({
         code: 'XENDIT_COMPONENTS_SESSION_INVALID',
@@ -147,11 +162,15 @@ export class PaymentsService {
     return {
       paymentSessionId,
       componentsSdkKey,
-      expiresAt: typeof session.expires_at === 'string' ? session.expires_at : null,
+      expiresAt:
+        typeof session.expires_at === 'string' ? session.expires_at : null,
     };
   }
 
-  async getCardTokenSessionStatus(customerId: string, paymentSessionId: string) {
+  async getCardTokenSessionStatus(
+    customerId: string,
+    paymentSessionId: string,
+  ) {
     const session = await this.xendit.getSession(paymentSessionId);
     const referenceId =
       typeof session.reference_id === 'string' ? session.reference_id : null;
@@ -168,12 +187,16 @@ export class PaymentsService {
           : paymentSessionId,
       status: typeof session.status === 'string' ? session.status : 'UNKNOWN',
       paymentTokenId:
-        typeof session.payment_token_id === 'string' ? session.payment_token_id : null,
+        typeof session.payment_token_id === 'string'
+          ? session.payment_token_id
+          : null,
     };
   }
 
   private resolveComponentsOrigins(): string[] {
-    const explicitOriginsCsv = this.config.get<string>('XENDIT_COMPONENTS_ORIGINS')?.trim();
+    const explicitOriginsCsv = this.config
+      .get<string>('XENDIT_COMPONENTS_ORIGINS')
+      ?.trim();
     if (explicitOriginsCsv) {
       const explicitOrigins = explicitOriginsCsv
         .split(',')
@@ -218,7 +241,8 @@ export class PaymentsService {
     if (!Number.isInteger(amountCents) || amountCents < 100) {
       throw new BadRequestException({
         code: 'PAYMENT_INVALID_AMOUNT',
-        message: 'amountCents must be at least 100 (minimum 1.00 in major currency units).',
+        message:
+          'amountCents must be at least 100 (minimum 1.00 in major currency units).',
       });
     }
 
@@ -226,12 +250,11 @@ export class PaymentsService {
       this.config.get<string>('XENDIT_COUNTRY')?.trim().toUpperCase() || 'MY';
     const currency =
       this.config.get<string>('XENDIT_CURRENCY')?.trim().toUpperCase() || 'MYR';
-    const channelCode =
-      this.normalizeChannelCode(
-        channelCodeOverride?.trim() ||
-          this.config.get<string>('XENDIT_DEFAULT_CHANNEL_CODE')?.trim() ||
-          'TOUCHNGO',
-      );
+    const channelCode = this.normalizeChannelCode(
+      channelCodeOverride?.trim() ||
+        this.config.get<string>('XENDIT_DEFAULT_CHANNEL_CODE')?.trim() ||
+        'TOUCHNGO',
+    );
     this.assertChannelSupportedByCurrentIntegration(channelCode);
 
     const referenceId = randomUUID();
@@ -261,7 +284,9 @@ export class PaymentsService {
         ? xenditResponse.payment_request_id
         : null;
     const apiStatus =
-      typeof xenditResponse.status === 'string' ? xenditResponse.status : 'UNKNOWN';
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
 
     await this.prisma.paymentIntent.create({
       data: {
@@ -334,9 +359,15 @@ export class PaymentsService {
     dto.totalCents = Math.max(0, subtotalCents - discountCents);
 
     if (this.isDemoMode()) {
-      const order = await this.customers.createPendingMemberOrder(customerId, dto);
+      const order = await this.customers.createPendingMemberOrder(
+        customerId,
+        dto,
+      );
       if (voucherLockToken) {
-        await this.rewardsWorkflow.finalizeVoucherRedemption(voucherLockToken, order.id);
+        await this.rewardsWorkflow.finalizeVoucherRedemption(
+          voucherLockToken,
+          order.id,
+        );
       }
       return {
         demoMode: true as const,
@@ -349,10 +380,16 @@ export class PaymentsService {
     }
 
     if (dto.totalCents === 0) {
-      const order = await this.customers.createPendingMemberOrder(customerId, dto);
+      const order = await this.customers.createPendingMemberOrder(
+        customerId,
+        dto,
+      );
       await this.customers.finalizeShopOrderAfterPayment(order.id);
       if (voucherLockToken) {
-        await this.rewardsWorkflow.finalizeVoucherRedemption(voucherLockToken, order.id);
+        await this.rewardsWorkflow.finalizeVoucherRedemption(
+          voucherLockToken,
+          order.id,
+        );
       }
       const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
         where: { id: order.id },
@@ -372,7 +409,8 @@ export class PaymentsService {
     if (!Number.isInteger(subtotalCents) || subtotalCents < 100) {
       throw new BadRequestException({
         code: 'ORDER_MIN_AMOUNT',
-        message: 'Minimum order subtotal is 1.00 in major currency units (100 cents).',
+        message:
+          'Minimum order subtotal is 1.00 in major currency units (100 cents).',
       });
     }
 
@@ -396,7 +434,10 @@ export class PaymentsService {
     const currency =
       this.config.get<string>('XENDIT_CURRENCY')?.trim().toUpperCase() || 'MYR';
 
-    const order = await this.customers.createPendingMemberOrder(customerId, dto);
+    const order = await this.customers.createPendingMemberOrder(
+      customerId,
+      dto,
+    );
     const referenceId = randomUUID();
     const base = this.memberPublicBase();
     const successUrl = `${base}/?tab=shop&shopPayment=success&orderNumber=${encodeURIComponent(String(order.orderNumber))}`;
@@ -430,7 +471,9 @@ export class PaymentsService {
         ? xenditResponse.payment_request_id
         : null;
     const apiStatus =
-      typeof xenditResponse.status === 'string' ? xenditResponse.status : 'UNKNOWN';
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
 
     await this.prisma.paymentIntent.create({
       data: {
@@ -485,7 +528,8 @@ export class PaymentsService {
     if (!this.isDemoMode()) {
       throw new BadRequestException({
         code: 'DEMO_NOT_ENABLED',
-        message: 'Demo payment completion is disabled when PAYMENTS_DEMO_MODE is not true.',
+        message:
+          'Demo payment completion is disabled when PAYMENTS_DEMO_MODE is not true.',
       });
     }
     const order = await this.prisma.customerOrder.findFirst({
@@ -555,12 +599,15 @@ export class PaymentsService {
     });
     if (lock.count === 0) return;
 
-    const meta = intent.metadata as
-      | { orderId?: string; voucherLockToken?: string }
-      | null;
+    const meta = intent.metadata as {
+      orderId?: string;
+      voucherLockToken?: string;
+    } | null;
     const orderId = typeof meta?.orderId === 'string' ? meta.orderId : null;
     const voucherLockToken =
-      meta && typeof meta === 'object' && typeof meta.voucherLockToken === 'string'
+      meta &&
+      typeof meta === 'object' &&
+      typeof meta.voucherLockToken === 'string'
         ? meta.voucherLockToken
         : null;
     if (!orderId) {
@@ -627,11 +674,17 @@ export class PaymentsService {
       });
       if (!intent) return;
       if (intent.purpose === 'wallet_topup') {
-        await this.applyWalletTopUpFromXendit(referenceId, data as XenditPaymentRequestResponse);
+        await this.applyWalletTopUpFromXendit(
+          referenceId,
+          data as XenditPaymentRequestResponse,
+        );
         return;
       }
       if (intent.purpose === 'shop_order') {
-        await this.applyShopOrderFromXendit(referenceId, data as XenditPaymentRequestResponse);
+        await this.applyShopOrderFromXendit(
+          referenceId,
+          data as XenditPaymentRequestResponse,
+        );
         return;
       }
       return;
@@ -650,7 +703,9 @@ export class PaymentsService {
           where: { referenceId, status: { not: 'SUCCEEDED' } },
           data: {
             status: 'FAILED',
-            metadata: mergeMetadata(intent.metadata, { xenditFailure: data }) as object,
+            metadata: mergeMetadata(intent.metadata, {
+              xenditFailure: data,
+            }) as object,
           },
         });
         return;
@@ -680,7 +735,9 @@ export class PaymentsService {
     if (lock.count === 0) return;
 
     const paymentId =
-      typeof _xenditData.payment_id === 'string' ? _xenditData.payment_id : undefined;
+      typeof _xenditData.payment_id === 'string'
+        ? _xenditData.payment_id
+        : undefined;
 
     try {
       await this.wallet.appendTransaction({
@@ -717,7 +774,9 @@ export class PaymentsService {
   private resolveOrderTypeFromSummary(
     fulfillmentSummary: SubmitMemberOrderDto['fulfillmentSummary'],
   ): string | undefined {
-    const first = Array.isArray(fulfillmentSummary) ? fulfillmentSummary[0] : null;
+    const first = Array.isArray(fulfillmentSummary)
+      ? fulfillmentSummary[0]
+      : null;
     if (!first) return undefined;
     const v = String(first).toLowerCase();
     if (v.includes('delivery')) return 'DELIVERY';
@@ -727,7 +786,10 @@ export class PaymentsService {
   }
 
   private computeSubtotal(dto: SubmitMemberOrderDto): number {
-    return dto.lines.reduce((sum, line) => sum + line.unitPriceCents * line.qty, 0);
+    return dto.lines.reduce(
+      (sum, line) => sum + line.unitPriceCents * line.qty,
+      0,
+    );
   }
 }
 

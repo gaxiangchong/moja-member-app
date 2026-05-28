@@ -1,5 +1,11 @@
 import { WalletTxnType } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class AdminWalletAdjustmentDto {
   @IsEnum(WalletTxnType)

@@ -34,7 +34,9 @@ export class MasterDataController {
   listEntries(@Query('category') category?: string) {
     if (!category) return this.master.listEntries();
     if (
-      !Object.values(MasterEntryCategory).includes(category as MasterEntryCategory)
+      !Object.values(MasterEntryCategory).includes(
+        category as MasterEntryCategory,
+      )
     ) {
       return this.master.listEntries();
     }

@@ -1,4 +1,13 @@
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { VoucherOrderType, VoucherType } from '@prisma/client';
 
 export class AdminCreateVoucherCampaignDto {

@@ -106,8 +106,7 @@ export class ImportExportService implements OnModuleInit {
         'phone_e164,amount_cents,reason\n+6591234567,1000,import_adjustment\n',
       LOYALTY_ADJUSTMENT:
         'phone_e164,delta_points,reason\n+6591234567,50,import_bonus\n',
-      VOUCHER_ASSIGNMENT:
-        'phone_e164,voucher_code\n+6591234567,WELCOME10\n',
+      VOUCHER_ASSIGNMENT: 'phone_e164,voucher_code\n+6591234567,WELCOME10\n',
       TAGS: 'phone_e164,tags\n+6591234567,vip;returning\n',
     };
     const name = `template_${kind.toLowerCase()}.csv`;
@@ -139,9 +138,9 @@ export class ImportExportService implements OnModuleInit {
       let headers: string[] = [];
       sheet.eachRow((row, rowNumber) => {
         const vals = row.values as unknown[];
-        const cells = vals.slice(1).map((c) =>
-          c == null ? '' : String(c).trim(),
-        );
+        const cells = vals
+          .slice(1)
+          .map((c) => (c == null ? '' : String(c).trim()));
         if (rowNumber === 1) {
           headers = cells.map(normalizeHeader);
           return;
@@ -167,7 +166,10 @@ export class ImportExportService implements OnModuleInit {
   ) {
     const uploadedBy = auth.actorLabel;
     if (!file?.buffer?.length) {
-      throw new BadRequestException({ code: 'IMPORT_NO_FILE', message: 'Missing file' });
+      throw new BadRequestException({
+        code: 'IMPORT_NO_FILE',
+        message: 'Missing file',
+      });
     }
     const rows = await this.parseUpload(file.buffer, file.originalname);
     const { errors, preview } = this.validateImport(kind, rows);
@@ -240,14 +242,20 @@ export class ImportExportService implements OnModuleInit {
       } else if (kind === ImportBatchKind.WALLET_ADJUSTMENT) {
         const n = Number(row.amount_cents);
         if (!Number.isInteger(n) || n === 0) {
-          errors.push({ row: rowNum, message: 'amount_cents must be non-zero integer' });
+          errors.push({
+            row: rowNum,
+            message: 'amount_cents must be non-zero integer',
+          });
           return;
         }
         preview.push({ phone_e164: phone, amount_cents: n });
       } else if (kind === ImportBatchKind.LOYALTY_ADJUSTMENT) {
         const n = Number(row.delta_points);
         if (!Number.isInteger(n) || n === 0) {
-          errors.push({ row: rowNum, message: 'delta_points must be non-zero integer' });
+          errors.push({
+            row: rowNum,
+            message: 'delta_points must be non-zero integer',
+          });
           return;
         }
         preview.push({ phone_e164: phone, delta_points: n });
@@ -279,13 +287,22 @@ export class ImportExportService implements OnModuleInit {
       where: { id: batchId },
     });
     if (!batch) {
-      throw new NotFoundException({ code: 'IMPORT_BATCH_NOT_FOUND', message: 'Batch not found' });
+      throw new NotFoundException({
+        code: 'IMPORT_BATCH_NOT_FOUND',
+        message: 'Batch not found',
+      });
     }
     if (batch.status !== ImportBatchStatus.PREVIEW) {
-      throw new BadRequestException({ code: 'IMPORT_ALREADY_COMMITTED', message: 'Batch not in preview state' });
+      throw new BadRequestException({
+        code: 'IMPORT_ALREADY_COMMITTED',
+        message: 'Batch not in preview state',
+      });
     }
     if (!batch.fileStoragePath) {
-      throw new BadRequestException({ code: 'IMPORT_FILE_MISSING', message: 'Original file not stored' });
+      throw new BadRequestException({
+        code: 'IMPORT_FILE_MISSING',
+        message: 'Original file not stored',
+      });
     }
     const buf = await fs.readFile(batch.fileStoragePath);
     const rows = await this.parseUpload(buf, batch.fileName);
@@ -296,12 +313,11 @@ export class ImportExportService implements OnModuleInit {
     const invalidRowNums = new Set(errors.map((e) => e.row));
 
     for (let idx = 0; idx < rows.length; idx++) {
-      const row = rows[idx]!;
+      const row = rows[idx];
       const rowNum = idx + 2;
       if (invalidRowNums.has(rowNum)) continue;
 
-      const phoneRaw =
-        row.phone_e164 ?? row.phone ?? '';
+      const phoneRaw = row.phone_e164 ?? row.phone ?? '';
       let phone: string;
       try {
         phone = this.phones.normalizeToE164(String(phoneRaw));
@@ -359,7 +375,9 @@ export class ImportExportService implements OnModuleInit {
     phone: string,
   ) {
     const customer =
-      (await this.prisma.customer.findUnique({ where: { phoneE164: phone } })) ??
+      (await this.prisma.customer.findUnique({
+        where: { phoneE164: phone },
+      })) ??
       (await this.prisma.customer.create({
         data: {
           phoneE164: phone,
@@ -383,7 +401,9 @@ export class ImportExportService implements OnModuleInit {
           memberTier: row.member_tier || undefined,
           signupSource: row.signup_source || undefined,
           preferredStore: row.preferred_store || undefined,
-          tags: tags.length ? { set: Array.from(new Set([...customer.tags, ...tags])) } : undefined,
+          tags: tags.length
+            ? { set: Array.from(new Set([...customer.tags, ...tags])) }
+            : undefined,
         },
       });
       return;
@@ -470,7 +490,10 @@ export class ImportExportService implements OnModuleInit {
   async getImportBatch(id: string) {
     const b = await this.prisma.importBatch.findUnique({ where: { id } });
     if (!b) {
-      throw new NotFoundException({ code: 'IMPORT_BATCH_NOT_FOUND', message: 'Batch not found' });
+      throw new NotFoundException({
+        code: 'IMPORT_BATCH_NOT_FOUND',
+        message: 'Batch not found',
+      });
     }
     return b;
   }
@@ -488,7 +511,10 @@ export class ImportExportService implements OnModuleInit {
     });
     try {
       const { filename, buffer, rowCount } = await this.buildExport(dto);
-      const outPath = path.join(this.exportDir, `${job.id}.${dto.format === 'XLSX' ? 'xlsx' : 'csv'}`);
+      const outPath = path.join(
+        this.exportDir,
+        `${job.id}.${dto.format === 'XLSX' ? 'xlsx' : 'csv'}`,
+      );
       await fs.writeFile(outPath, buffer);
       await this.prisma.exportJob.update({
         where: { id: job.id },
@@ -535,7 +561,10 @@ export class ImportExportService implements OnModuleInit {
         where: { id: dto.audienceId },
       });
       if (!a) {
-        throw new BadRequestException({ code: 'AUDIENCE_NOT_FOUND', message: 'Audience not found' });
+        throw new BadRequestException({
+          code: 'AUDIENCE_NOT_FOUND',
+          message: 'Audience not found',
+        });
       }
       segmentFilters = a.filters as SegmentFiltersDto;
     }
@@ -548,13 +577,35 @@ export class ImportExportService implements OnModuleInit {
       case 'CUSTOMERS':
         return this.exportCustomers(segmentFilters ?? {}, dto.format, mask);
       case 'WALLET_LEDGER':
-        return this.exportWalletLedger(dto.format, dto.customerId, dateFrom, dateTo);
+        return this.exportWalletLedger(
+          dto.format,
+          dto.customerId,
+          dateFrom,
+          dateTo,
+        );
       case 'POINTS_LEDGER':
-        return this.exportPointsLedger(dto.format, dto.customerId, dateFrom, dateTo);
+        return this.exportPointsLedger(
+          dto.format,
+          dto.customerId,
+          dateFrom,
+          dateTo,
+        );
       case 'VOUCHERS_ISSUED':
-        return this.exportVouchers(dto.format, 'ISSUED', dto.customerId, dateFrom, dateTo);
+        return this.exportVouchers(
+          dto.format,
+          'ISSUED',
+          dto.customerId,
+          dateFrom,
+          dateTo,
+        );
       case 'VOUCHERS_REDEEMED':
-        return this.exportVouchers(dto.format, 'REDEEMED', dto.customerId, dateFrom, dateTo);
+        return this.exportVouchers(
+          dto.format,
+          'REDEEMED',
+          dto.customerId,
+          dateFrom,
+          dateTo,
+        );
       case 'AUDIT_LOGS':
         return this.exportAuditLogs(dto.format, dateFrom, dateTo);
       case 'IMPORT_BATCHES':
@@ -562,7 +613,10 @@ export class ImportExportService implements OnModuleInit {
       case 'SEGMENT_AUDIENCE':
         return this.exportCustomers(segmentFilters ?? {}, dto.format, mask);
       default:
-        throw new BadRequestException({ code: 'EXPORT_UNKNOWN_KIND', message: 'Unknown export kind' });
+        throw new BadRequestException({
+          code: 'EXPORT_UNKNOWN_KIND',
+          message: 'Unknown export kind',
+        });
     }
   }
 
@@ -572,7 +626,10 @@ export class ImportExportService implements OnModuleInit {
     mask: boolean,
   ) {
     const rows: Record<string, unknown>[] = [];
-    for await (const batch of this.segmentation.iterateSegmentIds(filters, 300)) {
+    for await (const batch of this.segmentation.iterateSegmentIds(
+      filters,
+      300,
+    )) {
       const customers = await this.prisma.customer.findMany({
         where: { id: { in: batch } },
         include: { wallet: true, storedWallet: true },
@@ -672,9 +729,7 @@ export class ImportExportService implements OnModuleInit {
     dateTo?: Date,
   ) {
     const dateFilter =
-      dateFrom || dateTo
-        ? { gte: dateFrom, lte: dateTo }
-        : undefined;
+      dateFrom || dateTo ? { gte: dateFrom, lte: dateTo } : undefined;
     const rows = await this.prisma.customerVoucher.findMany({
       where: {
         status,
@@ -757,10 +812,7 @@ export class ImportExportService implements OnModuleInit {
   ): Promise<{ filename: string; buffer: Buffer; rowCount: number }> {
     const rowCount = rows.length;
     if (format === 'CSV') {
-      const cols =
-        rows.length > 0
-          ? Object.keys(rows[0]!)
-          : [];
+      const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
       const csv = stringify(rows, { header: true, columns: cols });
       return {
         filename: `${baseName}.csv`,
@@ -771,7 +823,7 @@ export class ImportExportService implements OnModuleInit {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Export');
     if (rows.length) {
-      const cols = Object.keys(rows[0]!);
+      const cols = Object.keys(rows[0]);
       ws.addRow(cols);
       for (const r of rows) {
         ws.addRow(cols.map((c) => r[c] ?? ''));
@@ -805,10 +857,22 @@ export class ImportExportService implements OnModuleInit {
     });
   }
 
-  async getExportJobFile(jobId: string): Promise<{ path: string; fileName: string }> {
-    const job = await this.prisma.exportJob.findUnique({ where: { id: jobId } });
-    if (!job || job.status !== 'COMPLETED' || !job.storagePath || !job.fileName) {
-      throw new NotFoundException({ code: 'EXPORT_NOT_READY', message: 'Export not available' });
+  async getExportJobFile(
+    jobId: string,
+  ): Promise<{ path: string; fileName: string }> {
+    const job = await this.prisma.exportJob.findUnique({
+      where: { id: jobId },
+    });
+    if (
+      !job ||
+      job.status !== 'COMPLETED' ||
+      !job.storagePath ||
+      !job.fileName
+    ) {
+      throw new NotFoundException({
+        code: 'EXPORT_NOT_READY',
+        message: 'Export not available',
+      });
     }
     return { path: job.storagePath, fileName: job.fileName };
   }
