@@ -342,10 +342,10 @@
     "name": "Truffle Noir",
     "shortDescription": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
     "description": "Our most decadent Basque cheesecake — laced with rich dark chocolate truffle ganache and finished with a deeply caramelised top. For serious chocolate lovers.",
-    "imageUrl": "/images/products/truffle_cheesecake.jpeg",
+    "imageUrl": "/images/products/truffle_cheesecake.jpg",
     "images": [
       {
-        "src": "/images/products/truffle_cheesecake.jpeg",
+        "src": "/images/products/truffle_cheesecake.jpg",
         "alt": "Truffle Noir"
       }
     ],
