@@ -1,0 +1,52 @@
+{
+  "homeFeaturedProductIds": [
+    "caramel-espresso-gateau",
+    "matcha-marmalade",
+    "tiramisu-noir-cheesecake",
+    "truffle-basque-cheesecake",
+    "strawberry-shortcake",
+    "assorted-cookies-jar"
+  ],
+  "shopSections": [
+    {
+      "id": "premium-cake",
+      "title": "Premium Cake",
+      "description": "Signature whole cakes crafted from the finest ingredients. Multi-layer indulgence with contrasting textures and complementary flavours.",
+      "productIds": [
+        "caramel-espresso-gateau",
+        "jasmine-blanc-cheesecake",
+        "matcha-marmalade",
+        "strawberry-shortcake",
+        "mixed-fruit-basque-cheesecake",
+        "pistachio-noir-cheesecake",
+        "tiramisu-noir-cheesecake",
+        "citron-basque-cheesecake",
+        "truffle-basque-cheesecake"
+      ]
+    },
+    {
+      "id": "collection-cake",
+      "title": "Collection Cake",
+      "description": "Everyday loaves, brownies and cookies — classic delights with timeless flavours for any occasion.",
+      "productIds": [
+        "lemon-pound-cake",
+        "banana-walnut-loaf",
+        "chocolate-brownie",
+        "chocolate-chip-soft-cookies",
+        "matcha-pistachio-soft-cookies"
+      ]
+    },
+    {
+      "id": "box-edition",
+      "title": "Box Edition",
+      "description": "Cookie jars curated for gifting and sharing. Thoughtfully packed and ready to bring home.",
+      "productIds": [
+        "assorted-cookies-jar",
+        "butter-cookies-jar",
+        "chocolate-chip-cookies-jar",
+        "chocolate-cookies-jar",
+        "matcha-cookies-jar"
+      ]
+    }
+  ]
+}

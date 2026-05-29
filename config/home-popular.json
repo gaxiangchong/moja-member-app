@@ -1,0 +1,10 @@
+{
+  "productIds": [
+    "caramel-espresso-gateau",
+    "matcha-marmalade",
+    "tiramisu-noir-cheesecake",
+    "truffle-basque-cheesecake",
+    "strawberry-shortcake"
+  ],
+  "maxLimit": 5
+}
