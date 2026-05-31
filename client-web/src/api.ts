@@ -81,6 +81,8 @@ async function parseJson<T>(res: Response): Promise<T> {
 export async function lookupLogin(phone: string): Promise<{
   registered: boolean;
   hasPin: boolean;
+  hasEmail: boolean;
+  maskedEmail: string | null;
 }> {
   const res = await fetch(`${base}/auth/login/lookup`, {
     method: 'POST',
@@ -90,6 +92,8 @@ export async function lookupLogin(phone: string): Promise<{
   const data = await parseJson<{
     registered?: boolean;
     hasPin?: boolean;
+    hasEmail?: boolean;
+    maskedEmail?: string | null;
     message?: string | string[];
   }>(res);
   if (!res.ok) {
@@ -104,12 +108,15 @@ export async function lookupLogin(phone: string): Promise<{
   return {
     registered: Boolean(data.registered),
     hasPin: Boolean(data.hasPin),
+    hasEmail: Boolean(data.hasEmail),
+    maskedEmail: typeof data.maskedEmail === 'string' ? data.maskedEmail : null,
   };
 }
 
 export async function requestOtp(
   phone: string,
   purpose?: 'register' | 'recovery',
+  email?: string,
 ): Promise<{
   sent: boolean;
   channel?: string;
@@ -120,7 +127,11 @@ export async function requestOtp(
   const res = await fetch(`${base}/auth/otp/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, ...(purpose ? { purpose } : {}) }),
+    body: JSON.stringify({
+      phone,
+      ...(purpose ? { purpose } : {}),
+      ...(email?.trim() ? { email: email.trim() } : {}),
+    }),
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -151,15 +162,22 @@ export async function requestOtp(
 export async function verifyOtp(
   phone: string,
   code: string,
-  opts?: { referralCode?: string | null },
+  opts?: { referralCode?: string | null; email?: string | null },
 ): Promise<{
   setupToken: string;
   setupExpiresInSec: number;
   purpose: 'register' | 'recovery';
 }> {
-  const body: { phone: string; code: string; referralCode?: string } = { phone, code };
+  const body: {
+    phone: string;
+    code: string;
+    referralCode?: string;
+    email?: string;
+  } = { phone, code };
   const ref = opts?.referralCode?.trim();
   if (ref) body.referralCode = ref;
+  const email = opts?.email?.trim();
+  if (email) body.email = email;
   const res = await fetch(`${base}/auth/otp/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -25,14 +25,14 @@ export class AuthController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   requestOtp(@Body() dto: RequestOtpDto, @Ip() ip: string) {
-    return this.auth.requestOtp(dto.phone, ip, dto.purpose);
+    return this.auth.requestOtp(dto.phone, ip, dto.purpose, dto.email);
   }
 
   @Post('otp/verify')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(dto.phone, dto.code, dto.referralCode);
+    return this.auth.verifyOtp(dto.phone, dto.code, dto.referralCode, dto.email);
   }
 
   @Post('pin/set-initial')

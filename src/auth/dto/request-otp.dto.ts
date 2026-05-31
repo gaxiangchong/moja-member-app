@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RequestOtpDto {
   @IsString()
@@ -9,4 +9,8 @@ export class RequestOtpDto {
   @IsOptional()
   @IsIn(['register', 'recovery'])
   purpose?: 'register' | 'recovery';
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }

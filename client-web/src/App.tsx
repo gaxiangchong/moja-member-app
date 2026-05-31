@@ -39,7 +39,7 @@ const PENDING_REFERRAL_KEY = 'moja_pending_referral';
 const PENDING_CART_HANDOFF_KEY = 'moja_pending_cart_handoff';
 const PENDING_SHOP_SCREEN_KEY = 'moja_pending_shop_screen';
 
-type Step = 'phone' | 'pin' | 'code' | 'setPin' | 'member';
+type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin' | 'member';
 type OtpFlowPurpose = 'register' | 'recovery';
 type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
@@ -318,6 +318,8 @@ function App() {
   const [step, setStep] = useState<Step>('phone');
   const [tab, setTab] = useState<MemberTab>('home');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [maskedEmailHint, setMaskedEmailHint] = useState<string | null>(null);
   const [loginPin, setLoginPin] = useState('');
   const [code, setCode] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -519,6 +521,8 @@ function App() {
     (res: { channel?: string; _devCode?: string }) => {
       if (res.channel === 'whatsapp') {
         setHint('Check WhatsApp for your verification code.');
+      } else if (res.channel === 'email') {
+        setHint('Check your email inbox for the verification code.');
       } else if (res.channel === 'mock' && res._devCode) {
         setHint(`Test mode (mock): your OTP is ${res._devCode}`);
       } else if (res._devCode) {
@@ -536,7 +540,7 @@ function App() {
     setHint(null);
     setLoading(true);
     try {
-      const { registered, hasPin } = await lookupLogin(phone);
+      const { registered, hasPin, maskedEmail } = await lookupLogin(phone);
       if (registered && hasPin) {
         setStep('pin');
         setLoginPin('');
@@ -544,8 +548,26 @@ function App() {
       }
       const purpose: OtpFlowPurpose =
         registered && !hasPin ? 'recovery' : 'register';
-      const res = await requestOtp(phone, purpose);
       setOtpFlowPurpose(purpose);
+      setMaskedEmailHint(maskedEmail);
+      setEmail('');
+      setOtpExpiresAt(null);
+      setStep('email');
+      setCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const res = await requestOtp(phone, otpFlowPurpose, email);
       setOtpExpiresAt(res.expiresAt ?? null);
       setStep('code');
       setCode('');
@@ -560,19 +582,12 @@ function App() {
   const handleForgotPin = async () => {
     setError(null);
     setHint(null);
-    setLoading(true);
-    try {
-      const res = await requestOtp(phone, 'recovery');
-      setOtpFlowPurpose('recovery');
-      setOtpExpiresAt(res.expiresAt ?? null);
-      setStep('code');
-      setCode('');
-      applyOtpResponseHint(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
+    setOtpFlowPurpose('recovery');
+    setMaskedEmailHint(null);
+    setEmail('');
+    setOtpExpiresAt(null);
+    setStep('email');
+    setCode('');
   };
 
   const handleResendOtp = useCallback(async () => {
@@ -581,7 +596,7 @@ function App() {
     setHint(null);
     setLoading(true);
     try {
-      const res = await requestOtp(phone, otpFlowPurpose);
+      const res = await requestOtp(phone, otpFlowPurpose, email);
       setOtpExpiresAt(res.expiresAt ?? null);
       setCode('');
       applyOtpResponseHint(res);
@@ -590,7 +605,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [applyOtpResponseHint, loading, otpFlowPurpose, phone]);
+  }, [applyOtpResponseHint, email, loading, otpFlowPurpose, phone]);
 
   const submitPinLoginWith = useCallback(
     async (pin: string) => {
@@ -635,6 +650,7 @@ function App() {
         const verified = await verifyOtp(phone, codeValue, {
           referralCode:
             otpFlowPurpose === 'register' ? pendingRef || undefined : undefined,
+          email,
         });
         if (pendingRef && verified.purpose === 'register') {
           sessionStorage.removeItem(PENDING_REFERRAL_KEY);
@@ -652,7 +668,7 @@ function App() {
         setLoading(false);
       }
     },
-    [otpFlowPurpose, phone],
+    [email, otpFlowPurpose, phone],
   );
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -751,6 +767,8 @@ function App() {
     setProfile(null);
     setRewardsData(null);
     setStep('phone');
+    setEmail('');
+    setMaskedEmailHint(null);
     setLoginPin('');
     setCode('');
     setNewPin('');
@@ -848,7 +866,11 @@ function App() {
   }, [profile?.phoneE164]);
 
   const authMode =
-    step === 'phone' || step === 'pin' || step === 'code' || step === 'setPin';
+    step === 'phone' ||
+    step === 'pin' ||
+    step === 'email' ||
+    step === 'code' ||
+    step === 'setPin';
 
   return (
     <div className={`app${authMode ? ' app--auth' : ''}`}>
@@ -908,7 +930,7 @@ function App() {
                         <rect x="4" y="10" width="16" height="11" rx="2" />
                         <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                       </svg>
-                      We'll send a one-time code via WhatsApp. No password needed.
+                      New sign-ins use a one-time code sent to your email.
                     </p>
                   </form>
                 </div>
@@ -959,11 +981,56 @@ function App() {
                     onClick={() => void handleForgotPin()}
                     disabled={loading}
                   >
-                    Use WhatsApp OTP instead
+                    Forgot PIN? Use email OTP
                   </button>
                   <p className="authHelper">
-                    Forgot your PIN? Verify by WhatsApp OTP to set a new one.
+                    Use your registered email to verify and set a new PIN.
                   </p>
+                </div>
+              </section>
+            )}
+
+            {step === 'email' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthBackLink
+                    onClick={() => {
+                      setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
+                      setError(null);
+                      setHint(null);
+                    }}
+                    disabled={loading}
+                  />
+                  <AuthHero icon="chat" />
+                  <h1 className="authTitle">Verify with email</h1>
+                  <p className="authSub">
+                    Enter the email for{' '}
+                    <strong className="authSubStrong">{phone.trim()}</strong> to receive a 6-digit verification code.
+                  </p>
+                  {maskedEmailHint ? (
+                    <p className="authHint">Registered email hint: {maskedEmailHint}</p>
+                  ) : null}
+                  <form onSubmit={handleEmailContinue} className="authForm">
+                    <label htmlFor="email-otp" className="authLabel">Email address</label>
+                    <div className={`authPhoneField${loading ? ' disabled' : ''}`}>
+                      <span className="authPhonePrefix" aria-hidden>✉️</span>
+                      <input
+                        id="email-otp"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@email.com"
+                        value={email}
+                        onChange={(ev) => setEmail(ev.target.value)}
+                        required
+                        disabled={loading}
+                        className="authPhoneInput"
+                      />
+                    </div>
+                    {error && <p className="err authErr">{error}</p>}
+                    <button type="submit" className="authPrimary" disabled={loading}>
+                      {loading ? 'Sending code…' : 'Send code'}
+                    </button>
+                  </form>
                 </div>
               </section>
             )}
@@ -973,7 +1040,7 @@ function App() {
                 <div className="authLayout">
                   <AuthBackLink
                     onClick={() => {
-                      setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
+                      setStep('email');
                       setCode('');
                       setError(null);
                     }}
@@ -983,13 +1050,8 @@ function App() {
                   <AuthHero icon="chat" />
                   <h1 className="authTitle">Enter verification code</h1>
                   <p className="authSub">
-                    We sent a 6-digit code via WhatsApp
-                    {phone.trim() ? (
-                      <>
-                        {' '}to <strong className="authSubStrong">{phone.trim()}</strong>
-                      </>
-                    ) : null}
-                    .
+                    We sent a 6-digit code to{' '}
+                    <strong className="authSubStrong">{email.trim() || 'your email'}</strong>.
                   </p>
                   {hint && <p className="authHint">{hint}</p>}
                   <form onSubmit={handleVerify} className="authForm">
@@ -1066,7 +1128,7 @@ function App() {
                   </h1>
                   <p className="authSub">
                     {setPinPhase === 'first'
-                      ? 'Choose 6 digits. You will use this for quick sign-in instead of WhatsApp.'
+                      ? 'Choose 6 digits. You will use this for quick sign-in instead of requesting a code each time.'
                       : 'Re-enter the same 6 digits to confirm.'}
                   </p>
                   <div className="authPhaseDots" aria-hidden>

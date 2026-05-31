@@ -78,17 +78,24 @@ export class CustomersService {
    */
   async ensureCustomerForPhone(
     phoneE164: string,
-    opts?: { referralCode?: string | null },
+    opts?: { referralCode?: string | null; email?: string | null },
   ) {
+    const normalizedEmail = opts?.email?.trim().toLowerCase() || null;
     const existing = await this.findByPhoneE164(phoneE164);
     if (existing) {
       await this.loyalty.ensureWallet(existing.id);
       await this.wallet.ensureWallet(existing.id);
+      if (normalizedEmail && !existing.email) {
+        return this.prisma.customer.update({
+          where: { id: existing.id },
+          data: { email: normalizedEmail },
+        });
+      }
       if (!existing.referralCode) {
         const code = await this.generateUniqueReferralCode();
         return this.prisma.customer.update({
           where: { id: existing.id },
-          data: { referralCode: code },
+          data: { referralCode: code, ...(normalizedEmail ? { email: normalizedEmail } : {}) },
         });
       }
       return existing;
@@ -105,6 +112,7 @@ export class CustomersService {
       data: {
         phoneE164,
         status: CustomerStatus.DRAFT,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         referralCode,
         referredByCustomerId: referredById,
       },

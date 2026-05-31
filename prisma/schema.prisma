@@ -518,6 +518,8 @@ model CustomerOrderLine {
 model OtpChallenge {
   id         String    @id @default(uuid()) @db.Uuid
   phoneE164  String    @map("phone_e164")
+  email      String?   @map("email")
+  deliveryChannel String @default("dev") @map("delivery_channel") @db.VarChar(20)
   otpHash    String    @map("otp_hash")
   purpose    OtpPurpose @default(REGISTER) @map("purpose")
   expiresAt  DateTime  @map("expires_at")
@@ -533,6 +535,7 @@ model OtpChallenge {
 model OtpRequestLog {
   id        String   @id @default(uuid()) @db.Uuid
   phoneE164 String   @map("phone_e164")
+  email     String?  @map("email")
   ipAddress String?  @map("ip_address")
   createdAt DateTime @default(now()) @map("created_at")
 
