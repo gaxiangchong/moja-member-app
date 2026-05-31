@@ -21,11 +21,32 @@ export class EmailOtpService {
     return Boolean(key && from);
   }
 
+  // Some hosts (e.g. Render's env UI) keep surrounding quotes as part of the
+  // value, unlike dotenv which strips them. A quoted `from` like
+  // `"Moja Maison <x@y.com>"` is rejected by Resend, so normalize defensively.
+  private stripWrappingQuotes(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.length >= 2) {
+      const first = trimmed[0];
+      const last = trimmed[trimmed.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        return trimmed.slice(1, -1).trim();
+      }
+    }
+    return trimmed;
+  }
+
   async sendOtp(email: string, code: string): Promise<void> {
-    const apiKey = this.config.getOrThrow<string>('RESEND_API_KEY').trim();
-    const from = this.config.getOrThrow<string>('OTP_EMAIL_FROM').trim();
+    const apiKey = this.stripWrappingQuotes(
+      this.config.getOrThrow<string>('RESEND_API_KEY'),
+    );
+    const from = this.stripWrappingQuotes(
+      this.config.getOrThrow<string>('OTP_EMAIL_FROM'),
+    );
     const subjectPrefix =
-      this.config.get<string>('OTP_EMAIL_SUBJECT_PREFIX')?.trim() || 'Moja Maison';
+      this.stripWrappingQuotes(
+        this.config.get<string>('OTP_EMAIL_SUBJECT_PREFIX') ?? '',
+      ) || 'Moja Maison';
     const subject = `${subjectPrefix} verification code`;
 
     const html = `

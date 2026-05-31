@@ -18,6 +18,17 @@ async function bootstrap() {
     },
   });
 
+  // Committed static assets (shared by the member client and moja-sites).
+  // e.g. public/images/products/<file> is served at /images/products/<file>.
+  const publicImagesRoot = resolve(process.cwd(), 'public', 'images');
+  app.useStaticAssets(publicImagesRoot, {
+    prefix: '/images/',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    },
+  });
+
   const clientOrigins = process.env.CLIENT_WEB_ORIGIN?.split(',')
     .map((s) => s.trim())
     .filter(Boolean);

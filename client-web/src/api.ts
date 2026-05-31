@@ -61,7 +61,7 @@ export async function fetchPopularProducts(): Promise<PopularProduct[]> {
     if (!Array.isArray(data)) return [];
     return (data as PopularProduct[]).map((p) => ({
       ...p,
-      imageUrl: resolveShopAssetUrl(p.imageUrl),
+      imageUrl: resolveApiAssetUrl(p.imageUrl),
     }));
   } catch {
     return [];
@@ -808,7 +808,7 @@ export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> 
   const items = (Array.isArray(data) ? data : []) as ShopCatalogProduct[];
   return items.map((p) => ({
     ...p,
-    imageUrl: resolveShopAssetUrl(p.imageUrl),
+    imageUrl: resolveApiAssetUrl(p.imageUrl),
     variants: p.variants
       ?.filter((v) => v.available !== false && v.priceCents > 0)
       .map((v) => ({ ...v })),
