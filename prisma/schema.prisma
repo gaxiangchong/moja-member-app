@@ -404,6 +404,8 @@ model Customer {
   status      CustomerStatus @default(DRAFT)
   displayName String?        @map("display_name")
   email       String?
+  /// Opaque SalesPlay POS customer id (returned by the SalesPlay customer API).
+  salesplayCustomerId String? @map("salesplay_customer_id")
   birthday    DateTime?      @db.Date
   gender      String?        @map("gender")
   preferredStore String?     @map("preferred_store")

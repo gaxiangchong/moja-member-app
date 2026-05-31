@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
 import { WalletService } from '../wallet/wallet.service';
+import { SalesplayService } from '../salesplay/salesplay.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 
 function fulfillmentSummaryLinesFromJson(
@@ -27,6 +28,7 @@ export class CustomersService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
+    private readonly salesplay: SalesplayService,
   ) {}
 
   async findByIdOrThrow(id: string) {
@@ -119,7 +121,38 @@ export class CustomersService {
     });
     await this.loyalty.ensureWallet(customer.id);
     await this.wallet.ensureWallet(customer.id);
+    this.syncToSalesplay(customer);
     return customer;
+  }
+
+  /** Fire-and-forget SalesPlay upsert that also stores the returned customer id. */
+  private syncToSalesplay(customer: {
+    id: string;
+    displayName: string | null;
+    phoneE164: string;
+    email: string | null;
+    referralCode: string | null;
+    memberTier: string;
+  }): void {
+    void this.salesplay
+      .syncCustomer({
+        id: customer.id,
+        displayName: customer.displayName,
+        phoneE164: customer.phoneE164,
+        email: customer.email,
+        code: customer.referralCode,
+        memberTier: customer.memberTier,
+      })
+      .then((salesplayCustomerId) => {
+        if (!salesplayCustomerId) return;
+        return this.prisma.customer
+          .update({
+            where: { id: customer.id },
+            data: { salesplayCustomerId },
+          })
+          .then(() => undefined);
+      })
+      .catch(() => undefined);
   }
 
   async getProfileBundle(customerId: string) {
@@ -216,6 +249,7 @@ export class CustomersService {
         marketingConsent: dto.marketingConsent ?? undefined,
       },
     });
+    this.syncToSalesplay(updated);
     return this.getProfileBundle(updated.id);
   }
 

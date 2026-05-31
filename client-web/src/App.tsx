@@ -735,6 +735,19 @@ function App() {
     }
   };
 
+  const [memberIdCopied, setMemberIdCopied] = useState(false);
+  const handleCopyMemberId = useCallback(async () => {
+    const id = profile?.phoneE164?.trim();
+    if (!id) return;
+    try {
+      await navigator.clipboard.writeText(id);
+      setMemberIdCopied(true);
+      window.setTimeout(() => setMemberIdCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }, [profile?.phoneE164]);
+
   const buildInviteUrl = useCallback(() => {
     const code = profile?.referralCode?.trim();
     const base = `${window.location.origin}${window.location.pathname}`;
@@ -807,6 +820,14 @@ function App() {
     if (normalizedTierKey === 'gold') return 'Gold';
     return 'Silver';
   }, [normalizedTierKey]);
+
+  const memberSince = useMemo(() => {
+    const raw = profile?.createdAt;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }, [profile?.createdAt]);
 
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
   const nextTarget = Math.ceil((pointsBalance + 1) / 500) * 500;
@@ -1447,6 +1468,9 @@ function App() {
                 </header>
                 <Card>
                   <h3>{memberName}</h3>
+                  {memberSince ? (
+                    <p className="accountSince">Member since {memberSince}</p>
+                  ) : null}
                   <div
                     className={`tierBanner tierBanner--${normalizedTierKey}`}
                     role="status"
@@ -1455,22 +1479,27 @@ function App() {
                     <span className="tierBanner-label">Member tier</span>
                     <span className="tierBanner-name">{tierDisplayName}</span>
                   </div>
-                </Card>
-                <Card>
-                  <SectionHeader title="Wallet balance" />
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Stored wallet credit is shown for reference. Top-ups and payments run through{' '}
-                    <strong>Shop checkout</strong> (Xendit hosted payment page), not from this screen.
-                  </p>
-                  <p style={{ margin: '8px 0 4px', fontSize: 22, fontWeight: 700, color: '#00348d' }}>
-                    {(profile.storedWallet?.currentWalletBalance ?? 0) / 100}
-                  </p>
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Current balance (major units).
+                  <p className="accountTierHint">
+                    {pointsBalance.toLocaleString()} pts ·{' '}
+                    {pointsToNext > 0
+                      ? `${pointsToNext.toLocaleString()} pts to your next reward`
+                      : 'Reward unlocked — redeem under Rewards'}
                   </p>
                 </Card>
                 <Card>
-                  <SectionHeader title="Personal Info" />
+                  <SectionHeader title="Personal info" />
+                  <button
+                    type="button"
+                    className="profileIdRow"
+                    onClick={() => void handleCopyMemberId()}
+                    aria-label={`Member ID ${profile.phoneE164}, tap to copy`}
+                  >
+                    <span className="profileIdLabel">Member ID · contact</span>
+                    <span className="profileIdValue">{profile.phoneE164}</span>
+                    <span className="profileIdCopy">
+                      {memberIdCopied ? 'Copied ✓' : 'Tap to copy'}
+                    </span>
+                  </button>
                   {profilePersonalIncomplete ? (
                     <p className="profileIncompleteCue" role="status">
                       *Enter your details below
@@ -1496,23 +1525,24 @@ function App() {
                     Friends joined: <strong>{profile.referralCount ?? 0}</strong>
                   </p>
                   <p className="caption" style={{ marginTop: 8 }}>
-                    Share your link so visits count toward referral rewards. Open “Share App” from Home or here.
+                    Share your link so friends’ visits count toward referral rewards.
                   </p>
-                  <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>
-                    Copy invite link
+                  <button type="button" className="rowAction primary" onClick={() => setShareOpen(true)}>
+                    Share app &amp; invite
                   </button>
                   {(profile.favoriteProducts?.length ?? 0) > 0 ? (
                     <div style={{ marginTop: 12 }}>
                       <p className="caption" style={{ margin: '0 0 6px' }}>
                         Top picks (from your orders)
                       </p>
-                      <ul className="caption" style={{ margin: 0, paddingLeft: 18 }}>
+                      <div className="favChips">
                         {(profile.favoriteProducts ?? []).map((f) => (
-                          <li key={f.productId}>
-                            {f.name} × {f.totalQty}
-                          </li>
+                          <span key={f.productId} className="favChip">
+                            {f.name}
+                            <span className="favChipQty">×{f.totalQty}</span>
+                          </span>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   ) : (
                     <p className="caption" style={{ marginTop: 12 }}>
@@ -1536,12 +1566,6 @@ function App() {
                     >
                       Vouchers &amp; rewards
                     </button>
-                  </div>
-                </Card>
-                <Card>
-                  <SectionHeader title="Actions" />
-                  <div className="profileActions">
-                    <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>Share App</button>
                   </div>
                 </Card>
                 <Card>
