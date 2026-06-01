@@ -122,10 +122,10 @@
     "name": "Maison Strawberry Short Cake",
     "shortDescription": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
     "description": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
-    "imageUrl": "/images/products/strawberry_shortcake.png",
+    "imageUrl": "/images/products/strawberry_shortcake_v2.png",
     "images": [
       {
-        "src": "/images/products/strawberry_shortcake.png",
+        "src": "/images/products/strawberry_shortcake_v2.png",
         "alt": "Maison Strawberry Short Cake"
       }
     ],
@@ -198,10 +198,10 @@
     "name": "Jasmine Blanc",
     "shortDescription": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
     "description": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
-    "imageUrl": "/images/products/matcha_crepe_cake.png",
+    "imageUrl": "/images/products/Jasmine_blanc.png",
     "images": [
       {
-        "src": "/images/products/matcha_crepe_cake.png",
+        "src": "/images/products/Jasmine_blanc.png",
         "alt": "Jasmine Blanc"
       }
     ],
