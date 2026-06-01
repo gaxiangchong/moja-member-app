@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CustomerStatus, Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,12 +26,28 @@ function fulfillmentSummaryLinesFromJson(
 
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
     private readonly salesplay: SalesplayService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Earn rate (points per unit of currency spent). Unified across channels —
+   * both in-store (SalesPlay webhook) and online (member-app shop) read this.
+   * Legacy `SALESPLAY_POINTS_PER_UNIT` is honored as a fallback so existing
+   * deployments keep working without an env change.
+   */
+  private loyaltyPointsPerCurrencyUnit(): number {
+    const unified = Number(this.config.get<string>('LOYALTY_POINTS_PER_RM'));
+    if (Number.isFinite(unified) && unified > 0) return unified;
+    const legacy = Number(this.config.get<string>('SALESPLAY_POINTS_PER_UNIT'));
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : 1;
+  }
 
   async findByIdOrThrow(id: string) {
     const customer = await this.prisma.customer.findUnique({
@@ -399,9 +417,14 @@ export class CustomersService {
   }
 
   /**
-   * Marks a pending shop order as placed and applies stored-wallet lifetime spend (idempotent).
+   * Marks a pending shop order as placed, increments lifetime spend, and
+   * credits loyalty points to the universal `loyalty_wallets` ledger — the
+   * same place SalesPlay POS receipts write to. All work is atomic in one
+   * transaction. Idempotency is guarded by the `pending_payment → placed`
+   * status transition: subsequent calls return early without re-awarding.
    */
   async finalizeShopOrderAfterPayment(orderId: string): Promise<void> {
+    const pointsPerRm = this.loyaltyPointsPerCurrencyUnit();
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
@@ -429,6 +452,28 @@ export class CustomersService {
           lifetimeSpentCents: { increment: order.totalCents },
         },
       });
+
+      // Award loyalty points using the unified earn rate. Floor RM (major
+      // unit) × rate so RM 45.90 @ 1 pt/RM = 45 points — matching SalesPlay's
+      // in-store behavior so members get the same rate whichever channel
+      // they spend through.
+      const amountRm = Math.floor(order.totalCents / 100);
+      const points = Math.floor(amountRm * pointsPerRm);
+      if (points > 0) {
+        const result = await this.loyalty.appendLedgerEntry(
+          {
+            customerId: order.customerId,
+            deltaPoints: points,
+            reason: 'shop_order_purchase',
+            referenceType: 'customer_order',
+            referenceId: order.id,
+          },
+          tx,
+        );
+        this.logger.log(
+          `Awarded ${points} loyalty points for online order ${order.id} (customer=${order.customerId}, balanceAfter=${result.balanceAfter}).`,
+        );
+      }
     });
   }
 

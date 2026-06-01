@@ -84,9 +84,17 @@ export class SalesplayWebhookService {
     }
   }
 
+  /**
+   * Earn rate (points per unit of currency spent). Unified across channels:
+   * `LOYALTY_POINTS_PER_RM` is the canonical env used by both in-store
+   * (SalesPlay) and online (member-app shop). Legacy `SALESPLAY_POINTS_PER_UNIT`
+   * is honored as a fallback so existing deployments keep working.
+   */
   private pointsPerUnit(): number {
-    const raw = Number(this.config.get<string>('SALESPLAY_POINTS_PER_UNIT'));
-    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+    const unified = Number(this.config.get<string>('LOYALTY_POINTS_PER_RM'));
+    if (Number.isFinite(unified) && unified > 0) return unified;
+    const legacy = Number(this.config.get<string>('SALESPLAY_POINTS_PER_UNIT'));
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : 1;
   }
 
   async handleWebhook(

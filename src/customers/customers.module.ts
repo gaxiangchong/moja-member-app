@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { JwtAccessModule } from '../auth/jwt-access.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { WalletModule } from '../wallet/wallet.module';
@@ -8,7 +9,13 @@ import { CustomersService } from './customers.service';
 import { PhoneNormalizerService } from './phone-normalizer.service';
 
 @Module({
-  imports: [LoyaltyModule, JwtAccessModule, WalletModule, SalesplayModule],
+  imports: [
+    ConfigModule,
+    LoyaltyModule,
+    JwtAccessModule,
+    WalletModule,
+    SalesplayModule,
+  ],
   controllers: [CustomersController],
   providers: [CustomersService, PhoneNormalizerService],
   exports: [CustomersService, PhoneNormalizerService],
