@@ -167,6 +167,13 @@ export function ShopFlow({
     createChannelPickerComponent: () => HTMLElement;
   } | null>(null);
   const cardSessionIdRef = useRef<string | null>(null);
+  // When the user clicks the single "Pay" button without a token yet, we
+  // trigger tokenization and resolve this ref's promise from the Xendit
+  // event handlers below. That lets one click do both tokenize + checkout.
+  const pendingTokenizationRef = useRef<{
+    resolve: (token: string) => void;
+    reject: (err: Error) => void;
+  } | null>(null);
 
   const cart = useShopStore((s) => s.cart);
   const addToCart = useShopStore((s) => s.addToCart);
@@ -312,14 +319,42 @@ export function ShopFlow({
       components.addEventListener('submission-ready', () => setCardSubmitReady(true));
       components.addEventListener('submission-not-ready', () => setCardSubmitReady(false));
       components.addEventListener('submission-begin', () => setCardSubmitBusy(true));
-      components.addEventListener('submission-end', () => setCardSubmitBusy(false));
+      components.addEventListener('submission-end', () => {
+        setCardSubmitBusy(false);
+        // If a tokenization request is still pending after submission ends,
+        // session-complete didn't fire — that usually means the card form had
+        // a validation error. Give session-complete a small grace window
+        // (handler order isn't guaranteed) and then reject so the user gets
+        // a clear error and can retry.
+        setTimeout(() => {
+          const pending = pendingTokenizationRef.current;
+          if (pending) {
+            pendingTokenizationRef.current = null;
+            pending.reject(
+              new Error(
+                'Could not verify your card. Please check the details and try again.',
+              ),
+            );
+          }
+        }, 600);
+      });
       components.addEventListener('session-expired-or-canceled', () => {
         setCardSessionError('Card tokenization session expired or canceled. Start a new one.');
+        const pending = pendingTokenizationRef.current;
+        if (pending) {
+          pendingTokenizationRef.current = null;
+          pending.reject(new Error('Card session expired. Please retry.'));
+        }
       });
       components.addEventListener('fatal-error', () => {
-        setCardSessionError(
-          'Card form origin is not authorized for this session. Open checkout from the same HTTPS domain configured in XENDIT_COMPONENTS_ORIGINS.',
-        );
+        const msg =
+          'Card form origin is not authorized for this session. Open checkout from the same HTTPS domain configured in XENDIT_COMPONENTS_ORIGINS.';
+        setCardSessionError(msg);
+        const pending = pendingTokenizationRef.current;
+        if (pending) {
+          pendingTokenizationRef.current = null;
+          pending.reject(new Error(msg));
+        }
       });
       components.addEventListener('session-complete', () => {
         const sid = cardSessionIdRef.current;
@@ -332,10 +367,22 @@ export function ShopFlow({
             }
             setCardPaymentTokenId(state.paymentTokenId);
             setCardSessionError(null);
+            const pending = pendingTokenizationRef.current;
+            if (pending) {
+              pendingTokenizationRef.current = null;
+              pending.resolve(state.paymentTokenId);
+            }
           } catch (err) {
-            setCardSessionError(
-              err instanceof Error ? err.message : 'Could not fetch card token status.',
-            );
+            const e =
+              err instanceof Error
+                ? err
+                : new Error('Could not fetch card token status.');
+            setCardSessionError(e.message);
+            const pending = pendingTokenizationRef.current;
+            if (pending) {
+              pendingTokenizationRef.current = null;
+              pending.reject(e);
+            }
           }
         })();
       });
@@ -368,19 +415,32 @@ export function ShopFlow({
     handleInitCardTokenization,
   ]);
 
-  const handleTokenizeCard = () => {
-    setCardSessionError(null);
-    const sdk = xenditComponentsRef.current;
-    if (!sdk) {
-      setCardSessionError('Initialize card form first.');
-      return;
-    }
-    try {
-      sdk.submit();
-    } catch (err) {
-      setCardSessionError(err instanceof Error ? err.message : 'Card submission failed.');
-    }
-  };
+  // Submits the card form and resolves with the resulting payment token id.
+  // Used by handlePlaceOrder so a single Pay click can both tokenize the
+  // card and create the order without any intermediate user action.
+  const tokenizeCard = useCallback((): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
+      const sdk = xenditComponentsRef.current;
+      if (!sdk) {
+        reject(new Error('Card form is not ready yet. Please wait a moment.'));
+        return;
+      }
+      // Replace any prior in-flight tokenization (shouldn't normally happen
+      // because the Pay button is disabled while busy, but be defensive).
+      const previous = pendingTokenizationRef.current;
+      if (previous) {
+        previous.reject(new Error('Tokenization superseded.'));
+      }
+      pendingTokenizationRef.current = { resolve, reject };
+      setCardSessionError(null);
+      try {
+        sdk.submit();
+      } catch (err) {
+        pendingTokenizationRef.current = null;
+        reject(err instanceof Error ? err : new Error('Card submission failed.'));
+      }
+    });
+  }, []);
 
   const handleApplyVoucherCode = () => {
     const code = voucherCodeInput.trim();
@@ -415,16 +475,21 @@ export function ShopFlow({
       setCheckoutErrors(['Select a payment method.']);
       return;
     }
-    if (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim()) {
-      setCheckoutErrors(['Generate a card payment token first.']);
-      return;
-    }
-    if (
-      paymentMethodMode === 'card_token' &&
-      !cardPaymentTokenId.trim().toLowerCase().startsWith('pt-')
-    ) {
-      setCheckoutErrors(['Card payment token ID must start with "pt-".']);
-      return;
+    if (paymentMethodMode === 'card_token') {
+      if (cardSessionLoading || !cardSessionId) {
+        setCheckoutErrors(['Card form is still loading. Please wait a moment.']);
+        return;
+      }
+      if (cardSessionError) {
+        setCheckoutErrors([cardSessionError]);
+        return;
+      }
+      // If a token already exists we'll reuse it; otherwise the form must be
+      // valid so we can submit it as part of this Pay click.
+      if (!cardPaymentTokenId.trim() && !cardSubmitReady) {
+        setCheckoutErrors(['Please complete your card details.']);
+        return;
+      }
     }
     setCheckoutErrors(null);
     const lines = fulfillmentSummaryLines(
@@ -442,9 +507,17 @@ export function ShopFlow({
     }));
     setPlacingOrder(true);
     try {
+      // For card payments, generate a payment token as part of this single
+      // click if we don't have one yet. Previously this required a separate
+      // "Use this card" button before the user could continue.
+      let paymentTokenId = cardPaymentTokenId.trim();
+      if (paymentMethodMode === 'card_token' && !paymentTokenId) {
+        paymentTokenId = await tokenizeCard();
+      }
+
       const result = await createShopOrderCheckout({
         ...(paymentMethodMode === 'card_token'
-          ? { paymentTokenId: cardPaymentTokenId.trim() }
+          ? { paymentTokenId }
           : { channelCode: selectedChannelCode.trim() }),
         ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
         idempotencyKey: crypto.randomUUID(),
@@ -897,7 +970,7 @@ export function ShopFlow({
             {paymentMethodMode === 'card_token' ? (
               <div className="shopFieldGrid" style={{ marginTop: 8 }}>
                 <p className="caption" style={{ marginTop: 0 }}>
-                  Fill in card details below, then click "Use this card" to proceed.
+                  Enter your card details below. We&apos;ll verify your card and start payment when you tap Pay.
                 </p>
                 {cardSessionError ? <p className="err">{cardSessionError}</p> : null}
                 {cardSessionLoading ? <p className="caption">Preparing secure card form...</p> : null}
@@ -917,18 +990,6 @@ export function ShopFlow({
                   >
                     Retry card form
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleTokenizeCard}
-                  disabled={!cardSessionId || !cardSubmitReady || cardSubmitBusy}
-                >
-                  {cardSubmitBusy ? 'Tokenizing...' : 'Use this card'}
-                </button>
-                {cardPaymentTokenId ? (
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Token ready: {cardPaymentTokenId}
-                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -970,10 +1031,19 @@ export function ShopFlow({
                 placingOrder ||
                 (paymentMethodMode === 'channel' &&
                   (channelsLoading || (!channels.length && !channelsLoading))) ||
-                (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim())
+                (paymentMethodMode === 'card_token' &&
+                  (cardSessionLoading ||
+                    !cardSessionId ||
+                    Boolean(cardSessionError) ||
+                    (!cardPaymentTokenId.trim() && !cardSubmitReady) ||
+                    cardSubmitBusy))
               }
             >
-              {placingOrder ? 'Starting payment…' : 'Continue to payment'}
+              {placingOrder
+                ? cardSubmitBusy
+                  ? 'Verifying card…'
+                  : 'Starting payment…'
+                : `Pay ${formatRm(total)}`}
             </button>
           </section>
         </>

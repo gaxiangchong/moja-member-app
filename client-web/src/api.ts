@@ -779,6 +779,59 @@ export async function requestShopHandoff(): Promise<{
   };
 }
 
+export type LoyaltyHistoryEntry = {
+  id: string;
+  deltaPoints: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  orderNumber: number | null;
+  createdAt: string;
+};
+
+export type LoyaltyHistoryPayload = {
+  pointsBalance: number;
+  entries: LoyaltyHistoryEntry[];
+};
+
+/**
+ * Member-facing loyalty points history. Includes both in-store (SalesPlay)
+ * and online (shop) entries because they share the same wallet.
+ */
+export async function fetchMyLoyaltyHistory(
+  limit = 25,
+): Promise<LoyaltyHistoryPayload> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(
+    `${base}/customers/me/loyalty-history?limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const data = await parseJson<{
+    message?: string | string[];
+    pointsBalance?: number;
+    entries?: LoyaltyHistoryEntry[];
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Loyalty history failed (${res.status})`);
+  }
+  return {
+    pointsBalance:
+      typeof data.pointsBalance === 'number' ? data.pointsBalance : 0,
+    entries: Array.isArray(data.entries) ? data.entries : [],
+  };
+}
+
 export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
   const token = getToken();
   if (!token) throw new Error('Not signed in');

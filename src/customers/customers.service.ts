@@ -322,6 +322,74 @@ export class CustomersService {
     };
   }
 
+  /**
+   * Member-facing loyalty points history. Returns most recent ledger entries
+   * (capped at 100) and, for entries tied to a customer order, resolves the
+   * public order number so the UI can render "Order #1234" instead of an
+   * opaque UUID. Pure read; safe for the member token guard.
+   */
+  async getMyLoyaltyHistory(
+    customerId: string,
+    rawLimit?: number,
+  ): Promise<{
+    pointsBalance: number;
+    entries: Array<{
+      id: string;
+      deltaPoints: number;
+      balanceAfter: number;
+      reason: string;
+      referenceType: string | null;
+      referenceId: string | null;
+      orderNumber: number | null;
+      createdAt: string;
+    }>;
+  }> {
+    const limit =
+      Number.isInteger(rawLimit) && rawLimit && rawLimit > 0
+        ? Math.min(rawLimit, 100)
+        : 25;
+
+    const [wallet, entries] = await Promise.all([
+      this.prisma.loyaltyWallet.findUnique({ where: { customerId } }),
+      this.prisma.loyaltyLedgerEntry.findMany({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    ]);
+
+    const orderRefIds = entries
+      .filter(
+        (e) => e.referenceType === 'customer_order' && e.referenceId != null,
+      )
+      .map((e) => e.referenceId as string);
+
+    const orders = orderRefIds.length
+      ? await this.prisma.customerOrder.findMany({
+          where: { id: { in: orderRefIds }, customerId },
+          select: { id: true, orderNumber: true },
+        })
+      : [];
+    const orderById = new Map(orders.map((o) => [o.id, o.orderNumber]));
+
+    return {
+      pointsBalance: wallet?.pointsCached ?? 0,
+      entries: entries.map((e) => ({
+        id: e.id,
+        deltaPoints: e.deltaPoints,
+        balanceAfter: e.balanceAfter,
+        reason: e.reason,
+        referenceType: e.referenceType,
+        referenceId: e.referenceId,
+        orderNumber:
+          e.referenceType === 'customer_order' && e.referenceId
+            ? (orderById.get(e.referenceId) ?? null)
+            : null,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    };
+  }
+
   async getMeWallet(customerId: string) {
     const [summary, entries] = await Promise.all([
       this.wallet.getSummary(customerId),

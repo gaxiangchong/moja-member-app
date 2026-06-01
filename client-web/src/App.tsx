@@ -15,6 +15,7 @@ import {
   fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
+  fetchMyLoyaltyHistory,
   fetchPaymentIntentStatus,
   fetchPopularProducts,
   getToken,
@@ -27,6 +28,7 @@ import {
   updateMe,
   verifyOtp,
   type HomeAdSlide,
+  type LoyaltyHistoryEntry,
   type MemberProfile,
   type MemberRewardsPayload,
   type PopularProduct,
@@ -245,6 +247,170 @@ function SectionHeader({
         </button>
       ) : null}
     </div>
+  );
+}
+
+// Human-friendly label for a points ledger entry. We get one string `reason`
+// from the API (e.g. `shop_order_purchase`, `salesplay_purchase`,
+// `redeem_FREE_DRINK_5`, `campaign_points_bonus`) — turn it into something a
+// customer can read without leaking internal codes.
+function humanizeLoyaltyReason(entry: LoyaltyHistoryEntry): string {
+  const reason = String(entry.reason || '').toLowerCase();
+  if (entry.referenceType === 'customer_order' && entry.orderNumber != null) {
+    return `Shop order #${entry.orderNumber}`;
+  }
+  if (reason === 'shop_order_purchase') return 'Shop order';
+  if (reason === 'salesplay_purchase' || entry.referenceType === 'salesplay_receipt') {
+    return 'In-store purchase';
+  }
+  if (reason.startsWith('redeem_')) {
+    const code = reason.slice('redeem_'.length).toUpperCase();
+    return code ? `Redeemed · ${code}` : 'Redeemed reward';
+  }
+  if (reason.startsWith('campaign_')) return 'Campaign bonus';
+  if (reason === 'manual' || entry.referenceType === 'manual') return 'Adjustment';
+  // Fallback: pretty-print "some_reason_code" → "Some reason code"
+  const pretty = reason.replace(/[._-]+/g, ' ').trim();
+  if (!pretty) return 'Loyalty activity';
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+}
+
+function formatLoyaltyDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-MY', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kuala_Lumpur',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function PointsHistoryCard({
+  active,
+}: {
+  /** When true, fetch+display. Lets caller defer load to when the Account tab opens. */
+  active: boolean;
+}) {
+  const [entries, setEntries] = useState<LoyaltyHistoryEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchMyLoyaltyHistory(50)
+      .then((res) => {
+        if (cancelled) return;
+        setEntries(res.entries);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load points history');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  const visible = expanded ? entries ?? [] : (entries ?? []).slice(0, 5);
+  const total = entries?.length ?? 0;
+
+  return (
+    <Card>
+      <SectionHeader title="Points history" />
+      {loading && entries == null ? (
+        <p className="caption">Loading…</p>
+      ) : error ? (
+        <p className="err">{error}</p>
+      ) : !entries || entries.length === 0 ? (
+        <p className="caption" style={{ margin: 0 }}>
+          No points activity yet. Spend in-store or in the shop to start earning.
+        </p>
+      ) : (
+        <>
+          <ul
+            style={{
+              listStyle: 'none',
+              padding: 0,
+              margin: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            {visible.map((e) => {
+              const positive = e.deltaPoints > 0;
+              return (
+                <li
+                  key={e.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(0,0,0,0.06)',
+                    borderRadius: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <strong
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {humanizeLoyaltyReason(e)}
+                    </strong>
+                    <small
+                      className="caption"
+                      style={{ margin: 0, fontSize: 12, color: 'rgba(26,26,26,0.6)' }}
+                    >
+                      {formatLoyaltyDate(e.createdAt)} · Balance{' '}
+                      {e.balanceAfter.toLocaleString()} pts
+                    </small>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: positive ? '#15803d' : '#b91c1c',
+                    }}
+                  >
+                    {positive ? '+' : ''}
+                    {e.deltaPoints.toLocaleString()} pts
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {total > 5 ? (
+            <button
+              type="button"
+              className="textAction"
+              style={{ marginTop: 10 }}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'Show less' : `Show all (${total})`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -1703,6 +1869,8 @@ function App() {
                     </span>
                   </button>
                 </div>
+
+                <PointsHistoryCard active={tab === 'account'} />
 
                 <Card>
                   <SectionHeader
