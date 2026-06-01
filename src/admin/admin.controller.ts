@@ -259,6 +259,24 @@ export class AdminController {
     return this.admin.updateVoucherDefinition(id, dto, auth);
   }
 
+  @Post('voucher-definitions/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }),
+  )
+  uploadVoucherDefinitionImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.admin.attachVoucherDefinitionImage(id, file);
+  }
+
+  @Delete('voucher-definitions/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearVoucherDefinitionImage(@Param('id') id: string) {
+    return this.admin.clearVoucherDefinitionImage(id);
+  }
+
   @Get('voucher-push-rules')
   @RequirePermissions(P.VOUCHER_READ)
   listVoucherPushRules() {

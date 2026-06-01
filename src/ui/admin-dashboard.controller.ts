@@ -1704,7 +1704,22 @@ export class AdminDashboardController {
                     <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
                     <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
                   </div>
-                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://…" /></div>
+                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://… or upload below" /></div>
+                  <div class="form-section">
+                    <label for="rdImageFile">Or upload from file</label>
+                    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                      <div id="rdImageThumb" style="width:160px;height:96px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">No image</div>
+                      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
+                        <input type="file" id="rdImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                          <button type="button" class="btn-outline" id="rdImageUploadBtn">Upload image</button>
+                          <button type="button" class="btn-outline" id="rdImageClearBtn">Remove image</button>
+                        </div>
+                        <p class="field-hint">PNG / JPEG / WEBP / GIF, max 3 MB. Stored on the server's persistent disk so it survives redeploys.</p>
+                        <p class="field-hint" id="rdImageResult"></p>
+                      </div>
+                    </div>
+                  </div>
                   <div class="form-row-2">
                     <div class="form-section"><label for="rdValidFrom">Valid from</label><input type="date" id="rdValidFrom" /></div>
                     <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
@@ -6108,6 +6123,11 @@ export class AdminDashboardController {
       document.getElementById('rdPoints').value = v.pointsCost != null ? String(v.pointsCost) : '';
       document.getElementById('rdCategory').value = v.rewardCategory || '';
       document.getElementById('rdImageUrl').value = v.imageUrl || '';
+      rdUpdateImagePreview();
+      var rdImgFile = document.getElementById('rdImageFile');
+      if (rdImgFile) rdImgFile.value = '';
+      var rdImgOut = document.getElementById('rdImageResult');
+      if (rdImgOut) rdImgOut.textContent = '';
       document.getElementById('rdValidFrom').value = isoDateOnly(v.rewardValidFrom);
       document.getElementById('rdValidUntil').value = isoDateOnly(v.rewardValidUntil);
       document.getElementById('rdSort').value = v.rewardSortOrder != null ? String(v.rewardSortOrder) : '0';
@@ -6120,6 +6140,82 @@ export class AdminDashboardController {
 
     document.getElementById('rewardDefEditorCancel').addEventListener('click', () => {
       document.getElementById('rewardDefEditor').classList.add('hidden');
+    });
+
+    function rdUpdateImagePreview() {
+      var thumb = document.getElementById('rdImageThumb');
+      if (!thumb) return;
+      var url = (document.getElementById('rdImageUrl').value || '').trim();
+      if (url) {
+        thumb.style.backgroundImage = 'url("' + url.replace(/"/g, '\\"') + '")';
+        thumb.textContent = '';
+      } else {
+        thumb.style.backgroundImage = '';
+        thumb.textContent = 'No image';
+      }
+    }
+
+    var rdImageUrlInput = document.getElementById('rdImageUrl');
+    if (rdImageUrlInput) rdImageUrlInput.addEventListener('input', rdUpdateImagePreview);
+
+    async function rdUploadImageFile(id, file) {
+      const headers = { ...getAuthHeaders() };
+      delete headers['Content-Type'];
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/admin/voucher-definitions/' + encodeURIComponent(id) + '/image', {
+        method: 'POST',
+        headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
+    var rdUploadBtn = document.getElementById('rdImageUploadBtn');
+    if (rdUploadBtn) rdUploadBtn.addEventListener('click', async function () {
+      var out = document.getElementById('rdImageResult');
+      var id = document.getElementById('rdEditId').value.trim();
+      var fileInput = document.getElementById('rdImageFile');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!id) { out.textContent = 'Open a voucher series for editing first.'; return; }
+      if (!file) { out.textContent = 'Choose an image file first.'; return; }
+      out.textContent = 'Uploading…';
+      try {
+        var updated = await rdUploadImageFile(id, file);
+        var idx = lastVoucherDefinitions.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastVoucherDefinitions[idx] = updated;
+        document.getElementById('rdImageUrl').value = updated.imageUrl || '';
+        rdUpdateImagePreview();
+        out.textContent = 'Uploaded.';
+        fileInput.value = '';
+        await loadVouchers();
+      } catch (err) {
+        out.textContent = err.message;
+      }
+    });
+
+    var rdClearImgBtn = document.getElementById('rdImageClearBtn');
+    if (rdClearImgBtn) rdClearImgBtn.addEventListener('click', async function () {
+      var out = document.getElementById('rdImageResult');
+      var id = document.getElementById('rdEditId').value.trim();
+      if (!id) { out.textContent = 'Open a voucher series for editing first.'; return; }
+      if (!confirm('Remove the image from this voucher series?')) return;
+      out.textContent = 'Removing…';
+      try {
+        var updated = await apiDelete('/admin/voucher-definitions/' + encodeURIComponent(id) + '/image');
+        var idx = lastVoucherDefinitions.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastVoucherDefinitions[idx] = updated;
+        document.getElementById('rdImageUrl').value = '';
+        rdUpdateImagePreview();
+        out.textContent = 'Removed.';
+        await loadVouchers();
+      } catch (err) {
+        out.textContent = err.message;
+      }
     });
 
     document.getElementById('rdSaveBtn').addEventListener('click', () => {
@@ -6144,6 +6240,7 @@ export class AdminDashboardController {
       apiPatch('/admin/voucher-definitions/' + encodeURIComponent(id), body)
         .then(function () {
           out.textContent = 'Saved.';
+          rdUpdateImagePreview();
           return loadVouchers();
         })
         .catch(function (err) { out.textContent = err.message; });

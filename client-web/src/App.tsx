@@ -51,6 +51,14 @@ type OtpFlowPurpose = 'register' | 'recovery';
 type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
+
+// Feature flag — hide all voucher-related UI for this release. Flip to true
+// when the issued-voucher experience is ready to ship. Hides the Perks
+// page's Vouchers sub-tab, the Home page "My Voucher" summary card, the
+// Account page "My Vouchers" stat card, and the "Vouchers & rewards"
+// activity row link. The underlying voucher data fetch and types are kept
+// intact so re-enabling is just this one flag flip.
+const SHOW_VOUCHERS = false;
 type RewardFilter = 'all' | 'food' | 'drinks';
 type PaymentResult =
   | { status: 'success'; orderNumber: string | null }
@@ -212,18 +220,40 @@ function AdCarousel({ slides }: { slides: HomeAdSlide[] }) {
         {current.body ? <div className="adCarouselBody">{current.body}</div> : null}
       </div>
       {list.length > 1 ? (
-        <div className="adCarouselDots" role="tablist">
-          {list.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className={i === idx ? 'adCarouselDot active' : 'adCarouselDot'}
-              onClick={() => setIdx(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              aria-selected={i === idx}
-            />
-          ))}
-        </div>
+        <>
+          <button
+            type="button"
+            className="adCarouselArrow adCarouselArrowPrev"
+            onClick={() => setIdx((i) => (i - 1 + list.length) % list.length)}
+            aria-label="Previous slide"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="adCarouselArrow adCarouselArrowNext"
+            onClick={() => setIdx((i) => (i + 1) % list.length)}
+            aria-label="Next slide"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="9 6 15 12 9 18" />
+            </svg>
+          </button>
+          <div className="adCarouselDots" role="tablist">
+            {list.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className={i === idx ? 'adCarouselDot active' : 'adCarouselDot'}
+                onClick={() => setIdx(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                aria-selected={i === idx}
+              />
+            ))}
+          </div>
+        </>
       ) : null}
     </section>
   );
@@ -451,35 +481,41 @@ function VoucherCard({
   );
 }
 
+// Voucher redemption minimum-spend rule shown on every catalog card.
+// Single source of truth for the T&C copy so changing the threshold (or
+// migrating to a per-voucher VoucherDefinition.minSpendCents column later)
+// is a one-line edit here. Value in sen so it matches the rest of the app.
+const VOUCHER_MIN_SPEND_CENTS = 2000;
+
+function formatRmCents(cents: number): string {
+  return `RM ${(cents / 100).toFixed(2)}`;
+}
+
 function RewardCard({
   title,
-  description,
+  code,
   points,
-  category,
-  imageUrl,
 }: {
   title: string;
-  description: string;
+  code: string;
   points: number;
-  category: string;
-  imageUrl: string;
 }) {
-  const imageStyle = imageUrl
-    ? { backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5)), url("${imageUrl}")` }
-    : { backgroundImage: 'linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5))' };
   return (
-    <article className="rewardCard">
-      <div
-        className={`rewardImage ${category === 'drinks' ? 'drinks' : 'food'}`}
-        style={imageStyle}
-      />
-      <div className="rewardBody">
-        <strong>{title}</strong>
-        <p>{description}</p>
-        <div className="rewardFoot">
-          <span>{points} pts</span>
-          <button type="button">Redeem</button>
-        </div>
+    <article className="rewardCard rewardTicket">
+      <div className="rewardTicketStub" aria-hidden="true">
+        <span className="rewardTicketStubValue">{points}</span>
+        <span className="rewardTicketStubUnit">pts</span>
+      </div>
+      <div className="rewardTicketBody">
+        <h3 className="rewardTicketTitle">{title}</h3>
+        {code ? <span className="rewardCode">{code}</span> : null}
+        <p className="rewardTerms">
+          <span className="rewardTermsLabel">Terms:</span> Min. spend{' '}
+          {formatRmCents(VOUCHER_MIN_SPEND_CENTS)} to use this voucher.
+        </p>
+        <button type="button" className="rewardRedeemBtn">
+          Redeem voucher
+        </button>
       </div>
     </article>
   );
@@ -515,7 +551,9 @@ function App() {
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
-  const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
+  const [perksSub, setPerksSub] = useState<PerksSub>(
+    SHOW_VOUCHERS ? 'vouchers' : 'rewards',
+  );
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
@@ -1524,51 +1562,72 @@ function App() {
                   </button>
                 </header>
                 <Card className="pointsCard">
-                  <p className="caption">Available points</p>
-                  <h1>{pointsBalance.toLocaleString()} pts</h1>
-                  <div className="progressWrap">
-                    <div className="progressBar" style={{ width: `${progressPct}%` }} />
+                  <div className="pointsCardHead">
+                    <span className="pointsCardEyebrow">Available Points</span>
+                    <span className="pointsCardBadge" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="8" r="6" />
+                        <path d="M8 13l-2 8 6-3 6 3-2-8" />
+                      </svg>
+                      Member
+                    </span>
                   </div>
-                  <p className="caption">{pointsToNext} pts to next reward</p>
+                  <h1 className="pointsCardValue">
+                    {pointsBalance.toLocaleString()}
+                    <span className="pointsCardUnit">pts</span>
+                  </h1>
+                  <div className="pointsCardProgress">
+                    <div className="pointsCardProgressTrack">
+                      <div
+                        className="pointsCardProgressFill"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <p className="pointsCardProgressHint">
+                      {pointsToNext.toLocaleString()} pts to next reward
+                    </p>
+                  </div>
                 </Card>
 
                 <AdCarousel slides={adSlides} />
 
                 <div className="homeSummaryRow">
-                  <button
-                    type="button"
-                    className="pmCard homeSummaryCard"
-                    onClick={() => {
-                      setPerksSub('vouchers');
-                      setTab('perks');
-                    }}
-                    aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
-                  >
-                    <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="7" width="18" height="13" rx="2" />
-                        <path d="M3 11h18" />
-                        <path d="M9 15l2 2 4-4" />
-                      </svg>
-                    </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">My Voucher</span>
-                      <span className="homeSummaryValue">
-                        {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
+                  {SHOW_VOUCHERS && (
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                      aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="7" width="18" height="13" rx="2" />
+                          <path d="M3 11h18" />
+                          <path d="M9 15l2 2 4-4" />
+                        </svg>
                       </span>
-                    </span>
-                  </button>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">My Voucher</span>
+                        <span className="homeSummaryValue">
+                          {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
+                        </span>
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
-                    className="pmCard homeSummaryCard"
+                    className="rewardsHomeCta"
                     onClick={() => {
                       setPerksSub('rewards');
                       setTab('perks');
                     }}
-                    aria-label={`Rewards, ${featuredRewardsCount} available`}
+                    aria-label={`Rewards catalog, ${featuredRewardsCount} available`}
                   >
-                    <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
+                    <span className="rewardsHomeCtaIcon" aria-hidden>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="3" y="8" width="18" height="13" rx="1" />
                         <path d="M12 8v13" />
@@ -1576,11 +1635,21 @@ function App() {
                         <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
                       </svg>
                     </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">Rewards</span>
-                      <span className="homeSummaryValue">
-                        {featuredRewardsCount} {featuredRewardsCount === 1 ? 'Reward' : 'Rewards'}
+                    <span className="rewardsHomeCtaBody">
+                      <span className="rewardsHomeCtaEyebrow">Rewards Catalog</span>
+                      <span className="rewardsHomeCtaTitle">
+                        {featuredRewardsCount > 0
+                          ? `${featuredRewardsCount} ${featuredRewardsCount === 1 ? 'reward' : 'rewards'} available`
+                          : 'Browse rewards'}
                       </span>
+                      <span className="rewardsHomeCtaSubtitle">
+                        Redeem your points for café treats &amp; perks
+                      </span>
+                    </span>
+                    <span className="rewardsHomeCtaChevron" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
                     </span>
                   </button>
                 </div>
@@ -1641,23 +1710,25 @@ function App() {
                 <header className="pmTopBar">
                   <h2>Rewards</h2>
                 </header>
-                <div className="tabsRow">
-                  <button
-                    type="button"
-                    className={perksSub === 'vouchers' ? 'chip active' : 'chip'}
-                    onClick={() => setPerksSub('vouchers')}
-                  >
-                    Vouchers
-                  </button>
-                  <button
-                    type="button"
-                    className={perksSub === 'rewards' ? 'chip active' : 'chip'}
-                    onClick={() => setPerksSub('rewards')}
-                  >
-                    Rewards
-                  </button>
-                </div>
-                {perksSub === 'vouchers' ? (
+                {SHOW_VOUCHERS && (
+                  <div className="tabsRow">
+                    <button
+                      type="button"
+                      className={perksSub === 'vouchers' ? 'chip active' : 'chip'}
+                      onClick={() => setPerksSub('vouchers')}
+                    >
+                      Vouchers
+                    </button>
+                    <button
+                      type="button"
+                      className={perksSub === 'rewards' ? 'chip active' : 'chip'}
+                      onClick={() => setPerksSub('rewards')}
+                    >
+                      Rewards
+                    </button>
+                  </div>
+                )}
+                {SHOW_VOUCHERS && perksSub === 'vouchers' ? (
                   <>
                     <p className="caption" style={{ margin: '6px 0 0' }}>
                       Your <strong>issued</strong> vouchers (added to your wallet). They are not the same as the points catalog under Rewards.
@@ -1721,10 +1792,8 @@ function App() {
                         <RewardCard
                           key={r.id}
                           title={r.title}
-                          description={r.description || r.code}
+                          code={r.code}
                           points={r.pointsCost ?? 0}
-                          category={r.category}
-                          imageUrl={r.imageUrl}
                         />
                       ))}
                       {!filteredRewards.length && (
@@ -1808,27 +1877,29 @@ function App() {
                 </Card>
 
                 <div className="homeSummaryRow accountStatRow">
-                  <button
-                    type="button"
-                    className="pmCard homeSummaryCard"
-                    onClick={() => {
-                      setPerksSub('vouchers');
-                      setTab('perks');
-                    }}
-                    aria-label={`My vouchers, ${activeVouchersCount} active`}
-                  >
-                    <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="7" width="18" height="13" rx="2" />
-                        <path d="M3 11h18" />
-                        <path d="M9 15l2 2 4-4" />
-                      </svg>
-                    </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">My Vouchers</span>
-                      <span className="homeSummaryValue">{activeVouchersCount}</span>
-                    </span>
-                  </button>
+                  {SHOW_VOUCHERS && (
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                      aria-label={`My vouchers, ${activeVouchersCount} active`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="7" width="18" height="13" rx="2" />
+                          <path d="M3 11h18" />
+                          <path d="M9 15l2 2 4-4" />
+                        </svg>
+                      </span>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">My Vouchers</span>
+                        <span className="homeSummaryValue">{activeVouchersCount}</span>
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1995,11 +2066,11 @@ function App() {
                       type="button"
                       className="rowAction"
                       onClick={() => {
-                        setPerksSub('vouchers');
+                        setPerksSub(SHOW_VOUCHERS ? 'vouchers' : 'rewards');
                         setTab('perks');
                       }}
                     >
-                      Vouchers &amp; rewards
+                      {SHOW_VOUCHERS ? 'Vouchers & rewards' : 'Rewards'}
                     </button>
                   </div>
                 </Card>
