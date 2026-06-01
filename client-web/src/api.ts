@@ -335,6 +335,68 @@ export async function createXenditCardTokenSession(): Promise<{
   };
 }
 
+export type PaymentIntentStatus = {
+  referenceId: string;
+  status: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | string;
+  purpose: 'shop_order' | 'wallet_topup' | string;
+  channelCode: string;
+  currency: string;
+  amountCents: number;
+  orderId: string | null;
+  orderNumber: number | null;
+  updatedAt: string;
+};
+
+/**
+ * Polled by the member web app to detect payment completion when an e-wallet
+ * (e.g. Touch 'n Go) doesn't return the user to the app after success.
+ */
+export async function fetchPaymentIntentStatus(
+  referenceId: string,
+): Promise<PaymentIntentStatus> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(
+    `${base}/payments/intent/${encodeURIComponent(referenceId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const data = await parseJson<{
+    message?: string | string[];
+    referenceId?: string;
+    status?: string;
+    purpose?: string;
+    channelCode?: string;
+    currency?: string;
+    amountCents?: number;
+    orderId?: string | null;
+    orderNumber?: number | null;
+    updatedAt?: string;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Payment intent status failed (${res.status})`);
+  }
+  return {
+    referenceId: data.referenceId ?? referenceId,
+    status: (data.status ?? 'UNKNOWN') as PaymentIntentStatus['status'],
+    purpose: (data.purpose ?? 'unknown') as PaymentIntentStatus['purpose'],
+    channelCode: data.channelCode ?? '',
+    currency: data.currency ?? '',
+    amountCents: typeof data.amountCents === 'number' ? data.amountCents : 0,
+    orderId: typeof data.orderId === 'string' ? data.orderId : null,
+    orderNumber: typeof data.orderNumber === 'number' ? data.orderNumber : null,
+    updatedAt: data.updatedAt ?? new Date().toISOString(),
+  };
+}
+
 export async function getXenditCardTokenSessionStatus(paymentSessionId: string): Promise<{
   paymentSessionId: string;
   status: string;

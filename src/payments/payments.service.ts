@@ -10,6 +10,7 @@ import { WalletTxnType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
+import { ReceiptEmailService } from '../notifications/receipt-email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RewardsWorkflowService } from '../rewards-workflow/rewards-workflow.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -36,6 +37,7 @@ export class PaymentsService {
     private readonly wallet: WalletService,
     private readonly customers: CustomersService,
     private readonly rewardsWorkflow: RewardsWorkflowService,
+    private readonly receiptEmail: ReceiptEmailService,
   ) {}
 
   private memberPublicBase(): string {
@@ -572,6 +574,56 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Customer-scoped status lookup for a single payment intent. Used by the
+   * member web app to poll for completion when an e-wallet redirect doesn't
+   * return the user to the app (common with TNG/ShopeePay in live mode).
+   */
+  async getMyPaymentIntentStatus(customerId: string, referenceId: string) {
+    const trimmed = referenceId.trim();
+    if (!trimmed) {
+      throw new NotFoundException({
+        code: 'PAYMENT_INTENT_NOT_FOUND',
+        message: 'Payment intent not found.',
+      });
+    }
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { referenceId: trimmed },
+    });
+    if (!intent || intent.customerId !== customerId) {
+      throw new NotFoundException({
+        code: 'PAYMENT_INTENT_NOT_FOUND',
+        message: 'Payment intent not found.',
+      });
+    }
+
+    let orderId: string | null = null;
+    let orderNumber: number | null = null;
+    if (intent.purpose === 'shop_order') {
+      const meta = intent.metadata as { orderId?: string } | null;
+      orderId = typeof meta?.orderId === 'string' ? meta.orderId : null;
+      if (orderId) {
+        const order = await this.prisma.customerOrder.findUnique({
+          where: { id: orderId },
+          select: { orderNumber: true },
+        });
+        orderNumber = order?.orderNumber ?? null;
+      }
+    }
+
+    return {
+      referenceId: intent.referenceId,
+      status: intent.status,
+      purpose: intent.purpose,
+      channelCode: intent.channelCode,
+      currency: intent.currency,
+      amountCents: intent.amountCents,
+      orderId,
+      orderNumber,
+      updatedAt: intent.updatedAt.toISOString(),
+    };
+  }
+
   private async applyWalletTopUpFromXendit(
     referenceId: string,
     data: XenditPaymentRequestResponse,
@@ -633,6 +685,12 @@ export class PaymentsService {
           status: 'SUCCEEDED',
           metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
         },
+      });
+      // Fire-and-forget: a transient email failure must not roll back a
+      // successful payment, and the webhook should still ack 200 quickly.
+      void this.receiptEmail.sendShopOrderReceipt({
+        orderId,
+        paymentIntentId: intent.id,
       });
     } catch (err) {
       this.logger.error(`Shop order finalize failed for ${referenceId}`, err);
@@ -760,6 +818,10 @@ export class PaymentsService {
           status: 'SUCCEEDED',
           metadata: _xenditData as object,
         },
+      });
+      // Fire-and-forget transactional receipt.
+      void this.receiptEmail.sendWalletTopUpReceipt({
+        paymentIntentId: intent.id,
       });
     } catch (err) {
       this.logger.error(`Wallet top-up failed for ${referenceId}`, err);

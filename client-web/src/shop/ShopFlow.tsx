@@ -26,6 +26,7 @@ import {
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
 } from '../api';
+import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
 
@@ -55,11 +56,72 @@ function todayIsoDate(): string {
   return `${y}-${m}-${day}`;
 }
 
-function paymentChannelIcon(code: string): string {
-  if (code === 'TOUCHNGO' || code === 'TOUCHNGO_MY') return 'TnG';
-  if (code === 'SHOPEEPAY' || code === 'SHOPEEPAY_MY') return 'SP';
-  if (code === 'FPX' || code === 'FPX_MY') return 'FPX';
-  return 'PAY';
+// Channels intentionally hidden from the checkout UI even if returned by the
+// backend's XENDIT_SHOP_CHANNEL_CODES list — e.g. removed by product without
+// requiring an env redeploy.
+const HIDDEN_PAYMENT_CHANNELS = new Set<string>([
+  'SHOPEEPAY',
+  'SHOPEEPAY_MY',
+]);
+
+const CHANNEL_LOGOS: Record<string, string> = {
+  TOUCHNGO: '/images/payments/touchngo.png',
+  TOUCHNGO_MY: '/images/payments/touchngo.png',
+  FPX: '/images/payments/fpx.png',
+  FPX_MY: '/images/payments/fpx.png',
+};
+
+function PaymentChannelIcon({ code, label }: { code: string; label: string }) {
+  const src = CHANNEL_LOGOS[code];
+  if (src) {
+    return (
+      <span
+        style={{
+          minWidth: 56,
+          height: 28,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#ffffff',
+          borderRadius: 8,
+          padding: '2px 6px',
+          border: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <img
+          src={src}
+          alt={label}
+          style={{
+            height: 22,
+            maxWidth: 56,
+            width: 'auto',
+            objectFit: 'contain',
+            display: 'block',
+          }}
+        />
+      </span>
+    );
+  }
+  const fallback =
+    code === 'CARDS' || code === 'CREDIT_CARD' ? 'CARD' : 'PAY';
+  return (
+    <span
+      style={{
+        minWidth: 56,
+        height: 28,
+        borderRadius: 8,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        background: 'rgba(255,255,255,0.16)',
+      }}
+    >
+      {fallback}
+    </span>
+  );
 }
 
 export function ShopFlow({
@@ -179,8 +241,11 @@ export function ShopFlow({
     fetchXenditShopChannels()
       .then((r) => {
         if (!alive) return;
-        setChannels(r.channels);
-        setSelectedChannelCode((prev) => prev || r.channels[0]?.code || '');
+        const visible = r.channels.filter(
+          (c) => !HIDDEN_PAYMENT_CHANNELS.has(c.code.toUpperCase()),
+        );
+        setChannels(visible);
+        setSelectedChannelCode((prev) => prev || visible[0]?.code || '');
       })
       .catch((err) => {
         if (!alive) return;
@@ -431,6 +496,14 @@ export function ShopFlow({
       }
 
       if ('redirectUrl' in result && result.redirectUrl) {
+        // Persist enough state for the app to detect completion when the user
+        // returns later — e-wallets like Touch 'n Go often don't redirect
+        // back to the merchant in live mode.
+        savePendingPayment({
+          referenceId: result.referenceId,
+          orderNumber: result.orderNumber,
+          purpose: 'shop_order',
+        });
         window.location.href = result.redirectUrl;
         return;
       }
@@ -806,22 +879,7 @@ export function ShopFlow({
                           color: 'var(--text, #1a1a1a)',
                         }}
                       >
-                        <span
-                          style={{
-                            minWidth: 42,
-                            height: 24,
-                            borderRadius: 999,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            letterSpacing: 0.3,
-                            background: 'rgba(255,255,255,0.16)',
-                          }}
-                        >
-                          {paymentChannelIcon(c.code)}
-                        </span>
+                        <PaymentChannelIcon code={c.code} label={c.label} />
                         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
                           <strong style={{ fontSize: 13, color: 'var(--primary,rgb(34, 44, 229))' }}>{c.label}</strong>
                           <small className="caption" style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}>

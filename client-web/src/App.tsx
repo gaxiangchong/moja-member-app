@@ -15,6 +15,7 @@ import {
   fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
+  fetchPaymentIntentStatus,
   fetchPopularProducts,
   getToken,
   loginWithPin,
@@ -32,6 +33,10 @@ import {
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
+import {
+  clearPendingPayment,
+  readPendingPayment,
+} from './payments/pendingPayment';
 import { ShopFlow } from './shop/ShopFlow';
 import { useShopStore } from './shop/store/useShopStore';
 
@@ -491,9 +496,11 @@ function App() {
         setTab(t);
       }
       if (shopPay === 'success') {
+        clearPendingPayment();
         setPaymentResult({ status: 'success', orderNumber });
         void loadMemberData();
       } else if (shopPay === 'failed') {
+        clearPendingPayment();
         setPaymentResult({ status: 'failed' });
       }
       if (shopPay || t || orderNumber) {
@@ -506,6 +513,85 @@ function App() {
     } catch {
       /* ignore */
     }
+  }, [step, loadMemberData]);
+
+  // Poll the server for a pending payment whenever the app is open and
+  // visible. E-wallets like Touch 'n Go often don't redirect back to the
+  // merchant in live mode, so we can't rely solely on the success URL.
+  useEffect(() => {
+    if (step !== 'member') return;
+    if (!getToken()) return;
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let pollingStartedAt = 0;
+    const POLL_INTERVAL_MS = 3000;
+    const POLL_MAX_MS = 5 * 60 * 1000;
+
+    const stop = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const tick = async () => {
+      const pending = readPendingPayment();
+      if (!pending) {
+        stop();
+        return;
+      }
+      if (Date.now() - pollingStartedAt > POLL_MAX_MS) {
+        stop();
+        return;
+      }
+      try {
+        const res = await fetchPaymentIntentStatus(pending.referenceId);
+        if (cancelled) return;
+        if (res.status === 'SUCCEEDED') {
+          clearPendingPayment();
+          const orderNumber =
+            res.orderNumber != null
+              ? String(res.orderNumber)
+              : pending.orderNumber;
+          setPaymentResult({ status: 'success', orderNumber });
+          void loadMemberData();
+          stop();
+        } else if (res.status === 'FAILED') {
+          clearPendingPayment();
+          setPaymentResult({ status: 'failed' });
+          stop();
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+
+    const start = () => {
+      if (intervalId !== null) return;
+      if (!readPendingPayment()) return;
+      pollingStartedAt = Date.now();
+      void tick();
+      intervalId = window.setInterval(() => {
+        void tick();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') start();
+    };
+    const onFocus = () => start();
+
+    start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [step, loadMemberData]);
 
   useEffect(() => {
