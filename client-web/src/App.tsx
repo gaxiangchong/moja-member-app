@@ -338,6 +338,7 @@ function App() {
   const [rewardsData, setRewardsData] = useState<MemberRewardsPayload | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [phoneQrUrl, setPhoneQrUrl] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
@@ -728,6 +729,7 @@ function App() {
       });
       setProfile(updated);
       setProfileMsg('Profile updated.');
+      setEditingProfile(false);
     } catch (err) {
       setProfileMsg(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
@@ -806,6 +808,42 @@ function App() {
     const birthdayOk = Boolean(profile.birthday?.trim());
     return !nameOk || !emailOk || !birthdayOk;
   }, [profile]);
+
+  // Open the editor automatically for first-time / incomplete profiles, but
+  // keep saved profiles read-only until the member taps Edit.
+  useEffect(() => {
+    if (!profile) return;
+    const complete =
+      Boolean(profile.displayName?.trim()) &&
+      Boolean(profile.email?.trim()) &&
+      Boolean(profile.birthday?.trim());
+    setEditingProfile(!complete);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-evaluate on identity change
+  }, [profile?.id]);
+
+  const birthdayDisplay = useMemo(() => {
+    const raw = profile?.birthday?.trim();
+    if (!raw) return '';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, [profile?.birthday]);
+
+  const memberInitial = useMemo(
+    () => (memberName.trim()[0] ?? 'M').toUpperCase(),
+    [memberName],
+  );
+
+  const walletCreditsLabel = useMemo(() => {
+    const cents = profile?.storedWallet?.currentWalletBalance ?? 0;
+    return `RM ${(cents / 100).toFixed(2)}`;
+  }, [profile?.storedWallet?.currentWalletBalance]);
+
+  const referralCount = profile?.referralCount ?? 0;
 
   const normalizedTierKey = useMemo(() => {
     const raw = (profile?.memberTier ?? 'silver').trim().toLowerCase();
@@ -927,7 +965,7 @@ function App() {
                         type="tel"
                         inputMode="tel"
                         autoComplete="tel"
-                        placeholder="+60 12 345 6789"
+                        placeholder="6013 345 1345"
                         value={phone}
                         onChange={(ev) => setPhone(ev.target.value)}
                         required
@@ -1466,55 +1504,198 @@ function App() {
                 <header className="pmTopBar">
                   <h2>Account</h2>
                 </header>
-                <Card>
-                  <h3>{memberName}</h3>
-                  {memberSince ? (
-                    <p className="accountSince">Member since {memberSince}</p>
-                  ) : null}
-                  <div
-                    className={`tierBanner tierBanner--${normalizedTierKey}`}
-                    role="status"
-                    aria-label={`Member tier ${tierDisplayName}`}
-                  >
-                    <span className="tierBanner-label">Member tier</span>
-                    <span className="tierBanner-name">{tierDisplayName}</span>
+                <Card className={`accountHeroCard accountHeroCard--${normalizedTierKey}`}>
+                  <div className="accountHeroTop">
+                    <span className="accountAvatar" aria-hidden>
+                      {memberInitial}
+                    </span>
+                    <div className="accountHeroId">
+                      <h3>{memberName}</h3>
+                      {memberSince ? (
+                        <p className="accountSince">Member since {memberSince}</p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={`tierPill tierPill--${normalizedTierKey}`}
+                      aria-label={`Member tier ${tierDisplayName}`}
+                    >
+                      {tierDisplayName}
+                    </span>
+                  </div>
+                  <div className="accountPointsRow">
+                    <span className="accountPointsValue">
+                      {pointsBalance.toLocaleString()}
+                    </span>
+                    <span className="accountPointsUnit">pts</span>
+                  </div>
+                  <div className="progressWrap">
+                    <div
+                      className="progressBar"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <div className="tierTrack" aria-hidden>
+                    {(['silver', 'gold', 'platinum'] as const).map((t) => (
+                      <span
+                        key={t}
+                        className={`tierTrackStop${normalizedTierKey === t ? ' active' : ''}`}
+                      >
+                        {t === 'silver'
+                          ? 'Silver'
+                          : t === 'gold'
+                            ? 'Gold'
+                            : 'Platinum'}
+                      </span>
+                    ))}
                   </div>
                   <p className="accountTierHint">
-                    {pointsBalance.toLocaleString()} pts ·{' '}
                     {pointsToNext > 0
                       ? `${pointsToNext.toLocaleString()} pts to your next reward`
                       : 'Reward unlocked — redeem under Rewards'}
                   </p>
                 </Card>
+
+                <div className="homeSummaryRow accountStatRow">
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => {
+                      setPerksSub('vouchers');
+                      setTab('perks');
+                    }}
+                    aria-label={`My vouchers, ${activeVouchersCount} active`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="7" width="18" height="13" rx="2" />
+                        <path d="M3 11h18" />
+                        <path d="M9 15l2 2 4-4" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">My Vouchers</span>
+                      <span className="homeSummaryValue">{activeVouchersCount}</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => setTab('home')}
+                    aria-label={`Credits ${walletCreditsLabel}`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--credit" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="2" y="6" width="20" height="13" rx="2" />
+                        <path d="M2 10h20" />
+                        <path d="M6 15h4" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">Credits</span>
+                      <span className="homeSummaryValue">{walletCreditsLabel}</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => setShareOpen(true)}
+                    aria-label={`My referrals, ${referralCount} joined`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--referral" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="9" cy="8" r="3" />
+                        <path d="M3 20a6 6 0 0 1 12 0" />
+                        <path d="M16 11a3 3 0 1 0-1-5.8" />
+                        <path d="M21 20a6 6 0 0 0-5-5.9" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">My Referrals</span>
+                      <span className="homeSummaryValue">{referralCount}</span>
+                    </span>
+                  </button>
+                </div>
+
                 <Card>
-                  <SectionHeader title="Personal info" />
+                  <SectionHeader
+                    title="Personal info"
+                    actionLabel={editingProfile ? undefined : 'Edit'}
+                    onAction={
+                      editingProfile
+                        ? undefined
+                        : () => {
+                            syncFormFromProfile(profile);
+                            setProfileMsg(null);
+                            setEditingProfile(true);
+                          }
+                    }
+                  />
                   <button
                     type="button"
                     className="profileIdRow"
                     onClick={() => void handleCopyMemberId()}
-                    aria-label={`Member ID ${profile.phoneE164}, tap to copy`}
+                    aria-label={`Member ID ${profile.phoneE164}, ❐`}
                   >
                     <span className="profileIdLabel">Member ID · contact</span>
                     <span className="profileIdValue">{profile.phoneE164}</span>
                     <span className="profileIdCopy">
-                      {memberIdCopied ? 'Copied ✓' : 'Tap to copy'}
+                      {memberIdCopied ? 'Copied ✓' : '❐'}
                     </span>
                   </button>
-                  {profilePersonalIncomplete ? (
-                    <p className="profileIncompleteCue" role="status">
-                      *Enter your details below
-                    </p>
-                  ) : null}
-                  <form onSubmit={handleProfileSave}>
-                    <label htmlFor="name">Name</label>
-                    <input id="name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
-                    <label htmlFor="email">Email</label>
-                    <input id="email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="you@email.com" />
-                    <label htmlFor="birthday">Birthday</label>
-                    <input id="birthday" type="date" value={formBirthday} onChange={(e) => setFormBirthday(e.target.value)} />
-                    {profileMsg && <p className="hint">{profileMsg}</p>}
-                    <button type="submit" disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save profile'}</button>
-                  </form>
+                  {editingProfile ? (
+                    <>
+                      {profilePersonalIncomplete ? (
+                        <p className="profileIncompleteCue" role="status">
+                          *Complete your details below
+                        </p>
+                      ) : null}
+                      <form onSubmit={handleProfileSave}>
+                        <label htmlFor="name">Name</label>
+                        <input id="name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
+                        <label htmlFor="email">Email</label>
+                        <input id="email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="you@email.com" />
+                        <label htmlFor="birthday">Birthday</label>
+                        <input id="birthday" type="date" value={formBirthday} onChange={(e) => setFormBirthday(e.target.value)} />
+                        {profileMsg && <p className="hint">{profileMsg}</p>}
+                        <div className="profileFormActions">
+                          <button type="submit" className="rowAction primary" disabled={savingProfile}>
+                            {savingProfile ? 'Saving…' : 'Save'}
+                          </button>
+                          {!profilePersonalIncomplete ? (
+                            <button
+                              type="button"
+                              className="rowAction"
+                              onClick={() => {
+                                syncFormFromProfile(profile);
+                                setProfileMsg(null);
+                                setEditingProfile(false);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="profileInfoList">
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Name</span>
+                        <span className="profileInfoValue">{profile.displayName?.trim() || '—'}</span>
+                      </div>
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Email</span>
+                        <span className="profileInfoValue">{profile.email?.trim() || '—'}</span>
+                      </div>
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Birthday</span>
+                        <span className="profileInfoValue">{birthdayDisplay || '—'}</span>
+                      </div>
+                      {profileMsg ? <p className="hint">{profileMsg}</p> : null}
+                    </div>
+                  )}
                 </Card>
                 <Card>
                   <SectionHeader title="Invite & favourites" />
@@ -1525,9 +1706,9 @@ function App() {
                     Friends joined: <strong>{profile.referralCount ?? 0}</strong>
                   </p>
                   <p className="caption" style={{ marginTop: 8 }}>
-                    Share your link so friends’ visits count toward referral rewards.
+                    Share your link with friends to enjoy referral rewards
                   </p>
-                  <button type="button" className="rowAction primary" onClick={() => setShareOpen(true)}>
+                  <button type="button" className="rowAction primary" style={{ marginTop: 18 }} onClick={() => setShareOpen(true)}>
                     Share app &amp; invite
                   </button>
                   {(profile.favoriteProducts?.length ?? 0) > 0 ? (
