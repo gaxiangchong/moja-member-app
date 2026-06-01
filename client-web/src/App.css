@@ -2213,6 +2213,32 @@ code {
   border-top: 1px solid #e4d7c9;
 }
 
+/* Right-align the primary Pay CTA so the order summary sits on the left
+   and the action sits on the right, occupying about half the row. */
+.shopPayActionRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.shopPayButton {
+  width: 50%;
+  min-width: 160px;
+  max-width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+@media (max-width: 360px) {
+  /* On very narrow phones, allow the button to grow so the label still
+     fits comfortably without wrapping. */
+  .shopPayButton {
+    width: 60%;
+  }
+}
+
 .shopDetailCard {
   padding: 0;
   overflow: hidden;

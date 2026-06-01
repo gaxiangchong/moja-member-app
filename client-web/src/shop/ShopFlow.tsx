@@ -1024,27 +1024,30 @@ export function ShopFlow({
                 <span>{formatRm(total)}</span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void handlePlaceOrder()}
-              disabled={
-                placingOrder ||
-                (paymentMethodMode === 'channel' &&
-                  (channelsLoading || (!channels.length && !channelsLoading))) ||
-                (paymentMethodMode === 'card_token' &&
-                  (cardSessionLoading ||
-                    !cardSessionId ||
-                    Boolean(cardSessionError) ||
-                    (!cardPaymentTokenId.trim() && !cardSubmitReady) ||
-                    cardSubmitBusy))
-              }
-            >
-              {placingOrder
-                ? cardSubmitBusy
-                  ? 'Verifying card…'
-                  : 'Starting payment…'
-                : `Pay ${formatRm(total)}`}
-            </button>
+            <div className="shopPayActionRow">
+              <button
+                type="button"
+                className="shopPayButton"
+                onClick={() => void handlePlaceOrder()}
+                disabled={
+                  placingOrder ||
+                  (paymentMethodMode === 'channel' &&
+                    (channelsLoading || (!channels.length && !channelsLoading))) ||
+                  (paymentMethodMode === 'card_token' &&
+                    (cardSessionLoading ||
+                      !cardSessionId ||
+                      Boolean(cardSessionError) ||
+                      (!cardPaymentTokenId.trim() && !cardSubmitReady) ||
+                      cardSubmitBusy))
+                }
+              >
+                {placingOrder
+                  ? cardSubmitBusy
+                    ? 'Verifying card…'
+                    : 'Starting payment…'
+                  : `Pay ${formatRm(total)}`}
+              </button>
+            </div>
           </section>
         </>
       )}
