@@ -106,6 +106,12 @@ const PRODUCT_IMAGE_ALLOWED_MIME: Record<string, string> = {
 };
 const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
+/** Committed static files under public/images/products/ (case-sensitive on Linux). */
+const CANONICAL_PRODUCT_IMAGE_URL: Record<string, string> = {
+  'jasmine-blanc-cheesecake': '/images/products/jasmine_blanc.png',
+  'strawberry-shortcake': '/images/products/strawberry_shortcake.png',
+};
+
 @Injectable()
 export class ShopCatalogService {
   private filePath(): string {
@@ -158,13 +164,42 @@ export class ShopCatalogService {
     writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
   }
 
+  /** Fix imageUrl drift from moja-sites sync (spaces, wrong case, old filenames). */
+  private repairCanonicalProductImages(
+    items: ShopCatalogProduct[],
+  ): ShopCatalogProduct[] {
+    let changed = false;
+    const out = items.map((p) => {
+      const canonical = CANONICAL_PRODUCT_IMAGE_URL[p.id];
+      if (!canonical) return p;
+      const cur = (p.imageUrl ?? '').trim();
+      const needsFix =
+        !cur ||
+        cur !== canonical ||
+        /\s/.test(cur) ||
+        /Jasmine_blanc/i.test(cur) ||
+        /jasmine blanc/i.test(cur);
+      if (!needsFix) return p;
+      changed = true;
+      const images =
+        Array.isArray(p.images) && p.images.length > 0
+          ? p.images.map((img, i) =>
+              i === 0 ? { ...img, src: canonical } : img,
+            )
+          : [{ src: canonical, alt: p.name }];
+      return { ...p, imageUrl: canonical, images };
+    });
+    if (changed) this.writeAll(out);
+    return out;
+  }
+
   private readAll(): ShopCatalogProduct[] {
     this.ensureFile();
     try {
       const raw = readFileSync(this.filePath(), 'utf-8');
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [...DEFAULT_PRODUCTS];
-      return parsed as ShopCatalogProduct[];
+      return this.repairCanonicalProductImages(parsed as ShopCatalogProduct[]);
     } catch {
       return [...DEFAULT_PRODUCTS];
     }

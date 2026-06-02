@@ -1,9 +1,13 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppModule } from './app.module';
+import {
+  resolveProductImageFile,
+  resolvePublicImagesRoot,
+} from './public-images';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -18,9 +22,26 @@ async function bootstrap() {
     },
   });
 
+  const publicImagesRoot = resolvePublicImagesRoot();
+  const productsDir = resolve(publicImagesRoot, 'products');
+  const logger = new Logger('StaticAssets');
+  if (!existsSync(publicImagesRoot)) {
+    logger.warn(`public/images not found (tried cwd and dist). Product photos may 404.`);
+  } else {
+    logger.log(`Serving /images from ${publicImagesRoot}`);
+  }
+
+  // Case-insensitive product filenames (Windows git vs Linux deploy).
+  const http = app.getHttpAdapter().getInstance();
+  http.get('/images/products/:filename', (req: { params: { filename: string } }, res, next) => {
+    const filePath = resolveProductImageFile(req.params.filename);
+    if (!filePath) return next();
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.sendFile(filePath);
+  });
+
   // Committed static assets (shared by the member client and moja-sites).
-  // e.g. public/images/products/<file> is served at /images/products/<file>.
-  const publicImagesRoot = resolve(process.cwd(), 'public', 'images');
   app.useStaticAssets(publicImagesRoot, {
     prefix: '/images/',
     setHeaders: (res) => {
@@ -28,6 +49,15 @@ async function bootstrap() {
       res.setHeader('Access-Control-Allow-Origin', '*');
     },
   });
+
+  if (existsSync(productsDir)) {
+    const jasmineOk = resolveProductImageFile('jasmine_blanc.png');
+    if (!jasmineOk) {
+      logger.warn(
+        'jasmine_blanc.png missing under public/images/products — commit and deploy the image file.',
+      );
+    }
+  }
 
   const clientOrigins = process.env.CLIENT_WEB_ORIGIN?.split(',')
     .map((s) => s.trim())
