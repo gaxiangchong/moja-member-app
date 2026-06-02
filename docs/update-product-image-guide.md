@@ -104,17 +104,45 @@ If your existing product images live in `public/images/products/...` (the legacy
 
 ---
 
-## Sync from moja-sites (still available, simpler)
+## Sync from moja-sites (manual edits always win)
 
-If you want to pull the entire catalog from `moja-sites/config/products.catalog.json`:
+The admin dashboard → **Shop catalog → Sync from moja-sites** pulls a catalog file (uploaded once via the admin UI, or fetched from `MOJA_SITES_CATALOG_URL`) into the live member catalog.
 
-1. Make sure one of these is set on the API:
-   - `MOJA_SITES_CATALOG_PATH=/abs/path/to/products.catalog.json` *(default: `../moja-sites/config/products.catalog.json` if the sibling repo exists)*, or
-   - `MOJA_SITES_CATALOG_URL=https://your-shop-site.example/config/products.catalog.json`.
-2. Admin dashboard → **Shop catalog → Sync from moja-sites**.
-3. Choose **Sync mode** (usually *Pricing & media only*) → **Preview sync** → review the table → **Apply sync**.
+### How conflicts are resolved
 
-There is no longer a "browse JSON file" picker — the source path is fixed by env config.
+Any field you have edited in the admin dashboard — price, photo, variants, badge, sold-out flag, etc. — is **automatically locked** for that product. Sync will never overwrite locked fields. You'll see:
+
+- A 🔒 **EDITED** badge next to the product name in the catalog table.
+- A "Manual edits protected from sync" panel inside the product edit form, listing exactly which fields are locked.
+- In the Preview Sync table: any locked diff is shown struck-through with a `LOCKED` tag and the row is marked `PROTECTED` instead of `UPDATE`. Apply Sync will leave it untouched.
+
+This means:
+
+- **Update a price in admin → run sync** → your price stays, sync touches everything else.
+- **Upload a new product photo in admin → run sync** → your photo stays, sync still updates other products.
+- **You never need to "win the race" with sync** — admin edits are always the source of truth once made.
+
+### Letting sync take over a product again
+
+If you decide a product should follow whatever is in moja-sites again (e.g. you no longer want a custom price):
+
+1. Open the product in **Shop catalog → Edit product**.
+2. In the yellow **"Manual edits protected from sync"** panel near the bottom, click **"Allow sync to overwrite this product"**.
+3. The next sync will refresh that product from moja-sites.
+
+You can also reset all overrides programmatically by calling `POST /admin/shop-catalog/products/:id/reset-sync-overrides`.
+
+### Catalog source priority
+
+The API looks for the moja-sites catalog in this order:
+
+1. `MOJA_SITES_CATALOG_URL` — public JSON URL (overrides everything else when reachable).
+2. `data/products.catalog.json` — uploaded once via the admin UI; lives on your persistent disk.
+3. `MOJA_SITES_CATALOG_PATH` — absolute filesystem path on the API host.
+4. `config/products.catalog.json` — committed in the repo (if any).
+5. `../moja-sites/config/products.catalog.json` — sibling-repo fallback for local dev.
+
+For Render: just upload the file once via the admin UI (no env vars needed).
 
 ---
 

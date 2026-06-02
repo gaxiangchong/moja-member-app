@@ -56,6 +56,13 @@ export type ShopCatalogProduct = {
   soldOut?: boolean;
   isActive: boolean;
   sortOrder: number;
+  /**
+   * Field names that the admin has manually edited. Sync from moja-sites will
+   * skip these fields so manual prices, photos, and variants don't get
+   * silently reverted on the next sync. Auto-populated by `updateProduct` and
+   * `attachProductImage`. Cleared via the admin "Reset sync overrides" action.
+   */
+  syncOverrides?: string[];
 };
 
 export type ShopCatalogSection = {
@@ -111,6 +118,72 @@ const CANONICAL_PRODUCT_IMAGE_URL: Record<string, string> = {
   'jasmine-blanc-cheesecake': '/images/products/jasmine_blanc.png',
   'strawberry-shortcake': '/images/products/strawberry_shortcake.png',
 };
+
+/**
+ * When the admin edits one of these fields, lock the whole group so sync from
+ * moja-sites skips them. e.g. editing variants also locks basePriceCents and
+ * priceDisplay because they are derived together.
+ */
+const SYNC_LOCK_GROUPS: Record<string, string[]> = {
+  name: ['name'],
+  categoryLabel: ['categoryLabel'],
+  shortDescription: ['shortDescription'],
+  description: ['description'],
+  imageUrl: ['imageUrl', 'images'],
+  images: ['imageUrl', 'images'],
+  basePriceCents: ['basePriceCents', 'priceDisplay', 'variants'],
+  priceDisplay: ['basePriceCents', 'priceDisplay', 'variants'],
+  variants: ['basePriceCents', 'priceDisplay', 'variants'],
+  badge: ['badge'],
+  soldOut: ['soldOut'],
+};
+
+function expandSyncOverrides(fields: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const f of fields) {
+    const group = SYNC_LOCK_GROUPS[f];
+    if (group) {
+      for (const g of group) out.add(g);
+    } else {
+      out.add(f);
+    }
+  }
+  return [...out].sort();
+}
+
+function mergeSyncOverrides(
+  existing: string[] | undefined,
+  added: Iterable<string>,
+): string[] {
+  return expandSyncOverrides(new Set([...(existing ?? []), ...added]));
+}
+
+const COMPARABLE_FIELDS = [
+  'name',
+  'categoryLabel',
+  'shortDescription',
+  'description',
+  'imageUrl',
+  'basePriceCents',
+  'priceDisplay',
+  'variants',
+  'badge',
+  'soldOut',
+] as const;
+
+function detectChangedFields(
+  before: ShopCatalogProduct | undefined,
+  after: ShopCatalogProduct,
+): string[] {
+  if (!before) return [];
+  const changed: string[] = [];
+  for (const field of COMPARABLE_FIELDS) {
+    const a = JSON.stringify((before as Record<string, unknown>)[field] ?? null);
+    const b = JSON.stringify((after as Record<string, unknown>)[field] ?? null);
+    if (a !== b) changed.push(field);
+  }
+  return changed;
+}
 
 @Injectable()
 export class ShopCatalogService {
@@ -441,6 +514,9 @@ export class ShopCatalogService {
         raw.sortOrder != null && Number.isFinite(Number(raw.sortOrder))
           ? Number(raw.sortOrder)
           : (base.sortOrder ?? 0),
+      syncOverrides: Array.isArray(raw.syncOverrides)
+        ? expandSyncOverrides(raw.syncOverrides as string[])
+        : (base.syncOverrides ?? undefined),
     };
   }
 
@@ -471,10 +547,24 @@ export class ShopCatalogService {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
     if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    const next = this.normalizeProduct(input, all[idx]);
+    const before = all[idx];
+    const next = this.normalizeProduct(input, before);
+    const changed = detectChangedFields(before, next);
+    if (changed.length > 0) {
+      next.syncOverrides = mergeSyncOverrides(before.syncOverrides, changed);
+    }
     all[idx] = next;
     this.writeAll(all);
     return next;
+  }
+
+  resetProductSyncOverrides(id: string): ShopCatalogProduct {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
+    all[idx] = { ...all[idx], syncOverrides: undefined };
+    this.writeAll(all);
+    return all[idx];
   }
 
   getPopularConfig(): HomePopularConfig {
@@ -862,7 +952,17 @@ export class ShopCatalogService {
 
     const prevUrl = all[idx].imageUrl;
     const publicUrl = `${PRODUCT_IMAGE_PUBLIC_PREFIX}${filename}`;
-    all[idx] = { ...all[idx], imageUrl: publicUrl };
+    const existingImages = Array.isArray(all[idx].images) ? all[idx].images! : [];
+    const nextImages = [
+      { src: publicUrl, alt: all[idx].name },
+      ...existingImages.filter((img) => img.src !== prevUrl && img.src !== publicUrl),
+    ];
+    all[idx] = {
+      ...all[idx],
+      imageUrl: publicUrl,
+      images: nextImages,
+      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
+    };
     this.writeAll(all);
 
     if (prevUrl && prevUrl !== publicUrl) {
@@ -877,7 +977,12 @@ export class ShopCatalogService {
     if (idx < 0) throw new NotFoundException('Product not found');
     const prev = all[idx].imageUrl;
     if (prev) this.tryRemoveLocalProductImage(prev);
-    all[idx] = { ...all[idx], imageUrl: '' };
+    all[idx] = {
+      ...all[idx],
+      imageUrl: '',
+      images: undefined,
+      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
+    };
     this.writeAll(all);
     return all[idx];
   }

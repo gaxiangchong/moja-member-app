@@ -34,6 +34,8 @@ export type ShopCatalogSyncFieldChange = {
   field: string;
   before: string;
   after: string;
+  /** True when this field is locked by syncOverrides — sync will skip it. */
+  locked?: boolean;
 };
 
 export type ShopCatalogSyncProductChange = {
@@ -41,6 +43,8 @@ export type ShopCatalogSyncProductChange = {
   name: string;
   status: 'update' | 'create' | 'unchanged';
   changes: ShopCatalogSyncFieldChange[];
+  /** Locked field names on this product (admin manual edits). */
+  lockedFields?: string[];
 };
 
 export type ShopCatalogSyncPreview = {
@@ -54,6 +58,8 @@ export type ShopCatalogSyncPreview = {
     toCreate: number;
     unchanged: number;
     onlyInMember: number;
+    /** Number of products with at least one locked field. */
+    lockedProducts: number;
   };
   products: ShopCatalogSyncProductChange[];
   layoutWouldUpdate: boolean;

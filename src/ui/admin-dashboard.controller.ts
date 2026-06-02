@@ -2368,6 +2368,10 @@ export class AdminDashboardController {
                 Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
                 Use this when the shop site and member app show different prices or pictures.
               </p>
+              <div style="padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:13px;color:#065f46;margin-bottom:12px">
+                <strong>Manual edits win.</strong> Any field you have edited in admin (price, photo, variants, etc.) is locked from sync and will <em>not</em> be reverted.
+                To let sync take over a product again, open the product and click <em>Allow sync to overwrite this product</em>.
+              </div>
               <div class="form-section" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
                 <label for="scSitesCatalogFile"><strong>Catalog file on server</strong> (required on Render)</label>
                 <p class="field-hint" id="scSitesCatalogFileHint" style="margin:6px 0 10px">Checking…</p>
@@ -2463,6 +2467,12 @@ export class AdminDashboardController {
               </div>
               <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in shop</label></div>
               <div class="form-section"><label><input type="checkbox" id="scSoldOut" style="width:auto;margin-right:8px" /> Mark sold out</label></div>
+              <div class="form-section" id="scOverridesPanel" style="padding:10px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:none">
+                <strong style="color:#92400e">Manual edits protected from sync</strong>
+                <p class="field-hint" id="scOverridesList" style="margin:6px 0 8px">—</p>
+                <button type="button" class="btn-outline" id="scResetOverridesBtn">Allow sync to overwrite this product</button>
+                <p class="field-hint" id="scResetOverridesResult"></p>
+              </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
                 <button type="button" class="btn-outline" id="scNewBtn">New product</button>
@@ -4460,7 +4470,10 @@ export class AdminDashboardController {
         } else {
           priceCell = slFormatPrice(p.basePriceCents, p.priceDisplay);
         }
-        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+        var lockBadge = (Array.isArray(p.syncOverrides) && p.syncOverrides.length > 0)
+          ? ' <span title="Manual edits — protected from sync" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">\uD83D\uDD12 EDITED</span>'
+          : '';
+        return '<tr><td>' + fmt(p.name) + lockBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
@@ -4552,14 +4565,15 @@ export class AdminDashboardController {
         ' · To update: <strong>' + fmt(s.toUpdate) + '</strong>' +
         ' · To create: <strong>' + fmt(s.toCreate) + '</strong>' +
         ' · Unchanged: ' + fmt(s.unchanged) +
-        (s.onlyInMember ? ' · Only in member: ' + fmt(s.onlyInMember) : '');
+        (s.onlyInMember ? ' · Only in member: ' + fmt(s.onlyInMember) : '') +
+        (s.lockedProducts ? ' · <span style="color:#92400e">Protected by manual edits: ' + fmt(s.lockedProducts) + '</span>' : '');
 
       if (sourceHint) {
         sourceHint.textContent = 'Source: ' + (preview.sourceLabel || preview.source || 'unknown');
       }
 
       var rows = (preview.products || []).filter(function (p) {
-        return p.status !== 'unchanged';
+        return (p.changes && p.changes.length) || (p.lockedFields && p.lockedFields.length);
       });
       if (rows.length === 0) {
         wrap.style.display = 'none';
@@ -4570,20 +4584,26 @@ export class AdminDashboardController {
 
       wrap.style.display = 'block';
       body.innerHTML = rows.map(function (p) {
-        var imageChange = (p.changes || []).find(function (c) { return c.field === 'imageUrl'; });
+        var imageChange = (p.changes || []).find(function (c) { return c.field === 'imageUrl' && !c.locked; });
         var thumbUrl = imageChange ? scResolveShopAssetUrl(imageChange.after) : '';
         if (!thumbUrl) {
           var existing = (lastShopCatalogProducts || []).find(function (x) { return x.id === p.id; });
           thumbUrl = scResolveShopAssetUrl(existing && existing.imageUrl ? existing.imageUrl : '');
         }
         var changesHtml = (p.changes || []).map(function (c) {
-          return '<div style="margin-bottom:4px"><span style="color:#64748b">' + fmt(c.field) + ':</span> ' +
-            fmt(c.before) + ' → <strong>' + fmt(c.after) + '</strong></div>';
+          var lockTag = c.locked ? ' <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px">LOCKED</span>' : '';
+          var beforeAfter = c.locked
+            ? '<span style="color:#94a3b8;text-decoration:line-through">' + fmt(c.before) + ' \u2192 ' + fmt(c.after) + '</span> (kept your edit)'
+            : fmt(c.before) + ' \u2192 <strong>' + fmt(c.after) + '</strong>';
+          return '<div style="margin-bottom:4px"><span style="color:#64748b">' + fmt(c.field) + ':</span> ' + beforeAfter + lockTag + '</div>';
         }).join('');
+        var statusPill = p.status === 'unchanged' && p.lockedFields && p.lockedFields.length
+          ? '<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">PROTECTED</span>'
+          : scSyncStatusPill(p.status);
         return '<tr>' +
           '<td>' + slThumb(thumbUrl) + '</td>' +
           '<td><strong>' + fmt(p.name) + '</strong><br/><span style="color:#64748b;font-size:12px">' + fmt(p.id) + '</span></td>' +
-          '<td>' + scSyncStatusPill(p.status) + '</td>' +
+          '<td>' + statusPill + '</td>' +
           '<td style="font-size:12px">' + (changesHtml || '-') + '</td>' +
         '</tr>';
       }).join('');
@@ -6483,6 +6503,36 @@ export class AdminDashboardController {
       }
     }
 
+    var SC_FIELD_LABELS = {
+      imageUrl: 'Photo',
+      images: 'Photo gallery',
+      basePriceCents: 'Base price',
+      priceDisplay: 'Price label',
+      variants: 'Variants',
+      badge: 'Badge',
+      soldOut: 'Sold-out flag',
+      name: 'Name',
+      categoryLabel: 'Category label',
+      shortDescription: 'Short description',
+      description: 'Description',
+    };
+
+    function scRenderOverridesPanel(p) {
+      var panel = document.getElementById('scOverridesPanel');
+      var list = document.getElementById('scOverridesList');
+      var resetOut = document.getElementById('scResetOverridesResult');
+      if (resetOut) resetOut.textContent = '';
+      if (!panel || !list) return;
+      var locks = (p && Array.isArray(p.syncOverrides)) ? p.syncOverrides : [];
+      if (!locks.length) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = 'block';
+      list.innerHTML = 'Sync from moja-sites will <strong>not</strong> change: ' +
+        locks.map(function (f) { return '<code>' + fmt(SC_FIELD_LABELS[f] || f) + '</code>'; }).join(', ') + '.';
+    }
+
     async function scUploadProductImage(id, file) {
       var headers = Object.assign({}, getAuthHeaders());
       delete headers['Content-Type'];
@@ -6528,6 +6578,7 @@ export class AdminDashboardController {
       var imgOut = document.getElementById('scImageResult');
       if (imgOut) imgOut.textContent = '';
       scUpdateImagePreview();
+      scRenderOverridesPanel(p);
     });
 
     document.getElementById('scNewBtn').addEventListener('click', () => {
@@ -6553,6 +6604,25 @@ export class AdminDashboardController {
       var imgOut = document.getElementById('scImageResult');
       if (imgOut) imgOut.textContent = '';
       scUpdateImagePreview();
+      scRenderOverridesPanel(null);
+    });
+
+    var scResetOverridesBtn = document.getElementById('scResetOverridesBtn');
+    if (scResetOverridesBtn) scResetOverridesBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scResetOverridesResult');
+      var id = document.getElementById('scId').value.trim();
+      if (!id) { if (out) out.textContent = 'No product loaded.'; return; }
+      if (!window.confirm('Allow sync to overwrite this product\u2019s manual edits on the next sync?')) return;
+      if (out) out.textContent = 'Resetting…';
+      try {
+        var updated = await apiPost('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/reset-sync-overrides', {});
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        scRenderOverridesPanel(updated);
+        if (out) out.textContent = 'Sync overrides cleared. The next sync may update this product.';
+      } catch (e) {
+        if (out) out.textContent = e.message;
+      }
     });
 
     var scImageUploadBtn = document.getElementById('scImageUploadBtn');
@@ -6570,6 +6640,7 @@ export class AdminDashboardController {
         if (idx >= 0) lastShopCatalogProducts[idx] = updated;
         document.getElementById('scImageUrl').value = updated.imageUrl || '';
         scUpdateImagePreview();
+        scRenderOverridesPanel(updated);
         fileInput.value = '';
         out.textContent = 'Image uploaded.';
         await loadShopCatalog();
@@ -6591,6 +6662,7 @@ export class AdminDashboardController {
         if (idx >= 0) lastShopCatalogProducts[idx] = updated;
         document.getElementById('scImageUrl').value = updated.imageUrl || '';
         scUpdateImagePreview();
+        scRenderOverridesPanel(updated);
         out.textContent = 'Image removed.';
         await loadShopCatalog();
       } catch (e) {

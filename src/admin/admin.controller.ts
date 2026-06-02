@@ -367,6 +367,12 @@ export class AdminController {
     return this.shopCatalog.clearProductImage(id);
   }
 
+  @Post('shop-catalog/products/:id/reset-sync-overrides')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  resetShopCatalogProductSyncOverrides(@Param('id') id: string) {
+    return this.shopCatalog.resetProductSyncOverrides(id);
+  }
+
   @Get('shop-catalog/popular')
   @RequirePermissions(P.VOUCHER_READ)
   getHomePopularConfig() {
