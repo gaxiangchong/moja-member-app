@@ -3,8 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   applySyncToMemberCatalog,
@@ -88,6 +94,16 @@ const DEFAULT_LAYOUT: ShopCatalogLayout = {
 };
 
 const POPULAR_HARD_MAX = 5;
+
+const PRODUCT_IMAGE_PUBLIC_PREFIX = '/uploads/products/';
+const PRODUCT_IMAGE_ALLOWED_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class ShopCatalogService {
@@ -660,5 +676,91 @@ export class ShopCatalogService {
       productsCreated: createMissing ? preview.summary.toCreate : 0,
       layoutUpdated,
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Product image upload (file from admin's PC → data/uploads/products/<id>-<ts>.<ext>)
+  // The static asset middleware in main.ts serves data/uploads at /uploads/,
+  // so the resulting public URL is /uploads/products/<file>. resolveApiAssetUrl
+  // on the client side prepends the API base, giving the same absolute URL to
+  // the member app and any other consumer (e.g. moja-sites) pointing at this API.
+  // ---------------------------------------------------------------------
+
+  private productImagesDir(): string {
+    return resolve(process.cwd(), 'data', 'uploads', 'products');
+  }
+
+  private tryRemoveLocalProductImage(url: string | null | undefined): void {
+    if (!url) return;
+    if (!url.startsWith(PRODUCT_IMAGE_PUBLIC_PREFIX)) return;
+    const name = url.substring(PRODUCT_IMAGE_PUBLIC_PREFIX.length);
+    if (!/^[a-z0-9._-]+$/i.test(name)) return;
+    const p = resolve(this.productImagesDir(), name);
+    try {
+      if (existsSync(p)) unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  attachProductImage(
+    id: string,
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname?: string;
+      size: number;
+    },
+  ): ShopCatalogProduct {
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException('No file provided');
+    }
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new BadRequestException(
+        `Image too large. Max ${Math.round(
+          PRODUCT_IMAGE_MAX_BYTES / 1024 / 1024,
+        )} MB.`,
+      );
+    }
+    const ext =
+      PRODUCT_IMAGE_ALLOWED_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    const allowedExts = new Set(Object.values(PRODUCT_IMAGE_ALLOWED_MIME));
+    if (!ext || !allowedExts.has(ext)) {
+      throw new BadRequestException(
+        'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      );
+    }
+
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Product not found');
+
+    mkdirSync(this.productImagesDir(), { recursive: true });
+    const safeId = id.replace(/[^a-z0-9_-]/gi, '_');
+    const filename = `${safeId}-${Date.now()}${ext}`;
+    const diskPath = resolve(this.productImagesDir(), filename);
+    writeFileSync(diskPath, file.buffer);
+
+    const prevUrl = all[idx].imageUrl;
+    const publicUrl = `${PRODUCT_IMAGE_PUBLIC_PREFIX}${filename}`;
+    all[idx] = { ...all[idx], imageUrl: publicUrl };
+    this.writeAll(all);
+
+    if (prevUrl && prevUrl !== publicUrl) {
+      this.tryRemoveLocalProductImage(prevUrl);
+    }
+    return all[idx];
+  }
+
+  clearProductImage(id: string): ShopCatalogProduct {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Product not found');
+    const prev = all[idx].imageUrl;
+    if (prev) this.tryRemoveLocalProductImage(prev);
+    all[idx] = { ...all[idx], imageUrl: '' };
+    this.writeAll(all);
+    return all[idx];
   }
 }

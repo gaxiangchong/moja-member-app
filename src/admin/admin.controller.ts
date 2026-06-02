@@ -348,6 +348,24 @@ export class AdminController {
     return this.shopCatalog.updateProduct(id, dto);
   }
 
+  @Post('shop-catalog/products/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  uploadShopCatalogProductImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.shopCatalog.attachProductImage(id, file);
+  }
+
+  @Delete('shop-catalog/products/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearShopCatalogProductImage(@Param('id') id: string) {
+    return this.shopCatalog.clearProductImage(id);
+  }
+
   @Get('shop-catalog/popular')
   @RequirePermissions(P.VOUCHER_READ)
   getHomePopularConfig() {

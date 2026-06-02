@@ -171,6 +171,11 @@ The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem
 |------|---------------|
 | `data/home-ads.slides.json` | Home carousel slide metadata (title, body, order, active flag) |
 | `data/uploads/home-ads/<filename>.{png,jpg,webp,gif}` | Uploaded carousel images, served via `GET /uploads/home-ads/...` |
+| `data/uploads/products/<filename>.{png,jpg,webp,gif}` | Uploaded shop product images, served via `GET /uploads/products/...` |
+| `data/uploads/voucher-defs/<filename>.{png,jpg,webp,gif}` | Uploaded voucher hero images, served via `GET /uploads/voucher-defs/...` |
+| `data/shop-catalog.products.json` | Live shop catalog (prices, descriptions, `imageUrl`, etc.) |
+| `data/shop-catalog.layout.json` | Shop home layout (featured + sections) |
+| `data/home-popular.json` | Home "Popular items" curated list |
 
 `data/` is in `.gitignore`, so on hosts where each deploy spins up a **fresh container** (Render, Railway, Fly, Heroku, Cloud Run, etc.) this folder is empty after every redeploy and the carousel resets to the three hardcoded `DEFAULT_SLIDES` in `src/home-ads/home-ads.service.ts`. Any uploaded images become broken links.
 

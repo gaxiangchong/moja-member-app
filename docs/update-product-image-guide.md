@@ -1,185 +1,154 @@
 # How to update a product image
 
-Quick, no-jargon recipe for swapping the picture used on a shop product (whole cakes, slices, drinks, specials).
+The simple, one-screen flow.
 
-There are two parts to a product image:
-
-1. **The image file** — lives on the API server's filesystem.
-2. **The image URL** stored on the product — points at that file (or any external URL).
-
-Most of the time you only need to deal with one of them.
+> **TL;DR**: Open the admin dashboard → Shop catalog → click the product → click **Upload image** → done. The same image is then served to **both** the member app and moja-sites.
 
 ---
 
-## TL;DR — three common scenarios
+## What changed (June 2026)
 
-| Scenario | What to do |
-|---|---|
-| **Same product, fresh photo, OK to keep filename** | Replace the file in `public/images/products/<filename>` and redeploy. No catalog edit needed. |
-| **Same product, new filename (e.g. `_v3`)** | Add the new file to `public/images/products/`, then update the **Image URL** in the admin dashboard for that product. |
-| **Use a hosted image (CDN, Cloudinary, etc.)** | Just paste the full `https://…` URL into the product's **Image URL** field in the admin dashboard. No file upload. |
+You no longer need to:
+
+- ❌ Drop image files into `public/images/products/` and redeploy.
+- ❌ Type or paste an `imageUrl` path.
+- ❌ Edit any JSON.
+
+Instead:
+
+- ✅ Pick a file from your PC in the admin dashboard.
+- ✅ Click **Upload image**.
+- ✅ The new picture appears immediately on the member app and (on next refresh) on moja-sites.
+
+The "Optional catalog JSON upload" file picker on the **Sync from moja-sites** screen has also been removed — sync always reads from the fixed server path / `MOJA_SITES_CATALOG_URL`.
 
 ---
 
-## Where things live
+## Step-by-step
 
-### Image files (on the API server)
+### 1. Open the product
+
+1. Go to **`https://api.mojamaison.com/admin-dashboard`** (or `http://localhost:3153/admin-dashboard` in dev) and sign in.
+2. Left side nav → **Shop catalog → Products**.
+3. Find the product in the list and click the **Edit** (pencil) icon — or just click the row.
+
+### 2. (First time only) Save the product
+
+If you're creating a brand-new product, fill in the basic fields (Name, Category, etc.) and click **Save product** first. The Upload button needs the product to exist so it knows where to attach the image.
+
+For existing products, skip this step.
+
+### 3. Upload the new image
+
+1. Scroll to the **Product image** section. You'll see a thumbnail (or "No image") on the left and the file controls on the right.
+2. Click the file picker (or drag & drop) and select your image.
+3. Click **Upload image**.
+4. After ~1 second you'll see "Image uploaded." and the thumbnail will refresh.
+
+That's it. The new image is now live.
+
+> **Image guidelines**
+> - Format: PNG, JPEG, WEBP, or GIF.
+> - Size: max **5 MB**.
+> - Recommended dimensions: ~**1200×1200 px** for whole cakes, ~**800×800 px** for slices/drinks.
+> - Compress with [Squoosh](https://squoosh.app/) if your file is heavy.
+
+### 4. Verify
+
+1. Open the member app on the **Shop** tab.
+2. Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R).
+3. The new image should appear on the product card.
+
+---
+
+## Removing an image
+
+1. Open the product in the admin dashboard.
+2. Under **Product image**, click **Remove image**.
+3. Confirm the prompt. The image disappears and the product falls back to "no image".
+
+---
+
+## How does this work for both moja-sites and the member app?
+
+The uploaded file is stored on the API server at:
 
 ```
-moja-member-app/
-└── public/
-    └── images/
-        └── products/
-            ├── caramel_macadamia_cake_v2.png
-            ├── lemon_yuzu_cake_v2.png
-            ├── matcha_marmalade.jpeg
-            └── …
+data/uploads/products/<product-id>-<timestamp>.<ext>
 ```
 
-These are static files served by the API at:
+…and exposed publicly at:
 
 ```
-https://<your-api-host>/images/products/<filename>
+https://api.mojamaison.com/uploads/products/<filename>
 ```
 
-> Locally during dev, this is `http://localhost:3153/images/products/<filename>`.
+The catalog stores the relative path `/uploads/products/<filename>` in the product's `imageUrl` field.
 
-### Product → image link (in the database / catalog JSON)
+- The **member app** prefixes that with the API base URL via `resolveApiAssetUrl(...)` and renders it.
+- **moja-sites** can either:
+  - read the same URL directly (it's a public asset), or
+  - run **Sync from moja-sites** → **Apply sync** to pull the URL into its own catalog.
 
-Each product row has an `imageUrl` field (and optionally an `images[]` gallery), e.g.:
-
-```json
-{
-  "id": "caramel-espresso-gateau",
-  "name": "Caramel Espresso Gateau",
-  "imageUrl": "/images/products/caramel_macadamia_cake_v2.png",
-  "images": [
-    { "src": "/images/products/caramel_macadamia_cake_v2.png", "alt": "..." },
-    { "src": "/images/products/caramel_macadamia_cake.png",    "alt": "..." }
-  ]
-}
-```
-
-Live data on the server: `data/shop-catalog.products.json`
-Seed defaults in repo: `config/shop-catalog.products.json`
-
-You normally **don't edit those JSON files by hand** — use the admin dashboard (Method A below).
+Either way, the image lives in **one place** (the member API) and both surfaces read from it.
 
 ---
 
-## Method A — Update via Admin Dashboard (recommended)
+## Persistence note (production deployments)
 
-Use this when the image file is **already on the server** (or you're using an external URL).
+The upload directory `data/uploads/` is **server-local**. On hosts with ephemeral filesystems (Render, Railway, Fly.io, etc.) you must mount a persistent disk at `data/` or your uploads will disappear on the next deploy.
 
-### Step 1. Add the image file to the server (if it's a new picture)
+See [`DEPLOYMENT.md` § "Persistent storage for `data/`"](./DEPLOYMENT.md) for the exact volume-mount config per host.
 
-If you're keeping the existing filename, skip this step.
-
-If it's a new file:
-
-1. Place the new image in `public/images/products/` of the API repo, e.g.
-   `public/images/products/caramel_espresso_gateau_v3.png`.
-2. Commit it (recommended — these are versioned with the app), push, and **redeploy the API** so the file is on the running server.
-3. Sanity-check it's served by opening, e.g.
-   `https://<your-api-host>/images/products/caramel_espresso_gateau_v3.png`
-   You should see the image. (No "404" / "Cannot GET" page.)
-
-> File tips
-> - Recommended size: ~**1200×1200** for whole cakes, ~**800×800** for slices/drinks.
-> - Format: `.png` or `.jpeg` (`.webp` works too if your CDN/browser supports it).
-> - Keep it under ~500 KB if possible. Compress with [Squoosh](https://squoosh.app/) or `imagemagick`.
-> - Filename: lowercase, ASCII only, words separated with `_` or `-`. No spaces.
-
-### Step 2. Open the admin dashboard
-
-1. Go to `https://<your-api-host>/admin-dashboard` (or `http://localhost:3153/admin-dashboard` in dev).
-2. Sign in with your admin credentials.
-3. In the left side nav, click **Shop catalog → Products**.
-
-### Step 3. Edit the product
-
-1. Find the product row in the list and click the **Edit** (pencil) icon, or click the row.
-2. Locate the **Image URL** field.
-3. Set it to one of:
-   - **Local file**: `/images/products/<your-filename>` — e.g. `/images/products/caramel_espresso_gateau_v3.png`.
-   - **External URL**: `https://cdn.example.com/cakes/caramel-v3.jpg`.
-4. Click **Save**. You should see "Updated." next to the save button.
-
-### Step 4. Verify
-
-1. Open the member app (`client-web`) on the **Shop** tab.
-2. Hard-refresh the page (Cmd/Ctrl+Shift+R) to bust the cache.
-3. The new image should appear on the product card and product detail page.
-
-If it doesn't show up, see [Troubleshooting](#troubleshooting) below.
+If your existing product images live in `public/images/products/...` (the legacy committed-file path), they keep working — they're served at `https://api.mojamaison.com/images/products/<filename>` from the repo. You only need to switch to **Upload image** when you want to change them.
 
 ---
 
-## Method B — Replace the file in place (no admin edit)
+## Sync from moja-sites (still available, simpler)
 
-Use this when the **filename stays the same** and you just want a fresher photo.
+If you want to pull the entire catalog from `moja-sites/config/products.catalog.json`:
 
-1. In the API repo, replace the file:
-   `public/images/products/<existing-filename>` ← new image.
-2. Keep the same filename (e.g. still `caramel_macadamia_cake_v2.png`).
-3. Commit + push + redeploy the API.
-4. In the member app, hard-refresh. Browsers cache by URL, and the URL is unchanged, so users may still see the old image until their cache expires (currently `Cache-Control: max-age=86400` = 1 day).
+1. Make sure one of these is set on the API:
+   - `MOJA_SITES_CATALOG_PATH=/abs/path/to/products.catalog.json` *(default: `../moja-sites/config/products.catalog.json` if the sibling repo exists)*, or
+   - `MOJA_SITES_CATALOG_URL=https://your-shop-site.example/config/products.catalog.json`.
+2. Admin dashboard → **Shop catalog → Sync from moja-sites**.
+3. Choose **Sync mode** (usually *Pricing & media only*) → **Preview sync** → review the table → **Apply sync**.
 
-> Tip: If you need to push a new image to existing users immediately, use Method A with a **new filename** instead. Changing the URL forces the browser to download the new file.
-
----
-
-## Method C — Update the gallery (`images[]`)
-
-The optional `images[]` array drives the multi-image gallery on the product detail page.
-
-Right now the admin dashboard form only edits the **primary `imageUrl`**. To change the gallery you have two options:
-
-1. **Re-import from moja-sites**: Admin dashboard → **Shop catalog → Sync from moja-sites**. The sync replaces `imageUrl` and `images[]` from the source `products.catalog.json`. Useful when the canonical product data lives in the shop site repo.
-2. **Edit the live JSON directly** (advanced): On the server, edit
-   `data/shop-catalog.products.json` and update the `images` array for the product, then restart the API. Make a backup first.
-
----
-
-## Method D — Use an external image (no upload at all)
-
-Useful for one-offs, A/B tests, or when you can't redeploy.
-
-1. Upload the image somewhere public (Cloudinary, S3, your CDN, even a public Google Drive direct link).
-2. Copy the full **`https://…`** URL.
-3. Admin dashboard → product → **Image URL** → paste the full URL → **Save**.
-
-The client recognises any URL starting with `http://` or `https://` and uses it directly.
+There is no longer a "browse JSON file" picker — the source path is fixed by env config.
 
 ---
 
 ## Troubleshooting
 
-**The new image doesn't show up after saving**
-- Hard-refresh the browser (Cmd/Ctrl+Shift+R).
-- Open the URL in a new tab to confirm the file exists:
-  `https://<api-host>/images/products/<filename>`. If you get 404, the file isn't on the server — check Step 1.
-- Check the **Image URL** field has no typo (case matters on Linux servers).
+**Upload button does nothing / "Save the product first" appears**
+You're on a brand-new product that hasn't been saved yet. Click **Save product**, then upload.
 
-**Image is rotated / squished / huge**
-- Re-export at a square aspect (1:1) at 1200×1200 max.
-- Strip EXIF orientation (Squoosh or `magick mogrify -auto-orient`).
+**"Unsupported image type"**
+Convert to PNG, JPEG, WEBP, or GIF.
 
-**Image disappears after a redeploy**
-- Files in `public/images/products/` are committed to git, so they survive redeploys.
-- Files uploaded through the admin (home ads, voucher images) live in `data/uploads/` which is **ephemeral** on some hosts (Render, Railway, Fly.io). For those, mount a persistent volume — see `docs/DEPLOYMENT.md` § "Persistent storage for `data/`".
+**"Image too large"**
+Compress to under 5 MB. Use Squoosh or `magick mogrify -resize 1200x1200 -quality 85`.
 
-**Sync from moja-sites overwrote my custom image**
-- The sync pulls `imageUrl` from `products.catalog.json` in the shop site repo. Either update it there too, or use the sync's **dry-run preview** to skip the `imageUrl` field on that product.
+**Image still old after upload**
+Hard-refresh the browser (Ctrl+Shift+R). The API responds with a fresh URL on every upload (it includes a timestamp), so the browser cache should not be the issue — it's almost always a stale tab.
+
+**Image disappeared after a redeploy**
+Your server doesn't have a persistent volume on `data/`. See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+**moja-sites still shows the old image**
+moja-sites caches its own catalog. Either redeploy moja-sites or run **Sync from moja-sites → Apply sync** if you've made the member API the source of truth.
 
 ---
 
-## Reference: where the code reads the image
+## Reference: file & code locations
 
-For the curious / for reviewers:
-
-- API serves files: `src/main.ts` registers `app.useStaticAssets(public/images, prefix: /images/)`.
-- Product type: `src/shop-catalog/shop-catalog.service.ts` (`ShopCatalogProduct.imageUrl`).
-- Live catalog: `data/shop-catalog.products.json` (created from `config/shop-catalog.products.json` on first boot).
-- Member client resolves to absolute URL: `client-web/src/api.ts` → `resolveApiAssetUrl(p.imageUrl)`.
-- Admin dashboard form: `src/ui/admin-dashboard.controller.ts` → field `scImageUrl`.
+| Concern | Path |
+|---|---|
+| Uploaded files on disk | `data/uploads/products/` |
+| Public URL prefix | `/uploads/products/` *(served by `src/main.ts`)* |
+| Live catalog | `data/shop-catalog.products.json` |
+| Seed defaults (in git) | `config/shop-catalog.products.json` |
+| Upload route | `POST /admin/shop-catalog/products/:id/image` |
+| Clear route | `DELETE /admin/shop-catalog/products/:id/image` |
+| Service code | `src/shop-catalog/shop-catalog.service.ts` (`attachProductImage`, `clearProductImage`) |
+| Admin UI | `src/ui/admin-dashboard.controller.ts` (`scImageFile`, `scImageUploadBtn`, `scImageClearBtn`) |

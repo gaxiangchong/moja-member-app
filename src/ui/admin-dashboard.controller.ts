@@ -2368,18 +2368,12 @@ export class AdminDashboardController {
                 Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
                 Use this when the shop site and member app show different prices or pictures.
               </p>
-              <div class="form-row-2">
-                <div class="form-section">
-                  <label for="scSyncMode">Sync mode</label>
-                  <select id="scSyncMode">
-                    <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
-                    <option value="full">Full product copy (keep visibility &amp; sort order)</option>
-                  </select>
-                </div>
-                <div class="form-section">
-                  <label for="scSyncCatalogFile">Optional catalog JSON upload</label>
-                  <input type="file" id="scSyncCatalogFile" accept=".json,application/json" />
-                </div>
+              <div class="form-section">
+                <label for="scSyncMode">Sync mode</label>
+                <select id="scSyncMode">
+                  <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
+                  <option value="full">Full product copy (keep visibility &amp; sort order)</option>
+                </select>
               </div>
               <div class="form-section">
                 <label><input type="checkbox" id="scSyncCreateMissing" style="width:auto;margin-right:8px" checked /> Add products that exist in moja-sites but not in member catalog</label>
@@ -2422,7 +2416,22 @@ export class AdminDashboardController {
               </div>
               <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
               <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
-              <div class="form-section"><label for="scImageUrl">Image URL</label><input type="text" id="scImageUrl" placeholder="/images/products/… or https://..." /></div>
+              <div class="form-section">
+                <label for="scImageFile">Product image</label>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                  <div id="scImageThumb" style="width:160px;height:120px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0">No image</div>
+                  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
+                    <input type="file" id="scImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn-outline" id="scImageUploadBtn">Upload image</button>
+                      <button type="button" class="btn-outline" id="scImageClearBtn">Remove image</button>
+                    </div>
+                    <p class="field-hint">PNG / JPEG / WEBP / GIF, max 5 MB. <strong>Save the product first</strong>, then upload an image.</p>
+                    <p class="field-hint" id="scImageResult"></p>
+                  </div>
+                </div>
+                <input type="hidden" id="scImageUrl" />
+              </div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
                 <div class="form-section"><label for="scPriceDisplay">Price label</label><input type="text" id="scPriceDisplay" placeholder="RM168.00" /></div>
@@ -4463,27 +4472,6 @@ export class AdminDashboardController {
       };
     }
 
-    function scSyncReadUploadedCatalog() {
-      return new Promise(function (resolve, reject) {
-        var input = document.getElementById('scSyncCatalogFile');
-        var file = input && input.files && input.files[0];
-        if (!file) {
-          resolve(null);
-          return;
-        }
-        var reader = new FileReader();
-        reader.onload = function () {
-          try {
-            resolve(JSON.parse(String(reader.result || '')));
-          } catch (e) {
-            reject(new Error('Uploaded file is not valid JSON'));
-          }
-        };
-        reader.onerror = function () { reject(new Error('Could not read uploaded file')); };
-        reader.readAsText(file);
-      });
-    }
-
     function scSyncStatusPill(status) {
       if (status === 'create') return statusPill('NEW');
       if (status === 'update') return statusPill('UPDATE');
@@ -4548,8 +4536,6 @@ export class AdminDashboardController {
       var out = document.getElementById('scSyncResult');
       if (out) out.textContent = 'Loading preview…';
       var body = scSyncCollectBody();
-      var uploaded = await scSyncReadUploadedCatalog();
-      if (uploaded) body.catalog = uploaded;
       var preview = await apiPost('/admin/shop-catalog/sync/preview', body);
       scSyncRenderPreview(preview);
       if (out) out.textContent = 'Preview ready. Review changes, then click Apply sync.';
@@ -4572,8 +4558,6 @@ export class AdminDashboardController {
       }
       if (out) out.textContent = 'Applying sync…';
       var body = scSyncCollectBody();
-      var uploaded = await scSyncReadUploadedCatalog();
-      if (uploaded) body.catalog = uploaded;
       var result = await apiPost('/admin/shop-catalog/sync/apply', body);
       scSyncRenderPreview(result.preview || result);
       if (out) {
@@ -6416,6 +6400,36 @@ export class AdminDashboardController {
       return out;
     }
 
+    function scUpdateImagePreview() {
+      var thumb = document.getElementById('scImageThumb');
+      if (!thumb) return;
+      var url = (document.getElementById('scImageUrl').value || '').trim();
+      if (url) {
+        thumb.style.background = 'url("' + url + '") center/cover no-repeat';
+        thumb.textContent = '';
+      } else {
+        thumb.style.background = '#f8fafc';
+        thumb.textContent = 'No image';
+      }
+    }
+
+    async function scUploadProductImage(id, file) {
+      var headers = Object.assign({}, getAuthHeaders());
+      delete headers['Content-Type'];
+      var fd = new FormData();
+      fd.append('file', file);
+      var res = await fetch('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/image', {
+        method: 'POST',
+        headers: headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        var txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
     document.getElementById('shopCatalogBody').addEventListener('click', (e) => {
       var btn = e.target.closest('.sc-edit-btn');
       if (!btn) return;
@@ -6439,6 +6453,11 @@ export class AdminDashboardController {
       document.getElementById('scSoldOut').checked = !!p.soldOut;
       scRenderVariants(Array.isArray(p.variants) ? p.variants : []);
       document.getElementById('scSaveResult').textContent = '';
+      var fileInput = document.getElementById('scImageFile');
+      if (fileInput) fileInput.value = '';
+      var imgOut = document.getElementById('scImageResult');
+      if (imgOut) imgOut.textContent = '';
+      scUpdateImagePreview();
     });
 
     document.getElementById('scNewBtn').addEventListener('click', () => {
@@ -6459,6 +6478,54 @@ export class AdminDashboardController {
       document.getElementById('scSoldOut').checked = false;
       scRenderVariants([]);
       document.getElementById('scSaveResult').textContent = '';
+      var fileInput = document.getElementById('scImageFile');
+      if (fileInput) fileInput.value = '';
+      var imgOut = document.getElementById('scImageResult');
+      if (imgOut) imgOut.textContent = '';
+      scUpdateImagePreview();
+    });
+
+    var scImageUploadBtn = document.getElementById('scImageUploadBtn');
+    if (scImageUploadBtn) scImageUploadBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scImageResult');
+      var id = document.getElementById('scId').value.trim();
+      var fileInput = document.getElementById('scImageFile');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!id) { out.textContent = 'Save the product first, then upload an image.'; return; }
+      if (!file) { out.textContent = 'Choose an image file first.'; return; }
+      out.textContent = 'Uploading…';
+      try {
+        var updated = await scUploadProductImage(id, file);
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        document.getElementById('scImageUrl').value = updated.imageUrl || '';
+        scUpdateImagePreview();
+        fileInput.value = '';
+        out.textContent = 'Image uploaded.';
+        await loadShopCatalog();
+      } catch (e) {
+        out.textContent = e.message;
+      }
+    });
+
+    var scImageClearBtn = document.getElementById('scImageClearBtn');
+    if (scImageClearBtn) scImageClearBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scImageResult');
+      var id = document.getElementById('scId').value.trim();
+      if (!id) { out.textContent = 'Save the product first.'; return; }
+      if (!window.confirm('Remove the current product image?')) return;
+      out.textContent = 'Removing…';
+      try {
+        var updated = await apiDelete('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/image');
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        document.getElementById('scImageUrl').value = updated.imageUrl || '';
+        scUpdateImagePreview();
+        out.textContent = 'Image removed.';
+        await loadShopCatalog();
+      } catch (e) {
+        out.textContent = e.message;
+      }
     });
 
     document.getElementById('scAddVariantBtn').addEventListener('click', () => {
