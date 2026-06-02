@@ -705,8 +705,8 @@ export function ShopFlow({
                   <strong>{p.name}</strong>
                   <p>{p.shortDescription}</p>
                   <div className="productFoot">
-                    <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
                     <span className="shopFromLabel">from</span>
+                    <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
                   </div>
                 </div>
               </button>

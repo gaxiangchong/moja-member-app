@@ -1615,7 +1615,7 @@
 
 .productImage {
   position: relative;
-  height: 152px;
+  height: 175px;
   background-color: #f1ece6;
   overflow: hidden;
 }
@@ -2727,7 +2727,7 @@ code {
 
 .shopDetailHero {
   position: relative;
-  height: 220px;
+  height: 242px;
   background-color: #f1ece6;
   overflow: hidden;
 }
