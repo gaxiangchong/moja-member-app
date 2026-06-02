@@ -122,10 +122,10 @@
     "name": "Maison Strawberry Short Cake",
     "shortDescription": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
     "description": "Maison's signature Japanese-style shortcake — airy chiffon sponge, freshly whipped cream, and ripe strawberries layered through every bite.",
-    "imageUrl": "/images/products/strawberry_shortcake_v2.png",
+    "imageUrl": "/images/products/strawberry_shortcake.png",
     "images": [
       {
-        "src": "/images/products/strawberry_shortcake_v2.png",
+        "src": "/images/products/strawberry_shortcake.png",
         "alt": "Maison Strawberry Short Cake"
       }
     ],
