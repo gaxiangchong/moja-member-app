@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -388,6 +389,24 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateShopCatalogLayout(@Body() dto: UpdateShopCatalogLayoutDto) {
     return this.shopCatalog.setLayout(dto);
+  }
+
+  @Get('shop-catalog/sites-catalog/info')
+  @RequirePermissions(P.VOUCHER_READ)
+  getSitesCatalogFileInfo() {
+    return this.shopCatalog.getSitesCatalogFileInfo();
+  }
+
+  @Post('shop-catalog/sites-catalog/file')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }),
+  )
+  uploadSitesCatalogFile(@UploadedFile() file: Express.Multer.File) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('No file provided');
+    }
+    return this.shopCatalog.saveSitesCatalogFile(file.buffer.toString('utf-8'));
   }
 
   @Post('shop-catalog/sync/preview')

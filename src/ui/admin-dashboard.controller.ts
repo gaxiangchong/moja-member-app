@@ -2368,6 +2368,16 @@ export class AdminDashboardController {
                 Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
                 Use this when the shop site and member app show different prices or pictures.
               </p>
+              <div class="form-section" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+                <label for="scSitesCatalogFile"><strong>Catalog file on server</strong> (required on Render)</label>
+                <p class="field-hint" id="scSitesCatalogFileHint" style="margin:6px 0 10px">Checking…</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <input type="file" id="scSitesCatalogFile" accept=".json,application/json" />
+                  <button type="button" class="btn-outline" id="scSitesCatalogSaveBtn">Save catalog to server</button>
+                </div>
+                <p class="field-hint" style="margin:8px 0 0">Upload once from your PC — stored at <code>data/products.catalog.json</code> on your persistent disk. Sync always reads this file (no path picker). Or set <code>MOJA_SITES_CATALOG_URL</code> on Render.</p>
+                <p class="field-hint" id="scSitesCatalogSaveResult"></p>
+              </div>
               <div class="form-section">
                 <label for="scSyncMode">Sync mode</label>
                 <select id="scSyncMode">
@@ -4472,6 +4482,53 @@ export class AdminDashboardController {
       };
     }
 
+    async function scRefreshSitesCatalogFileHint() {
+      var hint = document.getElementById('scSitesCatalogFileHint');
+      if (!hint) return;
+      try {
+        var info = await api('/admin/shop-catalog/sites-catalog/info');
+        if (info && info.exists) {
+          var when = info.mtime ? ' · updated ' + new Date(info.mtime).toLocaleString() : '';
+          hint.innerHTML = '<span style="color:#059669;font-weight:600">Ready</span> — ' +
+            fmt(info.productCount) + ' products at <code>' + fmt(info.path) + '</code>' + when;
+        } else {
+          hint.innerHTML = '<span style="color:#b45309;font-weight:600">Not on server yet</span> — upload <code>products.catalog.json</code> from moja-sites below, then run Preview sync.';
+        }
+      } catch (e) {
+        hint.textContent = e.message;
+      }
+    }
+
+    async function scSaveSitesCatalogFile() {
+      var out = document.getElementById('scSitesCatalogSaveResult');
+      var input = document.getElementById('scSitesCatalogFile');
+      var file = input && input.files && input.files[0];
+      if (!file) {
+        if (out) out.textContent = 'Choose products.catalog.json first.';
+        return;
+      }
+      if (out) out.textContent = 'Saving…';
+      var headers = Object.assign({}, getAuthHeaders());
+      delete headers['Content-Type'];
+      var fd = new FormData();
+      fd.append('file', file);
+      var res = await fetch('/admin/shop-catalog/sites-catalog/file', {
+        method: 'POST',
+        headers: headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        var txt = await res.text();
+        throw new Error('Save failed (' + res.status + '): ' + txt);
+      }
+      var saved = await res.json();
+      if (input) input.value = '';
+      if (out) {
+        out.textContent = 'Saved ' + fmt(saved.productCount) + ' products to server. You can now Preview sync.';
+      }
+      await scRefreshSitesCatalogFileHint();
+    }
+
     function scSyncStatusPill(status) {
       if (status === 'create') return statusPill('NEW');
       if (status === 'update') return statusPill('UPDATE');
@@ -5286,6 +5343,7 @@ export class AdminDashboardController {
         loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
+        scRefreshSitesCatalogFileHint(),
         loadShopLayout(),
         loadHomeAdSlides(),
         loadPopularItems(),
@@ -5719,7 +5777,19 @@ export class AdminDashboardController {
       var el = document.getElementById(id);
       if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
     });
-    document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => {
+      loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; });
+      scRefreshSitesCatalogFileHint().catch(function () {});
+    });
+    var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
+    if (scSitesCatalogSaveBtn) {
+      scSitesCatalogSaveBtn.addEventListener('click', function () {
+        scSaveSitesCatalogFile().catch(function (e) {
+          var out = document.getElementById('scSitesCatalogSaveResult');
+          if (out) out.textContent = e.message;
+        });
+      });
+    }
     document.getElementById('scSyncPreviewBtn').addEventListener('click', () => scSyncPreview().catch(function (e) {
       var out = document.getElementById('scSyncResult');
       if (out) out.textContent = e.message;

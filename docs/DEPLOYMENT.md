@@ -176,6 +176,7 @@ The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem
 | `data/shop-catalog.products.json` | Live shop catalog (prices, descriptions, `imageUrl`, etc.) |
 | `data/shop-catalog.layout.json` | Shop home layout (featured + sections) |
 | `data/home-popular.json` | Home "Popular items" curated list |
+| `data/products.catalog.json` | moja-sites catalog copy for **Sync from moja-sites** (upload once in admin) |
 
 `data/` is in `.gitignore`, so on hosts where each deploy spins up a **fresh container** (Render, Railway, Fly, Heroku, Cloud Run, etc.) this folder is empty after every redeploy and the carousel resets to the three hardcoded `DEFAULT_SLIDES` in `src/home-ads/home-ads.service.ts`. Any uploaded images become broken links.
 

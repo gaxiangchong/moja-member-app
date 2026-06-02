@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -515,16 +516,94 @@ export class ShopCatalogService {
     return out;
   }
 
-  private defaultSitesCatalogPath(): string {
+  /** Fixed path on the persistent disk (Render: mount at /opt/render/project/src/data). */
+  sitesCatalogFilePath(): string {
+    return resolve(process.cwd(), 'data', 'products.catalog.json');
+  }
+
+  /** First existing catalog file, in priority order. */
+  private findSitesCatalogPath(): string | null {
+    const candidates: string[] = [];
+    const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
+    if (envPath) candidates.push(resolve(envPath));
+    candidates.push(this.sitesCatalogFilePath());
+    candidates.push(resolve(process.cwd(), 'config', 'products.catalog.json'));
+    candidates.push(
+      resolve(
+        process.cwd(),
+        '..',
+        'moja-sites',
+        'config',
+        'products.catalog.json',
+      ),
+    );
+    for (const p of candidates) {
+      if (existsSync(p)) return p;
+    }
+    return null;
+  }
+
+  private preferredSitesCatalogPathForErrors(): string {
     const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
     if (envPath) return resolve(envPath);
-    return resolve(
-      process.cwd(),
-      '..',
-      'moja-sites',
-      'config',
-      'products.catalog.json',
+    return this.sitesCatalogFilePath();
+  }
+
+  private deriveSitesCatalogUrl(): string | null {
+    const explicit = process.env.MOJA_SITES_CATALOG_URL?.trim();
+    if (explicit) return explicit;
+    const shopBase = process.env.SHOP_WEB_BASE_URL?.trim();
+    if (!shopBase) return null;
+    try {
+      const origin = new URL(
+        shopBase.endsWith('/') ? shopBase : `${shopBase}/`,
+      ).origin;
+      return `${origin}/config/products.catalog.json`;
+    } catch {
+      return null;
+    }
+  }
+
+  getSitesCatalogFileInfo(): {
+    exists: boolean;
+    path: string;
+    productCount?: number;
+    mtime?: string;
+  } {
+    const path = this.sitesCatalogFilePath();
+    if (!existsSync(path)) {
+      return { exists: false, path };
+    }
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      const catalog = this.parseSitesCatalog(raw);
+      const stat = statSync(path);
+      return {
+        exists: true,
+        path,
+        productCount: catalog.products.length,
+        mtime: stat.mtime.toISOString(),
+      };
+    } catch {
+      return { exists: true, path };
+    }
+  }
+
+  saveSitesCatalogFile(raw: string): {
+    path: string;
+    productCount: number;
+  } {
+    const catalog = this.parseSitesCatalog(raw);
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    writeFileSync(
+      this.sitesCatalogFilePath(),
+      JSON.stringify(catalog, null, 2),
+      'utf-8',
     );
+    return {
+      path: this.sitesCatalogFilePath(),
+      productCount: catalog.products.length,
+    };
   }
 
   private parseSitesCatalog(raw: string): SitesCatalog {
@@ -562,26 +641,30 @@ export class ShopCatalogService {
       };
     }
 
-    const url = process.env.MOJA_SITES_CATALOG_URL?.trim();
+    const url = this.deriveSitesCatalogUrl();
     if (url) {
       const res = await fetch(url);
-      if (!res.ok) {
+      if (res.ok) {
+        const text = await res.text();
+        return {
+          catalog: this.parseSitesCatalog(text),
+          source: 'url',
+          sourceLabel: url,
+        };
+      }
+      if (process.env.MOJA_SITES_CATALOG_URL?.trim()) {
         throw new BadRequestException(
           `Failed to fetch moja-sites catalog (${res.status}) from MOJA_SITES_CATALOG_URL`,
         );
       }
-      const text = await res.text();
-      return {
-        catalog: this.parseSitesCatalog(text),
-        source: 'url',
-        sourceLabel: url,
-      };
+      /* SHOP_WEB_BASE_URL-derived URL failed — fall through to local file */
     }
 
-    const path = this.defaultSitesCatalogPath();
-    if (!existsSync(path)) {
+    const path = this.findSitesCatalogPath();
+    if (!path) {
+      const preferred = this.preferredSitesCatalogPathForErrors();
       throw new BadRequestException(
-        `moja-sites catalog not found at ${path}. Set MOJA_SITES_CATALOG_PATH or MOJA_SITES_CATALOG_URL, or upload catalog JSON in the sync request.`,
+        `moja-sites catalog not found. On Render: upload the catalog once below (saved to ${preferred}), or set MOJA_SITES_CATALOG_URL to a public JSON URL. Local dev: clone moja-sites as a sibling repo, or set MOJA_SITES_CATALOG_PATH.`,
       );
     }
     return {
