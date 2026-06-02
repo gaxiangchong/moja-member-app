@@ -2433,7 +2433,7 @@ export class AdminDashboardController {
               <div class="form-section">
                 <label for="scImageFile">Product image</label>
                 <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-                  <div id="scImageThumb" style="width:160px;height:120px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0">No image</div>
+                  <div id="scImageThumb" style="position:relative;width:160px;height:120px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0;cursor:grab;user-select:none" title="Drag to recenter the focal point">No image</div>
                   <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
                     <input type="file" id="scImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2445,6 +2445,31 @@ export class AdminDashboardController {
                   </div>
                 </div>
                 <input type="hidden" id="scImageUrl" />
+              </div>
+
+              <div class="form-section" id="scImageFramingSection">
+                <label>Image framing</label>
+                <p class="field-hint" style="margin-top:0">Drag the preview above, or use the sliders to recenter the photo. Useful when the product isn't centered in the source image.</p>
+                <div class="form-row-2" style="gap:16px">
+                  <div>
+                    <label for="scImageOffsetX" style="font-size:12px;color:#64748b">Horizontal <span id="scImageOffsetXVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetX" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                  <div>
+                    <label for="scImageOffsetY" style="font-size:12px;color:#64748b">Vertical <span id="scImageOffsetYVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetY" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:16px;margin-top:8px;align-items:end">
+                  <div>
+                    <label for="scImageScale" style="font-size:12px;color:#64748b">Zoom <span id="scImageScaleVal">1.00</span>×</label>
+                    <input type="range" id="scImageScale" min="1" max="3" step="0.05" value="1" style="width:100%" />
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:4px">
+                    <button type="button" class="btn-outline" id="scImageRecenterBtn">Reset framing</button>
+                  </div>
+                </div>
+                <p class="field-hint" style="margin-top:6px;color:#92400e">Click <strong>Save product</strong> below to apply.</p>
               </div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
@@ -6490,18 +6515,98 @@ export class AdminDashboardController {
       return out;
     }
 
+    function scClampPercent(v) {
+      var n = Number(v);
+      if (!Number.isFinite(n)) return 50;
+      return Math.max(0, Math.min(100, n));
+    }
+    function scClampScale(v) {
+      var n = Number(v);
+      if (!Number.isFinite(n)) return 1;
+      return Math.max(0.5, Math.min(3, n));
+    }
+
+    function scGetImageFraming() {
+      var x = scClampPercent(document.getElementById('scImageOffsetX').value);
+      var y = scClampPercent(document.getElementById('scImageOffsetY').value);
+      var s = scClampScale(document.getElementById('scImageScale').value);
+      return { x: x, y: y, s: s };
+    }
+
     function scUpdateImagePreview() {
       var thumb = document.getElementById('scImageThumb');
       if (!thumb) return;
       var url = (document.getElementById('scImageUrl').value || '').trim();
+      var f = scGetImageFraming();
+      var lx = document.getElementById('scImageOffsetXVal');
+      var ly = document.getElementById('scImageOffsetYVal');
+      var ls = document.getElementById('scImageScaleVal');
+      if (lx) lx.textContent = String(Math.round(f.x));
+      if (ly) ly.textContent = String(Math.round(f.y));
+      if (ls) ls.textContent = f.s.toFixed(2);
       if (url) {
-        thumb.style.background = 'url("' + url + '") center/cover no-repeat';
+        thumb.style.background = 'url("' + url + '") ' + f.x + '% ' + f.y + '%/' + (f.s * 100) + '% no-repeat';
         thumb.textContent = '';
       } else {
         thumb.style.background = '#f8fafc';
         thumb.textContent = 'No image';
       }
     }
+
+    function scSetImageFraming(x, y, s) {
+      var ix = document.getElementById('scImageOffsetX');
+      var iy = document.getElementById('scImageOffsetY');
+      var is = document.getElementById('scImageScale');
+      if (ix) ix.value = String(scClampPercent(x == null ? 50 : x));
+      if (iy) iy.value = String(scClampPercent(y == null ? 50 : y));
+      if (is) is.value = String(scClampScale(s == null ? 1 : s));
+      scUpdateImagePreview();
+    }
+
+    (function bindFramingControls() {
+      ['scImageOffsetX', 'scImageOffsetY', 'scImageScale'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', scUpdateImagePreview);
+      });
+      var reset = document.getElementById('scImageRecenterBtn');
+      if (reset) reset.addEventListener('click', function () { scSetImageFraming(50, 50, 1); });
+
+      var thumb = document.getElementById('scImageThumb');
+      if (!thumb) return;
+      var dragging = false;
+      function onMove(clientX, clientY) {
+        var rect = thumb.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        var x = ((clientX - rect.left) / rect.width) * 100;
+        var y = ((clientY - rect.top) / rect.height) * 100;
+        document.getElementById('scImageOffsetX').value = String(scClampPercent(x));
+        document.getElementById('scImageOffsetY').value = String(scClampPercent(y));
+        scUpdateImagePreview();
+      }
+      thumb.addEventListener('mousedown', function (e) {
+        if (!(document.getElementById('scImageUrl').value || '').trim()) return;
+        dragging = true;
+        thumb.style.cursor = 'grabbing';
+        onMove(e.clientX, e.clientY);
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', function (e) { if (dragging) onMove(e.clientX, e.clientY); });
+      window.addEventListener('mouseup', function () { if (dragging) { dragging = false; thumb.style.cursor = 'grab'; } });
+      thumb.addEventListener('touchstart', function (e) {
+        if (!(document.getElementById('scImageUrl').value || '').trim()) return;
+        var t = e.touches[0]; if (!t) return;
+        dragging = true;
+        onMove(t.clientX, t.clientY);
+        e.preventDefault();
+      }, { passive: false });
+      thumb.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        var t = e.touches[0]; if (!t) return;
+        onMove(t.clientX, t.clientY);
+        e.preventDefault();
+      }, { passive: false });
+      thumb.addEventListener('touchend', function () { dragging = false; });
+    })();
 
     var SC_FIELD_LABELS = {
       imageUrl: 'Photo',
@@ -6577,7 +6682,7 @@ export class AdminDashboardController {
       if (fileInput) fileInput.value = '';
       var imgOut = document.getElementById('scImageResult');
       if (imgOut) imgOut.textContent = '';
-      scUpdateImagePreview();
+      scSetImageFraming(p.imageOffsetX, p.imageOffsetY, p.imageScale);
       scRenderOverridesPanel(p);
     });
 
@@ -6603,7 +6708,7 @@ export class AdminDashboardController {
       if (fileInput) fileInput.value = '';
       var imgOut = document.getElementById('scImageResult');
       if (imgOut) imgOut.textContent = '';
-      scUpdateImagePreview();
+      scSetImageFraming(50, 50, 1);
       scRenderOverridesPanel(null);
     });
 
@@ -6701,6 +6806,9 @@ export class AdminDashboardController {
         shortDescription: document.getElementById('scShort').value.trim(),
         description: document.getElementById('scDesc').value.trim(),
         imageUrl: document.getElementById('scImageUrl').value.trim(),
+        imageOffsetX: scClampPercent(document.getElementById('scImageOffsetX').value),
+        imageOffsetY: scClampPercent(document.getElementById('scImageOffsetY').value),
+        imageScale: scClampScale(document.getElementById('scImageScale').value),
         basePriceCents: parseInt(document.getElementById('scPrice').value, 10) || 0,
         priceDisplay: document.getElementById('scPriceDisplay').value.trim() || undefined,
         sortOrder: parseInt(document.getElementById('scSort').value, 10) || 0,

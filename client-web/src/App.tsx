@@ -1683,7 +1683,10 @@ function App() {
                                 className="popularThumb"
                                 style={
                                   img
-                                    ? { backgroundImage: `url(${img})` }
+                                    ? {
+                                        backgroundImage: `url(${img})`,
+                                        backgroundPosition: `${item.imageOffsetX ?? 50}% ${item.imageOffsetY ?? 50}%`,
+                                      }
                                     : undefined
                                 }
                                 aria-hidden

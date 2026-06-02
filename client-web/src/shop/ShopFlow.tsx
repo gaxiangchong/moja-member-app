@@ -687,10 +687,20 @@ export function ShopFlow({
                 className="productCard shopProductHit"
                 onClick={() => openProduct(p.id)}
               >
-                <div
-                  className="productImage"
-                  style={{ backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.06), rgba(20,16,14,0.35)), url("${p.imageUrl}")` }}
-                />
+                <div className="productImage">
+                  {p.imageUrl ? (
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      className="productImageInner"
+                      style={{
+                        objectPosition: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                        transform: `scale(${p.imageScale ?? 1})`,
+                        transformOrigin: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                      }}
+                    />
+                  ) : null}
+                </div>
                 <div className="productBody">
                   <strong>{p.name}</strong>
                   <p>{p.shortDescription}</p>
@@ -1135,10 +1145,20 @@ function ProductDetailScreen({
       </header>
 
       <article className="pmCard shopDetailCard">
-        <div
-          className="shopDetailHero"
-          style={{ backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.02), rgba(20,16,14,0.45)), url("${product.imageUrl}")` }}
-        />
+        <div className="shopDetailHero">
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt=""
+              className="shopDetailHeroInner"
+              style={{
+                objectPosition: `${product.imageOffsetX ?? 50}% ${product.imageOffsetY ?? 50}%`,
+                transform: `scale(${product.imageScale ?? 1})`,
+                transformOrigin: `${product.imageOffsetX ?? 50}% ${product.imageOffsetY ?? 50}%`,
+              }}
+            />
+          ) : null}
+        </div>
         <div className="shopDetailBody">
           <h2>{product.name}</h2>
           <p className="shopDetailPrice">{formatRm(unitCents)}</p>

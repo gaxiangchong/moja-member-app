@@ -69,6 +69,26 @@ That's it. The new image is now live.
 
 ---
 
+## Centering / repositioning the photo
+
+Some product photos aren't shot dead-center, so the cake can land near the top
+or off to one side once the image is cropped into a card. Use the **Image
+framing** controls right below the upload buttons:
+
+1. **Drag the preview thumbnail** in the admin to reposition the focal point —
+   wherever you click/drag is treated as the new center.
+2. Or drag the **Horizontal** / **Vertical** sliders directly (0% = left/top,
+   50% = center, 100% = right/bottom).
+3. Use the **Zoom** slider (1.0×–3.0×) when you want to crop in tighter.
+4. Click **Reset framing** to return to the default center / 1× zoom.
+5. Click **Save product**. The new framing is applied to the member app shop
+   list, the popular-items strip on Home, and the product detail screen.
+
+> Image framing counts as a manual edit, so it's protected from sync — moja-sites
+> won't reset your offsets the next time you press **Sync**.
+
+---
+
 ## How does this work for both moja-sites and the member app?
 
 The uploaded file is stored on the API server at:

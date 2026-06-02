@@ -13,6 +13,9 @@ export type Product = {
   shortDescription: string;
   description: string;
   imageUrl: string;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
   basePriceCents: number;
   variants?: ProductVariant[];
 };

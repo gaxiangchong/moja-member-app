@@ -48,6 +48,12 @@ export type ShopCatalogProduct = {
   description: string;
   imageUrl: string;
   images?: ShopCatalogProductImage[];
+  /** Horizontal focal point for the product photo, 0–100 (default 50 = center). */
+  imageOffsetX?: number;
+  /** Vertical focal point for the product photo, 0–100 (default 50 = center). */
+  imageOffsetY?: number;
+  /** Optional zoom level for the product photo, 1.0 = no zoom (default 1). */
+  imageScale?: number;
   basePriceCents: number;
   /** Human-readable price label, e.g. "RM168.00" or "RM13.90 each". */
   priceDisplay?: string;
@@ -131,6 +137,9 @@ const SYNC_LOCK_GROUPS: Record<string, string[]> = {
   description: ['description'],
   imageUrl: ['imageUrl', 'images'],
   images: ['imageUrl', 'images'],
+  imageOffsetX: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
+  imageOffsetY: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
+  imageScale: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
   basePriceCents: ['basePriceCents', 'priceDisplay', 'variants'],
   priceDisplay: ['basePriceCents', 'priceDisplay', 'variants'],
   variants: ['basePriceCents', 'priceDisplay', 'variants'],
@@ -164,12 +173,29 @@ const COMPARABLE_FIELDS = [
   'shortDescription',
   'description',
   'imageUrl',
+  'imageOffsetX',
+  'imageOffsetY',
+  'imageScale',
   'basePriceCents',
   'priceDisplay',
   'variants',
   'badge',
   'soldOut',
 ] as const;
+
+function clampPercent(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0, Math.min(100, Math.round(n * 100) / 100));
+}
+
+function clampScale(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0.5, Math.min(3, Math.round(n * 100) / 100));
+}
 
 function detectChangedFields(
   before: ShopCatalogProduct | undefined,
@@ -496,6 +522,15 @@ export class ShopCatalogService {
           ? String(raw.imageUrl).trim()
           : (base.imageUrl ?? ''),
       images: raw.images != null ? raw.images : base.images,
+      imageOffsetX: clampPercent(
+        raw.imageOffsetX != null ? raw.imageOffsetX : base.imageOffsetX,
+      ),
+      imageOffsetY: clampPercent(
+        raw.imageOffsetY != null ? raw.imageOffsetY : base.imageOffsetY,
+      ),
+      imageScale: clampScale(
+        raw.imageScale != null ? raw.imageScale : base.imageScale,
+      ),
       basePriceCents:
         raw.basePriceCents != null &&
         Number.isFinite(Number(raw.basePriceCents))

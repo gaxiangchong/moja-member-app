@@ -51,6 +51,9 @@ export type PopularProduct = {
   description?: string;
   imageUrl?: string;
   basePriceCents: number;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
 };
 
 export async function fetchPopularProducts(): Promise<PopularProduct[]> {
@@ -718,6 +721,9 @@ export type ShopCatalogProduct = {
   shortDescription: string;
   description: string;
   imageUrl: string;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
   basePriceCents: number;
   priceDisplay?: string;
   variants?: Array<{
