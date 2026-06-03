@@ -948,6 +948,8 @@ export class AdminService {
         title: dto.title,
         description: dto.description ?? null,
         pointsCost: dto.pointsCost ?? null,
+        rebateValueSen: dto.rebateValueSen ?? null,
+        minSpendSen: dto.minSpendSen ?? null,
         imageUrl: dto.imageUrl?.trim() || null,
         rewardCategory: dto.rewardCategory?.trim() || null,
         showInRewardsCatalog: dto.showInRewardsCatalog ?? false,
@@ -1008,6 +1010,13 @@ export class AdminService {
           : null;
     }
     if (dto.pointsCost !== undefined) data.pointsCost = dto.pointsCost;
+    if (dto.rebateValueSen !== undefined) {
+      data.rebateValueSen =
+        dto.rebateValueSen == null ? null : dto.rebateValueSen;
+    }
+    if (dto.minSpendSen !== undefined) {
+      data.minSpendSen = dto.minSpendSen == null ? null : dto.minSpendSen;
+    }
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.imageUrl !== undefined) {
       const newUrl = dto.imageUrl?.trim() ? dto.imageUrl.trim() : null;

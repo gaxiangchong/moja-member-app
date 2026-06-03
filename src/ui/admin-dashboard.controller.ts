@@ -1704,6 +1704,10 @@ export class AdminDashboardController {
                     <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
                     <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
                   </div>
+                  <div class="form-row-2">
+                    <div class="form-section"><label for="rdDiscountRm">Checkout discount (RM)</label><input type="number" id="rdDiscountRm" min="0" step="0.01" placeholder="e.g. 5.00" /><p class="field-hint">Flat RM off at checkout when redeemed. No campaign needed.</p></div>
+                    <div class="form-section"><label for="rdMinSpendRm">Min. order spend (RM)</label><input type="number" id="rdMinSpendRm" min="0" step="0.01" placeholder="empty = no minimum" /><p class="field-hint">Order subtotal must be at least this to apply.</p></div>
+                  </div>
                   <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://… or upload below" /></div>
                   <div class="form-section">
                     <label for="rdImageFile">Or upload from file</label>
@@ -3931,7 +3935,7 @@ export class AdminDashboardController {
           (v.imageUrl
             ? '<button type="button" class="icon-btn reward-def-view-image-btn" data-image-url="' + fmt(v.imageUrl) + '" title="View image">' + viewSvg + '</button>'
             : '<span class="muted-hint">—</span>') +
-          '</td><td>' + fmt(v.pointsCost) + '</td><td>' + fmt(v.rewardCategory) + '</td><td>' +
+          '</td><td>' + fmt(v.pointsCost) + (v.rebateValueSen ? ' <span class="muted-hint">· RM' + (v.rebateValueSen / 100).toFixed(2) + ' off</span>' : '') + '</td><td>' + fmt(v.rewardCategory) + '</td><td>' +
           (v.showInRewardsCatalog ? statusPill('YES') : statusPill('NO')) + '</td><td>' + formatRewardWindow(v) + '</td><td>' + fmt(v.rewardSortOrder) + '</td><td>' +
           fmt(v.maxTotalIssued) + '</td><td>' + statusPill(v.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td class="td-actions">' +
           '<button type="button" class="icon-btn reward-def-edit-btn" data-id="' + v.id + '" title="Edit">' + editSvg + '</button></td></tr>'
@@ -6220,6 +6224,8 @@ export class AdminDashboardController {
       document.getElementById('rdTitle').value = v.title || '';
       document.getElementById('rdDescription').value = v.description || '';
       document.getElementById('rdPoints').value = v.pointsCost != null ? String(v.pointsCost) : '';
+      document.getElementById('rdDiscountRm').value = v.rebateValueSen != null ? (v.rebateValueSen / 100).toFixed(2) : '';
+      document.getElementById('rdMinSpendRm').value = v.minSpendSen != null ? (v.minSpendSen / 100).toFixed(2) : '';
       document.getElementById('rdCategory').value = v.rewardCategory || '';
       document.getElementById('rdImageUrl').value = v.imageUrl || '';
       rdUpdateImagePreview();
@@ -6322,10 +6328,14 @@ export class AdminDashboardController {
       var out = document.getElementById('rdSaveResult');
       if (!id) return;
       var pcVal = document.getElementById('rdPoints').value;
+      var discRm = document.getElementById('rdDiscountRm').value;
+      var minRm = document.getElementById('rdMinSpendRm').value;
       var body = {
         title: document.getElementById('rdTitle').value.trim(),
         description: document.getElementById('rdDescription').value.trim() || null,
         pointsCost: pcVal === '' ? undefined : parseInt(pcVal, 10),
+        rebateValueSen: discRm === '' ? null : Math.round(parseFloat(discRm) * 100),
+        minSpendSen: minRm === '' ? null : Math.round(parseFloat(minRm) * 100),
         imageUrl: document.getElementById('rdImageUrl').value.trim() || null,
         rewardCategory: document.getElementById('rdCategory').value.trim() || null,
         showInRewardsCatalog: document.getElementById('rdShowCatalog').checked,
