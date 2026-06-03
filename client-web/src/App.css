@@ -1808,6 +1808,10 @@
   font-weight: 400;
 }
 
+.profileIdRow--static {
+  cursor: default;
+}
+
 .profileIdLabel {
   flex: 1;
   font-size: 12px;
@@ -2317,6 +2321,13 @@
 
 .paymentResultGhost:hover {
   background: #f7faff;
+}
+
+.shareSheetTitle {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .shareSheet {

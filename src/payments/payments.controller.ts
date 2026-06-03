@@ -103,6 +103,7 @@ export class PaymentsController {
       dto.channelCode,
       dto.paymentTokenId,
       dto.voucherId,
+      dto.rewardDefinitionId,
       dto.idempotencyKey,
     );
   }

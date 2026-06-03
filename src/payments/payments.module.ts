@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtAccessModule } from '../auth/jwt-access.module';
 import { CustomersModule } from '../customers/customers.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
@@ -15,6 +16,7 @@ import { XenditApiService } from './xendit-api.service';
     WalletModule,
     JwtAccessModule,
     CustomersModule,
+    LoyaltyModule,
     RewardsWorkflowModule,
     NotificationsModule,
   ],

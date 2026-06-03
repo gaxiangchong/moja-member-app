@@ -39,6 +39,7 @@ export type MockVoucher = {
   title: string;
   discountType: 'percent' | 'fixed';
   value: number;
+  minSpendSen?: number | null;
 };
 
 export type MockReward = {
@@ -47,6 +48,7 @@ export type MockReward = {
   pointsCost: number;
   discountType: 'fixed';
   valueCents: number;
+  minSpendSen?: number | null;
 };
 
 export const CATEGORY_LABELS: Record<ProductCategory, string> = {

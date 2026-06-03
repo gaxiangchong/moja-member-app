@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
+import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
@@ -307,6 +308,22 @@ export class CustomersService {
       }),
     ]);
 
+    const definitionIds = [
+      ...vouchers.map((v) => v.definition.id),
+      ...rewardCatalog.map((r) => r.id),
+    ];
+    const discountMap = await loadDefinitionDiscountMap(
+      this.prisma,
+      definitionIds,
+    );
+    const withDiscount = (definitionId: string) => {
+      const m = discountMap.get(definitionId);
+      return {
+        rebateValueSen: m?.rebateValueSen ?? null,
+        minSpendSen: m?.minSpendSen ?? null,
+      };
+    };
+
     return {
       wallet: {
         pointsBalance: wallet?.pointsCached ?? 0,
@@ -316,9 +333,15 @@ export class CustomersService {
         status: v.status,
         issuedAt: v.issuedAt,
         expiresAt: v.expiresAt,
-        definition: v.definition,
+        definition: {
+          ...v.definition,
+          ...withDiscount(v.definition.id),
+        },
       })),
-      rewards: rewardCatalog,
+      rewards: rewardCatalog.map((r) => ({
+        ...r,
+        ...withDiscount(r.id),
+      })),
     };
   }
 

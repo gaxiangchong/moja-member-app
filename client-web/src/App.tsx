@@ -39,6 +39,11 @@ import {
   clearPendingPayment,
   readPendingPayment,
 } from './payments/pendingPayment';
+import {
+  POINT_TIER_LABELS,
+  POINT_TIER_THRESHOLDS,
+  pointsTierProgress,
+} from './lib/pointsTier';
 import { ShopFlow } from './shop/ShopFlow';
 import { useShopStore } from './shop/store/useShopStore';
 
@@ -495,10 +500,12 @@ function RewardCard({
   title,
   code,
   points,
+  onRedeem,
 }: {
   title: string;
   code: string;
   points: number;
+  onRedeem: () => void;
 }) {
   return (
     <article className="rewardCard rewardTicket">
@@ -513,7 +520,7 @@ function RewardCard({
           <span className="rewardTermsLabel">Terms:</span> Min. spend{' '}
           {formatRmCents(VOUCHER_MIN_SPEND_CENTS)} to use this voucher.
         </p>
-        <button type="button" className="rewardRedeemBtn">
+        <button type="button" className="rewardRedeemBtn" onClick={onRedeem}>
           Redeem voucher
         </button>
       </div>
@@ -558,6 +565,7 @@ function App() {
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
+  const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1027,19 +1035,6 @@ function App() {
     }
   };
 
-  const [memberIdCopied, setMemberIdCopied] = useState(false);
-  const handleCopyMemberId = useCallback(async () => {
-    const id = profile?.phoneE164?.trim();
-    if (!id) return;
-    try {
-      await navigator.clipboard.writeText(id);
-      setMemberIdCopied(true);
-      window.setTimeout(() => setMemberIdCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
-  }, [profile?.phoneE164]);
-
   const buildInviteUrl = useCallback(() => {
     const code = profile?.referralCode?.trim();
     const base = `${window.location.origin}${window.location.pathname}`;
@@ -1158,9 +1153,11 @@ function App() {
   }, [profile?.createdAt]);
 
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
-  const nextTarget = Math.ceil((pointsBalance + 1) / 500) * 500;
-  const pointsToNext = Math.max(nextTarget - pointsBalance, 0);
-  const progressPct = Math.min(100, Math.max(0, (1 - pointsToNext / 500) * 100));
+  const tierProgress = useMemo(
+    () => pointsTierProgress(pointsBalance),
+    [pointsBalance],
+  );
+  const { pointsToNext, progressPct } = tierProgress;
 
   const voucherItems = rewardsData?.vouchers ?? [];
   const visibleVouchers = voucherItems.filter((v) => {
@@ -1584,7 +1581,9 @@ function App() {
                       />
                     </div>
                     <p className="pointsCardProgressHint">
-                      {pointsToNext.toLocaleString()} pts to next reward
+                      {pointsToNext > 0 && tierProgress.nextTierLabel
+                        ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                        : 'Top tier reached'}
                     </p>
                   </div>
                 </Card>
@@ -1797,6 +1796,7 @@ function App() {
                           title={r.title}
                           code={r.code}
                           points={r.pointsCost ?? 0}
+                          onRedeem={() => setRedeemCheckoutNoticeOpen(true)}
                         />
                       ))}
                       {!filteredRewards.length && (
@@ -1859,23 +1859,19 @@ function App() {
                     />
                   </div>
                   <div className="tierTrack" aria-hidden>
-                    {(['silver', 'gold', 'platinum'] as const).map((t) => (
+                    {POINT_TIER_THRESHOLDS.map((threshold, i) => (
                       <span
-                        key={t}
-                        className={`tierTrackStop${normalizedTierKey === t ? ' active' : ''}`}
+                        key={threshold}
+                        className={`tierTrackStop${tierProgress.activeTierIndex === i ? ' active' : ''}`}
                       >
-                        {t === 'silver'
-                          ? 'Silver'
-                          : t === 'gold'
-                            ? 'Gold'
-                            : 'Platinum'}
+                        {POINT_TIER_LABELS[i]} · {threshold.toLocaleString()}
                       </span>
                     ))}
                   </div>
                   <p className="accountTierHint">
-                    {pointsToNext > 0
-                      ? `${pointsToNext.toLocaleString()} pts to your next reward`
-                      : 'Reward unlocked — redeem under Rewards'}
+                    {pointsToNext > 0 && tierProgress.nextTierLabel
+                      ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                      : 'You have reached the top tier'}
                   </p>
                 </Card>
 
@@ -1960,18 +1956,10 @@ function App() {
                           }
                     }
                   />
-                  <button
-                    type="button"
-                    className="profileIdRow"
-                    onClick={() => void handleCopyMemberId()}
-                    aria-label={`Member ID ${profile.phoneE164}, ❐`}
-                  >
+                  <div className="profileIdRow profileIdRow--static">
                     <span className="profileIdLabel">Member ID · contact</span>
                     <span className="profileIdValue">{profile.phoneE164}</span>
-                    <span className="profileIdCopy">
-                      {memberIdCopied ? 'Copied ✓' : '❐'}
-                    </span>
-                  </button>
+                  </div>
                   {editingProfile ? (
                     <>
                       {profilePersonalIncomplete ? (
@@ -2254,6 +2242,36 @@ function App() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {redeemCheckoutNoticeOpen && (
+            <div className="shareOverlay" role="dialog" aria-modal="true" aria-labelledby="redeemCheckoutTitle">
+              <div className="shareSheet">
+                <h3 id="redeemCheckoutTitle" className="shareSheetTitle">Redeem at checkout</h3>
+                <p className="caption">
+                  Add items in Shop, then apply this reward on the checkout screen before you pay.
+                </p>
+                <div className="shareActions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRedeemCheckoutNoticeOpen(false);
+                      setTab('shop');
+                      setShopInitialScreen('browse');
+                    }}
+                  >
+                    OK, go to Shop
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setRedeemCheckoutNoticeOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}

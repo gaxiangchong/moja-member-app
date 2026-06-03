@@ -474,6 +474,7 @@ export async function createShopOrderCheckout(payload: {
   channelCode?: string;
   paymentTokenId?: string;
   voucherId?: string;
+  rewardDefinitionId?: string;
   idempotencyKey?: string;
   order: {
     totalCents: number;
@@ -699,6 +700,8 @@ export type MemberRewardsPayload = {
       title: string;
       description: string | null;
       pointsCost: number | null;
+      rebateValueSen?: number | null;
+      minSpendSen?: number | null;
     };
   }>;
   rewards: Array<{
@@ -710,6 +713,8 @@ export type MemberRewardsPayload = {
     isActive: boolean;
     imageUrl?: string | null;
     rewardCategory?: string | null;
+    rebateValueSen?: number | null;
+    minSpendSen?: number | null;
   }>;
 };
 

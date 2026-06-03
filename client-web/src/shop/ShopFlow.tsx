@@ -442,6 +442,58 @@ export function ShopFlow({
     });
   }, []);
 
+  const promoMinSpendError = (minSpendSen: number | null | undefined, label: string) => {
+    if (minSpendSen != null && subtotal < minSpendSen) {
+      return `Minimum order ${formatRm(minSpendSen)} to use this ${label}.`;
+    }
+    return null;
+  };
+
+  const handleSelectIssuedVoucher = (v: (typeof issuedVouchers)[number]) => {
+    if (appliedVoucher?.id === v.id) {
+      applyVoucher(null);
+      setVoucherCodeError(null);
+      setCheckoutErrors(null);
+      return;
+    }
+    const err = promoMinSpendError(v.minSpendSen, 'voucher');
+    if (err) {
+      setCheckoutErrors([err]);
+      return;
+    }
+    if (v.value <= 0) {
+      setCheckoutErrors(['This voucher has no discount amount configured yet.']);
+      return;
+    }
+    setCheckoutErrors(null);
+    setVoucherCodeError(null);
+    setVoucherCodeInput(v.code);
+    applyVoucher(v);
+  };
+
+  const handleSelectCatalogReward = (r: MockReward) => {
+    if (appliedReward?.id === r.id) {
+      applyReward(null);
+      setCheckoutErrors(null);
+      return;
+    }
+    const err = promoMinSpendError(r.minSpendSen, 'reward');
+    if (err) {
+      setCheckoutErrors([err]);
+      return;
+    }
+    if (r.valueCents <= 0) {
+      setCheckoutErrors(['This reward has no discount amount configured yet.']);
+      return;
+    }
+    if (pointsBalance < r.pointsCost) {
+      setCheckoutErrors(['Not enough points for this reward.']);
+      return;
+    }
+    setCheckoutErrors(null);
+    applyReward(r);
+  };
+
   const handleApplyVoucherCode = () => {
     const code = voucherCodeInput.trim();
     if (!code) {
@@ -452,6 +504,17 @@ export function ShopFlow({
     const match = findIssuedVoucherByCode(memberRewards, code);
     if (!match) {
       setVoucherCodeError('This code is not in your wallet or has expired.');
+      applyVoucher(null);
+      return;
+    }
+    const err = promoMinSpendError(match.minSpendSen, 'voucher');
+    if (err) {
+      setVoucherCodeError(err);
+      applyVoucher(null);
+      return;
+    }
+    if (match.value <= 0) {
+      setVoucherCodeError('This voucher has no discount amount configured yet.');
       applyVoucher(null);
       return;
     }
@@ -520,6 +583,7 @@ export function ShopFlow({
           ? { paymentTokenId }
           : { channelCode: selectedChannelCode.trim() }),
         ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
+        ...(appliedReward ? { rewardDefinitionId: appliedReward.id } : {}),
         idempotencyKey: crypto.randomUUID(),
         order: {
           totalCents: total,
@@ -855,15 +919,32 @@ export function ShopFlow({
                   {appliedVoucher ? (
                     <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
                       Applied: <strong>{appliedVoucher.title}</strong> ({appliedVoucher.code})
+                      {appliedVoucher.value > 0 ? ` · −${formatRm(appliedVoucher.value)}` : ''}
                     </p>
                   ) : null}
+                  <div className="shopPromoList" style={{ marginTop: 10 }}>
+                    {issuedVouchers.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
+                        onClick={() => handleSelectIssuedVoucher(v)}
+                      >
+                        <strong>{v.title}</strong>
+                        <small>
+                          {v.code}
+                          {v.value > 0 ? ` · −${formatRm(v.value)}` : ''}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
               {catalogRewards.length > 0 ? (
                 <div>
                   <p className="caption">Rewards ({pointsBalance} pts)</p>
                   <div className="shopPromoList">
-                    {catalogRewards.map((r: MockReward) => {
+                    {catalogRewards.map((r) => {
                       const affordable = pointsBalance >= r.pointsCost;
                       return (
                         <button
@@ -871,10 +952,13 @@ export function ShopFlow({
                           type="button"
                           disabled={!affordable}
                           className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
-                          onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
+                          onClick={() => handleSelectCatalogReward(r)}
                         >
                           <strong>{r.title}</strong>
-                          <small>{r.pointsCost} pts{r.valueCents > 0 ? ` · up to ${formatRm(r.valueCents)}` : ''}</small>
+                          <small>
+                            {r.pointsCost} pts
+                            {r.valueCents > 0 ? ` · −${formatRm(r.valueCents)}` : ''}
+                          </small>
                         </button>
                       );
                     })}

@@ -17,8 +17,8 @@ export function checkoutIssuedVouchers(data: MemberRewardsPayload | null | undef
       code: v.definition.code,
       title: v.definition.title,
       discountType: 'fixed' as const,
-      /** Rebate not exposed on definition yet — total stays line sum until backend adds amounts. */
-      value: 0,
+      value: Math.max(0, v.definition.rebateValueSen ?? 0),
+      minSpendSen: v.definition.minSpendSen ?? null,
     }));
 }
 
@@ -42,6 +42,7 @@ export function checkoutCatalogRewards(data: MemberRewardsPayload | null | undef
       title: r.title,
       pointsCost: r.pointsCost!,
       discountType: 'fixed' as const,
-      valueCents: 0,
+      valueCents: Math.max(0, r.rebateValueSen ?? 0),
+      minSpendSen: r.minSpendSen ?? null,
     }));
 }
