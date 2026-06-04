@@ -303,6 +303,12 @@ function humanizeLoyaltyReason(entry: LoyaltyHistoryEntry): string {
     return code ? `Redeemed · ${code}` : 'Redeemed reward';
   }
   if (reason.startsWith('campaign_')) return 'Campaign bonus';
+  if (reason === 'referral_reward' || entry.referenceType === 'referral') {
+    return 'Referral reward';
+  }
+  if (reason === 'birthday_reward' || entry.referenceType === 'birthday') {
+    return 'Birthday gift';
+  }
   if (reason === 'manual' || entry.referenceType === 'manual') return 'Adjustment';
   // Fallback: pretty-print "some_reason_code" → "Some reason code"
   const pretty = reason.replace(/[._-]+/g, ' ').trim();

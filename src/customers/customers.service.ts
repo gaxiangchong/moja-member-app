@@ -50,6 +50,81 @@ export class CustomersService {
     return Number.isFinite(legacy) && legacy > 0 ? legacy : 1;
   }
 
+  /**
+   * Loyalty points awarded to a referrer when a member they referred completes
+   * their **first paid order**. Configured via `REFERRAL_REWARD_POINTS`.
+   * Default 0 = referral rewards disabled (referrals are still tracked).
+   */
+  private referralRewardPoints(): number {
+    const raw = Number(this.config.get<string>('REFERRAL_REWARD_POINTS'));
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  }
+
+  /**
+   * Loyalty points gifted to a member during their birthday month. Configured
+   * via `BIRTHDAY_REWARD_POINTS`. Default 0 = disabled. Granted at most once per
+   * calendar year, and only while the current month matches the member's
+   * birthday month.
+   */
+  private birthdayRewardPoints(): number {
+    const raw = Number(this.config.get<string>('BIRTHDAY_REWARD_POINTS'));
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  }
+
+  /**
+   * Lazily grants the birthday points gift. Safe to call on any member touch
+   * (profile load / update): it only credits when the current month is the
+   * member's birthday month and they have not already received this year's
+   * gift. No scheduler required.
+   */
+  private async maybeGrantBirthdayReward(customerId: string): Promise<void> {
+    const rewardPoints = this.birthdayRewardPoints();
+    if (rewardPoints <= 0) return;
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, birthday: true },
+    });
+    if (!customer?.birthday) return;
+
+    const now = new Date();
+    const currentMonth = now.getUTCMonth();
+    const currentYear = now.getUTCFullYear();
+    if (customer.birthday.getUTCMonth() !== currentMonth) return;
+
+    const yearRef = String(currentYear);
+    const already = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
+        customerId,
+        reason: 'birthday_reward',
+        referenceType: 'birthday',
+        referenceId: yearRef,
+      },
+      select: { id: true },
+    });
+    if (already) return;
+
+    try {
+      const result = await this.loyalty.appendLedgerEntry({
+        customerId,
+        deltaPoints: rewardPoints,
+        reason: 'birthday_reward',
+        referenceType: 'birthday',
+        referenceId: yearRef,
+      });
+      this.logger.log(
+        `Awarded ${rewardPoints} birthday points to member ${customerId} ` +
+          `for ${yearRef} (balanceAfter=${result.balanceAfter}).`,
+      );
+    } catch (err) {
+      // A birthday gift must never break profile load/update.
+      this.logger.error(
+        `Birthday reward grant failed for member ${customerId}`,
+        err as Error,
+      );
+    }
+  }
+
   async findByIdOrThrow(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
@@ -204,6 +279,11 @@ export class CustomersService {
       });
     }
 
+    // Birthday gift is evaluated lazily on profile access (and after a birthday
+    // update, since updateMe returns this bundle). Idempotent and month-gated.
+    await this.maybeGrantBirthdayReward(customerId);
+    const loyaltyAfter = await this.loyalty.getWalletSummary(customerId);
+
     return {
       id: customer.id,
       phoneE164: customer.phoneE164,
@@ -225,8 +305,8 @@ export class CustomersService {
         totalQty: Number(r.total_qty),
       })),
       loyalty: {
-        pointsBalance: loyalty.pointsBalance,
-        walletId: loyalty.walletId || null,
+        pointsBalance: loyaltyAfter.pointsBalance,
+        walletId: loyaltyAfter.walletId || null,
       },
       storedWallet,
       createdAt: customer.createdAt,
@@ -565,7 +645,69 @@ export class CustomersService {
           `Awarded ${points} loyalty points for online order ${order.id} (customer=${order.customerId}, balanceAfter=${result.balanceAfter}).`,
         );
       }
+
+      await this.maybeRewardReferrerOnFirstOrder(tx, order.customerId, order.id);
     });
+  }
+
+  /**
+   * Grants the referrer loyalty points the first time a member they referred
+   * completes a paid order. Runs inside the order-finalization transaction so
+   * it is atomic with the purchase. Idempotent: a referrer is rewarded at most
+   * once per referred member (guarded by a unique ledger reference).
+   */
+  private async maybeRewardReferrerOnFirstOrder(
+    tx: Prisma.TransactionClient,
+    buyerCustomerId: string,
+    orderId: string,
+  ): Promise<void> {
+    const rewardPoints = this.referralRewardPoints();
+    if (rewardPoints <= 0) return;
+
+    const buyer = await tx.customer.findUnique({
+      where: { id: buyerCustomerId },
+      select: { id: true, referredByCustomerId: true },
+    });
+    const referrerId = buyer?.referredByCustomerId;
+    if (!referrerId) return;
+
+    // Only on the buyer's FIRST paid order. The current order was just moved to
+    // 'placed' in this transaction, so a count of 1 paid order means first.
+    const paidOrderCount = await tx.customerOrder.count({
+      where: {
+        customerId: buyerCustomerId,
+        status: { notIn: ['pending_payment', 'cancelled'] },
+      },
+    });
+    if (paidOrderCount !== 1) return;
+
+    // Idempotency: never reward the same referrer twice for the same referee.
+    const existing = await tx.loyaltyLedgerEntry.findFirst({
+      where: {
+        customerId: referrerId,
+        reason: 'referral_reward',
+        referenceType: 'referral',
+        referenceId: buyerCustomerId,
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const result = await this.loyalty.appendLedgerEntry(
+      {
+        customerId: referrerId,
+        deltaPoints: rewardPoints,
+        reason: 'referral_reward',
+        referenceType: 'referral',
+        referenceId: buyerCustomerId,
+      },
+      tx,
+    );
+    this.logger.log(
+      `Awarded ${rewardPoints} referral points to referrer ${referrerId} ` +
+        `for referee ${buyerCustomerId}'s first paid order ${orderId} ` +
+        `(balanceAfter=${result.balanceAfter}).`,
+    );
   }
 
   async topUpMyWallet(
