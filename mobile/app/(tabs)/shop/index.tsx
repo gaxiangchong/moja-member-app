@@ -11,10 +11,62 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryTabs } from '../../../components/shop/CategoryTabs';
 import { ProductCard } from '../../../components/shop/ProductCard';
 import { ShopHeader } from '../../../components/shop/ShopHeader';
-import { colors, spacing } from '../../../constants/theme';
+import { colors, radii, spacing } from '../../../constants/theme';
 import { MOCK_PRODUCTS } from '../../../data/mockCatalog';
 import type { ProductCategory } from '../../../types/shop';
 import { useShopStore } from '../../../store/useShopStore';
+
+function PromoBanner() {
+  return (
+    <View style={bannerStyles.card}>
+      <View style={bannerStyles.inner}>
+        <Text style={bannerStyles.badge}>Fresh Today 🎉</Text>
+        <Text style={bannerStyles.headline}>Handcrafted{'\n'}with love</Text>
+        <Text style={bannerStyles.sub}>Made fresh every morning, ready for pickup today.</Text>
+      </View>
+      <Text style={bannerStyles.emoji}>🎂</Text>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  inner: { flex: 1 },
+  badge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  headline: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: -0.5,
+    lineHeight: 28,
+    marginBottom: spacing.sm,
+  },
+  sub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: 18,
+  },
+  emoji: {
+    fontSize: 72,
+    marginLeft: spacing.md,
+    opacity: 0.9,
+  },
+});
 
 export default function ShopLandingScreen() {
   const router = useRouter();
@@ -36,6 +88,13 @@ export default function ShopLandingScreen() {
     });
   }, [query, category]);
 
+  const ListHeader = (
+    <View>
+      <PromoBanner />
+      <Text style={styles.sectionTitle}>Our Menu</Text>
+    </View>
+  );
+
   return (
     <View style={styles.screen}>
       <ShopHeader
@@ -48,8 +107,12 @@ export default function ShopLandingScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.row}
+        ListHeaderComponent={ListHeader}
         contentContainerStyle={{
           paddingHorizontal: spacing.md,
+          paddingTop: spacing.sm,
           paddingBottom: insets.bottom + spacing.xl,
         }}
         ListEmptyComponent={
@@ -86,6 +149,16 @@ export default function ShopLandingScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  row: {
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: spacing.sm,
+    letterSpacing: -0.3,
+  },
   empty: {
     textAlign: 'center',
     color: colors.textMuted,

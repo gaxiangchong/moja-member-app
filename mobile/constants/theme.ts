@@ -1,12 +1,13 @@
 export const colors = {
-  background: '#FAF7F2',
+  background: '#FFF9F5',
   surface: '#FFFFFF',
   text: '#1C1917',
   textMuted: '#78716C',
-  accent: '#B45309',
-  accentSoft: '#FEF3C7',
-  border: '#E7E5E4',
-  shadow: 'rgba(28, 25, 23, 0.08)',
+  accent: '#F97316',
+  accentDark: '#EA580C',
+  accentSoft: '#FFEDD5',
+  border: '#EDE9E4',
+  shadow: 'rgba(28, 25, 23, 0.07)',
   error: '#B91C1C',
   success: '#15803D',
 };

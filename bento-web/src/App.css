@@ -1,0 +1,1199 @@
+/* ============================================================
+   App.css — Bento Web base styles
+   (bento-ui.css is loaded after this and overrides key classes)
+   ============================================================ */
+
+/* ---- Layout ---- */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell {
+  flex: 1;
+  max-width: 520px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 16px 16px 108px;
+}
+
+/* ---- Bottom Nav ---- */
+.bottomTabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid #f0e8de;
+  backdrop-filter: blur(12px);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  z-index: 10;
+}
+
+.bottomTabsInner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: min(520px, 100%);
+  margin: 0 auto;
+}
+
+.bottomTabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border: none;
+  background: transparent;
+  border-radius: 16px;
+  color: #9a8878;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+  letter-spacing: 0.01em;
+}
+
+.bottomTabs button:hover {
+  background: #f9f0ea;
+  transform: translateY(-1px);
+}
+
+.tabIcon {
+  font-size: 1.4rem;
+  line-height: 1;
+  display: block;
+}
+
+.bottomTabs button.active {
+  color: #c2410c;
+  background: linear-gradient(135deg, #fff2e8, #ffe3cf);
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.16);
+}
+
+/* ---- Cards / Sections ---- */
+.section {
+  background: #fff;
+  border-radius: 20px;
+  padding: 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 33, 24, 0.05);
+  border: 1px solid #ede8e0;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sectionHeader h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+
+.sectionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #c2410c;
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.section h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.section h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+
+/* ---- Typography helpers ---- */
+.caption {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a6a5a;
+  line-height: 1.5;
+}
+
+.hint {
+  color: #15803d;
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+
+.err {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+
+.warn {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-radius: 12px;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
+/* ---- Banners ---- */
+.paymentBanner {
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  font-size: 0.9rem;
+}
+
+.paymentBanner.success {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.paymentBanner.failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* ---- Buttons ---- */
+.btnPrimary {
+  width: 100%;
+  padding: 15px 20px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f97316, #c2410c);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  box-shadow: 0 8px 22px rgba(194, 65, 12, 0.3);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(194, 65, 12, 0.38);
+}
+
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btnSecondary {
+  width: 100%;
+  padding: 13px 20px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 999px;
+  background: #fff;
+  color: #5b4a3d;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.btnSecondary:hover {
+  border-color: #c2410c;
+  background: #fff7ed;
+}
+
+.btnDemo {
+  background: linear-gradient(135deg, #34d399, #15803d);
+  box-shadow: 0 8px 22px rgba(21, 128, 61, 0.3);
+}
+
+.btnDemo:hover:not(:disabled) {
+  box-shadow: 0 14px 30px rgba(21, 128, 61, 0.38);
+}
+
+.linkBtn {
+  border: none;
+  background: none;
+  color: #c2410c;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ---- Hero Card ---- */
+.heroCard {
+  background: linear-gradient(145deg, #fff4eb, #ffe8d3);
+  border: 1px solid rgba(194, 65, 12, 0.14);
+  padding: 22px;
+  border-radius: 26px;
+  margin-bottom: 14px;
+  box-shadow: 0 12px 36px rgba(194, 65, 12, 0.1);
+}
+
+.heroTop {
+  margin-bottom: 16px;
+}
+
+.heroTag,
+.planSummaryTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  font-size: 0.73rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.heroCard h1 {
+  margin: 0 0 8px;
+  font-size: 1.7rem;
+  letter-spacing: -0.03em;
+  color: #2d1a0e;
+}
+
+.heroSubtitle {
+  margin: 0;
+  color: #6b5040;
+  line-height: 1.6;
+  font-size: 0.92rem;
+}
+
+.heroStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.heroStat {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(194, 65, 12, 0.1);
+  border-radius: 16px;
+  padding: 12px 8px;
+  text-align: center;
+  backdrop-filter: blur(4px);
+}
+
+.heroStatLabel {
+  display: block;
+  color: #8a6b57;
+  font-size: 0.7rem;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.heroHint {
+  margin-top: 16px;
+  color: #7a6a5a;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* ---- Plan summary ---- */
+.planSummary {
+  background: #fff7ed;
+  border: 1px solid #f8d4b0;
+  border-radius: 20px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.planSummaryHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.planSummaryHeader h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.planPrice {
+  font-size: 1.5rem;
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.planDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.planDetailItem {
+  border: 1px solid #f3e1d1;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+}
+
+.planDetailItem span {
+  display: block;
+  color: #7a6a5a;
+  font-size: 0.8rem;
+  margin-bottom: 5px;
+}
+
+.planDetailItem strong {
+  font-size: 0.95rem;
+  display: block;
+}
+
+.planSummaryFooter {
+  margin-top: 16px;
+}
+
+/* ---- Package cards ---- */
+.pkgGrid {
+  display: none;
+}
+
+.pkgScroller {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: 14px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+  margin-top: 4px;
+  scrollbar-width: none;
+}
+
+.pkgScroller::-webkit-scrollbar {
+  display: none;
+}
+
+.pkgCard {
+  border: 2px solid #e8dfd4;
+  border-radius: 22px;
+  padding: 20px;
+  text-align: left;
+  background: linear-gradient(160deg, #fff, #fffcf9);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 170px;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.pkgCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(43, 33, 24, 0.1);
+}
+
+.pkgCard.active {
+  border-color: #c2410c;
+  background: linear-gradient(160deg, #fff7ed, #fff2e5);
+  box-shadow: 0 8px 28px rgba(194, 65, 12, 0.2);
+}
+
+.pkgCard.pkgNewcomer {
+  border-color: #15803d;
+}
+
+.pkgCard.pkgNewcomer.active {
+  border-color: #15803d;
+  background: linear-gradient(160deg, #f0fdf4, #dcfce7);
+  box-shadow: 0 8px 28px rgba(21, 128, 61, 0.15);
+}
+
+.pkgCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pkgCardHeader strong {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.pkgPrice {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #c2410c;
+  white-space: nowrap;
+}
+
+.pkgNote {
+  color: #7a6a5a;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.pkgMeta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #5b4a3d;
+  font-size: 0.83rem;
+  font-weight: 600;
+}
+
+.pkgBadges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pkgBadge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 0.73rem;
+  font-weight: 600;
+}
+
+.pkgCard.pkgNewcomer .pkgBadge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* ---- Meal option / variant cards ---- */
+.optionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mealOptionCard,
+.variantCard {
+  border: 2px solid #e8dfd4;
+  border-radius: 18px;
+  background: #fff;
+  padding: 18px;
+  text-align: left;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.mealOptionCard:hover:not(.disabled),
+.variantCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(43, 33, 24, 0.08);
+}
+
+.mealOptionCard.active,
+.variantCard.active {
+  border-color: #c2410c;
+  background: #fff7ed;
+  box-shadow: 0 6px 18px rgba(194, 65, 12, 0.15);
+}
+
+.mealOptionCard.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mealOptionHeader,
+.menuSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mealOptionTitle,
+.variantTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: block;
+}
+
+.mealOptionText,
+.variantLabel {
+  color: #7a6a5a;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.mealOptionMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: #5b4a3d;
+}
+
+.mealOptionPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f5f3f0;
+  color: #7a6a5a;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* ---- Menu sections ---- */
+.menuSection {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #f0e8dc;
+}
+
+.variantGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* ---- Chips ---- */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  border: 1.5px solid #e8dfd4;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 0.88rem;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.chip.active {
+  border-color: #c2410c;
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 700;
+}
+
+.chip:disabled,
+.chip.chipDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chip small {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* ---- Checkout card ---- */
+.checkout {
+  padding-bottom: 8px;
+}
+
+.checkoutTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.checkoutTop h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+
+.checkoutTotalValue {
+  font-size: 1.65rem;
+  font-weight: 900;
+  color: #c2410c;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.checkoutDetails {
+  margin-top: 8px;
+}
+
+.checkoutDetails summary {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #c2410c;
+  cursor: pointer;
+  margin-bottom: 10px;
+  list-style: none;
+}
+
+.checkoutDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.quoteLines {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.quoteLines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 0.88rem;
+  border-bottom: 1px dashed #f0e8dc;
+  color: #5b4a3d;
+}
+
+.savings {
+  color: #15803d;
+  font-weight: 600;
+  font-size: 0.88rem;
+  margin: 8px 0 0;
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.15rem;
+  margin: 12px 0;
+}
+
+.paymentOptionSection {
+  margin-top: 14px;
+}
+
+.demoBanner {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #166534;
+  font-size: 0.85rem;
+}
+
+/* ---- Form helpers ---- */
+.fieldLabel {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #5b4a3d;
+  margin: 12px 0 6px;
+}
+
+.dateInput {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.9rem;
+  color: #3d2b1f;
+}
+
+.dateInput:focus {
+  outline: none;
+  border-color: #c2410c;
+}
+
+.menuBlock {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0e8dc;
+}
+
+/* ---- My Bento subscriptions ---- */
+.subList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subCard {
+  border: 1.5px solid #ecddd0;
+  border-radius: 20px;
+  padding: 18px;
+  background: linear-gradient(160deg, #fff, #fff9f5);
+  transition: box-shadow 150ms ease;
+}
+
+.subCard:hover {
+  box-shadow: 0 6px 20px rgba(43, 33, 24, 0.07);
+}
+
+.subHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.subHead strong {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2d1a0e;
+}
+
+.statusPill {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.status-ACTIVE {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-PENDING_PAYMENT {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.deliveryMini {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: #6b5040;
+}
+
+.deliveryMini li {
+  margin: 4px 0;
+}
+
+/* ---- Account form ---- */
+.accountForm label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 14px 0 5px;
+  color: #5b4a3d;
+}
+
+.accountForm input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 0.9rem;
+  color: #3d2b1f;
+  transition: border-color 140ms ease;
+}
+
+.accountForm input:focus {
+  outline: none;
+  border-color: #c2410c;
+}
+
+/* ---- Schedule / Calendar ---- */
+.dayGrid {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.dayCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  background: #fff;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.dayCell input {
+  margin-bottom: 4px;
+  accent-color: #c2410c;
+}
+
+.dayCellOn {
+  border-color: #c2410c;
+  background: #fff7ed;
+}
+
+.dayCellOff {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f5f0ea;
+}
+
+.dayWd {
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7a6a5a;
+}
+
+.dayNum {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2d1a0e;
+}
+
+.dayOffTag {
+  font-size: 0.62rem;
+  color: #a08070;
+}
+
+/* ---- Meal schedule picker ---- */
+.mealCreditsSummary {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  margin-bottom: 14px;
+}
+
+.mealCreditsSummary p {
+  margin: 4px 0;
+  font-size: 0.88rem;
+}
+
+.mealCreditsSummary .remaining {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.mealCreditsSummary .remaining.done {
+  color: #15803d;
+}
+
+.mealScheduleList {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mealScheduleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  background: #fff;
+  transition: border-color 140ms ease;
+}
+
+.mealScheduleRowOff {
+  opacity: 0.5;
+  background: #f7f2ec;
+}
+
+.mealScheduleDate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 72px;
+}
+
+.mealScheduleChecks {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.mealScheduleChecks label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.mealScheduleChecks .checkDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Weekly menu opt-in ---- */
+.weeklyMenuList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.weeklyMenuList li {
+  padding: 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.weeklyDayOff {
+  opacity: 0.55;
+  background: #f5f2ef !important;
+}
+
+.weeklyDayHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weeklyMeal {
+  margin: 5px 0 0;
+  font-size: 0.88rem;
+}
+
+.weeklyMealLabel {
+  font-weight: 700;
+  color: #c2410c;
+  margin-right: 6px;
+}
+
+.weeklyOptActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* ---- Top bar ---- */
+.topBar {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(194, 65, 12, 0.08));
+  border-radius: 22px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(194, 65, 12, 0.12);
+}
+
+.topBar h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Auth screens ---- */
+.authMain {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: url('/images/bento-bg.png') center / cover no-repeat fixed;
+  position: relative;
+}
+
+.authOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(43, 33, 24, 0.5), rgba(43, 33, 24, 0.72));
+}
+
+.authCard {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  border-radius: 24px;
+  padding: 30px 26px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.authBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #c2410c;
+}
+
+.authBrandLogo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.authCard h1 {
+  margin: 0 0 8px;
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+}
+
+.authSub {
+  margin: 0 0 18px;
+  color: #7a6a5a;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.authCard label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #5b4a3d;
+}
+
+.authCard input[type='tel'],
+.authCard input[type='email'],
+.authCard input[type='date'] {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  transition: border-color 140ms ease;
+}
+
+.authCard input:focus {
+  outline: none;
+  border-color: #c2410c;
+}
+
+.accountTypeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: #fff9f5;
+  border-radius: 14px;
+  border: 1px solid #f0e0d0;
+}
+
+.accountTypeLabel {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #5b4a3d;
+}
+
+.accountTypeOptions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.accountTypeOptions label {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  cursor: pointer;
+  color: #5b4a3d;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.accountTypeOptions input[type='radio'] {
+  accent-color: #c2410c;
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- Modal / Org Onboarding ---- */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.48);
+  z-index: 40;
+}
+
+.modalContent {
+  width: min(520px, 96%);
+  background: #fff;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
+}
+
+.onboardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.onboardStep {
+  margin-top: 14px;
+}
+
+.onboardActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.onboardActions .btnPrimary,
+.onboardActions .btnSecondary {
+  margin-top: 0;
+}
+
+.modalContent textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px solid #e8dfd4;
+  font-size: 0.9rem;
+}

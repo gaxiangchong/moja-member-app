@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatRm } from '../../data/mockCatalog';
@@ -35,11 +36,11 @@ export function ProductCard({
           {name}
         </Text>
         {shortDescription ? (
-          <Text style={styles.desc} numberOfLines={2}>
+          <Text style={styles.desc} numberOfLines={1}>
             {shortDescription}
           </Text>
         ) : null}
-        <View style={styles.row}>
+        <View style={styles.footer}>
           <Text style={styles.price}>{formatRm(priceCents)}</Text>
           <Pressable
             onPress={(e) => {
@@ -50,7 +51,7 @@ export function ProductCard({
             accessibilityRole="button"
             accessibilityLabel={`Add ${name} to cart`}
           >
-            <Text style={styles.addBtnText}>Add</Text>
+            <Ionicons name="add" size={20} color="#fff" />
           </Pressable>
         </View>
       </View>
@@ -60,21 +61,20 @@ export function ProductCard({
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 4,
-    marginBottom: spacing.md,
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: spacing.sm,
   },
-  pressed: { opacity: 0.92 },
+  pressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
   imageWrap: {
-    aspectRatio: 1.15,
+    aspectRatio: 1,
     backgroundColor: colors.accentSoft,
   },
   image: {
@@ -82,39 +82,39 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   body: {
-    padding: spacing.md,
+    padding: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   name: {
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
+    lineHeight: 18,
+    marginBottom: 2,
   },
   desc: {
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textMuted,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
+    lineHeight: 15,
+    marginBottom: spacing.xs,
   },
-  row: {
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 4,
   },
   price: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: colors.accent,
   },
   addBtn: {
-    backgroundColor: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    width: 30,
+    height: 30,
     borderRadius: radii.full,
-  },
-  addBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -164,6 +164,44 @@ enum OtpPurpose {
   RECOVERY
 }
 
+enum BentoPackageCode {
+  ONE_TIME
+  DAYS_7
+  DAYS_15
+  DAYS_30
+  DAYS_60
+  NEWCOMER_3
+}
+
+enum BentoMealOption {
+  LUNCH
+  DINNER
+  BOTH
+}
+
+enum BentoRiceType {
+  WHITE
+  BROWN
+}
+
+enum BentoDinnerVariant {
+  VEG
+  NONVEG
+}
+
+enum BentoSubscriptionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  CANCELLED
+  COMPLETED
+}
+
+enum BentoDeliveryStatus {
+  SCHEDULED
+  DELIVERED
+  SKIPPED
+}
+
 model UserWalletBalance {
   id              String   @id @default(uuid()) @db.Uuid
   customerId      String   @unique @map("customer_id") @db.Uuid
@@ -439,6 +477,8 @@ model Customer {
   vouchersV2        Voucher[]
   voucherRedemptions VoucherRedemption[]
   redeemedGiftCodes GiftVoucherCode[]
+  bentoSubscriptions BentoSubscription[]
+  bentoWeeklyOptIns  BentoWeeklyOptIn[]
 
   @@index([displayName])
   @@index([email])
@@ -946,4 +986,75 @@ model WorkCalendarDay {
   label   String?
 
   @@map("work_calendar_days")
+}
+
+model BentoPackage {
+  id                String           @id @default(uuid()) @db.Uuid
+  code              BentoPackageCode @unique
+  label             String
+  /// Calendar window (days) to schedule pickups after payment.
+  durationDays      Int              @map("duration_days")
+  /// Meals included in the plan (e.g. 30-meal pack).
+  mealCredits       Int              @map("meal_credits")
+  pricePerMealCents Int              @map("price_per_meal_cents")
+  /// When set, base checkout uses this fixed total (e.g. newcomer RM39).
+  fixedCheckoutCents Int?            @map("fixed_checkout_cents")
+  /// 60-meal plan: dinner soup (+RM1) and drinks included in plan price.
+  includeFreeSoupAndDrinks Boolean  @default(false) @map("include_free_soup_and_drinks")
+  isActive          Boolean          @default(true) @map("is_active")
+  subscriptions     BentoSubscription[]
+
+  @@map("bento_packages")
+}
+
+model BentoSubscription {
+  id                String                  @id @default(uuid()) @db.Uuid
+  customerId        String                  @map("customer_id") @db.Uuid
+  customer          Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  packageId         String                  @map("package_id") @db.Uuid
+  package           BentoPackage            @relation(fields: [packageId], references: [id])
+  mealOption        BentoMealOption         @map("meal_option")
+  lunchVariant      BentoDinnerVariant      @default(NONVEG) @map("lunch_variant")
+  dinnerVariant     BentoDinnerVariant      @map("dinner_variant")
+  riceType          BentoRiceType           @map("rice_type")
+  includeDrinkAddon Boolean                 @default(false) @map("include_drink_addon")
+  mealCreditsTotal  Int                     @map("meal_credits_total")
+  lunchCredits      Int                     @map("lunch_credits")
+  dinnerCredits     Int                     @map("dinner_credits")
+  startDate         DateTime?               @map("start_date") @db.Date
+  endDate           DateTime?               @map("end_date") @db.Date
+  totalCents        Int                     @map("total_cents")
+  status            BentoSubscriptionStatus @default(PENDING_PAYMENT)
+  paymentIntentId   String?                 @map("payment_intent_id") @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at")
+  deliveries        BentoDeliveryDay[]
+
+  @@index([customerId, createdAt])
+  @@map("bento_subscriptions")
+}
+
+model BentoDeliveryDay {
+  id             String              @id @default(uuid()) @db.Uuid
+  subscriptionId String              @map("subscription_id") @db.Uuid
+  subscription   BentoSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  deliveryDate   DateTime            @map("delivery_date") @db.Date
+  includesLunch  Boolean             @map("includes_lunch")
+  includesDinner Boolean             @map("includes_dinner")
+  status         BentoDeliveryStatus @default(SCHEDULED)
+
+  @@unique([subscriptionId, deliveryDate])
+  @@map("bento_delivery_days")
+}
+
+/// Member response to this week's bento menu (shown after login).
+model BentoWeeklyOptIn {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  weekStart  DateTime @map("week_start") @db.Date
+  optedIn    Boolean  @map("opted_in")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, weekStart])
+  @@map("bento_weekly_opt_ins")
 }

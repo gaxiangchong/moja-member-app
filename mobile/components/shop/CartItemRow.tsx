@@ -16,12 +16,22 @@ export function CartItemRow({ line, onQtyChange, onRemove }: Props) {
   const lineTotal = line.unitPriceCents * line.qty;
 
   return (
-    <View style={styles.row}>
+    <View style={styles.card}>
       <Image source={{ uri: line.imageUrl }} style={styles.thumb} />
       <View style={styles.mid}>
-        <Text style={styles.name} numberOfLines={2}>
-          {line.name}
-        </Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={2}>
+            {line.name}
+          </Text>
+          <Pressable
+            onPress={onRemove}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Remove item"
+          >
+            <Ionicons name="close-circle" size={20} color={colors.border} />
+          </Pressable>
+        </View>
         {line.variantLabel ? (
           <Text style={styles.meta}>{line.variantLabel}</Text>
         ) : null}
@@ -30,66 +40,65 @@ export function CartItemRow({ line, onQtyChange, onRemove }: Props) {
             Note: {line.notes}
           </Text>
         ) : null}
-        <Text style={styles.unit}>{formatRm(line.unitPriceCents)} each</Text>
-        <View style={styles.qtyRow}>
+        <View style={styles.bottomRow}>
           <QuantitySelector
             value={line.qty}
             min={0}
             onChange={onQtyChange}
             size="sm"
           />
-          <Pressable
-            onPress={onRemove}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Remove item"
-          >
-            <Ionicons name="trash-outline" size={20} color={colors.error} />
-          </Pressable>
+          <Text style={styles.total}>{formatRm(lineTotal)}</Text>
         </View>
       </View>
-      <Text style={styles.total}>{formatRm(lineTotal)}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  card: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   thumb: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.sm,
+    width: 80,
+    height: 80,
+    borderRadius: radii.md,
     backgroundColor: colors.accentSoft,
   },
   mid: { flex: 1, minWidth: 0 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
   name: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.text,
+    lineHeight: 20,
   },
   meta: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
   },
   notes: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
     fontStyle: 'italic',
-    marginTop: 4,
+    marginTop: 2,
   },
-  unit: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  qtyRow: {
+  bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -97,8 +106,7 @@ const styles = StyleSheet.create({
   },
   total: {
     fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    alignSelf: 'flex-start',
+    fontWeight: '800',
+    color: colors.accent,
   },
 });

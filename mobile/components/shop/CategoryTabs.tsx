@@ -2,7 +2,6 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { colors, radii, spacing } from '../../constants/theme';
 import type { ProductCategory } from '../../types/shop';
-import { CATEGORY_LABELS } from '../../types/shop';
 
 const ORDER: ProductCategory[] = [
   'whole_cakes',
@@ -10,6 +9,14 @@ const ORDER: ProductCategory[] = [
   'drinks',
   'specials',
 ];
+
+const LABELS: Record<ProductCategory | 'all', string> = {
+  all: '🍽️ All',
+  whole_cakes: '🎂 Whole Cakes',
+  cake_slices: '🍰 Slices',
+  drinks: '☕ Drinks',
+  specials: '⭐ Specials',
+};
 
 type Props = {
   active: ProductCategory | 'all';
@@ -24,14 +31,14 @@ export function CategoryTabs({ active, onChange }: Props) {
       contentContainerStyle={styles.scroll}
     >
       <Chip
-        label="All"
+        label={LABELS.all}
         selected={active === 'all'}
         onPress={() => onChange('all')}
       />
       {ORDER.map((key) => (
         <Chip
           key={key}
-          label={CATEGORY_LABELS[key]}
+          label={LABELS[key]}
           selected={active === key}
           onPress={() => onChange(key)}
         />
@@ -67,26 +74,26 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
   },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.full,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
   },
   chipSelected: {
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
   chipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
   },
   chipTextSelected: {
-    color: colors.accent,
+    color: '#fff',
   },
 });

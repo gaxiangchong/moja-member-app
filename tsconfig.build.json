@@ -6,6 +6,7 @@
     "dist",
     "client-web",
     "ops-queue-web",
+    "bento-web",
     "mobile",
     "**/*spec.ts"
   ]

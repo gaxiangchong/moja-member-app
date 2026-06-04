@@ -230,10 +230,15 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   cta: {
-    backgroundColor: colors.text,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md + 2,
     borderRadius: radii.full,
     alignItems: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
   },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

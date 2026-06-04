@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
 import { DemoCompleteShopOrderDto } from './dto/demo-complete-shop-order.dto';
+import { DemoCompleteBentoSubscriptionDto } from './dto/demo-complete-bento-subscription.dto';
 import { ShopOrderCheckoutDto } from './dto/shop-order-checkout.dto';
 import { WalletTopUpSessionDto } from './dto/wallet-topup-session.dto';
 import { PaymentsService } from './payments.service';
@@ -20,6 +21,15 @@ import { PaymentsService } from './payments.service';
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
+
+  /**
+   * Public flags for checkout UIs (e.g. bento-web design preview without Xendit).
+   */
+  @Get('config')
+  @SkipThrottle()
+  getConfig() {
+    return { paymentsDemoMode: this.payments.paymentsDemoModeEnabled() };
+  }
 
   /**
    * Payment methods enabled for shop (from XENDIT_SHOP_CHANNEL_CODES).
@@ -99,6 +109,22 @@ export class PaymentsController {
     @Body() dto: DemoCompleteShopOrderDto,
   ) {
     return this.payments.completeDemoShopOrder(user.customerId, dto.orderId);
+  }
+
+  /**
+   * Simulates successful bento subscription payment (PAYMENTS_DEMO_MODE=true) only.
+   */
+  @Post('demo/complete-bento-subscription')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  completeDemoBentoSubscription(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DemoCompleteBentoSubscriptionDto,
+  ) {
+    return this.payments.completeDemoBentoSubscription(
+      user.customerId,
+      dto.subscriptionId,
+    );
   }
 }
 

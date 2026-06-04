@@ -39,7 +39,7 @@ export function QuantitySelector({
         <Ionicons
           name="remove"
           size={size === 'sm' ? 18 : 22}
-          color={value <= min ? colors.textMuted : colors.text}
+          color={value <= min ? colors.textMuted : colors.accent}
         />
       </Pressable>
       <Text style={[styles.val, size === 'sm' && styles.valSm]}>{value}</Text>
@@ -58,7 +58,7 @@ export function QuantitySelector({
         <Ionicons
           name="add"
           size={size === 'sm' ? 18 : 22}
-          color={value >= max ? colors.textMuted : colors.text}
+          color={value >= max ? colors.textMuted : colors.accent}
         />
       </Pressable>
     </View>
@@ -72,9 +72,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   btn: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radii.full,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',

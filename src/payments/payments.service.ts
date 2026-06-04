@@ -49,12 +49,29 @@ export class PaymentsService {
     return 'http://localhost:5193';
   }
 
-  private isDemoMode(): boolean {
+  private bentoPublicBase(): string {
+    const explicit = this.config.get<string>('BENTO_APP_PUBLIC_URL')?.trim();
+    if (explicit) return explicit.replace(/\/$/, '');
+    const cors = this.config
+      .get<string>('CLIENT_WEB_ORIGIN')
+      ?.split(',')
+      .map((s) => s.trim())
+      .find((o) => o.includes(':5195'));
+    if (cors) return cors.replace(/\/$/, '');
+    return 'http://localhost:5195';
+  }
+
+  /** When true, checkout skips Xendit; client completes via demo endpoints. */
+  paymentsDemoModeEnabled(): boolean {
     const v = this.config
       .get<string>('PAYMENTS_DEMO_MODE')
       ?.trim()
       .toLowerCase();
     return v === 'true' || v === '1' || v === 'yes';
+  }
+
+  private isDemoMode(): boolean {
+    return this.paymentsDemoModeEnabled();
   }
 
   private assertShopChannelAllowed(channelCode: string) {
@@ -524,6 +541,173 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Bento subscription checkout via Xendit (or demo mode).
+   */
+  async createBentoSubscriptionCheckout(
+    customerId: string,
+    subscriptionId: string,
+    amountCents: number,
+    channelCodeRaw?: string,
+  ) {
+    const subscription = await this.prisma.bentoSubscription.findFirst({
+      where: { id: subscriptionId, customerId },
+      include: { package: true },
+    });
+    if (!subscription) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    if (subscription.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException({
+        code: 'BENTO_NOT_PENDING',
+        message: 'Subscription is not awaiting payment.',
+      });
+    }
+
+    if (this.isDemoMode()) {
+      return {
+        demoMode: true as const,
+        subscriptionId: subscription.id,
+        totalCents: subscription.totalCents,
+        status: subscription.status,
+      };
+    }
+
+    const channelCode = this.normalizeChannelCode(channelCodeRaw?.trim() || '');
+    if (!channelCode) {
+      throw new BadRequestException({
+        code: 'CHANNEL_REQUIRED',
+        message: 'Select a payment method (channel).',
+      });
+    }
+    this.assertShopChannelAllowed(channelCode);
+    this.assertChannelSupportedByCurrentIntegration(channelCode);
+
+    const country =
+      this.config.get<string>('XENDIT_COUNTRY')?.trim().toUpperCase() || 'MY';
+    const currency =
+      this.config.get<string>('XENDIT_CURRENCY')?.trim().toUpperCase() || 'MYR';
+
+    const referenceId = randomUUID();
+    const base = this.bentoPublicBase();
+    const successUrl = `${base}/?bentoPayment=success&subscriptionId=${encodeURIComponent(subscription.id)}`;
+    const failureUrl = `${base}/?bentoPayment=failed`;
+
+    const xenditResponse = await this.xendit.createPaymentRequest({
+      referenceId,
+      country,
+      currency,
+      requestAmount: amountCents / 100,
+      channelCode,
+      description: `Moja Bento ${subscription.package.label}`,
+      successReturnUrl: successUrl,
+      failureReturnUrl: failureUrl,
+      metadata: {
+        customerId: String(customerId),
+        purpose: 'bento_subscription',
+        subscriptionId: String(subscription.id),
+      },
+    });
+
+    const paymentRequestId =
+      typeof xenditResponse.payment_request_id === 'string'
+        ? xenditResponse.payment_request_id
+        : null;
+    const apiStatus =
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
+
+    const intent = await this.prisma.paymentIntent.create({
+      data: {
+        customerId,
+        referenceId,
+        purpose: 'bento_subscription',
+        amountCents,
+        currency,
+        country,
+        channelCode,
+        status: 'PENDING',
+        xenditPaymentRequestId: paymentRequestId,
+        metadata: { subscriptionId: subscription.id } as object,
+      },
+    });
+
+    await this.prisma.bentoSubscription.update({
+      where: { id: subscription.id },
+      data: { paymentIntentId: intent.id },
+    });
+
+    if (apiStatus === 'SUCCEEDED') {
+      await this.applyBentoSubscriptionFromXendit(
+        referenceId,
+        xenditResponse,
+      );
+    }
+
+    const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
+
+    return {
+      demoMode: false as const,
+      subscriptionId: subscription.id,
+      referenceId,
+      paymentRequestId,
+      status: apiStatus,
+      redirectUrl,
+      channelCode,
+      country,
+      currency,
+      amountCents,
+    };
+  }
+
+  async completeDemoBentoSubscription(
+    customerId: string,
+    subscriptionId: string,
+  ) {
+    if (!this.isDemoMode()) {
+      throw new BadRequestException({
+        code: 'DEMO_NOT_ENABLED',
+        message:
+          'Demo payment completion is disabled when PAYMENTS_DEMO_MODE is not true.',
+      });
+    }
+    const subscription = await this.prisma.bentoSubscription.findFirst({
+      where: { id: subscriptionId, customerId },
+    });
+    if (!subscription) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    if (subscription.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException({
+        code: 'BENTO_NOT_PENDING',
+        message: 'Subscription is not awaiting payment.',
+      });
+    }
+    await this.prisma.bentoSubscription.update({
+      where: { id: subscriptionId },
+      data: { status: 'ACTIVE' },
+    });
+    const refreshed = await this.prisma.bentoSubscription.findUniqueOrThrow({
+      where: { id: subscriptionId },
+      include: { package: true },
+    });
+    return {
+      subscription: {
+        id: refreshed.id,
+        status: refreshed.status,
+        totalCents: refreshed.totalCents,
+        package: refreshed.package.label,
+      },
+    };
+  }
+
   async completeDemoShopOrder(customerId: string, orderId: string) {
     if (!this.isDemoMode()) {
       throw new BadRequestException({
@@ -581,6 +765,58 @@ export class PaymentsService {
     });
     if (!intent || intent.purpose !== 'wallet_topup') return;
     await this.creditWalletIfNeeded(intent.id, referenceId, data);
+  }
+
+  private async applyBentoSubscriptionFromXendit(
+    referenceId: string,
+    data: XenditPaymentRequestResponse,
+  ): Promise<void> {
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { referenceId },
+    });
+    if (!intent || intent.purpose !== 'bento_subscription') return;
+    if (intent.status === 'SUCCEEDED') return;
+
+    const lock = await this.prisma.paymentIntent.updateMany({
+      where: { id: intent.id, status: 'PENDING' },
+      data: { status: 'PROCESSING' },
+    });
+    if (lock.count === 0) return;
+
+    const meta = intent.metadata as { subscriptionId?: string } | null;
+    const subscriptionId =
+      typeof meta?.subscriptionId === 'string' ? meta.subscriptionId : null;
+    if (!subscriptionId) {
+      await this.prisma.paymentIntent.update({
+        where: { id: intent.id },
+        data: { status: 'PENDING' },
+      });
+      return;
+    }
+
+    try {
+      await this.prisma.bentoSubscription.updateMany({
+        where: { id: subscriptionId, status: 'PENDING_PAYMENT' },
+        data: { status: 'ACTIVE' },
+      });
+      await this.prisma.paymentIntent.update({
+        where: { id: intent.id },
+        data: {
+          status: 'SUCCEEDED',
+          metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Bento subscription finalize failed for ${referenceId}`,
+        err,
+      );
+      await this.prisma.paymentIntent.update({
+        where: { id: intent.id },
+        data: { status: 'PENDING' },
+      });
+      throw err;
+    }
   }
 
   private async applyShopOrderFromXendit(
@@ -687,6 +923,13 @@ export class PaymentsService {
         );
         return;
       }
+      if (intent.purpose === 'bento_subscription') {
+        await this.applyBentoSubscriptionFromXendit(
+          referenceId,
+          data as XenditPaymentRequestResponse,
+        );
+        return;
+      }
       return;
     }
 
@@ -699,6 +942,18 @@ export class PaymentsService {
         await this.rewardsWorkflow.releaseVoucherLock(meta.voucherLockToken);
       }
       if (intent?.purpose === 'shop_order') {
+        await this.prisma.paymentIntent.updateMany({
+          where: { referenceId, status: { not: 'SUCCEEDED' } },
+          data: {
+            status: 'FAILED',
+            metadata: mergeMetadata(intent.metadata, {
+              xenditFailure: data,
+            }) as object,
+          },
+        });
+        return;
+      }
+      if (intent?.purpose === 'bento_subscription') {
         await this.prisma.paymentIntent.updateMany({
           where: { referenceId, status: { not: 'SUCCEEDED' } },
           data: {

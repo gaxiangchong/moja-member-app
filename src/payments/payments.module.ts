@@ -18,5 +18,6 @@ import { XenditApiService } from './xendit-api.service';
   ],
   controllers: [PaymentsController, WebhooksController],
   providers: [PaymentsService, XenditApiService],
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

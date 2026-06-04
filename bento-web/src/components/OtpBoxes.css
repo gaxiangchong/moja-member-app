@@ -1,0 +1,43 @@
+.otpBoxes {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  position: relative;
+  cursor: text;
+}
+
+.otpBox {
+  width: 44px;
+  height: 52px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.92);
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #2b2118;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.otpBoxFilled {
+  border-color: #c2410c;
+}
+
+.otpBoxActive {
+  border-color: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.25);
+}
+
+.otpHiddenInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+
+.otpBoxesDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

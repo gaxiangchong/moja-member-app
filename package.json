@@ -24,6 +24,8 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "client:dev": "npm run dev --prefix client-web",
     "client:build": "npm run build --prefix client-web",
+    "bento:dev": "npm run dev --prefix bento-web",
+    "bento:build": "npm run build --prefix bento-web",
     "mobile:start": "npm run start --prefix mobile",
     "catalog:import-from-sites": "ts-node scripts/import-shop-catalog-from-sites.ts"
   },

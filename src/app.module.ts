@@ -21,6 +21,7 @@ import { OpsQueueModule } from './ops-queue/ops-queue.module';
 import { PaymentsModule } from './payments/payments.module';
 import { HomeAdsModule } from './home-ads/home-ads.module';
 import { RewardsWorkflowModule } from './rewards-workflow/rewards-workflow.module';
+import { BentoModule } from './bento/bento.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { RewardsWorkflowModule } from './rewards-workflow/rewards-workflow.modul
     PaymentsModule,
     HomeAdsModule,
     RewardsWorkflowModule,
+    BentoModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

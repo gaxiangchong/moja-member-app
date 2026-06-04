@@ -129,9 +129,14 @@ const styles = StyleSheet.create({
   },
   checkout: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     borderRadius: radii.full,
     alignItems: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
   },
   checkoutTxt: { color: '#fff', fontSize: 17, fontWeight: '800' },
 });
