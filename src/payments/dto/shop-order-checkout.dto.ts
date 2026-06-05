@@ -43,6 +43,12 @@ export class ShopOrderCheckoutDto {
   @MaxLength(64)
   voucherId?: string;
 
+  /** Points-catalog reward (voucher definition id) to redeem at checkout. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  rewardDefinitionId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(128)

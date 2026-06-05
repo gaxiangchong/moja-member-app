@@ -28,15 +28,21 @@ export class LoyaltyService {
   }
 
   /**
-   * All point changes must go through the ledger; wallet cache is updated in the same transaction.
+   * All point changes must go through the ledger; wallet cache is updated in
+   * the same transaction. Optionally accepts an existing Prisma transaction
+   * client so callers (e.g. order finalization) can perform the credit
+   * atomically with their own work — see `CustomersService.finalizeShopOrderAfterPayment`.
    */
-  async appendLedgerEntry(params: {
-    customerId: string;
-    deltaPoints: number;
-    reason: string;
-    referenceType?: string | null;
-    referenceId?: string | null;
-  }): Promise<{ balanceAfter: number }> {
+  async appendLedgerEntry(
+    params: {
+      customerId: string;
+      deltaPoints: number;
+      reason: string;
+      referenceType?: string | null;
+      referenceId?: string | null;
+    },
+    txClient?: Prisma.TransactionClient,
+  ): Promise<{ balanceAfter: number }> {
     if (params.deltaPoints === 0) {
       throw new BadRequestException({
         code: 'LOYALTY_NOOP',
@@ -44,37 +50,52 @@ export class LoyaltyService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.ensureWalletInTx(tx, params.customerId);
-      const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
-        where: { customerId: params.customerId },
-      });
-      const balanceAfter = wallet.pointsCached + params.deltaPoints;
-      if (balanceAfter < 0) {
-        throw new BadRequestException({
-          code: 'LOYALTY_INSUFFICIENT_POINTS',
-          message: 'Adjustment would result in negative balance',
-        });
-      }
+    if (txClient) {
+      return this.appendInTx(txClient, params);
+    }
 
-      await tx.loyaltyLedgerEntry.create({
-        data: {
-          customerId: params.customerId,
-          deltaPoints: params.deltaPoints,
-          balanceAfter,
-          reason: params.reason,
-          referenceType: params.referenceType ?? null,
-          referenceId: params.referenceId ?? null,
-        },
-      });
+    return this.prisma.$transaction((tx) => this.appendInTx(tx, params));
+  }
 
-      await tx.loyaltyWallet.update({
-        where: { customerId: params.customerId },
-        data: { pointsCached: balanceAfter },
-      });
-
-      return { balanceAfter };
+  private async appendInTx(
+    tx: Prisma.TransactionClient,
+    params: {
+      customerId: string;
+      deltaPoints: number;
+      reason: string;
+      referenceType?: string | null;
+      referenceId?: string | null;
+    },
+  ): Promise<{ balanceAfter: number }> {
+    await this.ensureWalletInTx(tx, params.customerId);
+    const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
+      where: { customerId: params.customerId },
     });
+    const balanceAfter = wallet.pointsCached + params.deltaPoints;
+    if (balanceAfter < 0) {
+      throw new BadRequestException({
+        code: 'LOYALTY_INSUFFICIENT_POINTS',
+        message: 'Adjustment would result in negative balance',
+      });
+    }
+
+    await tx.loyaltyLedgerEntry.create({
+      data: {
+        customerId: params.customerId,
+        deltaPoints: params.deltaPoints,
+        balanceAfter,
+        reason: params.reason,
+        referenceType: params.referenceType ?? null,
+        referenceId: params.referenceId ?? null,
+      },
+    });
+
+    await tx.loyaltyWallet.update({
+      where: { customerId: params.customerId },
+      data: { pointsCached: balanceAfter },
+    });
+
+    return { balanceAfter };
   }
 
   private async ensureWalletInTx(

@@ -14,6 +14,21 @@ import {
   VoucherStatus,
   WalletTxnType,
 } from '@prisma/client';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
+
+// Voucher-definition image uploads land on the same persistent disk mounted
+// at <cwd>/data/ as the home-ad carousel uploads. See docs/DEPLOYMENT.md §6.1.
+// Served by app.useStaticAssets in src/main.ts under /uploads/.
+const VOUCHER_IMAGE_PUBLIC_PREFIX = '/uploads/voucher-defs/';
+const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
@@ -933,6 +948,8 @@ export class AdminService {
         title: dto.title,
         description: dto.description ?? null,
         pointsCost: dto.pointsCost ?? null,
+        rebateValueSen: dto.rebateValueSen ?? null,
+        minSpendSen: dto.minSpendSen ?? null,
         imageUrl: dto.imageUrl?.trim() || null,
         rewardCategory: dto.rewardCategory?.trim() || null,
         showInRewardsCatalog: dto.showInRewardsCatalog ?? false,
@@ -993,9 +1010,27 @@ export class AdminService {
           : null;
     }
     if (dto.pointsCost !== undefined) data.pointsCost = dto.pointsCost;
+    if (dto.rebateValueSen !== undefined) {
+      data.rebateValueSen =
+        dto.rebateValueSen == null ? null : dto.rebateValueSen;
+    }
+    if (dto.minSpendSen !== undefined) {
+      data.minSpendSen = dto.minSpendSen == null ? null : dto.minSpendSen;
+    }
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.imageUrl !== undefined) {
-      data.imageUrl = dto.imageUrl?.trim() ? dto.imageUrl.trim() : null;
+      const newUrl = dto.imageUrl?.trim() ? dto.imageUrl.trim() : null;
+      // If we're replacing a previously uploaded local image with a different
+      // URL (or clearing it), delete the orphan file from disk so the
+      // persistent volume doesn't accumulate dead uploads.
+      if (
+        before.imageUrl &&
+        before.imageUrl !== newUrl &&
+        before.imageUrl.startsWith(VOUCHER_IMAGE_PUBLIC_PREFIX)
+      ) {
+        this.tryRemoveLocalVoucherImage(before.imageUrl);
+      }
+      data.imageUrl = newUrl;
     }
     if (dto.rewardCategory !== undefined) {
       data.rewardCategory = dto.rewardCategory?.trim()
@@ -1048,6 +1083,105 @@ export class AdminService {
       afterValue: snap(updated) as object,
     });
     return updated;
+  }
+
+  // ----- Voucher-definition image uploads (persistent disk) ---------------
+  // Stored under <cwd>/data/uploads/voucher-defs/ and served via /uploads/...
+  // Mirrors the home-ad slide upload pattern in src/home-ads/home-ads.service.
+
+  private voucherImagesDir(): string {
+    return resolve(process.cwd(), 'data', 'uploads', 'voucher-defs');
+  }
+
+  /**
+   * Best-effort delete of a previously uploaded voucher image when its public
+   * URL is being replaced. Silently ignores non-local URLs (e.g. external CDN
+   * links the admin pasted into the URL field) and missing files.
+   */
+  private tryRemoveLocalVoucherImage(url: string | null | undefined): void {
+    if (!url) return;
+    if (!url.startsWith(VOUCHER_IMAGE_PUBLIC_PREFIX)) return;
+    const name = url.substring(VOUCHER_IMAGE_PUBLIC_PREFIX.length);
+    if (!/^[a-z0-9._-]+$/i.test(name)) return;
+    const p = resolve(this.voucherImagesDir(), name);
+    try {
+      if (existsSync(p)) unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async attachVoucherDefinitionImage(
+    id: string,
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname?: string;
+      size: number;
+    },
+  ) {
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException('No file provided');
+    }
+    if (file.size > VOUCHER_IMAGE_MAX_BYTES) {
+      throw new BadRequestException(
+        `Image too large. Max ${Math.round(
+          VOUCHER_IMAGE_MAX_BYTES / 1024 / 1024,
+        )} MB.`,
+      );
+    }
+    const ext =
+      VOUCHER_IMAGE_ALLOWED_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    const allowedExts = new Set(Object.values(VOUCHER_IMAGE_ALLOWED_MIME));
+    if (!ext || !allowedExts.has(ext)) {
+      throw new BadRequestException(
+        'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      );
+    }
+
+    const before = await this.prisma.voucherDefinition.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message: 'Voucher definition not found',
+      });
+    }
+
+    mkdirSync(this.voucherImagesDir(), { recursive: true });
+    const filename = `${id}-${Date.now()}${ext}`;
+    const diskPath = resolve(this.voucherImagesDir(), filename);
+    writeFileSync(diskPath, file.buffer);
+
+    const publicUrl = `${VOUCHER_IMAGE_PUBLIC_PREFIX}${filename}`;
+    const updated = await this.prisma.voucherDefinition.update({
+      where: { id },
+      data: { imageUrl: publicUrl },
+    });
+
+    if (before.imageUrl && before.imageUrl !== publicUrl) {
+      this.tryRemoveLocalVoucherImage(before.imageUrl);
+    }
+    return updated;
+  }
+
+  async clearVoucherDefinitionImage(id: string) {
+    const before = await this.prisma.voucherDefinition.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message: 'Voucher definition not found',
+      });
+    }
+    if (before.imageUrl) this.tryRemoveLocalVoucherImage(before.imageUrl);
+    return this.prisma.voucherDefinition.update({
+      where: { id },
+      data: { imageUrl: null },
+    });
   }
 
   async assignCustomerVoucher(

@@ -60,6 +60,25 @@ export class PaymentsController {
   }
 
   /**
+   * Customer-scoped lookup of a payment intent by reference id, used by the
+   * member web app to poll for completion when a redirect-back from an
+   * e-wallet (e.g. Touch 'n Go, ShopeePay) doesn't return the user to the app.
+   * Returns enough information for the client to show the success/failure UI.
+   */
+  @Get('intent/:referenceId')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  getMyPaymentIntentStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('referenceId') referenceId: string,
+  ) {
+    return this.payments.getMyPaymentIntentStatus(
+      user.customerId,
+      referenceId,
+    );
+  }
+
+  /**
    * Start a Xendit `PAY` payment request for stored wallet top-up.
    * @see https://docs.xendit.co/docs/how-payments-api-work
    */
@@ -94,6 +113,7 @@ export class PaymentsController {
       dto.channelCode,
       dto.paymentTokenId,
       dto.voucherId,
+      dto.rewardDefinitionId,
       dto.idempotencyKey,
     );
   }

@@ -4,8 +4,10 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -43,6 +45,27 @@ export class UpdateShopCatalogProductDto {
   @IsString()
   @MaxLength(2000)
   imageUrl?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  imageOffsetX?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  imageOffsetY?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.5)
+  @Max(3)
+  imageScale?: number;
 
   @IsOptional()
   @Type(() => Number)

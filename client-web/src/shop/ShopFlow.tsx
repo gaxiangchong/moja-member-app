@@ -26,6 +26,7 @@ import {
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
 } from '../api';
+import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
 
@@ -55,11 +56,72 @@ function todayIsoDate(): string {
   return `${y}-${m}-${day}`;
 }
 
-function paymentChannelIcon(code: string): string {
-  if (code === 'TOUCHNGO' || code === 'TOUCHNGO_MY') return 'TnG';
-  if (code === 'SHOPEEPAY' || code === 'SHOPEEPAY_MY') return 'SP';
-  if (code === 'FPX' || code === 'FPX_MY') return 'FPX';
-  return 'PAY';
+// Channels intentionally hidden from the checkout UI even if returned by the
+// backend's XENDIT_SHOP_CHANNEL_CODES list — e.g. removed by product without
+// requiring an env redeploy.
+const HIDDEN_PAYMENT_CHANNELS = new Set<string>([
+  'SHOPEEPAY',
+  'SHOPEEPAY_MY',
+]);
+
+const CHANNEL_LOGOS: Record<string, string> = {
+  TOUCHNGO: '/images/payments/touchngo.png',
+  TOUCHNGO_MY: '/images/payments/touchngo.png',
+  FPX: '/images/payments/fpx.png',
+  FPX_MY: '/images/payments/fpx.png',
+};
+
+function PaymentChannelIcon({ code, label }: { code: string; label: string }) {
+  const src = CHANNEL_LOGOS[code];
+  if (src) {
+    return (
+      <span
+        style={{
+          minWidth: 56,
+          height: 28,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#ffffff',
+          borderRadius: 8,
+          padding: '2px 6px',
+          border: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <img
+          src={src}
+          alt={label}
+          style={{
+            height: 22,
+            maxWidth: 56,
+            width: 'auto',
+            objectFit: 'contain',
+            display: 'block',
+          }}
+        />
+      </span>
+    );
+  }
+  const fallback =
+    code === 'CARDS' || code === 'CREDIT_CARD' ? 'CARD' : 'PAY';
+  return (
+    <span
+      style={{
+        minWidth: 56,
+        height: 28,
+        borderRadius: 8,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        background: 'rgba(255,255,255,0.16)',
+      }}
+    >
+      {fallback}
+    </span>
+  );
 }
 
 export function ShopFlow({
@@ -105,6 +167,13 @@ export function ShopFlow({
     createChannelPickerComponent: () => HTMLElement;
   } | null>(null);
   const cardSessionIdRef = useRef<string | null>(null);
+  // When the user clicks the single "Pay" button without a token yet, we
+  // trigger tokenization and resolve this ref's promise from the Xendit
+  // event handlers below. That lets one click do both tokenize + checkout.
+  const pendingTokenizationRef = useRef<{
+    resolve: (token: string) => void;
+    reject: (err: Error) => void;
+  } | null>(null);
 
   const cart = useShopStore((s) => s.cart);
   const addToCart = useShopStore((s) => s.addToCart);
@@ -179,8 +248,11 @@ export function ShopFlow({
     fetchXenditShopChannels()
       .then((r) => {
         if (!alive) return;
-        setChannels(r.channels);
-        setSelectedChannelCode((prev) => prev || r.channels[0]?.code || '');
+        const visible = r.channels.filter(
+          (c) => !HIDDEN_PAYMENT_CHANNELS.has(c.code.toUpperCase()),
+        );
+        setChannels(visible);
+        setSelectedChannelCode((prev) => prev || visible[0]?.code || '');
       })
       .catch((err) => {
         if (!alive) return;
@@ -247,14 +319,42 @@ export function ShopFlow({
       components.addEventListener('submission-ready', () => setCardSubmitReady(true));
       components.addEventListener('submission-not-ready', () => setCardSubmitReady(false));
       components.addEventListener('submission-begin', () => setCardSubmitBusy(true));
-      components.addEventListener('submission-end', () => setCardSubmitBusy(false));
+      components.addEventListener('submission-end', () => {
+        setCardSubmitBusy(false);
+        // If a tokenization request is still pending after submission ends,
+        // session-complete didn't fire — that usually means the card form had
+        // a validation error. Give session-complete a small grace window
+        // (handler order isn't guaranteed) and then reject so the user gets
+        // a clear error and can retry.
+        setTimeout(() => {
+          const pending = pendingTokenizationRef.current;
+          if (pending) {
+            pendingTokenizationRef.current = null;
+            pending.reject(
+              new Error(
+                'Could not verify your card. Please check the details and try again.',
+              ),
+            );
+          }
+        }, 600);
+      });
       components.addEventListener('session-expired-or-canceled', () => {
         setCardSessionError('Card tokenization session expired or canceled. Start a new one.');
+        const pending = pendingTokenizationRef.current;
+        if (pending) {
+          pendingTokenizationRef.current = null;
+          pending.reject(new Error('Card session expired. Please retry.'));
+        }
       });
       components.addEventListener('fatal-error', () => {
-        setCardSessionError(
-          'Card form origin is not authorized for this session. Open checkout from the same HTTPS domain configured in XENDIT_COMPONENTS_ORIGINS.',
-        );
+        const msg =
+          'Card form origin is not authorized for this session. Open checkout from the same HTTPS domain configured in XENDIT_COMPONENTS_ORIGINS.';
+        setCardSessionError(msg);
+        const pending = pendingTokenizationRef.current;
+        if (pending) {
+          pendingTokenizationRef.current = null;
+          pending.reject(new Error(msg));
+        }
       });
       components.addEventListener('session-complete', () => {
         const sid = cardSessionIdRef.current;
@@ -267,10 +367,22 @@ export function ShopFlow({
             }
             setCardPaymentTokenId(state.paymentTokenId);
             setCardSessionError(null);
+            const pending = pendingTokenizationRef.current;
+            if (pending) {
+              pendingTokenizationRef.current = null;
+              pending.resolve(state.paymentTokenId);
+            }
           } catch (err) {
-            setCardSessionError(
-              err instanceof Error ? err.message : 'Could not fetch card token status.',
-            );
+            const e =
+              err instanceof Error
+                ? err
+                : new Error('Could not fetch card token status.');
+            setCardSessionError(e.message);
+            const pending = pendingTokenizationRef.current;
+            if (pending) {
+              pendingTokenizationRef.current = null;
+              pending.reject(e);
+            }
           }
         })();
       });
@@ -303,18 +415,83 @@ export function ShopFlow({
     handleInitCardTokenization,
   ]);
 
-  const handleTokenizeCard = () => {
-    setCardSessionError(null);
-    const sdk = xenditComponentsRef.current;
-    if (!sdk) {
-      setCardSessionError('Initialize card form first.');
+  // Submits the card form and resolves with the resulting payment token id.
+  // Used by handlePlaceOrder so a single Pay click can both tokenize the
+  // card and create the order without any intermediate user action.
+  const tokenizeCard = useCallback((): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
+      const sdk = xenditComponentsRef.current;
+      if (!sdk) {
+        reject(new Error('Card form is not ready yet. Please wait a moment.'));
+        return;
+      }
+      // Replace any prior in-flight tokenization (shouldn't normally happen
+      // because the Pay button is disabled while busy, but be defensive).
+      const previous = pendingTokenizationRef.current;
+      if (previous) {
+        previous.reject(new Error('Tokenization superseded.'));
+      }
+      pendingTokenizationRef.current = { resolve, reject };
+      setCardSessionError(null);
+      try {
+        sdk.submit();
+      } catch (err) {
+        pendingTokenizationRef.current = null;
+        reject(err instanceof Error ? err : new Error('Card submission failed.'));
+      }
+    });
+  }, []);
+
+  const promoMinSpendError = (minSpendSen: number | null | undefined, label: string) => {
+    if (minSpendSen != null && subtotal < minSpendSen) {
+      return `Minimum order ${formatRm(minSpendSen)} to use this ${label}.`;
+    }
+    return null;
+  };
+
+  const handleSelectIssuedVoucher = (v: (typeof issuedVouchers)[number]) => {
+    if (appliedVoucher?.id === v.id) {
+      applyVoucher(null);
+      setVoucherCodeError(null);
+      setCheckoutErrors(null);
       return;
     }
-    try {
-      sdk.submit();
-    } catch (err) {
-      setCardSessionError(err instanceof Error ? err.message : 'Card submission failed.');
+    const err = promoMinSpendError(v.minSpendSen, 'voucher');
+    if (err) {
+      setCheckoutErrors([err]);
+      return;
     }
+    if (v.value <= 0) {
+      setCheckoutErrors(['This voucher has no discount amount configured yet.']);
+      return;
+    }
+    setCheckoutErrors(null);
+    setVoucherCodeError(null);
+    setVoucherCodeInput(v.code);
+    applyVoucher(v);
+  };
+
+  const handleSelectCatalogReward = (r: MockReward) => {
+    if (appliedReward?.id === r.id) {
+      applyReward(null);
+      setCheckoutErrors(null);
+      return;
+    }
+    const err = promoMinSpendError(r.minSpendSen, 'reward');
+    if (err) {
+      setCheckoutErrors([err]);
+      return;
+    }
+    if (r.valueCents <= 0) {
+      setCheckoutErrors(['This reward has no discount amount configured yet.']);
+      return;
+    }
+    if (pointsBalance < r.pointsCost) {
+      setCheckoutErrors(['Not enough points for this reward.']);
+      return;
+    }
+    setCheckoutErrors(null);
+    applyReward(r);
   };
 
   const handleApplyVoucherCode = () => {
@@ -327,6 +504,17 @@ export function ShopFlow({
     const match = findIssuedVoucherByCode(memberRewards, code);
     if (!match) {
       setVoucherCodeError('This code is not in your wallet or has expired.');
+      applyVoucher(null);
+      return;
+    }
+    const err = promoMinSpendError(match.minSpendSen, 'voucher');
+    if (err) {
+      setVoucherCodeError(err);
+      applyVoucher(null);
+      return;
+    }
+    if (match.value <= 0) {
+      setVoucherCodeError('This voucher has no discount amount configured yet.');
       applyVoucher(null);
       return;
     }
@@ -350,16 +538,21 @@ export function ShopFlow({
       setCheckoutErrors(['Select a payment method.']);
       return;
     }
-    if (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim()) {
-      setCheckoutErrors(['Generate a card payment token first.']);
-      return;
-    }
-    if (
-      paymentMethodMode === 'card_token' &&
-      !cardPaymentTokenId.trim().toLowerCase().startsWith('pt-')
-    ) {
-      setCheckoutErrors(['Card payment token ID must start with "pt-".']);
-      return;
+    if (paymentMethodMode === 'card_token') {
+      if (cardSessionLoading || !cardSessionId) {
+        setCheckoutErrors(['Card form is still loading. Please wait a moment.']);
+        return;
+      }
+      if (cardSessionError) {
+        setCheckoutErrors([cardSessionError]);
+        return;
+      }
+      // If a token already exists we'll reuse it; otherwise the form must be
+      // valid so we can submit it as part of this Pay click.
+      if (!cardPaymentTokenId.trim() && !cardSubmitReady) {
+        setCheckoutErrors(['Please complete your card details.']);
+        return;
+      }
     }
     setCheckoutErrors(null);
     const lines = fulfillmentSummaryLines(
@@ -377,11 +570,20 @@ export function ShopFlow({
     }));
     setPlacingOrder(true);
     try {
+      // For card payments, generate a payment token as part of this single
+      // click if we don't have one yet. Previously this required a separate
+      // "Use this card" button before the user could continue.
+      let paymentTokenId = cardPaymentTokenId.trim();
+      if (paymentMethodMode === 'card_token' && !paymentTokenId) {
+        paymentTokenId = await tokenizeCard();
+      }
+
       const result = await createShopOrderCheckout({
         ...(paymentMethodMode === 'card_token'
-          ? { paymentTokenId: cardPaymentTokenId.trim() }
+          ? { paymentTokenId }
           : { channelCode: selectedChannelCode.trim() }),
         ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
+        ...(appliedReward ? { rewardDefinitionId: appliedReward.id } : {}),
         idempotencyKey: crypto.randomUUID(),
         order: {
           totalCents: total,
@@ -431,6 +633,14 @@ export function ShopFlow({
       }
 
       if ('redirectUrl' in result && result.redirectUrl) {
+        // Persist enough state for the app to detect completion when the user
+        // returns later — e-wallets like Touch 'n Go often don't redirect
+        // back to the merchant in live mode.
+        savePendingPayment({
+          referenceId: result.referenceId,
+          orderNumber: result.orderNumber,
+          purpose: 'shop_order',
+        });
         window.location.href = result.redirectUrl;
         return;
       }
@@ -541,16 +751,26 @@ export function ShopFlow({
                 className="productCard shopProductHit"
                 onClick={() => openProduct(p.id)}
               >
-                <div
-                  className="productImage"
-                  style={{ backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.06), rgba(20,16,14,0.35)), url("${p.imageUrl}")` }}
-                />
+                <div className="productImage">
+                  {p.imageUrl ? (
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      className="productImageInner"
+                      style={{
+                        objectPosition: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                        transform: `scale(${p.imageScale ?? 1})`,
+                        transformOrigin: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                      }}
+                    />
+                  ) : null}
+                </div>
                 <div className="productBody">
                   <strong>{p.name}</strong>
                   <p>{p.shortDescription}</p>
                   <div className="productFoot">
-                    <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
                     <span className="shopFromLabel">from</span>
+                    <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
                   </div>
                 </div>
               </button>
@@ -699,15 +919,32 @@ export function ShopFlow({
                   {appliedVoucher ? (
                     <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
                       Applied: <strong>{appliedVoucher.title}</strong> ({appliedVoucher.code})
+                      {appliedVoucher.value > 0 ? ` · −${formatRm(appliedVoucher.value)}` : ''}
                     </p>
                   ) : null}
+                  <div className="shopPromoList" style={{ marginTop: 10 }}>
+                    {issuedVouchers.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
+                        onClick={() => handleSelectIssuedVoucher(v)}
+                      >
+                        <strong>{v.title}</strong>
+                        <small>
+                          {v.code}
+                          {v.value > 0 ? ` · −${formatRm(v.value)}` : ''}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
               {catalogRewards.length > 0 ? (
                 <div>
                   <p className="caption">Rewards ({pointsBalance} pts)</p>
                   <div className="shopPromoList">
-                    {catalogRewards.map((r: MockReward) => {
+                    {catalogRewards.map((r) => {
                       const affordable = pointsBalance >= r.pointsCost;
                       return (
                         <button
@@ -715,10 +952,13 @@ export function ShopFlow({
                           type="button"
                           disabled={!affordable}
                           className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
-                          onClick={() => applyReward(appliedReward?.id === r.id ? null : r)}
+                          onClick={() => handleSelectCatalogReward(r)}
                         >
                           <strong>{r.title}</strong>
-                          <small>{r.pointsCost} pts{r.valueCents > 0 ? ` · up to ${formatRm(r.valueCents)}` : ''}</small>
+                          <small>
+                            {r.pointsCost} pts
+                            {r.valueCents > 0 ? ` · −${formatRm(r.valueCents)}` : ''}
+                          </small>
                         </button>
                       );
                     })}
@@ -806,22 +1046,7 @@ export function ShopFlow({
                           color: 'var(--text, #1a1a1a)',
                         }}
                       >
-                        <span
-                          style={{
-                            minWidth: 42,
-                            height: 24,
-                            borderRadius: 999,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            letterSpacing: 0.3,
-                            background: 'rgba(255,255,255,0.16)',
-                          }}
-                        >
-                          {paymentChannelIcon(c.code)}
-                        </span>
+                        <PaymentChannelIcon code={c.code} label={c.label} />
                         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
                           <strong style={{ fontSize: 13, color: 'var(--primary,rgb(34, 44, 229))' }}>{c.label}</strong>
                           <small className="caption" style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}>
@@ -839,7 +1064,7 @@ export function ShopFlow({
             {paymentMethodMode === 'card_token' ? (
               <div className="shopFieldGrid" style={{ marginTop: 8 }}>
                 <p className="caption" style={{ marginTop: 0 }}>
-                  Fill in card details below, then click "Use this card" to proceed.
+                  Enter your card details below. We&apos;ll verify your card and start payment when you tap Pay.
                 </p>
                 {cardSessionError ? <p className="err">{cardSessionError}</p> : null}
                 {cardSessionLoading ? <p className="caption">Preparing secure card form...</p> : null}
@@ -859,18 +1084,6 @@ export function ShopFlow({
                   >
                     Retry card form
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleTokenizeCard}
-                  disabled={!cardSessionId || !cardSubmitReady || cardSubmitBusy}
-                >
-                  {cardSubmitBusy ? 'Tokenizing...' : 'Use this card'}
-                </button>
-                {cardPaymentTokenId ? (
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Token ready: {cardPaymentTokenId}
-                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -905,18 +1118,30 @@ export function ShopFlow({
                 <span>{formatRm(total)}</span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void handlePlaceOrder()}
-              disabled={
-                placingOrder ||
-                (paymentMethodMode === 'channel' &&
-                  (channelsLoading || (!channels.length && !channelsLoading))) ||
-                (paymentMethodMode === 'card_token' && !cardPaymentTokenId.trim())
-              }
-            >
-              {placingOrder ? 'Starting payment…' : 'Continue to payment'}
-            </button>
+            <div className="shopPayActionRow">
+              <button
+                type="button"
+                className="shopPayButton"
+                onClick={() => void handlePlaceOrder()}
+                disabled={
+                  placingOrder ||
+                  (paymentMethodMode === 'channel' &&
+                    (channelsLoading || (!channels.length && !channelsLoading))) ||
+                  (paymentMethodMode === 'card_token' &&
+                    (cardSessionLoading ||
+                      !cardSessionId ||
+                      Boolean(cardSessionError) ||
+                      (!cardPaymentTokenId.trim() && !cardSubmitReady) ||
+                      cardSubmitBusy))
+                }
+              >
+                {placingOrder
+                  ? cardSubmitBusy
+                    ? 'Verifying card…'
+                    : 'Starting payment…'
+                  : `Pay ${formatRm(total)}`}
+              </button>
+            </div>
           </section>
         </>
       )}
@@ -1004,10 +1229,20 @@ function ProductDetailScreen({
       </header>
 
       <article className="pmCard shopDetailCard">
-        <div
-          className="shopDetailHero"
-          style={{ backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.02), rgba(20,16,14,0.45)), url("${product.imageUrl}")` }}
-        />
+        <div className="shopDetailHero">
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt=""
+              className="shopDetailHeroInner"
+              style={{
+                objectPosition: `${product.imageOffsetX ?? 50}% ${product.imageOffsetY ?? 50}%`,
+                transform: `scale(${product.imageScale ?? 1})`,
+                transformOrigin: `${product.imageOffsetX ?? 50}% ${product.imageOffsetY ?? 50}%`,
+              }}
+            />
+          ) : null}
+        </div>
         <div className="shopDetailBody">
           <h2>{product.name}</h2>
           <p className="shopDetailPrice">{formatRm(unitCents)}</p>

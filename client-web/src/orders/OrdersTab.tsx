@@ -64,6 +64,12 @@ function OrderQrBlock({ orderNumber }: { orderNumber: number }) {
   );
 }
 
+function isBenignOrdersError(message: string): boolean {
+  return /unauthorized|not signed in|invalid.*token|session.*expired|401|403/i.test(
+    message,
+  );
+}
+
 export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,12 +78,17 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
 
   const load = useCallback(async () => {
     setLoading(true);
-    setErr(null);
     try {
       const { orders: rows } = await fetchMemberOrders(60);
       setOrdersFromApi(rows.map(mapRowToPastOrder));
+      setErr(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to load orders');
+      const message = e instanceof Error ? e.message : 'Failed to load orders';
+      if (isBenignOrdersError(message)) {
+        setErr(null);
+        return;
+      }
+      setErr('We could not refresh your orders. Pull to refresh again in a moment.');
     } finally {
       setLoading(false);
     }

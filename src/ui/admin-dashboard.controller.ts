@@ -1704,7 +1704,26 @@ export class AdminDashboardController {
                     <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
                     <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
                   </div>
-                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://…" /></div>
+                  <div class="form-row-2">
+                    <div class="form-section"><label for="rdDiscountRm">Checkout discount (RM)</label><input type="number" id="rdDiscountRm" min="0" step="0.01" placeholder="e.g. 5.00" /><p class="field-hint">Flat RM off at checkout when redeemed. No campaign needed.</p></div>
+                    <div class="form-section"><label for="rdMinSpendRm">Min. order spend (RM)</label><input type="number" id="rdMinSpendRm" min="0" step="0.01" placeholder="empty = no minimum" /><p class="field-hint">Order subtotal must be at least this to apply.</p></div>
+                  </div>
+                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://… or upload below" /></div>
+                  <div class="form-section">
+                    <label for="rdImageFile">Or upload from file</label>
+                    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                      <div id="rdImageThumb" style="width:160px;height:96px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">No image</div>
+                      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
+                        <input type="file" id="rdImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                          <button type="button" class="btn-outline" id="rdImageUploadBtn">Upload image</button>
+                          <button type="button" class="btn-outline" id="rdImageClearBtn">Remove image</button>
+                        </div>
+                        <p class="field-hint">PNG / JPEG / WEBP / GIF, max 3 MB. Stored on the server's persistent disk so it survives redeploys.</p>
+                        <p class="field-hint" id="rdImageResult"></p>
+                      </div>
+                    </div>
+                  </div>
                   <div class="form-row-2">
                     <div class="form-section"><label for="rdValidFrom">Valid from</label><input type="date" id="rdValidFrom" /></div>
                     <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
@@ -2353,18 +2372,26 @@ export class AdminDashboardController {
                 Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
                 Use this when the shop site and member app show different prices or pictures.
               </p>
-              <div class="form-row-2">
-                <div class="form-section">
-                  <label for="scSyncMode">Sync mode</label>
-                  <select id="scSyncMode">
-                    <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
-                    <option value="full">Full product copy (keep visibility &amp; sort order)</option>
-                  </select>
+              <div style="padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:13px;color:#065f46;margin-bottom:12px">
+                <strong>Manual edits win.</strong> Any field you have edited in admin (price, photo, variants, etc.) is locked from sync and will <em>not</em> be reverted.
+                To let sync take over a product again, open the product and click <em>Allow sync to overwrite this product</em>.
+              </div>
+              <div class="form-section" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+                <label for="scSitesCatalogFile"><strong>Catalog file on server</strong> (required on Render)</label>
+                <p class="field-hint" id="scSitesCatalogFileHint" style="margin:6px 0 10px">Checking…</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <input type="file" id="scSitesCatalogFile" accept=".json,application/json" />
+                  <button type="button" class="btn-outline" id="scSitesCatalogSaveBtn">Save catalog to server</button>
                 </div>
-                <div class="form-section">
-                  <label for="scSyncCatalogFile">Optional catalog JSON upload</label>
-                  <input type="file" id="scSyncCatalogFile" accept=".json,application/json" />
-                </div>
+                <p class="field-hint" style="margin:8px 0 0">Upload once from your PC — stored at <code>data/products.catalog.json</code> on your persistent disk. Sync always reads this file (no path picker). Or set <code>MOJA_SITES_CATALOG_URL</code> on Render.</p>
+                <p class="field-hint" id="scSitesCatalogSaveResult"></p>
+              </div>
+              <div class="form-section">
+                <label for="scSyncMode">Sync mode</label>
+                <select id="scSyncMode">
+                  <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
+                  <option value="full">Full product copy (keep visibility &amp; sort order)</option>
+                </select>
               </div>
               <div class="form-section">
                 <label><input type="checkbox" id="scSyncCreateMissing" style="width:auto;margin-right:8px" checked /> Add products that exist in moja-sites but not in member catalog</label>
@@ -2407,7 +2434,47 @@ export class AdminDashboardController {
               </div>
               <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
               <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
-              <div class="form-section"><label for="scImageUrl">Image URL</label><input type="text" id="scImageUrl" placeholder="/images/products/… or https://..." /></div>
+              <div class="form-section">
+                <label for="scImageFile">Product image</label>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                  <div id="scImageThumb" style="position:relative;width:160px;height:120px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0;cursor:grab;user-select:none" title="Drag to recenter the focal point">No image</div>
+                  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
+                    <input type="file" id="scImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn-outline" id="scImageUploadBtn">Upload image</button>
+                      <button type="button" class="btn-outline" id="scImageClearBtn">Remove image</button>
+                    </div>
+                    <p class="field-hint">PNG / JPEG / WEBP / GIF, max 5 MB. <strong>Save the product first</strong>, then upload an image.</p>
+                    <p class="field-hint" id="scImageResult"></p>
+                  </div>
+                </div>
+                <input type="hidden" id="scImageUrl" />
+              </div>
+
+              <div class="form-section" id="scImageFramingSection">
+                <label>Image framing</label>
+                <p class="field-hint" style="margin-top:0">Drag the preview above, or use the sliders to recenter the photo. Useful when the product isn't centered in the source image.</p>
+                <div class="form-row-2" style="gap:16px">
+                  <div>
+                    <label for="scImageOffsetX" style="font-size:12px;color:#64748b">Horizontal <span id="scImageOffsetXVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetX" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                  <div>
+                    <label for="scImageOffsetY" style="font-size:12px;color:#64748b">Vertical <span id="scImageOffsetYVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetY" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:16px;margin-top:8px;align-items:end">
+                  <div>
+                    <label for="scImageScale" style="font-size:12px;color:#64748b">Zoom <span id="scImageScaleVal">1.00</span>×</label>
+                    <input type="range" id="scImageScale" min="1" max="3" step="0.05" value="1" style="width:100%" />
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:4px">
+                    <button type="button" class="btn-outline" id="scImageRecenterBtn">Reset framing</button>
+                  </div>
+                </div>
+                <p class="field-hint" style="margin-top:6px;color:#92400e">Click <strong>Save product</strong> below to apply.</p>
+              </div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
                 <div class="form-section"><label for="scPriceDisplay">Price label</label><input type="text" id="scPriceDisplay" placeholder="RM168.00" /></div>
@@ -2429,6 +2496,12 @@ export class AdminDashboardController {
               </div>
               <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in shop</label></div>
               <div class="form-section"><label><input type="checkbox" id="scSoldOut" style="width:auto;margin-right:8px" /> Mark sold out</label></div>
+              <div class="form-section" id="scOverridesPanel" style="padding:10px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:none">
+                <strong style="color:#92400e">Manual edits protected from sync</strong>
+                <p class="field-hint" id="scOverridesList" style="margin:6px 0 8px">—</p>
+                <button type="button" class="btn-outline" id="scResetOverridesBtn">Allow sync to overwrite this product</button>
+                <p class="field-hint" id="scResetOverridesResult"></p>
+              </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
                 <button type="button" class="btn-outline" id="scNewBtn">New product</button>
@@ -3862,7 +3935,7 @@ export class AdminDashboardController {
           (v.imageUrl
             ? '<button type="button" class="icon-btn reward-def-view-image-btn" data-image-url="' + fmt(v.imageUrl) + '" title="View image">' + viewSvg + '</button>'
             : '<span class="muted-hint">—</span>') +
-          '</td><td>' + fmt(v.pointsCost) + '</td><td>' + fmt(v.rewardCategory) + '</td><td>' +
+          '</td><td>' + fmt(v.pointsCost) + (v.rebateValueSen ? ' <span class="muted-hint">· RM' + (v.rebateValueSen / 100).toFixed(2) + ' off</span>' : '') + '</td><td>' + fmt(v.rewardCategory) + '</td><td>' +
           (v.showInRewardsCatalog ? statusPill('YES') : statusPill('NO')) + '</td><td>' + formatRewardWindow(v) + '</td><td>' + fmt(v.rewardSortOrder) + '</td><td>' +
           fmt(v.maxTotalIssued) + '</td><td>' + statusPill(v.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td class="td-actions">' +
           '<button type="button" class="icon-btn reward-def-edit-btn" data-id="' + v.id + '" title="Edit">' + editSvg + '</button></td></tr>'
@@ -4426,7 +4499,10 @@ export class AdminDashboardController {
         } else {
           priceCell = slFormatPrice(p.basePriceCents, p.priceDisplay);
         }
-        return '<tr><td>' + fmt(p.name) + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+        var lockBadge = (Array.isArray(p.syncOverrides) && p.syncOverrides.length > 0)
+          ? ' <span title="Manual edits — protected from sync" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">\uD83D\uDD12 EDITED</span>'
+          : '';
+        return '<tr><td>' + fmt(p.name) + lockBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
@@ -4448,25 +4524,51 @@ export class AdminDashboardController {
       };
     }
 
-    function scSyncReadUploadedCatalog() {
-      return new Promise(function (resolve, reject) {
-        var input = document.getElementById('scSyncCatalogFile');
-        var file = input && input.files && input.files[0];
-        if (!file) {
-          resolve(null);
-          return;
+    async function scRefreshSitesCatalogFileHint() {
+      var hint = document.getElementById('scSitesCatalogFileHint');
+      if (!hint) return;
+      try {
+        var info = await api('/admin/shop-catalog/sites-catalog/info');
+        if (info && info.exists) {
+          var when = info.mtime ? ' · updated ' + new Date(info.mtime).toLocaleString() : '';
+          hint.innerHTML = '<span style="color:#059669;font-weight:600">Ready</span> — ' +
+            fmt(info.productCount) + ' products at <code>' + fmt(info.path) + '</code>' + when;
+        } else {
+          hint.innerHTML = '<span style="color:#b45309;font-weight:600">Not on server yet</span> — upload <code>products.catalog.json</code> from moja-sites below, then run Preview sync.';
         }
-        var reader = new FileReader();
-        reader.onload = function () {
-          try {
-            resolve(JSON.parse(String(reader.result || '')));
-          } catch (e) {
-            reject(new Error('Uploaded file is not valid JSON'));
-          }
-        };
-        reader.onerror = function () { reject(new Error('Could not read uploaded file')); };
-        reader.readAsText(file);
+      } catch (e) {
+        hint.textContent = e.message;
+      }
+    }
+
+    async function scSaveSitesCatalogFile() {
+      var out = document.getElementById('scSitesCatalogSaveResult');
+      var input = document.getElementById('scSitesCatalogFile');
+      var file = input && input.files && input.files[0];
+      if (!file) {
+        if (out) out.textContent = 'Choose products.catalog.json first.';
+        return;
+      }
+      if (out) out.textContent = 'Saving…';
+      var headers = Object.assign({}, getAuthHeaders());
+      delete headers['Content-Type'];
+      var fd = new FormData();
+      fd.append('file', file);
+      var res = await fetch('/admin/shop-catalog/sites-catalog/file', {
+        method: 'POST',
+        headers: headers,
+        body: fd,
       });
+      if (!res.ok) {
+        var txt = await res.text();
+        throw new Error('Save failed (' + res.status + '): ' + txt);
+      }
+      var saved = await res.json();
+      if (input) input.value = '';
+      if (out) {
+        out.textContent = 'Saved ' + fmt(saved.productCount) + ' products to server. You can now Preview sync.';
+      }
+      await scRefreshSitesCatalogFileHint();
     }
 
     function scSyncStatusPill(status) {
@@ -4492,14 +4594,15 @@ export class AdminDashboardController {
         ' · To update: <strong>' + fmt(s.toUpdate) + '</strong>' +
         ' · To create: <strong>' + fmt(s.toCreate) + '</strong>' +
         ' · Unchanged: ' + fmt(s.unchanged) +
-        (s.onlyInMember ? ' · Only in member: ' + fmt(s.onlyInMember) : '');
+        (s.onlyInMember ? ' · Only in member: ' + fmt(s.onlyInMember) : '') +
+        (s.lockedProducts ? ' · <span style="color:#92400e">Protected by manual edits: ' + fmt(s.lockedProducts) + '</span>' : '');
 
       if (sourceHint) {
         sourceHint.textContent = 'Source: ' + (preview.sourceLabel || preview.source || 'unknown');
       }
 
       var rows = (preview.products || []).filter(function (p) {
-        return p.status !== 'unchanged';
+        return (p.changes && p.changes.length) || (p.lockedFields && p.lockedFields.length);
       });
       if (rows.length === 0) {
         wrap.style.display = 'none';
@@ -4510,20 +4613,26 @@ export class AdminDashboardController {
 
       wrap.style.display = 'block';
       body.innerHTML = rows.map(function (p) {
-        var imageChange = (p.changes || []).find(function (c) { return c.field === 'imageUrl'; });
+        var imageChange = (p.changes || []).find(function (c) { return c.field === 'imageUrl' && !c.locked; });
         var thumbUrl = imageChange ? scResolveShopAssetUrl(imageChange.after) : '';
         if (!thumbUrl) {
           var existing = (lastShopCatalogProducts || []).find(function (x) { return x.id === p.id; });
           thumbUrl = scResolveShopAssetUrl(existing && existing.imageUrl ? existing.imageUrl : '');
         }
         var changesHtml = (p.changes || []).map(function (c) {
-          return '<div style="margin-bottom:4px"><span style="color:#64748b">' + fmt(c.field) + ':</span> ' +
-            fmt(c.before) + ' → <strong>' + fmt(c.after) + '</strong></div>';
+          var lockTag = c.locked ? ' <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px">LOCKED</span>' : '';
+          var beforeAfter = c.locked
+            ? '<span style="color:#94a3b8;text-decoration:line-through">' + fmt(c.before) + ' \u2192 ' + fmt(c.after) + '</span> (kept your edit)'
+            : fmt(c.before) + ' \u2192 <strong>' + fmt(c.after) + '</strong>';
+          return '<div style="margin-bottom:4px"><span style="color:#64748b">' + fmt(c.field) + ':</span> ' + beforeAfter + lockTag + '</div>';
         }).join('');
+        var statusPill = p.status === 'unchanged' && p.lockedFields && p.lockedFields.length
+          ? '<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">PROTECTED</span>'
+          : scSyncStatusPill(p.status);
         return '<tr>' +
           '<td>' + slThumb(thumbUrl) + '</td>' +
           '<td><strong>' + fmt(p.name) + '</strong><br/><span style="color:#64748b;font-size:12px">' + fmt(p.id) + '</span></td>' +
-          '<td>' + scSyncStatusPill(p.status) + '</td>' +
+          '<td>' + statusPill + '</td>' +
           '<td style="font-size:12px">' + (changesHtml || '-') + '</td>' +
         '</tr>';
       }).join('');
@@ -4533,8 +4642,6 @@ export class AdminDashboardController {
       var out = document.getElementById('scSyncResult');
       if (out) out.textContent = 'Loading preview…';
       var body = scSyncCollectBody();
-      var uploaded = await scSyncReadUploadedCatalog();
-      if (uploaded) body.catalog = uploaded;
       var preview = await apiPost('/admin/shop-catalog/sync/preview', body);
       scSyncRenderPreview(preview);
       if (out) out.textContent = 'Preview ready. Review changes, then click Apply sync.';
@@ -4557,8 +4664,6 @@ export class AdminDashboardController {
       }
       if (out) out.textContent = 'Applying sync…';
       var body = scSyncCollectBody();
-      var uploaded = await scSyncReadUploadedCatalog();
-      if (uploaded) body.catalog = uploaded;
       var result = await apiPost('/admin/shop-catalog/sync/apply', body);
       scSyncRenderPreview(result.preview || result);
       if (out) {
@@ -5287,6 +5392,7 @@ export class AdminDashboardController {
         loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
+        scRefreshSitesCatalogFileHint(),
         loadShopLayout(),
         loadHomeAdSlides(),
         loadPopularItems(),
@@ -5720,7 +5826,19 @@ export class AdminDashboardController {
       var el = document.getElementById(id);
       if (el) el.addEventListener('change', function () { pcrRefreshCriteriaHint(true); });
     });
-    document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => {
+      loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; });
+      scRefreshSitesCatalogFileHint().catch(function () {});
+    });
+    var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
+    if (scSitesCatalogSaveBtn) {
+      scSitesCatalogSaveBtn.addEventListener('click', function () {
+        scSaveSitesCatalogFile().catch(function (e) {
+          var out = document.getElementById('scSitesCatalogSaveResult');
+          if (out) out.textContent = e.message;
+        });
+      });
+    }
     document.getElementById('scSyncPreviewBtn').addEventListener('click', () => scSyncPreview().catch(function (e) {
       var out = document.getElementById('scSyncResult');
       if (out) out.textContent = e.message;
@@ -6106,8 +6224,15 @@ export class AdminDashboardController {
       document.getElementById('rdTitle').value = v.title || '';
       document.getElementById('rdDescription').value = v.description || '';
       document.getElementById('rdPoints').value = v.pointsCost != null ? String(v.pointsCost) : '';
+      document.getElementById('rdDiscountRm').value = v.rebateValueSen != null ? (v.rebateValueSen / 100).toFixed(2) : '';
+      document.getElementById('rdMinSpendRm').value = v.minSpendSen != null ? (v.minSpendSen / 100).toFixed(2) : '';
       document.getElementById('rdCategory').value = v.rewardCategory || '';
       document.getElementById('rdImageUrl').value = v.imageUrl || '';
+      rdUpdateImagePreview();
+      var rdImgFile = document.getElementById('rdImageFile');
+      if (rdImgFile) rdImgFile.value = '';
+      var rdImgOut = document.getElementById('rdImageResult');
+      if (rdImgOut) rdImgOut.textContent = '';
       document.getElementById('rdValidFrom').value = isoDateOnly(v.rewardValidFrom);
       document.getElementById('rdValidUntil').value = isoDateOnly(v.rewardValidUntil);
       document.getElementById('rdSort').value = v.rewardSortOrder != null ? String(v.rewardSortOrder) : '0';
@@ -6122,15 +6247,95 @@ export class AdminDashboardController {
       document.getElementById('rewardDefEditor').classList.add('hidden');
     });
 
+    function rdUpdateImagePreview() {
+      var thumb = document.getElementById('rdImageThumb');
+      if (!thumb) return;
+      var url = (document.getElementById('rdImageUrl').value || '').trim();
+      if (url) {
+        thumb.style.backgroundImage = 'url("' + url.replace(/"/g, '\\"') + '")';
+        thumb.textContent = '';
+      } else {
+        thumb.style.backgroundImage = '';
+        thumb.textContent = 'No image';
+      }
+    }
+
+    var rdImageUrlInput = document.getElementById('rdImageUrl');
+    if (rdImageUrlInput) rdImageUrlInput.addEventListener('input', rdUpdateImagePreview);
+
+    async function rdUploadImageFile(id, file) {
+      const headers = { ...getAuthHeaders() };
+      delete headers['Content-Type'];
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/admin/voucher-definitions/' + encodeURIComponent(id) + '/image', {
+        method: 'POST',
+        headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
+    var rdUploadBtn = document.getElementById('rdImageUploadBtn');
+    if (rdUploadBtn) rdUploadBtn.addEventListener('click', async function () {
+      var out = document.getElementById('rdImageResult');
+      var id = document.getElementById('rdEditId').value.trim();
+      var fileInput = document.getElementById('rdImageFile');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!id) { out.textContent = 'Open a voucher series for editing first.'; return; }
+      if (!file) { out.textContent = 'Choose an image file first.'; return; }
+      out.textContent = 'Uploading…';
+      try {
+        var updated = await rdUploadImageFile(id, file);
+        var idx = lastVoucherDefinitions.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastVoucherDefinitions[idx] = updated;
+        document.getElementById('rdImageUrl').value = updated.imageUrl || '';
+        rdUpdateImagePreview();
+        out.textContent = 'Uploaded.';
+        fileInput.value = '';
+        await loadVouchers();
+      } catch (err) {
+        out.textContent = err.message;
+      }
+    });
+
+    var rdClearImgBtn = document.getElementById('rdImageClearBtn');
+    if (rdClearImgBtn) rdClearImgBtn.addEventListener('click', async function () {
+      var out = document.getElementById('rdImageResult');
+      var id = document.getElementById('rdEditId').value.trim();
+      if (!id) { out.textContent = 'Open a voucher series for editing first.'; return; }
+      if (!confirm('Remove the image from this voucher series?')) return;
+      out.textContent = 'Removing…';
+      try {
+        var updated = await apiDelete('/admin/voucher-definitions/' + encodeURIComponent(id) + '/image');
+        var idx = lastVoucherDefinitions.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastVoucherDefinitions[idx] = updated;
+        document.getElementById('rdImageUrl').value = '';
+        rdUpdateImagePreview();
+        out.textContent = 'Removed.';
+        await loadVouchers();
+      } catch (err) {
+        out.textContent = err.message;
+      }
+    });
+
     document.getElementById('rdSaveBtn').addEventListener('click', () => {
       var id = document.getElementById('rdEditId').value;
       var out = document.getElementById('rdSaveResult');
       if (!id) return;
       var pcVal = document.getElementById('rdPoints').value;
+      var discRm = document.getElementById('rdDiscountRm').value;
+      var minRm = document.getElementById('rdMinSpendRm').value;
       var body = {
         title: document.getElementById('rdTitle').value.trim(),
         description: document.getElementById('rdDescription').value.trim() || null,
         pointsCost: pcVal === '' ? undefined : parseInt(pcVal, 10),
+        rebateValueSen: discRm === '' ? null : Math.round(parseFloat(discRm) * 100),
+        minSpendSen: minRm === '' ? null : Math.round(parseFloat(minRm) * 100),
         imageUrl: document.getElementById('rdImageUrl').value.trim() || null,
         rewardCategory: document.getElementById('rdCategory').value.trim() || null,
         showInRewardsCatalog: document.getElementById('rdShowCatalog').checked,
@@ -6144,6 +6349,7 @@ export class AdminDashboardController {
       apiPatch('/admin/voucher-definitions/' + encodeURIComponent(id), body)
         .then(function () {
           out.textContent = 'Saved.';
+          rdUpdateImagePreview();
           return loadVouchers();
         })
         .catch(function (err) { out.textContent = err.message; });
@@ -6319,6 +6525,146 @@ export class AdminDashboardController {
       return out;
     }
 
+    function scClampPercent(v) {
+      var n = Number(v);
+      if (!Number.isFinite(n)) return 50;
+      return Math.max(0, Math.min(100, n));
+    }
+    function scClampScale(v) {
+      var n = Number(v);
+      if (!Number.isFinite(n)) return 1;
+      return Math.max(0.5, Math.min(3, n));
+    }
+
+    function scGetImageFraming() {
+      var x = scClampPercent(document.getElementById('scImageOffsetX').value);
+      var y = scClampPercent(document.getElementById('scImageOffsetY').value);
+      var s = scClampScale(document.getElementById('scImageScale').value);
+      return { x: x, y: y, s: s };
+    }
+
+    function scUpdateImagePreview() {
+      var thumb = document.getElementById('scImageThumb');
+      if (!thumb) return;
+      var url = (document.getElementById('scImageUrl').value || '').trim();
+      var f = scGetImageFraming();
+      var lx = document.getElementById('scImageOffsetXVal');
+      var ly = document.getElementById('scImageOffsetYVal');
+      var ls = document.getElementById('scImageScaleVal');
+      if (lx) lx.textContent = String(Math.round(f.x));
+      if (ly) ly.textContent = String(Math.round(f.y));
+      if (ls) ls.textContent = f.s.toFixed(2);
+      if (url) {
+        thumb.style.background = 'url("' + url + '") ' + f.x + '% ' + f.y + '%/' + (f.s * 100) + '% no-repeat';
+        thumb.textContent = '';
+      } else {
+        thumb.style.background = '#f8fafc';
+        thumb.textContent = 'No image';
+      }
+    }
+
+    function scSetImageFraming(x, y, s) {
+      var ix = document.getElementById('scImageOffsetX');
+      var iy = document.getElementById('scImageOffsetY');
+      var is = document.getElementById('scImageScale');
+      if (ix) ix.value = String(scClampPercent(x == null ? 50 : x));
+      if (iy) iy.value = String(scClampPercent(y == null ? 50 : y));
+      if (is) is.value = String(scClampScale(s == null ? 1 : s));
+      scUpdateImagePreview();
+    }
+
+    (function bindFramingControls() {
+      ['scImageOffsetX', 'scImageOffsetY', 'scImageScale'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', scUpdateImagePreview);
+      });
+      var reset = document.getElementById('scImageRecenterBtn');
+      if (reset) reset.addEventListener('click', function () { scSetImageFraming(50, 50, 1); });
+
+      var thumb = document.getElementById('scImageThumb');
+      if (!thumb) return;
+      var dragging = false;
+      function onMove(clientX, clientY) {
+        var rect = thumb.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        var x = ((clientX - rect.left) / rect.width) * 100;
+        var y = ((clientY - rect.top) / rect.height) * 100;
+        document.getElementById('scImageOffsetX').value = String(scClampPercent(x));
+        document.getElementById('scImageOffsetY').value = String(scClampPercent(y));
+        scUpdateImagePreview();
+      }
+      thumb.addEventListener('mousedown', function (e) {
+        if (!(document.getElementById('scImageUrl').value || '').trim()) return;
+        dragging = true;
+        thumb.style.cursor = 'grabbing';
+        onMove(e.clientX, e.clientY);
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', function (e) { if (dragging) onMove(e.clientX, e.clientY); });
+      window.addEventListener('mouseup', function () { if (dragging) { dragging = false; thumb.style.cursor = 'grab'; } });
+      thumb.addEventListener('touchstart', function (e) {
+        if (!(document.getElementById('scImageUrl').value || '').trim()) return;
+        var t = e.touches[0]; if (!t) return;
+        dragging = true;
+        onMove(t.clientX, t.clientY);
+        e.preventDefault();
+      }, { passive: false });
+      thumb.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        var t = e.touches[0]; if (!t) return;
+        onMove(t.clientX, t.clientY);
+        e.preventDefault();
+      }, { passive: false });
+      thumb.addEventListener('touchend', function () { dragging = false; });
+    })();
+
+    var SC_FIELD_LABELS = {
+      imageUrl: 'Photo',
+      images: 'Photo gallery',
+      basePriceCents: 'Base price',
+      priceDisplay: 'Price label',
+      variants: 'Variants',
+      badge: 'Badge',
+      soldOut: 'Sold-out flag',
+      name: 'Name',
+      categoryLabel: 'Category label',
+      shortDescription: 'Short description',
+      description: 'Description',
+    };
+
+    function scRenderOverridesPanel(p) {
+      var panel = document.getElementById('scOverridesPanel');
+      var list = document.getElementById('scOverridesList');
+      var resetOut = document.getElementById('scResetOverridesResult');
+      if (resetOut) resetOut.textContent = '';
+      if (!panel || !list) return;
+      var locks = (p && Array.isArray(p.syncOverrides)) ? p.syncOverrides : [];
+      if (!locks.length) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = 'block';
+      list.innerHTML = 'Sync from moja-sites will <strong>not</strong> change: ' +
+        locks.map(function (f) { return '<code>' + fmt(SC_FIELD_LABELS[f] || f) + '</code>'; }).join(', ') + '.';
+    }
+
+    async function scUploadProductImage(id, file) {
+      var headers = Object.assign({}, getAuthHeaders());
+      delete headers['Content-Type'];
+      var fd = new FormData();
+      fd.append('file', file);
+      var res = await fetch('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/image', {
+        method: 'POST',
+        headers: headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        var txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
     document.getElementById('shopCatalogBody').addEventListener('click', (e) => {
       var btn = e.target.closest('.sc-edit-btn');
       if (!btn) return;
@@ -6342,6 +6688,12 @@ export class AdminDashboardController {
       document.getElementById('scSoldOut').checked = !!p.soldOut;
       scRenderVariants(Array.isArray(p.variants) ? p.variants : []);
       document.getElementById('scSaveResult').textContent = '';
+      var fileInput = document.getElementById('scImageFile');
+      if (fileInput) fileInput.value = '';
+      var imgOut = document.getElementById('scImageResult');
+      if (imgOut) imgOut.textContent = '';
+      scSetImageFraming(p.imageOffsetX, p.imageOffsetY, p.imageScale);
+      scRenderOverridesPanel(p);
     });
 
     document.getElementById('scNewBtn').addEventListener('click', () => {
@@ -6362,6 +6714,75 @@ export class AdminDashboardController {
       document.getElementById('scSoldOut').checked = false;
       scRenderVariants([]);
       document.getElementById('scSaveResult').textContent = '';
+      var fileInput = document.getElementById('scImageFile');
+      if (fileInput) fileInput.value = '';
+      var imgOut = document.getElementById('scImageResult');
+      if (imgOut) imgOut.textContent = '';
+      scSetImageFraming(50, 50, 1);
+      scRenderOverridesPanel(null);
+    });
+
+    var scResetOverridesBtn = document.getElementById('scResetOverridesBtn');
+    if (scResetOverridesBtn) scResetOverridesBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scResetOverridesResult');
+      var id = document.getElementById('scId').value.trim();
+      if (!id) { if (out) out.textContent = 'No product loaded.'; return; }
+      if (!window.confirm('Allow sync to overwrite this product\u2019s manual edits on the next sync?')) return;
+      if (out) out.textContent = 'Resetting…';
+      try {
+        var updated = await apiPost('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/reset-sync-overrides', {});
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        scRenderOverridesPanel(updated);
+        if (out) out.textContent = 'Sync overrides cleared. The next sync may update this product.';
+      } catch (e) {
+        if (out) out.textContent = e.message;
+      }
+    });
+
+    var scImageUploadBtn = document.getElementById('scImageUploadBtn');
+    if (scImageUploadBtn) scImageUploadBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scImageResult');
+      var id = document.getElementById('scId').value.trim();
+      var fileInput = document.getElementById('scImageFile');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!id) { out.textContent = 'Save the product first, then upload an image.'; return; }
+      if (!file) { out.textContent = 'Choose an image file first.'; return; }
+      out.textContent = 'Uploading…';
+      try {
+        var updated = await scUploadProductImage(id, file);
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        document.getElementById('scImageUrl').value = updated.imageUrl || '';
+        scUpdateImagePreview();
+        scRenderOverridesPanel(updated);
+        fileInput.value = '';
+        out.textContent = 'Image uploaded.';
+        await loadShopCatalog();
+      } catch (e) {
+        out.textContent = e.message;
+      }
+    });
+
+    var scImageClearBtn = document.getElementById('scImageClearBtn');
+    if (scImageClearBtn) scImageClearBtn.addEventListener('click', async function () {
+      var out = document.getElementById('scImageResult');
+      var id = document.getElementById('scId').value.trim();
+      if (!id) { out.textContent = 'Save the product first.'; return; }
+      if (!window.confirm('Remove the current product image?')) return;
+      out.textContent = 'Removing…';
+      try {
+        var updated = await apiDelete('/admin/shop-catalog/products/' + encodeURIComponent(id) + '/image');
+        var idx = lastShopCatalogProducts.findIndex(function (x) { return x.id === id; });
+        if (idx >= 0) lastShopCatalogProducts[idx] = updated;
+        document.getElementById('scImageUrl').value = updated.imageUrl || '';
+        scUpdateImagePreview();
+        scRenderOverridesPanel(updated);
+        out.textContent = 'Image removed.';
+        await loadShopCatalog();
+      } catch (e) {
+        out.textContent = e.message;
+      }
     });
 
     document.getElementById('scAddVariantBtn').addEventListener('click', () => {
@@ -6395,6 +6816,9 @@ export class AdminDashboardController {
         shortDescription: document.getElementById('scShort').value.trim(),
         description: document.getElementById('scDesc').value.trim(),
         imageUrl: document.getElementById('scImageUrl').value.trim(),
+        imageOffsetX: scClampPercent(document.getElementById('scImageOffsetX').value),
+        imageOffsetY: scClampPercent(document.getElementById('scImageOffsetY').value),
+        imageScale: scClampScale(document.getElementById('scImageScale').value),
         basePriceCents: parseInt(document.getElementById('scPrice').value, 10) || 0,
         priceDisplay: document.getElementById('scPriceDisplay').value.trim() || undefined,
         sortOrder: parseInt(document.getElementById('scSort').value, 10) || 0,

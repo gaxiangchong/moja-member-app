@@ -1,4 +1,5 @@
 import {
+  IsEmail,
   IsOptional,
   IsString,
   Length,
@@ -20,4 +21,8 @@ export class VerifyOtpDto {
   @IsString()
   @MaxLength(32)
   referralCode?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }

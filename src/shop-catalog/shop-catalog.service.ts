@@ -3,8 +3,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   applySyncToMemberCatalog,
@@ -41,6 +48,12 @@ export type ShopCatalogProduct = {
   description: string;
   imageUrl: string;
   images?: ShopCatalogProductImage[];
+  /** Horizontal focal point for the product photo, 0–100 (default 50 = center). */
+  imageOffsetX?: number;
+  /** Vertical focal point for the product photo, 0–100 (default 50 = center). */
+  imageOffsetY?: number;
+  /** Optional zoom level for the product photo, 1.0 = no zoom (default 1). */
+  imageScale?: number;
   basePriceCents: number;
   /** Human-readable price label, e.g. "RM168.00" or "RM13.90 each". */
   priceDisplay?: string;
@@ -49,6 +62,13 @@ export type ShopCatalogProduct = {
   soldOut?: boolean;
   isActive: boolean;
   sortOrder: number;
+  /**
+   * Field names that the admin has manually edited. Sync from moja-sites will
+   * skip these fields so manual prices, photos, and variants don't get
+   * silently reverted on the next sync. Auto-populated by `updateProduct` and
+   * `attachProductImage`. Cleared via the admin "Reset sync overrides" action.
+   */
+  syncOverrides?: string[];
 };
 
 export type ShopCatalogSection = {
@@ -88,6 +108,108 @@ const DEFAULT_LAYOUT: ShopCatalogLayout = {
 };
 
 const POPULAR_HARD_MAX = 5;
+
+const PRODUCT_IMAGE_PUBLIC_PREFIX = '/uploads/products/';
+const PRODUCT_IMAGE_ALLOWED_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Committed static files under public/images/products/ (case-sensitive on Linux). */
+const CANONICAL_PRODUCT_IMAGE_URL: Record<string, string> = {
+  'jasmine-blanc-cheesecake': '/images/products/jasmine_blanc.png',
+  'strawberry-shortcake': '/images/products/strawberry_shortcake.png',
+};
+
+/**
+ * When the admin edits one of these fields, lock the whole group so sync from
+ * moja-sites skips them. e.g. editing variants also locks basePriceCents and
+ * priceDisplay because they are derived together.
+ */
+const SYNC_LOCK_GROUPS: Record<string, string[]> = {
+  name: ['name'],
+  categoryLabel: ['categoryLabel'],
+  shortDescription: ['shortDescription'],
+  description: ['description'],
+  imageUrl: ['imageUrl', 'images'],
+  images: ['imageUrl', 'images'],
+  imageOffsetX: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
+  imageOffsetY: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
+  imageScale: ['imageOffsetX', 'imageOffsetY', 'imageScale'],
+  basePriceCents: ['basePriceCents', 'priceDisplay', 'variants'],
+  priceDisplay: ['basePriceCents', 'priceDisplay', 'variants'],
+  variants: ['basePriceCents', 'priceDisplay', 'variants'],
+  badge: ['badge'],
+  soldOut: ['soldOut'],
+};
+
+function expandSyncOverrides(fields: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const f of fields) {
+    const group = SYNC_LOCK_GROUPS[f];
+    if (group) {
+      for (const g of group) out.add(g);
+    } else {
+      out.add(f);
+    }
+  }
+  return [...out].sort();
+}
+
+function mergeSyncOverrides(
+  existing: string[] | undefined,
+  added: Iterable<string>,
+): string[] {
+  return expandSyncOverrides(new Set([...(existing ?? []), ...added]));
+}
+
+const COMPARABLE_FIELDS = [
+  'name',
+  'categoryLabel',
+  'shortDescription',
+  'description',
+  'imageUrl',
+  'imageOffsetX',
+  'imageOffsetY',
+  'imageScale',
+  'basePriceCents',
+  'priceDisplay',
+  'variants',
+  'badge',
+  'soldOut',
+] as const;
+
+function clampPercent(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0, Math.min(100, Math.round(n * 100) / 100));
+}
+
+function clampScale(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0.5, Math.min(3, Math.round(n * 100) / 100));
+}
+
+function detectChangedFields(
+  before: ShopCatalogProduct | undefined,
+  after: ShopCatalogProduct,
+): string[] {
+  if (!before) return [];
+  const changed: string[] = [];
+  for (const field of COMPARABLE_FIELDS) {
+    const a = JSON.stringify((before as Record<string, unknown>)[field] ?? null);
+    const b = JSON.stringify((after as Record<string, unknown>)[field] ?? null);
+    if (a !== b) changed.push(field);
+  }
+  return changed;
+}
 
 @Injectable()
 export class ShopCatalogService {
@@ -141,13 +263,42 @@ export class ShopCatalogService {
     writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
   }
 
+  /** Fix imageUrl drift from moja-sites sync (spaces, wrong case, old filenames). */
+  private repairCanonicalProductImages(
+    items: ShopCatalogProduct[],
+  ): ShopCatalogProduct[] {
+    let changed = false;
+    const out = items.map((p) => {
+      const canonical = CANONICAL_PRODUCT_IMAGE_URL[p.id];
+      if (!canonical) return p;
+      const cur = (p.imageUrl ?? '').trim();
+      const needsFix =
+        !cur ||
+        cur !== canonical ||
+        /\s/.test(cur) ||
+        /Jasmine_blanc/i.test(cur) ||
+        /jasmine blanc/i.test(cur);
+      if (!needsFix) return p;
+      changed = true;
+      const images =
+        Array.isArray(p.images) && p.images.length > 0
+          ? p.images.map((img, i) =>
+              i === 0 ? { ...img, src: canonical } : img,
+            )
+          : [{ src: canonical, alt: p.name }];
+      return { ...p, imageUrl: canonical, images };
+    });
+    if (changed) this.writeAll(out);
+    return out;
+  }
+
   private readAll(): ShopCatalogProduct[] {
     this.ensureFile();
     try {
       const raw = readFileSync(this.filePath(), 'utf-8');
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [...DEFAULT_PRODUCTS];
-      return parsed as ShopCatalogProduct[];
+      return this.repairCanonicalProductImages(parsed as ShopCatalogProduct[]);
     } catch {
       return [...DEFAULT_PRODUCTS];
     }
@@ -371,6 +522,15 @@ export class ShopCatalogService {
           ? String(raw.imageUrl).trim()
           : (base.imageUrl ?? ''),
       images: raw.images != null ? raw.images : base.images,
+      imageOffsetX: clampPercent(
+        raw.imageOffsetX != null ? raw.imageOffsetX : base.imageOffsetX,
+      ),
+      imageOffsetY: clampPercent(
+        raw.imageOffsetY != null ? raw.imageOffsetY : base.imageOffsetY,
+      ),
+      imageScale: clampScale(
+        raw.imageScale != null ? raw.imageScale : base.imageScale,
+      ),
       basePriceCents:
         raw.basePriceCents != null &&
         Number.isFinite(Number(raw.basePriceCents))
@@ -389,6 +549,9 @@ export class ShopCatalogService {
         raw.sortOrder != null && Number.isFinite(Number(raw.sortOrder))
           ? Number(raw.sortOrder)
           : (base.sortOrder ?? 0),
+      syncOverrides: Array.isArray(raw.syncOverrides)
+        ? expandSyncOverrides(raw.syncOverrides as string[])
+        : (base.syncOverrides ?? undefined),
     };
   }
 
@@ -419,10 +582,24 @@ export class ShopCatalogService {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);
     if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    const next = this.normalizeProduct(input, all[idx]);
+    const before = all[idx];
+    const next = this.normalizeProduct(input, before);
+    const changed = detectChangedFields(before, next);
+    if (changed.length > 0) {
+      next.syncOverrides = mergeSyncOverrides(before.syncOverrides, changed);
+    }
     all[idx] = next;
     this.writeAll(all);
     return next;
+  }
+
+  resetProductSyncOverrides(id: string): ShopCatalogProduct {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
+    all[idx] = { ...all[idx], syncOverrides: undefined };
+    this.writeAll(all);
+    return all[idx];
   }
 
   getPopularConfig(): HomePopularConfig {
@@ -499,16 +676,94 @@ export class ShopCatalogService {
     return out;
   }
 
-  private defaultSitesCatalogPath(): string {
+  /** Fixed path on the persistent disk (Render: mount at /opt/render/project/src/data). */
+  sitesCatalogFilePath(): string {
+    return resolve(process.cwd(), 'data', 'products.catalog.json');
+  }
+
+  /** First existing catalog file, in priority order. */
+  private findSitesCatalogPath(): string | null {
+    const candidates: string[] = [];
+    const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
+    if (envPath) candidates.push(resolve(envPath));
+    candidates.push(this.sitesCatalogFilePath());
+    candidates.push(resolve(process.cwd(), 'config', 'products.catalog.json'));
+    candidates.push(
+      resolve(
+        process.cwd(),
+        '..',
+        'moja-sites',
+        'config',
+        'products.catalog.json',
+      ),
+    );
+    for (const p of candidates) {
+      if (existsSync(p)) return p;
+    }
+    return null;
+  }
+
+  private preferredSitesCatalogPathForErrors(): string {
     const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
     if (envPath) return resolve(envPath);
-    return resolve(
-      process.cwd(),
-      '..',
-      'moja-sites',
-      'config',
-      'products.catalog.json',
+    return this.sitesCatalogFilePath();
+  }
+
+  private deriveSitesCatalogUrl(): string | null {
+    const explicit = process.env.MOJA_SITES_CATALOG_URL?.trim();
+    if (explicit) return explicit;
+    const shopBase = process.env.SHOP_WEB_BASE_URL?.trim();
+    if (!shopBase) return null;
+    try {
+      const origin = new URL(
+        shopBase.endsWith('/') ? shopBase : `${shopBase}/`,
+      ).origin;
+      return `${origin}/config/products.catalog.json`;
+    } catch {
+      return null;
+    }
+  }
+
+  getSitesCatalogFileInfo(): {
+    exists: boolean;
+    path: string;
+    productCount?: number;
+    mtime?: string;
+  } {
+    const path = this.sitesCatalogFilePath();
+    if (!existsSync(path)) {
+      return { exists: false, path };
+    }
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      const catalog = this.parseSitesCatalog(raw);
+      const stat = statSync(path);
+      return {
+        exists: true,
+        path,
+        productCount: catalog.products.length,
+        mtime: stat.mtime.toISOString(),
+      };
+    } catch {
+      return { exists: true, path };
+    }
+  }
+
+  saveSitesCatalogFile(raw: string): {
+    path: string;
+    productCount: number;
+  } {
+    const catalog = this.parseSitesCatalog(raw);
+    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    writeFileSync(
+      this.sitesCatalogFilePath(),
+      JSON.stringify(catalog, null, 2),
+      'utf-8',
     );
+    return {
+      path: this.sitesCatalogFilePath(),
+      productCount: catalog.products.length,
+    };
   }
 
   private parseSitesCatalog(raw: string): SitesCatalog {
@@ -546,26 +801,30 @@ export class ShopCatalogService {
       };
     }
 
-    const url = process.env.MOJA_SITES_CATALOG_URL?.trim();
+    const url = this.deriveSitesCatalogUrl();
     if (url) {
       const res = await fetch(url);
-      if (!res.ok) {
+      if (res.ok) {
+        const text = await res.text();
+        return {
+          catalog: this.parseSitesCatalog(text),
+          source: 'url',
+          sourceLabel: url,
+        };
+      }
+      if (process.env.MOJA_SITES_CATALOG_URL?.trim()) {
         throw new BadRequestException(
           `Failed to fetch moja-sites catalog (${res.status}) from MOJA_SITES_CATALOG_URL`,
         );
       }
-      const text = await res.text();
-      return {
-        catalog: this.parseSitesCatalog(text),
-        source: 'url',
-        sourceLabel: url,
-      };
+      /* SHOP_WEB_BASE_URL-derived URL failed — fall through to local file */
     }
 
-    const path = this.defaultSitesCatalogPath();
-    if (!existsSync(path)) {
+    const path = this.findSitesCatalogPath();
+    if (!path) {
+      const preferred = this.preferredSitesCatalogPathForErrors();
       throw new BadRequestException(
-        `moja-sites catalog not found at ${path}. Set MOJA_SITES_CATALOG_PATH or MOJA_SITES_CATALOG_URL, or upload catalog JSON in the sync request.`,
+        `moja-sites catalog not found. On Render: upload the catalog once below (saved to ${preferred}), or set MOJA_SITES_CATALOG_URL to a public JSON URL. Local dev: clone moja-sites as a sibling repo, or set MOJA_SITES_CATALOG_PATH.`,
       );
     }
     return {
@@ -660,5 +919,106 @@ export class ShopCatalogService {
       productsCreated: createMissing ? preview.summary.toCreate : 0,
       layoutUpdated,
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Product image upload (file from admin's PC → data/uploads/products/<id>-<ts>.<ext>)
+  // The static asset middleware in main.ts serves data/uploads at /uploads/,
+  // so the resulting public URL is /uploads/products/<file>. resolveApiAssetUrl
+  // on the client side prepends the API base, giving the same absolute URL to
+  // the member app and any other consumer (e.g. moja-sites) pointing at this API.
+  // ---------------------------------------------------------------------
+
+  private productImagesDir(): string {
+    return resolve(process.cwd(), 'data', 'uploads', 'products');
+  }
+
+  private tryRemoveLocalProductImage(url: string | null | undefined): void {
+    if (!url) return;
+    if (!url.startsWith(PRODUCT_IMAGE_PUBLIC_PREFIX)) return;
+    const name = url.substring(PRODUCT_IMAGE_PUBLIC_PREFIX.length);
+    if (!/^[a-z0-9._-]+$/i.test(name)) return;
+    const p = resolve(this.productImagesDir(), name);
+    try {
+      if (existsSync(p)) unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  attachProductImage(
+    id: string,
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname?: string;
+      size: number;
+    },
+  ): ShopCatalogProduct {
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException('No file provided');
+    }
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new BadRequestException(
+        `Image too large. Max ${Math.round(
+          PRODUCT_IMAGE_MAX_BYTES / 1024 / 1024,
+        )} MB.`,
+      );
+    }
+    const ext =
+      PRODUCT_IMAGE_ALLOWED_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    const allowedExts = new Set(Object.values(PRODUCT_IMAGE_ALLOWED_MIME));
+    if (!ext || !allowedExts.has(ext)) {
+      throw new BadRequestException(
+        'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      );
+    }
+
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Product not found');
+
+    mkdirSync(this.productImagesDir(), { recursive: true });
+    const safeId = id.replace(/[^a-z0-9_-]/gi, '_');
+    const filename = `${safeId}-${Date.now()}${ext}`;
+    const diskPath = resolve(this.productImagesDir(), filename);
+    writeFileSync(diskPath, file.buffer);
+
+    const prevUrl = all[idx].imageUrl;
+    const publicUrl = `${PRODUCT_IMAGE_PUBLIC_PREFIX}${filename}`;
+    const existingImages = Array.isArray(all[idx].images) ? all[idx].images! : [];
+    const nextImages = [
+      { src: publicUrl, alt: all[idx].name },
+      ...existingImages.filter((img) => img.src !== prevUrl && img.src !== publicUrl),
+    ];
+    all[idx] = {
+      ...all[idx],
+      imageUrl: publicUrl,
+      images: nextImages,
+      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
+    };
+    this.writeAll(all);
+
+    if (prevUrl && prevUrl !== publicUrl) {
+      this.tryRemoveLocalProductImage(prevUrl);
+    }
+    return all[idx];
+  }
+
+  clearProductImage(id: string): ShopCatalogProduct {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Product not found');
+    const prev = all[idx].imageUrl;
+    if (prev) this.tryRemoveLocalProductImage(prev);
+    all[idx] = {
+      ...all[idx],
+      imageUrl: '',
+      images: undefined,
+      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
+    };
+    this.writeAll(all);
+    return all[idx];
   }
 }

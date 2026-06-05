@@ -21,6 +21,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { AccessTokenJwtPayload } from './types/jwt-payload.type';
 import type { ShopHandoffJwtPayload } from './types/shop-handoff-jwt-payload.type';
 import { WhatsappOtpService } from './whatsapp-otp.service';
+import { SmsOtpService } from './sms-otp.service';
+import { TwilioVerifyService } from './twilio-verify.service';
+import { EmailOtpService } from './email-otp.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +35,9 @@ export class AuthService {
     private readonly customers: CustomersService,
     private readonly audit: AuditService,
     private readonly whatsappOtp: WhatsappOtpService,
+    private readonly smsOtp: SmsOtpService,
+    private readonly twilioVerify: TwilioVerifyService,
+    private readonly emailOtp: EmailOtpService,
     private readonly metrics: MetricsService,
   ) {}
 
@@ -39,11 +45,15 @@ export class AuthService {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
     const customer = await this.prisma.customer.findUnique({
       where: { phoneE164 },
-      select: { loginPinHash: true },
+      select: { loginPinHash: true, email: true },
     });
     return {
       registered: Boolean(customer),
       hasPin: Boolean(customer?.loginPinHash),
+      hasEmail: Boolean(customer?.email?.trim()),
+      maskedEmail: customer?.email?.trim()
+        ? this.maskEmail(customer.email)
+        : null,
     };
   }
 
@@ -51,12 +61,24 @@ export class AuthService {
     phoneRaw: string,
     ipAddress?: string | null,
     purposeInput?: 'register' | 'recovery',
+    emailRaw?: string,
   ) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
     const purpose = await this.resolveOtpRequestPurpose(
       phoneE164,
       purposeInput,
     );
+    const normalizedEmail = this.normalizeEmail(emailRaw);
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: { id: true, email: true },
+    });
+    const customerEmail = this.normalizeEmail(customer?.email);
+    const otpEmail = this.resolveOtpEmail({
+      purpose,
+      normalizedEmail,
+      customerEmail,
+    });
 
     const windowMinutes = this.config.get<number>(
       'OTP_REQUEST_WINDOW_MINUTES',
@@ -102,36 +124,26 @@ export class AuthService {
     const ttlMinutes = this.config.get<number>('OTP_TTL_MINUTES', 10);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
-    await this.prisma.$transaction([
-      this.prisma.otpChallenge.create({
-        data: {
-          phoneE164,
-          otpHash,
-          purpose,
-          expiresAt,
-        },
-      }),
-      this.prisma.otpRequestLog.create({
-        data: {
-          phoneE164,
-          ipAddress: ipAddress ?? null,
-        },
-      }),
-    ]);
-
-    await this.audit.log({
-      actorType: 'system',
-      action: 'otp.requested',
-      entityType: 'phone',
-      entityId: null,
-      metadata: {
-        phoneE164,
-        ipAddress: ipAddress ?? null,
-        purpose,
-      },
-    });
-
     const waConfigured = this.whatsappOtp.isConfigured();
+    const smsConfigured = this.smsOtp.isConfigured();
+    const verifyConfigured = this.twilioVerify.isConfigured();
+    const emailConfigured = this.emailOtp.isConfigured();
+    const channel = this.resolveOtpChannel(
+      mode,
+      waConfigured,
+      smsConfigured,
+      verifyConfigured,
+      emailConfigured,
+    );
+
+    if (mode === 'verify' && !verifyConfigured) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_DELIVERY_NOT_CONFIGURED',
+        message:
+          'OTP mode is verify but Twilio Verify credentials are missing. ' +
+          'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_VERIFY_SERVICE_SID.',
+      });
+    }
 
     if (mode === 'whatsapp' && !waConfigured) {
       throw new ServiceUnavailableException({
@@ -144,12 +156,77 @@ export class AuthService {
       });
     }
 
-    if (mode !== 'mock' && waConfigured) {
+    if (mode === 'email' && !emailConfigured) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_DELIVERY_NOT_CONFIGURED',
+        message:
+          'OTP mode is email but email credentials are missing. ' +
+          'Set RESEND_API_KEY + OTP_EMAIL_FROM.',
+      });
+    }
+
+    if (mode === 'sms' && !smsConfigured) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_DELIVERY_NOT_CONFIGURED',
+        message:
+          'OTP mode is sms but Twilio SMS credentials are missing. ' +
+          'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID).',
+      });
+    }
+
+    if (channel === 'verify') {
+      // Twilio Verify generates and delivers its own code; our `code` is unused.
+      await this.twilioVerify.startVerification(phoneE164, 'sms');
+    } else if (channel === 'email') {
+      if (!otpEmail) {
+        throw new BadRequestException({
+          code: 'EMAIL_REQUIRED',
+          message: 'Email is required to send your verification code.',
+        });
+      }
+      await this.emailOtp.sendOtp(otpEmail, code);
+    } else if (channel === 'sms') {
+      await this.smsOtp.sendOtp(phoneE164, code);
+    } else if (channel === 'whatsapp') {
       await this.whatsappOtp.sendOtp(phoneE164, code);
     }
 
-    const channel = mode === 'mock' ? 'mock' : waConfigured ? 'whatsapp' : 'dev';
-    const returnCode = channel !== 'whatsapp';
+    await this.prisma.$transaction([
+      this.prisma.otpChallenge.create({
+        data: {
+          phoneE164,
+          email: otpEmail,
+          deliveryChannel: channel,
+          otpHash,
+          purpose,
+          expiresAt,
+          customerId: customer?.id ?? null,
+        },
+      }),
+      this.prisma.otpRequestLog.create({
+        data: {
+          phoneE164,
+          email: otpEmail,
+          ipAddress: ipAddress ?? null,
+        },
+      }),
+    ]);
+
+    await this.audit.log({
+      actorType: 'system',
+      action: 'otp.requested',
+      entityType: 'phone',
+      entityId: null,
+      metadata: {
+        phoneE164,
+        email: otpEmail,
+        ipAddress: ipAddress ?? null,
+        purpose,
+        channel,
+      },
+    });
+
+    const returnCode = channel === 'mock' || channel === 'dev';
 
     return {
       sent: true,
@@ -160,8 +237,14 @@ export class AuthService {
     };
   }
 
-  async verifyOtp(phoneRaw: string, code: string, referralCode?: string) {
+  async verifyOtp(
+    phoneRaw: string,
+    code: string,
+    referralCode?: string,
+    emailRaw?: string,
+  ) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
+    const normalizedEmail = this.normalizeEmail(emailRaw);
 
     const challenge = await this.prisma.otpChallenge.findFirst({
       where: {
@@ -185,12 +268,32 @@ export class AuthService {
       });
     }
 
-    const match = await bcrypt.compare(code, challenge.otpHash);
-    if (!match) {
+    if (challenge.email && challenge.email !== normalizedEmail) {
       throw new UnauthorizedException({
         code: 'OTP_INVALID',
-        message: 'Invalid or unknown verification code',
+        message: 'Use the same email address that received the verification code.',
       });
+    }
+
+    if (challenge.deliveryChannel === 'verify') {
+      const approved = await this.twilioVerify.checkVerification(
+        phoneE164,
+        code,
+      );
+      if (!approved) {
+        throw new UnauthorizedException({
+          code: 'OTP_INVALID',
+          message: 'Invalid or unknown verification code',
+        });
+      }
+    } else {
+      const match = await bcrypt.compare(code, challenge.otpHash);
+      if (!match) {
+        throw new UnauthorizedException({
+          code: 'OTP_INVALID',
+          message: 'Invalid or unknown verification code',
+        });
+      }
     }
 
     await this.prisma.otpChallenge.update({
@@ -238,6 +341,7 @@ export class AuthService {
 
     const customer = await this.customers.ensureCustomerForPhone(phoneE164, {
       referralCode: referralCode?.trim() || undefined,
+      email: challenge.email,
     });
 
     await this.audit.log({
@@ -361,7 +465,7 @@ export class AuthService {
         {
           code: 'USE_PIN_LOGIN',
           message:
-            'This number uses a login PIN. Enter your PIN instead of requesting a WhatsApp code.',
+            'This number uses a login PIN. Enter your PIN instead of requesting a new code.',
         },
         HttpStatus.BAD_REQUEST,
       );
@@ -431,14 +535,94 @@ export class AuthService {
     };
   }
 
-  private resolveOtpMode(): 'mock' | 'whatsapp' | 'auto' {
+  private resolveOtpMode():
+    | 'mock'
+    | 'sms'
+    | 'whatsapp'
+    | 'verify'
+    | 'email'
+    | 'auto' {
     const raw = this.config
       .get<string>('OTP_DELIVERY_MODE', 'auto')
       .toLowerCase();
-    if (raw === 'mock' || raw === 'whatsapp') {
+    if (
+      raw === 'mock' ||
+      raw === 'sms' ||
+      raw === 'whatsapp' ||
+      raw === 'verify' ||
+      raw === 'email'
+    ) {
       return raw;
     }
     return 'auto';
+  }
+
+  private resolveOtpChannel(
+    mode: 'mock' | 'sms' | 'whatsapp' | 'verify' | 'email' | 'auto',
+    waConfigured: boolean,
+    smsConfigured: boolean,
+    verifyConfigured: boolean,
+    emailConfigured: boolean,
+  ): 'mock' | 'sms' | 'whatsapp' | 'verify' | 'email' | 'dev' {
+    if (mode === 'mock') return 'mock';
+    if (mode === 'verify') return verifyConfigured ? 'verify' : 'dev';
+    if (mode === 'email') return emailConfigured ? 'email' : 'dev';
+    if (mode === 'sms') return smsConfigured ? 'sms' : 'dev';
+    if (mode === 'whatsapp') return waConfigured ? 'whatsapp' : 'dev';
+    if (emailConfigured) return 'email';
+    if (verifyConfigured) return 'verify';
+    if (smsConfigured) return 'sms';
+    if (waConfigured) return 'whatsapp';
+    return 'dev';
+  }
+
+  private normalizeEmail(raw?: string | null): string | null {
+    const cleaned = raw?.trim().toLowerCase();
+    return cleaned ? cleaned : null;
+  }
+
+  private maskEmail(email: string): string {
+    const cleaned = email.trim();
+    const at = cleaned.indexOf('@');
+    if (at <= 0) return cleaned;
+    const user = cleaned.slice(0, at);
+    const domain = cleaned.slice(at + 1);
+    const visibleUser = user.length <= 2 ? user[0] ?? '*' : user.slice(0, 2);
+    return `${visibleUser}${'*'.repeat(Math.max(1, user.length - visibleUser.length))}@${domain}`;
+  }
+
+  private resolveOtpEmail(params: {
+    purpose: OtpPurpose;
+    normalizedEmail: string | null;
+    customerEmail: string | null;
+  }): string | null {
+    const { purpose, normalizedEmail, customerEmail } = params;
+
+    if (purpose === OtpPurpose.RECOVERY) {
+      if (!customerEmail) {
+        throw new BadRequestException({
+          code: 'EMAIL_NOT_ON_FILE',
+          message:
+            'No email is saved for this number yet. Contact support to recover your account.',
+        });
+      }
+      if (normalizedEmail && normalizedEmail !== customerEmail) {
+        throw new BadRequestException({
+          code: 'EMAIL_MISMATCH',
+          message:
+            'This email does not match the account. Enter the registered email for this phone number.',
+        });
+      }
+      return customerEmail;
+    }
+
+    if (!normalizedEmail) {
+      throw new BadRequestException({
+        code: 'EMAIL_REQUIRED',
+        message: 'Email is required to continue.',
+      });
+    }
+    return normalizedEmail;
   }
 
   async issueShopHandoff(customerId: string) {

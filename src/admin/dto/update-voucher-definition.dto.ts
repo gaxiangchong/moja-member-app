@@ -27,6 +27,18 @@ export class UpdateVoucherDefinitionDto {
   pointsCost?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  rebateValueSen?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minSpendSen?: number | null;
+
+  @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
   isActive?: boolean;

@@ -15,6 +15,8 @@ import {
   fetchHomeAdSlides,
   fetchMe,
   fetchMeRewards,
+  fetchMyLoyaltyHistory,
+  fetchPaymentIntentStatus,
   fetchPopularProducts,
   getToken,
   loginWithPin,
@@ -26,12 +28,22 @@ import {
   updateMe,
   verifyOtp,
   type HomeAdSlide,
+  type LoyaltyHistoryEntry,
   type MemberProfile,
   type MemberRewardsPayload,
   type PopularProduct,
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
+import {
+  clearPendingPayment,
+  readPendingPayment,
+} from './payments/pendingPayment';
+import {
+  POINT_TIER_LABELS,
+  POINT_TIER_THRESHOLDS,
+  pointsTierProgress,
+} from './lib/pointsTier';
 import { ShopFlow } from './shop/ShopFlow';
 import { useShopStore } from './shop/store/useShopStore';
 
@@ -39,11 +51,19 @@ const PENDING_REFERRAL_KEY = 'moja_pending_referral';
 const PENDING_CART_HANDOFF_KEY = 'moja_pending_cart_handoff';
 const PENDING_SHOP_SCREEN_KEY = 'moja_pending_shop_screen';
 
-type Step = 'phone' | 'pin' | 'code' | 'setPin' | 'member';
+type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin' | 'member';
 type OtpFlowPurpose = 'register' | 'recovery';
 type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
+
+// Feature flag — hide all voucher-related UI for this release. Flip to true
+// when the issued-voucher experience is ready to ship. Hides the Perks
+// page's Vouchers sub-tab, the Home page "My Voucher" summary card, the
+// Account page "My Vouchers" stat card, and the "Vouchers & rewards"
+// activity row link. The underlying voucher data fetch and types are kept
+// intact so re-enabling is just this one flag flip.
+const SHOW_VOUCHERS = false;
 type RewardFilter = 'all' | 'food' | 'drinks';
 type PaymentResult =
   | { status: 'success'; orderNumber: string | null }
@@ -205,18 +225,40 @@ function AdCarousel({ slides }: { slides: HomeAdSlide[] }) {
         {current.body ? <div className="adCarouselBody">{current.body}</div> : null}
       </div>
       {list.length > 1 ? (
-        <div className="adCarouselDots" role="tablist">
-          {list.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className={i === idx ? 'adCarouselDot active' : 'adCarouselDot'}
-              onClick={() => setIdx(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              aria-selected={i === idx}
-            />
-          ))}
-        </div>
+        <>
+          <button
+            type="button"
+            className="adCarouselArrow adCarouselArrowPrev"
+            onClick={() => setIdx((i) => (i - 1 + list.length) % list.length)}
+            aria-label="Previous slide"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="adCarouselArrow adCarouselArrowNext"
+            onClick={() => setIdx((i) => (i + 1) % list.length)}
+            aria-label="Next slide"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="9 6 15 12 9 18" />
+            </svg>
+          </button>
+          <div className="adCarouselDots" role="tablist">
+            {list.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className={i === idx ? 'adCarouselDot active' : 'adCarouselDot'}
+                onClick={() => setIdx(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                aria-selected={i === idx}
+              />
+            ))}
+          </div>
+        </>
       ) : null}
     </section>
   );
@@ -240,6 +282,176 @@ function SectionHeader({
         </button>
       ) : null}
     </div>
+  );
+}
+
+// Human-friendly label for a points ledger entry. We get one string `reason`
+// from the API (e.g. `shop_order_purchase`, `salesplay_purchase`,
+// `redeem_FREE_DRINK_5`, `campaign_points_bonus`) — turn it into something a
+// customer can read without leaking internal codes.
+function humanizeLoyaltyReason(entry: LoyaltyHistoryEntry): string {
+  const reason = String(entry.reason || '').toLowerCase();
+  if (entry.referenceType === 'customer_order' && entry.orderNumber != null) {
+    return `Shop order #${entry.orderNumber}`;
+  }
+  if (reason === 'shop_order_purchase') return 'Shop order';
+  if (reason === 'salesplay_purchase' || entry.referenceType === 'salesplay_receipt') {
+    return 'In-store purchase';
+  }
+  if (reason.startsWith('redeem_')) {
+    const code = reason.slice('redeem_'.length).toUpperCase();
+    return code ? `Redeemed · ${code}` : 'Redeemed reward';
+  }
+  if (reason.startsWith('campaign_')) return 'Campaign bonus';
+  if (reason === 'referral_reward' || entry.referenceType === 'referral') {
+    return 'Referral reward';
+  }
+  if (reason === 'birthday_reward' || entry.referenceType === 'birthday') {
+    return 'Birthday gift';
+  }
+  if (reason === 'manual' || entry.referenceType === 'manual') return 'Adjustment';
+  // Fallback: pretty-print "some_reason_code" → "Some reason code"
+  const pretty = reason.replace(/[._-]+/g, ' ').trim();
+  if (!pretty) return 'Loyalty activity';
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+}
+
+function formatLoyaltyDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-MY', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kuala_Lumpur',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function PointsHistoryCard({
+  active,
+}: {
+  /** When true, fetch+display. Lets caller defer load to when the Account tab opens. */
+  active: boolean;
+}) {
+  const [entries, setEntries] = useState<LoyaltyHistoryEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchMyLoyaltyHistory(50)
+      .then((res) => {
+        if (cancelled) return;
+        setEntries(res.entries);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load points history');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  const visible = expanded ? entries ?? [] : (entries ?? []).slice(0, 5);
+  const total = entries?.length ?? 0;
+
+  return (
+    <Card>
+      <SectionHeader title="Points history" />
+      {loading && entries == null ? (
+        <p className="caption">Loading…</p>
+      ) : error ? (
+        <p className="err">{error}</p>
+      ) : !entries || entries.length === 0 ? (
+        <p className="caption" style={{ margin: 0 }}>
+          No points activity yet. Spend in-store or in the shop to start earning.
+        </p>
+      ) : (
+        <>
+          <ul
+            style={{
+              listStyle: 'none',
+              padding: 0,
+              margin: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            {visible.map((e) => {
+              const positive = e.deltaPoints > 0;
+              return (
+                <li
+                  key={e.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(0,0,0,0.06)',
+                    borderRadius: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <strong
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {humanizeLoyaltyReason(e)}
+                    </strong>
+                    <small
+                      className="caption"
+                      style={{ margin: 0, fontSize: 12, color: 'rgba(26,26,26,0.6)' }}
+                    >
+                      {formatLoyaltyDate(e.createdAt)} · Balance{' '}
+                      {e.balanceAfter.toLocaleString()} pts
+                    </small>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: positive ? '#15803d' : '#b91c1c',
+                    }}
+                  >
+                    {positive ? '+' : ''}
+                    {e.deltaPoints.toLocaleString()} pts
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {total > 5 ? (
+            <button
+              type="button"
+              className="textAction"
+              style={{ marginTop: 10 }}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'Show less' : `Show all (${total})`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -280,35 +492,43 @@ function VoucherCard({
   );
 }
 
+// Voucher redemption minimum-spend rule shown on every catalog card.
+// Single source of truth for the T&C copy so changing the threshold (or
+// migrating to a per-voucher VoucherDefinition.minSpendCents column later)
+// is a one-line edit here. Value in sen so it matches the rest of the app.
+const VOUCHER_MIN_SPEND_CENTS = 2000;
+
+function formatRmCents(cents: number): string {
+  return `RM ${(cents / 100).toFixed(2)}`;
+}
+
 function RewardCard({
   title,
-  description,
+  code,
   points,
-  category,
-  imageUrl,
+  onRedeem,
 }: {
   title: string;
-  description: string;
+  code: string;
   points: number;
-  category: string;
-  imageUrl: string;
+  onRedeem: () => void;
 }) {
-  const imageStyle = imageUrl
-    ? { backgroundImage: `linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5)), url("${imageUrl}")` }
-    : { backgroundImage: 'linear-gradient(180deg, rgba(20,16,14,0.08), rgba(20,16,14,0.5))' };
   return (
-    <article className="rewardCard">
-      <div
-        className={`rewardImage ${category === 'drinks' ? 'drinks' : 'food'}`}
-        style={imageStyle}
-      />
-      <div className="rewardBody">
-        <strong>{title}</strong>
-        <p>{description}</p>
-        <div className="rewardFoot">
-          <span>{points} pts</span>
-          <button type="button">Redeem</button>
-        </div>
+    <article className="rewardCard rewardTicket">
+      <div className="rewardTicketStub" aria-hidden="true">
+        <span className="rewardTicketStubValue">{points}</span>
+        <span className="rewardTicketStubUnit">pts</span>
+      </div>
+      <div className="rewardTicketBody">
+        <h3 className="rewardTicketTitle">{title}</h3>
+        {code ? <span className="rewardCode">{code}</span> : null}
+        <p className="rewardTerms">
+          <span className="rewardTermsLabel">Terms:</span> Min. spend{' '}
+          {formatRmCents(VOUCHER_MIN_SPEND_CENTS)} to use this voucher.
+        </p>
+        <button type="button" className="rewardRedeemBtn" onClick={onRedeem}>
+          Redeem voucher
+        </button>
       </div>
     </article>
   );
@@ -318,6 +538,8 @@ function App() {
   const [step, setStep] = useState<Step>('phone');
   const [tab, setTab] = useState<MemberTab>('home');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [maskedEmailHint, setMaskedEmailHint] = useState<string | null>(null);
   const [loginPin, setLoginPin] = useState('');
   const [code, setCode] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -336,16 +558,20 @@ function App() {
   const [rewardsData, setRewardsData] = useState<MemberRewardsPayload | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [phoneQrUrl, setPhoneQrUrl] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
-  const [perksSub, setPerksSub] = useState<PerksSub>('vouchers');
+  const [perksSub, setPerksSub] = useState<PerksSub>(
+    SHOW_VOUCHERS ? 'vouchers' : 'rewards',
+  );
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
+  const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -488,9 +714,11 @@ function App() {
         setTab(t);
       }
       if (shopPay === 'success') {
+        clearPendingPayment();
         setPaymentResult({ status: 'success', orderNumber });
         void loadMemberData();
       } else if (shopPay === 'failed') {
+        clearPendingPayment();
         setPaymentResult({ status: 'failed' });
       }
       if (shopPay || t || orderNumber) {
@@ -503,6 +731,85 @@ function App() {
     } catch {
       /* ignore */
     }
+  }, [step, loadMemberData]);
+
+  // Poll the server for a pending payment whenever the app is open and
+  // visible. E-wallets like Touch 'n Go often don't redirect back to the
+  // merchant in live mode, so we can't rely solely on the success URL.
+  useEffect(() => {
+    if (step !== 'member') return;
+    if (!getToken()) return;
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let pollingStartedAt = 0;
+    const POLL_INTERVAL_MS = 3000;
+    const POLL_MAX_MS = 5 * 60 * 1000;
+
+    const stop = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const tick = async () => {
+      const pending = readPendingPayment();
+      if (!pending) {
+        stop();
+        return;
+      }
+      if (Date.now() - pollingStartedAt > POLL_MAX_MS) {
+        stop();
+        return;
+      }
+      try {
+        const res = await fetchPaymentIntentStatus(pending.referenceId);
+        if (cancelled) return;
+        if (res.status === 'SUCCEEDED') {
+          clearPendingPayment();
+          const orderNumber =
+            res.orderNumber != null
+              ? String(res.orderNumber)
+              : pending.orderNumber;
+          setPaymentResult({ status: 'success', orderNumber });
+          void loadMemberData();
+          stop();
+        } else if (res.status === 'FAILED') {
+          clearPendingPayment();
+          setPaymentResult({ status: 'failed' });
+          stop();
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+
+    const start = () => {
+      if (intervalId !== null) return;
+      if (!readPendingPayment()) return;
+      pollingStartedAt = Date.now();
+      void tick();
+      intervalId = window.setInterval(() => {
+        void tick();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') start();
+    };
+    const onFocus = () => start();
+
+    start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [step, loadMemberData]);
 
   useEffect(() => {
@@ -519,6 +826,8 @@ function App() {
     (res: { channel?: string; _devCode?: string }) => {
       if (res.channel === 'whatsapp') {
         setHint('Check WhatsApp for your verification code.');
+      } else if (res.channel === 'email') {
+        setHint('Check your email inbox for the verification code.');
       } else if (res.channel === 'mock' && res._devCode) {
         setHint(`Test mode (mock): your OTP is ${res._devCode}`);
       } else if (res._devCode) {
@@ -536,7 +845,7 @@ function App() {
     setHint(null);
     setLoading(true);
     try {
-      const { registered, hasPin } = await lookupLogin(phone);
+      const { registered, hasPin, maskedEmail } = await lookupLogin(phone);
       if (registered && hasPin) {
         setStep('pin');
         setLoginPin('');
@@ -544,8 +853,26 @@ function App() {
       }
       const purpose: OtpFlowPurpose =
         registered && !hasPin ? 'recovery' : 'register';
-      const res = await requestOtp(phone, purpose);
       setOtpFlowPurpose(purpose);
+      setMaskedEmailHint(maskedEmail);
+      setEmail('');
+      setOtpExpiresAt(null);
+      setStep('email');
+      setCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const res = await requestOtp(phone, otpFlowPurpose, email);
       setOtpExpiresAt(res.expiresAt ?? null);
       setStep('code');
       setCode('');
@@ -560,19 +887,12 @@ function App() {
   const handleForgotPin = async () => {
     setError(null);
     setHint(null);
-    setLoading(true);
-    try {
-      const res = await requestOtp(phone, 'recovery');
-      setOtpFlowPurpose('recovery');
-      setOtpExpiresAt(res.expiresAt ?? null);
-      setStep('code');
-      setCode('');
-      applyOtpResponseHint(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
+    setOtpFlowPurpose('recovery');
+    setMaskedEmailHint(null);
+    setEmail('');
+    setOtpExpiresAt(null);
+    setStep('email');
+    setCode('');
   };
 
   const handleResendOtp = useCallback(async () => {
@@ -581,7 +901,7 @@ function App() {
     setHint(null);
     setLoading(true);
     try {
-      const res = await requestOtp(phone, otpFlowPurpose);
+      const res = await requestOtp(phone, otpFlowPurpose, email);
       setOtpExpiresAt(res.expiresAt ?? null);
       setCode('');
       applyOtpResponseHint(res);
@@ -590,7 +910,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [applyOtpResponseHint, loading, otpFlowPurpose, phone]);
+  }, [applyOtpResponseHint, email, loading, otpFlowPurpose, phone]);
 
   const submitPinLoginWith = useCallback(
     async (pin: string) => {
@@ -635,6 +955,7 @@ function App() {
         const verified = await verifyOtp(phone, codeValue, {
           referralCode:
             otpFlowPurpose === 'register' ? pendingRef || undefined : undefined,
+          email,
         });
         if (pendingRef && verified.purpose === 'register') {
           sessionStorage.removeItem(PENDING_REFERRAL_KEY);
@@ -652,7 +973,7 @@ function App() {
         setLoading(false);
       }
     },
-    [otpFlowPurpose, phone],
+    [email, otpFlowPurpose, phone],
   );
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -712,6 +1033,7 @@ function App() {
       });
       setProfile(updated);
       setProfileMsg('Profile updated.');
+      setEditingProfile(false);
     } catch (err) {
       setProfileMsg(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
@@ -751,6 +1073,8 @@ function App() {
     setProfile(null);
     setRewardsData(null);
     setStep('phone');
+    setEmail('');
+    setMaskedEmailHint(null);
     setLoginPin('');
     setCode('');
     setNewPin('');
@@ -776,6 +1100,42 @@ function App() {
     return !nameOk || !emailOk || !birthdayOk;
   }, [profile]);
 
+  // Open the editor automatically for first-time / incomplete profiles, but
+  // keep saved profiles read-only until the member taps Edit.
+  useEffect(() => {
+    if (!profile) return;
+    const complete =
+      Boolean(profile.displayName?.trim()) &&
+      Boolean(profile.email?.trim()) &&
+      Boolean(profile.birthday?.trim());
+    setEditingProfile(!complete);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-evaluate on identity change
+  }, [profile?.id]);
+
+  const birthdayDisplay = useMemo(() => {
+    const raw = profile?.birthday?.trim();
+    if (!raw) return '';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, [profile?.birthday]);
+
+  const memberInitial = useMemo(
+    () => (memberName.trim()[0] ?? 'M').toUpperCase(),
+    [memberName],
+  );
+
+  const walletCreditsLabel = useMemo(() => {
+    const cents = profile?.storedWallet?.currentWalletBalance ?? 0;
+    return `RM ${(cents / 100).toFixed(2)}`;
+  }, [profile?.storedWallet?.currentWalletBalance]);
+
+  const referralCount = profile?.referralCount ?? 0;
+
   const normalizedTierKey = useMemo(() => {
     const raw = (profile?.memberTier ?? 'silver').trim().toLowerCase();
     if (raw.includes('plat')) return 'platinum';
@@ -790,10 +1150,20 @@ function App() {
     return 'Silver';
   }, [normalizedTierKey]);
 
+  const memberSince = useMemo(() => {
+    const raw = profile?.createdAt;
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }, [profile?.createdAt]);
+
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
-  const nextTarget = Math.ceil((pointsBalance + 1) / 500) * 500;
-  const pointsToNext = Math.max(nextTarget - pointsBalance, 0);
-  const progressPct = Math.min(100, Math.max(0, (1 - pointsToNext / 500) * 100));
+  const tierProgress = useMemo(
+    () => pointsTierProgress(pointsBalance),
+    [pointsBalance],
+  );
+  const { pointsToNext, progressPct } = tierProgress;
 
   const voucherItems = rewardsData?.vouchers ?? [];
   const visibleVouchers = voucherItems.filter((v) => {
@@ -848,7 +1218,11 @@ function App() {
   }, [profile?.phoneE164]);
 
   const authMode =
-    step === 'phone' || step === 'pin' || step === 'code' || step === 'setPin';
+    step === 'phone' ||
+    step === 'pin' ||
+    step === 'email' ||
+    step === 'code' ||
+    step === 'setPin';
 
   return (
     <div className={`app${authMode ? ' app--auth' : ''}`}>
@@ -884,7 +1258,7 @@ function App() {
                         type="tel"
                         inputMode="tel"
                         autoComplete="tel"
-                        placeholder="+60 12 345 6789"
+                        placeholder="6013 345 1345"
                         value={phone}
                         onChange={(ev) => setPhone(ev.target.value)}
                         required
@@ -908,7 +1282,7 @@ function App() {
                         <rect x="4" y="10" width="16" height="11" rx="2" />
                         <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                       </svg>
-                      We'll send a one-time code via WhatsApp. No password needed.
+                      New sign-ins use a one-time code sent to your email.
                     </p>
                   </form>
                 </div>
@@ -959,11 +1333,56 @@ function App() {
                     onClick={() => void handleForgotPin()}
                     disabled={loading}
                   >
-                    Use WhatsApp OTP instead
+                    Forgot PIN? Use email OTP
                   </button>
                   <p className="authHelper">
-                    Forgot your PIN? Verify by WhatsApp OTP to set a new one.
+                    Use your registered email to verify and set a new PIN.
                   </p>
+                </div>
+              </section>
+            )}
+
+            {step === 'email' && (
+              <section className="authCard authCardPin">
+                <div className="authLayout">
+                  <AuthBackLink
+                    onClick={() => {
+                      setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
+                      setError(null);
+                      setHint(null);
+                    }}
+                    disabled={loading}
+                  />
+                  <AuthHero icon="chat" />
+                  <h1 className="authTitle">Verify with email</h1>
+                  <p className="authSub">
+                    Enter the email for{' '}
+                    <strong className="authSubStrong">{phone.trim()}</strong> to receive a 6-digit verification code.
+                  </p>
+                  {maskedEmailHint ? (
+                    <p className="authHint">Registered email hint: {maskedEmailHint}</p>
+                  ) : null}
+                  <form onSubmit={handleEmailContinue} className="authForm">
+                    <label htmlFor="email-otp" className="authLabel">Email address</label>
+                    <div className={`authPhoneField${loading ? ' disabled' : ''}`}>
+                      <span className="authPhonePrefix" aria-hidden>✉️</span>
+                      <input
+                        id="email-otp"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@email.com"
+                        value={email}
+                        onChange={(ev) => setEmail(ev.target.value)}
+                        required
+                        disabled={loading}
+                        className="authPhoneInput"
+                      />
+                    </div>
+                    {error && <p className="err authErr">{error}</p>}
+                    <button type="submit" className="authPrimary" disabled={loading}>
+                      {loading ? 'Sending code…' : 'Send code'}
+                    </button>
+                  </form>
                 </div>
               </section>
             )}
@@ -973,7 +1392,7 @@ function App() {
                 <div className="authLayout">
                   <AuthBackLink
                     onClick={() => {
-                      setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
+                      setStep('email');
                       setCode('');
                       setError(null);
                     }}
@@ -983,13 +1402,8 @@ function App() {
                   <AuthHero icon="chat" />
                   <h1 className="authTitle">Enter verification code</h1>
                   <p className="authSub">
-                    We sent a 6-digit code via WhatsApp
-                    {phone.trim() ? (
-                      <>
-                        {' '}to <strong className="authSubStrong">{phone.trim()}</strong>
-                      </>
-                    ) : null}
-                    .
+                    We sent a 6-digit code to{' '}
+                    <strong className="authSubStrong">{email.trim() || 'your email'}</strong>.
                   </p>
                   {hint && <p className="authHint">{hint}</p>}
                   <form onSubmit={handleVerify} className="authForm">
@@ -1066,7 +1480,7 @@ function App() {
                   </h1>
                   <p className="authSub">
                     {setPinPhase === 'first'
-                      ? 'Choose 6 digits. You will use this for quick sign-in instead of WhatsApp.'
+                      ? 'Choose 6 digits. You will use this for quick sign-in instead of requesting a code each time.'
                       : 'Re-enter the same 6 digits to confirm.'}
                   </p>
                   <div className="authPhaseDots" aria-hidden>
@@ -1151,51 +1565,74 @@ function App() {
                   </button>
                 </header>
                 <Card className="pointsCard">
-                  <p className="caption">Available points</p>
-                  <h1>{pointsBalance.toLocaleString()} pts</h1>
-                  <div className="progressWrap">
-                    <div className="progressBar" style={{ width: `${progressPct}%` }} />
+                  <div className="pointsCardHead">
+                    <span className="pointsCardEyebrow">Available Points</span>
+                    <span className="pointsCardBadge" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="8" r="6" />
+                        <path d="M8 13l-2 8 6-3 6 3-2-8" />
+                      </svg>
+                      Member
+                    </span>
                   </div>
-                  <p className="caption">{pointsToNext} pts to next reward</p>
+                  <h1 className="pointsCardValue">
+                    {pointsBalance.toLocaleString()}
+                    <span className="pointsCardUnit">pts</span>
+                  </h1>
+                  <div className="pointsCardProgress">
+                    <div className="pointsCardProgressTrack">
+                      <div
+                        className="pointsCardProgressFill"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <p className="pointsCardProgressHint">
+                      {pointsToNext > 0 && tierProgress.nextTierLabel
+                        ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                        : 'Top tier reached'}
+                    </p>
+                  </div>
                 </Card>
 
                 <AdCarousel slides={adSlides} />
 
                 <div className="homeSummaryRow">
-                  <button
-                    type="button"
-                    className="pmCard homeSummaryCard"
-                    onClick={() => {
-                      setPerksSub('vouchers');
-                      setTab('perks');
-                    }}
-                    aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
-                  >
-                    <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="7" width="18" height="13" rx="2" />
-                        <path d="M3 11h18" />
-                        <path d="M9 15l2 2 4-4" />
-                      </svg>
-                    </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">My Voucher</span>
-                      <span className="homeSummaryValue">
-                        {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
+                  {SHOW_VOUCHERS && (
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                      aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="7" width="18" height="13" rx="2" />
+                          <path d="M3 11h18" />
+                          <path d="M9 15l2 2 4-4" />
+                        </svg>
                       </span>
-                    </span>
-                  </button>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">My Voucher</span>
+                        <span className="homeSummaryValue">
+                          {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
+                        </span>
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
-                    className="pmCard homeSummaryCard"
+                    className="rewardsHomeCta"
                     onClick={() => {
                       setPerksSub('rewards');
                       setTab('perks');
                     }}
-                    aria-label={`Rewards, ${featuredRewardsCount} available`}
+                    aria-label={`Rewards catalog, ${featuredRewardsCount} available`}
                   >
-                    <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
+                    <span className="rewardsHomeCtaIcon" aria-hidden>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="3" y="8" width="18" height="13" rx="1" />
                         <path d="M12 8v13" />
@@ -1203,11 +1640,21 @@ function App() {
                         <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
                       </svg>
                     </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">Rewards</span>
-                      <span className="homeSummaryValue">
-                        {featuredRewardsCount} {featuredRewardsCount === 1 ? 'Reward' : 'Rewards'}
+                    <span className="rewardsHomeCtaBody">
+                      <span className="rewardsHomeCtaEyebrow">Rewards Catalog</span>
+                      <span className="rewardsHomeCtaTitle">
+                        {featuredRewardsCount > 0
+                          ? `${featuredRewardsCount} ${featuredRewardsCount === 1 ? 'reward' : 'rewards'} available`
+                          : 'Browse rewards'}
                       </span>
+                      <span className="rewardsHomeCtaSubtitle">
+                        Redeem your points for café treats &amp; perks
+                      </span>
+                    </span>
+                    <span className="rewardsHomeCtaChevron" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
                     </span>
                   </button>
                 </div>
@@ -1241,7 +1688,10 @@ function App() {
                                 className="popularThumb"
                                 style={
                                   img
-                                    ? { backgroundImage: `url(${img})` }
+                                    ? {
+                                        backgroundImage: `url(${img})`,
+                                        backgroundPosition: `${item.imageOffsetX ?? 50}% ${item.imageOffsetY ?? 50}%`,
+                                      }
                                     : undefined
                                 }
                                 aria-hidden
@@ -1268,23 +1718,25 @@ function App() {
                 <header className="pmTopBar">
                   <h2>Rewards</h2>
                 </header>
-                <div className="tabsRow">
-                  <button
-                    type="button"
-                    className={perksSub === 'vouchers' ? 'chip active' : 'chip'}
-                    onClick={() => setPerksSub('vouchers')}
-                  >
-                    Vouchers
-                  </button>
-                  <button
-                    type="button"
-                    className={perksSub === 'rewards' ? 'chip active' : 'chip'}
-                    onClick={() => setPerksSub('rewards')}
-                  >
-                    Rewards
-                  </button>
-                </div>
-                {perksSub === 'vouchers' ? (
+                {SHOW_VOUCHERS && (
+                  <div className="tabsRow">
+                    <button
+                      type="button"
+                      className={perksSub === 'vouchers' ? 'chip active' : 'chip'}
+                      onClick={() => setPerksSub('vouchers')}
+                    >
+                      Vouchers
+                    </button>
+                    <button
+                      type="button"
+                      className={perksSub === 'rewards' ? 'chip active' : 'chip'}
+                      onClick={() => setPerksSub('rewards')}
+                    >
+                      Rewards
+                    </button>
+                  </div>
+                )}
+                {SHOW_VOUCHERS && perksSub === 'vouchers' ? (
                   <>
                     <p className="caption" style={{ margin: '6px 0 0' }}>
                       Your <strong>issued</strong> vouchers (added to your wallet). They are not the same as the points catalog under Rewards.
@@ -1348,10 +1800,9 @@ function App() {
                         <RewardCard
                           key={r.id}
                           title={r.title}
-                          description={r.description || r.code}
+                          code={r.code}
                           points={r.pointsCost ?? 0}
-                          category={r.category}
-                          imageUrl={r.imageUrl}
+                          onRedeem={() => setRedeemCheckoutNoticeOpen(true)}
                         />
                       ))}
                       {!filteredRewards.length && (
@@ -1383,47 +1834,190 @@ function App() {
                 <header className="pmTopBar">
                   <h2>Account</h2>
                 </header>
-                <Card>
-                  <h3>{memberName}</h3>
-                  <div
-                    className={`tierBanner tierBanner--${normalizedTierKey}`}
-                    role="status"
-                    aria-label={`Member tier ${tierDisplayName}`}
-                  >
-                    <span className="tierBanner-label">Member tier</span>
-                    <span className="tierBanner-name">{tierDisplayName}</span>
+                <Card className={`accountHeroCard accountHeroCard--${normalizedTierKey}`}>
+                  <div className="accountHeroTop">
+                    <span className="accountAvatar" aria-hidden>
+                      {memberInitial}
+                    </span>
+                    <div className="accountHeroId">
+                      <h3>{memberName}</h3>
+                      {memberSince ? (
+                        <p className="accountSince">Member since {memberSince}</p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={`tierPill tierPill--${normalizedTierKey}`}
+                      aria-label={`Member tier ${tierDisplayName}`}
+                    >
+                      {tierDisplayName}
+                    </span>
                   </div>
+                  <div className="accountPointsRow">
+                    <span className="accountPointsValue">
+                      {pointsBalance.toLocaleString()}
+                    </span>
+                    <span className="accountPointsUnit">pts</span>
+                  </div>
+                  <div className="progressWrap">
+                    <div
+                      className="progressBar"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <div className="tierTrack" aria-hidden>
+                    {POINT_TIER_THRESHOLDS.map((threshold, i) => (
+                      <span
+                        key={threshold}
+                        className={`tierTrackStop${tierProgress.activeTierIndex === i ? ' active' : ''}`}
+                      >
+                        {POINT_TIER_LABELS[i]} · {threshold.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="accountTierHint">
+                    {pointsToNext > 0 && tierProgress.nextTierLabel
+                      ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                      : 'You have reached the top tier'}
+                  </p>
                 </Card>
+
+                <div className="homeSummaryRow accountStatRow">
+                  {SHOW_VOUCHERS && (
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                      aria-label={`My vouchers, ${activeVouchersCount} active`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="7" width="18" height="13" rx="2" />
+                          <path d="M3 11h18" />
+                          <path d="M9 15l2 2 4-4" />
+                        </svg>
+                      </span>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">My Vouchers</span>
+                        <span className="homeSummaryValue">{activeVouchersCount}</span>
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => setTab('home')}
+                    aria-label={`Credits ${walletCreditsLabel}`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--credit" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="2" y="6" width="20" height="13" rx="2" />
+                        <path d="M2 10h20" />
+                        <path d="M6 15h4" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">Credits</span>
+                      <span className="homeSummaryValue">{walletCreditsLabel}</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="pmCard homeSummaryCard"
+                    onClick={() => setShareOpen(true)}
+                    aria-label={`My referrals, ${referralCount} joined`}
+                  >
+                    <span className="homeSummaryIcon homeSummaryIcon--referral" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="9" cy="8" r="3" />
+                        <path d="M3 20a6 6 0 0 1 12 0" />
+                        <path d="M16 11a3 3 0 1 0-1-5.8" />
+                        <path d="M21 20a6 6 0 0 0-5-5.9" />
+                      </svg>
+                    </span>
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">My Referrals</span>
+                      <span className="homeSummaryValue">{referralCount}</span>
+                    </span>
+                  </button>
+                </div>
+
+                <PointsHistoryCard active={tab === 'account'} />
+
                 <Card>
-                  <SectionHeader title="Wallet balance" />
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Stored wallet credit is shown for reference. Top-ups and payments run through{' '}
-                    <strong>Shop checkout</strong> (Xendit hosted payment page), not from this screen.
-                  </p>
-                  <p style={{ margin: '8px 0 4px', fontSize: 22, fontWeight: 700, color: '#00348d' }}>
-                    {(profile.storedWallet?.currentWalletBalance ?? 0) / 100}
-                  </p>
-                  <p className="caption" style={{ marginTop: 0 }}>
-                    Current balance (major units).
-                  </p>
-                </Card>
-                <Card>
-                  <SectionHeader title="Personal Info" />
-                  {profilePersonalIncomplete ? (
-                    <p className="profileIncompleteCue" role="status">
-                      *Enter your details below
-                    </p>
-                  ) : null}
-                  <form onSubmit={handleProfileSave}>
-                    <label htmlFor="name">Name</label>
-                    <input id="name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
-                    <label htmlFor="email">Email</label>
-                    <input id="email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="you@email.com" />
-                    <label htmlFor="birthday">Birthday</label>
-                    <input id="birthday" type="date" value={formBirthday} onChange={(e) => setFormBirthday(e.target.value)} />
-                    {profileMsg && <p className="hint">{profileMsg}</p>}
-                    <button type="submit" disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save profile'}</button>
-                  </form>
+                  <SectionHeader
+                    title="Personal info"
+                    actionLabel={editingProfile ? undefined : 'Edit'}
+                    onAction={
+                      editingProfile
+                        ? undefined
+                        : () => {
+                            syncFormFromProfile(profile);
+                            setProfileMsg(null);
+                            setEditingProfile(true);
+                          }
+                    }
+                  />
+                  <div className="profileIdRow profileIdRow--static">
+                    <span className="profileIdLabel">Member ID · contact</span>
+                    <span className="profileIdValue">{profile.phoneE164}</span>
+                  </div>
+                  {editingProfile ? (
+                    <>
+                      {profilePersonalIncomplete ? (
+                        <p className="profileIncompleteCue" role="status">
+                          *Complete your details below
+                        </p>
+                      ) : null}
+                      <form onSubmit={handleProfileSave}>
+                        <label htmlFor="name">Name</label>
+                        <input id="name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
+                        <label htmlFor="email">Email</label>
+                        <input id="email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="you@email.com" />
+                        <label htmlFor="birthday">Birthday</label>
+                        <input id="birthday" type="date" value={formBirthday} onChange={(e) => setFormBirthday(e.target.value)} />
+                        {profileMsg && <p className="hint">{profileMsg}</p>}
+                        <div className="profileFormActions">
+                          <button type="submit" className="rowAction primary" disabled={savingProfile}>
+                            {savingProfile ? 'Saving…' : 'Save'}
+                          </button>
+                          {!profilePersonalIncomplete ? (
+                            <button
+                              type="button"
+                              className="rowAction"
+                              onClick={() => {
+                                syncFormFromProfile(profile);
+                                setProfileMsg(null);
+                                setEditingProfile(false);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="profileInfoList">
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Name</span>
+                        <span className="profileInfoValue">{profile.displayName?.trim() || '—'}</span>
+                      </div>
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Email</span>
+                        <span className="profileInfoValue">{profile.email?.trim() || '—'}</span>
+                      </div>
+                      <div className="profileInfoRow">
+                        <span className="profileInfoLabel">Birthday</span>
+                        <span className="profileInfoValue">{birthdayDisplay || '—'}</span>
+                      </div>
+                      {profileMsg ? <p className="hint">{profileMsg}</p> : null}
+                    </div>
+                  )}
                 </Card>
                 <Card>
                   <SectionHeader title="Invite & favourites" />
@@ -1434,23 +2028,24 @@ function App() {
                     Friends joined: <strong>{profile.referralCount ?? 0}</strong>
                   </p>
                   <p className="caption" style={{ marginTop: 8 }}>
-                    Share your link so visits count toward referral rewards. Open “Share App” from Home or here.
+                    Share your link with friends to enjoy referral rewards
                   </p>
-                  <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>
-                    Copy invite link
+                  <button type="button" className="rowAction primary" style={{ marginTop: 18 }} onClick={() => setShareOpen(true)}>
+                    Share app &amp; invite
                   </button>
                   {(profile.favoriteProducts?.length ?? 0) > 0 ? (
                     <div style={{ marginTop: 12 }}>
                       <p className="caption" style={{ margin: '0 0 6px' }}>
                         Top picks (from your orders)
                       </p>
-                      <ul className="caption" style={{ margin: 0, paddingLeft: 18 }}>
+                      <div className="favChips">
                         {(profile.favoriteProducts ?? []).map((f) => (
-                          <li key={f.productId}>
-                            {f.name} × {f.totalQty}
-                          </li>
+                          <span key={f.productId} className="favChip">
+                            {f.name}
+                            <span className="favChipQty">×{f.totalQty}</span>
+                          </span>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   ) : (
                     <p className="caption" style={{ marginTop: 12 }}>
@@ -1468,18 +2063,12 @@ function App() {
                       type="button"
                       className="rowAction"
                       onClick={() => {
-                        setPerksSub('vouchers');
+                        setPerksSub(SHOW_VOUCHERS ? 'vouchers' : 'rewards');
                         setTab('perks');
                       }}
                     >
-                      Vouchers &amp; rewards
+                      {SHOW_VOUCHERS ? 'Vouchers & rewards' : 'Rewards'}
                     </button>
-                  </div>
-                </Card>
-                <Card>
-                  <SectionHeader title="Actions" />
-                  <div className="profileActions">
-                    <button type="button" className="rowAction" onClick={() => setShareOpen(true)}>Share App</button>
                   </div>
                 </Card>
                 <Card>
@@ -1659,6 +2248,36 @@ function App() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {redeemCheckoutNoticeOpen && (
+            <div className="shareOverlay" role="dialog" aria-modal="true" aria-labelledby="redeemCheckoutTitle">
+              <div className="shareSheet">
+                <h3 id="redeemCheckoutTitle" className="shareSheetTitle">Redeem at checkout</h3>
+                <p className="caption">
+                  Add items in Shop, then apply this reward on the checkout screen before you pay.
+                </p>
+                <div className="shareActions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRedeemCheckoutNoticeOpen(false);
+                      setTab('shop');
+                      setShopInitialScreen('browse');
+                    }}
+                  >
+                    OK, go to Shop
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setRedeemCheckoutNoticeOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}

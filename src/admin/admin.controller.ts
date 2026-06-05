@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -259,6 +260,24 @@ export class AdminController {
     return this.admin.updateVoucherDefinition(id, dto, auth);
   }
 
+  @Post('voucher-definitions/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }),
+  )
+  uploadVoucherDefinitionImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.admin.attachVoucherDefinitionImage(id, file);
+  }
+
+  @Delete('voucher-definitions/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearVoucherDefinitionImage(@Param('id') id: string) {
+    return this.admin.clearVoucherDefinitionImage(id);
+  }
+
   @Get('voucher-push-rules')
   @RequirePermissions(P.VOUCHER_READ)
   listVoucherPushRules() {
@@ -330,6 +349,30 @@ export class AdminController {
     return this.shopCatalog.updateProduct(id, dto);
   }
 
+  @Post('shop-catalog/products/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  uploadShopCatalogProductImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.shopCatalog.attachProductImage(id, file);
+  }
+
+  @Delete('shop-catalog/products/:id/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearShopCatalogProductImage(@Param('id') id: string) {
+    return this.shopCatalog.clearProductImage(id);
+  }
+
+  @Post('shop-catalog/products/:id/reset-sync-overrides')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  resetShopCatalogProductSyncOverrides(@Param('id') id: string) {
+    return this.shopCatalog.resetProductSyncOverrides(id);
+  }
+
   @Get('shop-catalog/popular')
   @RequirePermissions(P.VOUCHER_READ)
   getHomePopularConfig() {
@@ -352,6 +395,24 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateShopCatalogLayout(@Body() dto: UpdateShopCatalogLayoutDto) {
     return this.shopCatalog.setLayout(dto);
+  }
+
+  @Get('shop-catalog/sites-catalog/info')
+  @RequirePermissions(P.VOUCHER_READ)
+  getSitesCatalogFileInfo() {
+    return this.shopCatalog.getSitesCatalogFileInfo();
+  }
+
+  @Post('shop-catalog/sites-catalog/file')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }),
+  )
+  uploadSitesCatalogFile(@UploadedFile() file: Express.Multer.File) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('No file provided');
+    }
+    return this.shopCatalog.saveSitesCatalogFile(file.buffer.toString('utf-8'));
   }
 
   @Post('shop-catalog/sync/preview')

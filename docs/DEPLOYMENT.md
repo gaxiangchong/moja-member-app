@@ -163,6 +163,35 @@ Or use **PM2**, **systemd**, **Kubernetes**, or your cloud’s “Web App” ser
 
 Configure your load balancer or orchestrator to use **`/health`**.
 
+### 6.1 Persistent storage for `data/` (REQUIRED on ephemeral hosts)
+
+The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem:
+
+| Path | What it holds |
+|------|---------------|
+| `data/home-ads.slides.json` | Home carousel slide metadata (title, body, order, active flag) |
+| `data/uploads/home-ads/<filename>.{png,jpg,webp,gif}` | Uploaded carousel images, served via `GET /uploads/home-ads/...` |
+| `data/uploads/products/<filename>.{png,jpg,webp,gif}` | Uploaded shop product images, served via `GET /uploads/products/...` |
+| `data/uploads/voucher-defs/<filename>.{png,jpg,webp,gif}` | Uploaded voucher hero images, served via `GET /uploads/voucher-defs/...` |
+| `data/shop-catalog.products.json` | Live shop catalog (prices, descriptions, `imageUrl`, etc.) |
+| `data/shop-catalog.layout.json` | Shop home layout (featured + sections) |
+| `data/home-popular.json` | Home "Popular items" curated list |
+| `data/products.catalog.json` | moja-sites catalog copy for **Sync from moja-sites** (upload once in admin) |
+
+`data/` is in `.gitignore`, so on hosts where each deploy spins up a **fresh container** (Render, Railway, Fly, Heroku, Cloud Run, etc.) this folder is empty after every redeploy and the carousel resets to the three hardcoded `DEFAULT_SLIDES` in `src/home-ads/home-ads.service.ts`. Any uploaded images become broken links.
+
+**Fix:** mount a persistent volume at `<cwd>/data` so writes survive redeploys.
+
+| Host | How |
+|------|-----|
+| **Render** | Service → **Disks** → Add Disk. Mount Path: **`/opt/render/project/src/data`**. Size: 1 GB is enough. Requires Starter plan or above. Disks attach to a single instance — do not scale beyond 1 instance. |
+| **Railway** | Service → Volumes → New Volume → mount at the working directory's `data` (typically `/app/data`). |
+| **Fly.io** | `fly volumes create moja_data --size 1` then add `[mounts]` in `fly.toml` with `destination = "/app/data"`. |
+| **VPS / Docker** | Bind-mount the host directory: `-v /var/lib/moja/data:/app/data` (or wherever your repo lives in the container). |
+| **Heroku / pure-serverless** | No persistent FS available — switch to object storage (S3 / Cloudflare R2 / Supabase Storage) and store slide metadata in Postgres. Not currently implemented in this repo. |
+
+After mounting, re-upload your carousel slides once via `/admin-dashboard → Settings → Home ad carousel`, then trigger a second redeploy to confirm they survive.
+
 ---
 
 ## 7. Build and host static frontends

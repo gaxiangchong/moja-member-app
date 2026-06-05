@@ -10,6 +10,8 @@ build/
 .env
 .env.*
 !.env.example
+# Member web production build config — public URLs only, safe to commit.
+!client-web/.env.production
 
 # Local import/export files (repo root only — not **/data/ e.g. client-web/src/shop/data)
 /data/

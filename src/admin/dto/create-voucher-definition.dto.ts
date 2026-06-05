@@ -29,6 +29,18 @@ export class CreateVoucherDefinitionDto {
   pointsCost?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  rebateValueSen?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minSpendSen?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
   imageUrl?: string;

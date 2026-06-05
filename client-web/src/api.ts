@@ -51,6 +51,9 @@ export type PopularProduct = {
   description?: string;
   imageUrl?: string;
   basePriceCents: number;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
 };
 
 export async function fetchPopularProducts(): Promise<PopularProduct[]> {
@@ -61,7 +64,7 @@ export async function fetchPopularProducts(): Promise<PopularProduct[]> {
     if (!Array.isArray(data)) return [];
     return (data as PopularProduct[]).map((p) => ({
       ...p,
-      imageUrl: resolveShopAssetUrl(p.imageUrl),
+      imageUrl: resolveApiAssetUrl(p.imageUrl),
     }));
   } catch {
     return [];
@@ -81,6 +84,8 @@ async function parseJson<T>(res: Response): Promise<T> {
 export async function lookupLogin(phone: string): Promise<{
   registered: boolean;
   hasPin: boolean;
+  hasEmail: boolean;
+  maskedEmail: string | null;
 }> {
   const res = await fetch(`${base}/auth/login/lookup`, {
     method: 'POST',
@@ -90,6 +95,8 @@ export async function lookupLogin(phone: string): Promise<{
   const data = await parseJson<{
     registered?: boolean;
     hasPin?: boolean;
+    hasEmail?: boolean;
+    maskedEmail?: string | null;
     message?: string | string[];
   }>(res);
   if (!res.ok) {
@@ -104,12 +111,15 @@ export async function lookupLogin(phone: string): Promise<{
   return {
     registered: Boolean(data.registered),
     hasPin: Boolean(data.hasPin),
+    hasEmail: Boolean(data.hasEmail),
+    maskedEmail: typeof data.maskedEmail === 'string' ? data.maskedEmail : null,
   };
 }
 
 export async function requestOtp(
   phone: string,
   purpose?: 'register' | 'recovery',
+  email?: string,
 ): Promise<{
   sent: boolean;
   channel?: string;
@@ -120,7 +130,11 @@ export async function requestOtp(
   const res = await fetch(`${base}/auth/otp/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, ...(purpose ? { purpose } : {}) }),
+    body: JSON.stringify({
+      phone,
+      ...(purpose ? { purpose } : {}),
+      ...(email?.trim() ? { email: email.trim() } : {}),
+    }),
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -151,15 +165,22 @@ export async function requestOtp(
 export async function verifyOtp(
   phone: string,
   code: string,
-  opts?: { referralCode?: string | null },
+  opts?: { referralCode?: string | null; email?: string | null },
 ): Promise<{
   setupToken: string;
   setupExpiresInSec: number;
   purpose: 'register' | 'recovery';
 }> {
-  const body: { phone: string; code: string; referralCode?: string } = { phone, code };
+  const body: {
+    phone: string;
+    code: string;
+    referralCode?: string;
+    email?: string;
+  } = { phone, code };
   const ref = opts?.referralCode?.trim();
   if (ref) body.referralCode = ref;
+  const email = opts?.email?.trim();
+  if (email) body.email = email;
   const res = await fetch(`${base}/auth/otp/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -317,6 +338,68 @@ export async function createXenditCardTokenSession(): Promise<{
   };
 }
 
+export type PaymentIntentStatus = {
+  referenceId: string;
+  status: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | string;
+  purpose: 'shop_order' | 'wallet_topup' | string;
+  channelCode: string;
+  currency: string;
+  amountCents: number;
+  orderId: string | null;
+  orderNumber: number | null;
+  updatedAt: string;
+};
+
+/**
+ * Polled by the member web app to detect payment completion when an e-wallet
+ * (e.g. Touch 'n Go) doesn't return the user to the app after success.
+ */
+export async function fetchPaymentIntentStatus(
+  referenceId: string,
+): Promise<PaymentIntentStatus> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(
+    `${base}/payments/intent/${encodeURIComponent(referenceId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const data = await parseJson<{
+    message?: string | string[];
+    referenceId?: string;
+    status?: string;
+    purpose?: string;
+    channelCode?: string;
+    currency?: string;
+    amountCents?: number;
+    orderId?: string | null;
+    orderNumber?: number | null;
+    updatedAt?: string;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Payment intent status failed (${res.status})`);
+  }
+  return {
+    referenceId: data.referenceId ?? referenceId,
+    status: (data.status ?? 'UNKNOWN') as PaymentIntentStatus['status'],
+    purpose: (data.purpose ?? 'unknown') as PaymentIntentStatus['purpose'],
+    channelCode: data.channelCode ?? '',
+    currency: data.currency ?? '',
+    amountCents: typeof data.amountCents === 'number' ? data.amountCents : 0,
+    orderId: typeof data.orderId === 'string' ? data.orderId : null,
+    orderNumber: typeof data.orderNumber === 'number' ? data.orderNumber : null,
+    updatedAt: data.updatedAt ?? new Date().toISOString(),
+  };
+}
+
 export async function getXenditCardTokenSessionStatus(paymentSessionId: string): Promise<{
   paymentSessionId: string;
   status: string;
@@ -391,6 +474,7 @@ export async function createShopOrderCheckout(payload: {
   channelCode?: string;
   paymentTokenId?: string;
   voucherId?: string;
+  rewardDefinitionId?: string;
   idempotencyKey?: string;
   order: {
     totalCents: number;
@@ -616,6 +700,8 @@ export type MemberRewardsPayload = {
       title: string;
       description: string | null;
       pointsCost: number | null;
+      rebateValueSen?: number | null;
+      minSpendSen?: number | null;
     };
   }>;
   rewards: Array<{
@@ -627,6 +713,8 @@ export type MemberRewardsPayload = {
     isActive: boolean;
     imageUrl?: string | null;
     rewardCategory?: string | null;
+    rebateValueSen?: number | null;
+    minSpendSen?: number | null;
   }>;
 };
 
@@ -638,6 +726,9 @@ export type ShopCatalogProduct = {
   shortDescription: string;
   description: string;
   imageUrl: string;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
   basePriceCents: number;
   priceDisplay?: string;
   variants?: Array<{
@@ -696,6 +787,59 @@ export async function requestShopHandoff(): Promise<{
     handoffToken: data.handoffToken,
     expiresInSec: data.expiresInSec ?? 45,
     consumeUrl: data.consumeUrl,
+  };
+}
+
+export type LoyaltyHistoryEntry = {
+  id: string;
+  deltaPoints: number;
+  balanceAfter: number;
+  reason: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  orderNumber: number | null;
+  createdAt: string;
+};
+
+export type LoyaltyHistoryPayload = {
+  pointsBalance: number;
+  entries: LoyaltyHistoryEntry[];
+};
+
+/**
+ * Member-facing loyalty points history. Includes both in-store (SalesPlay)
+ * and online (shop) entries because they share the same wallet.
+ */
+export async function fetchMyLoyaltyHistory(
+  limit = 25,
+): Promise<LoyaltyHistoryPayload> {
+  const token = getToken();
+  if (!token) throw new Error('Not signed in');
+  const res = await fetch(
+    `${base}/customers/me/loyalty-history?limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const data = await parseJson<{
+    message?: string | string[];
+    pointsBalance?: number;
+    entries?: LoyaltyHistoryEntry[];
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.join(', ')
+          : JSON.stringify(data);
+    throw new Error(msg || `Loyalty history failed (${res.status})`);
+  }
+  return {
+    pointsBalance:
+      typeof data.pointsBalance === 'number' ? data.pointsBalance : 0,
+    entries: Array.isArray(data.entries) ? data.entries : [],
   };
 }
 
@@ -790,7 +934,7 @@ export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> 
   const items = (Array.isArray(data) ? data : []) as ShopCatalogProduct[];
   return items.map((p) => ({
     ...p,
-    imageUrl: resolveShopAssetUrl(p.imageUrl),
+    imageUrl: resolveApiAssetUrl(p.imageUrl),
     variants: p.variants
       ?.filter((v) => v.available !== false && v.priceCents > 0)
       .map((v) => ({ ...v })),

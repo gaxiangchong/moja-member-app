@@ -13,6 +13,9 @@ export type Product = {
   shortDescription: string;
   description: string;
   imageUrl: string;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
   basePriceCents: number;
   variants?: ProductVariant[];
 };
@@ -36,6 +39,7 @@ export type MockVoucher = {
   title: string;
   discountType: 'percent' | 'fixed';
   value: number;
+  minSpendSen?: number | null;
 };
 
 export type MockReward = {
@@ -44,6 +48,7 @@ export type MockReward = {
   pointsCost: number;
   discountType: 'fixed';
   valueCents: number;
+  minSpendSen?: number | null;
 };
 
 export const CATEGORY_LABELS: Record<ProductCategory, string> = {

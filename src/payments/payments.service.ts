@@ -10,8 +10,15 @@ import { WalletTxnType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { ReceiptEmailService } from '../notifications/receipt-email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RewardsWorkflowService } from '../rewards-workflow/rewards-workflow.service';
+import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
+import {
+  discountCentsFromRebate,
+  loadDefinitionDiscountMap,
+} from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
 import type { XenditPaymentRequestResponse } from './xendit-api.service';
 import { XenditApiService } from './xendit-api.service';
@@ -35,7 +42,9 @@ export class PaymentsService {
     private readonly xendit: XenditApiService,
     private readonly wallet: WalletService,
     private readonly customers: CustomersService,
+    private readonly loyalty: LoyaltyService,
     private readonly rewardsWorkflow: RewardsWorkflowService,
+    private readonly receiptEmail: ReceiptEmailService,
   ) {}
 
   private memberPublicBase(): string {
@@ -347,45 +356,81 @@ export class PaymentsService {
     channelCodeRaw?: string,
     paymentTokenIdRaw?: string,
     voucherIdRaw?: string,
+    rewardDefinitionIdRaw?: string,
     idempotencyKeyRaw?: string,
   ) {
     const voucherId = voucherIdRaw?.trim() || null;
+    const rewardDefinitionId = rewardDefinitionIdRaw?.trim() || null;
     const idempotencyKey = idempotencyKeyRaw?.trim() || randomUUID();
     let voucherLockToken: string | null = null;
+    let customerVoucherId: string | null = null;
+    let rewardPointsCost: number | null = null;
     const subtotalCents = this.computeSubtotal(dto);
 
-    if (voucherId) {
-      const lock = await this.rewardsWorkflow.validateAndLockVoucher({
-        customerId,
-        voucherId,
-        orderTotalCents: subtotalCents,
-        orderType: this.resolveOrderTypeFromSummary(dto.fulfillmentSummary),
-        productIds: dto.lines.map((l) => l.productId),
-        idempotencyKey,
+    if (voucherId && rewardDefinitionId) {
+      throw new BadRequestException({
+        code: 'PROMO_CONFLICT',
+        message: 'Apply only one voucher or one points reward per order.',
       });
-      voucherLockToken = lock.lockToken;
     }
 
-    const discountCents = voucherLockToken
-      ? await this.rewardsWorkflow.computeLockedVoucherDiscount({
+    let discountCents = 0;
+
+    if (rewardDefinitionId) {
+      const resolved = await this.resolveRewardDefinitionDiscount(
+        customerId,
+        rewardDefinitionId,
+        subtotalCents,
+      );
+      discountCents = resolved.discountCents;
+      rewardPointsCost = resolved.pointsCost;
+    } else if (voucherId) {
+      try {
+        const lock = await this.rewardsWorkflow.validateAndLockVoucher({
+          customerId,
+          voucherId,
+          orderTotalCents: subtotalCents,
+          orderType: this.resolveOrderTypeFromSummary(dto.fulfillmentSummary),
+          productIds: dto.lines.map((l) => l.productId),
+          idempotencyKey,
+        });
+        voucherLockToken = lock.lockToken;
+        discountCents = await this.rewardsWorkflow.computeLockedVoucherDiscount({
           lockToken: voucherLockToken,
           subtotalCents,
-        })
-      : 0;
+        });
+      } catch (err) {
+        if (!(err instanceof NotFoundException)) throw err;
+        const cv = await this.resolveCustomerVoucherDiscount(
+          customerId,
+          voucherId,
+          subtotalCents,
+        );
+        customerVoucherId = cv.customerVoucherId;
+        discountCents = cv.discountCents;
+      }
+    }
+
     dto.discountCents = discountCents;
     dto.totalCents = Math.max(0, subtotalCents - discountCents);
+
+    const promoFinalize = async (orderId: string) => {
+      await this.finalizeShopPromotions({
+        customerId,
+        orderId,
+        voucherLockToken,
+        customerVoucherId,
+        rewardDefinitionId,
+        pointsCost: rewardPointsCost,
+      });
+    };
 
     if (this.isDemoMode()) {
       const order = await this.customers.createPendingMemberOrder(
         customerId,
         dto,
       );
-      if (voucherLockToken) {
-        await this.rewardsWorkflow.finalizeVoucherRedemption(
-          voucherLockToken,
-          order.id,
-        );
-      }
+      await promoFinalize(order.id);
       return {
         demoMode: true as const,
         orderId: order.id,
@@ -402,12 +447,7 @@ export class PaymentsService {
         dto,
       );
       await this.customers.finalizeShopOrderAfterPayment(order.id);
-      if (voucherLockToken) {
-        await this.rewardsWorkflow.finalizeVoucherRedemption(
-          voucherLockToken,
-          order.id,
-        );
-      }
+      await promoFinalize(order.id);
       const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
         where: { id: order.id },
       });
@@ -470,6 +510,13 @@ export class PaymentsService {
     };
     if (voucherLockToken) paymentMetadata.voucherLockToken = voucherLockToken;
     if (voucherId) paymentMetadata.voucherId = voucherId;
+    if (customerVoucherId) paymentMetadata.customerVoucherId = customerVoucherId;
+    if (rewardDefinitionId) {
+      paymentMetadata.rewardDefinitionId = rewardDefinitionId;
+      if (rewardPointsCost != null) {
+        paymentMetadata.rewardPointsCost = String(rewardPointsCost);
+      }
+    }
 
     const xenditResponse = await this.xendit.createPaymentRequest({
       referenceId,
@@ -507,6 +554,9 @@ export class PaymentsService {
           orderId: order.id,
           voucherLockToken: voucherLockToken ?? null,
           voucherId: voucherId ?? null,
+          customerVoucherId: customerVoucherId ?? null,
+          rewardDefinitionId: rewardDefinitionId ?? null,
+          rewardPointsCost: rewardPointsCost ?? null,
           idempotencyKey,
         } as object,
       },
@@ -756,6 +806,56 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Customer-scoped status lookup for a single payment intent. Used by the
+   * member web app to poll for completion when an e-wallet redirect doesn't
+   * return the user to the app (common with TNG/ShopeePay in live mode).
+   */
+  async getMyPaymentIntentStatus(customerId: string, referenceId: string) {
+    const trimmed = referenceId.trim();
+    if (!trimmed) {
+      throw new NotFoundException({
+        code: 'PAYMENT_INTENT_NOT_FOUND',
+        message: 'Payment intent not found.',
+      });
+    }
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { referenceId: trimmed },
+    });
+    if (!intent || intent.customerId !== customerId) {
+      throw new NotFoundException({
+        code: 'PAYMENT_INTENT_NOT_FOUND',
+        message: 'Payment intent not found.',
+      });
+    }
+
+    let orderId: string | null = null;
+    let orderNumber: number | null = null;
+    if (intent.purpose === 'shop_order') {
+      const meta = intent.metadata as { orderId?: string } | null;
+      orderId = typeof meta?.orderId === 'string' ? meta.orderId : null;
+      if (orderId) {
+        const order = await this.prisma.customerOrder.findUnique({
+          where: { id: orderId },
+          select: { orderNumber: true },
+        });
+        orderNumber = order?.orderNumber ?? null;
+      }
+    }
+
+    return {
+      referenceId: intent.referenceId,
+      status: intent.status,
+      purpose: intent.purpose,
+      channelCode: intent.channelCode,
+      currency: intent.currency,
+      amountCents: intent.amountCents,
+      orderId,
+      orderNumber,
+      updatedAt: intent.updatedAt.toISOString(),
+    };
+  }
+
   private async applyWalletTopUpFromXendit(
     referenceId: string,
     data: XenditPaymentRequestResponse,
@@ -838,6 +938,9 @@ export class PaymentsService {
     const meta = intent.metadata as {
       orderId?: string;
       voucherLockToken?: string;
+      customerVoucherId?: string;
+      rewardDefinitionId?: string;
+      rewardPointsCost?: number;
     } | null;
     const orderId = typeof meta?.orderId === 'string' ? meta.orderId : null;
     const voucherLockToken =
@@ -845,6 +948,24 @@ export class PaymentsService {
       typeof meta === 'object' &&
       typeof meta.voucherLockToken === 'string'
         ? meta.voucherLockToken
+        : null;
+    const customerVoucherId =
+      meta &&
+      typeof meta === 'object' &&
+      typeof meta.customerVoucherId === 'string'
+        ? meta.customerVoucherId
+        : null;
+    const rewardDefinitionId =
+      meta &&
+      typeof meta === 'object' &&
+      typeof meta.rewardDefinitionId === 'string'
+        ? meta.rewardDefinitionId
+        : null;
+    const rewardPointsCost =
+      meta &&
+      typeof meta === 'object' &&
+      typeof meta.rewardPointsCost === 'number'
+        ? meta.rewardPointsCost
         : null;
     if (!orderId) {
       await this.prisma.paymentIntent.update({
@@ -856,19 +977,26 @@ export class PaymentsService {
 
     try {
       await this.customers.finalizeShopOrderAfterPayment(orderId);
-      if (voucherLockToken) {
-        await this.rewardsWorkflow.finalizeVoucherRedemption(
-          voucherLockToken,
-          orderId,
-          intent.id,
-        );
-      }
+      await this.finalizeShopPromotions({
+        customerId: intent.customerId,
+        orderId,
+        voucherLockToken,
+        customerVoucherId,
+        rewardDefinitionId,
+        pointsCost: rewardPointsCost,
+      });
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
         data: {
           status: 'SUCCEEDED',
           metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
         },
+      });
+      // Fire-and-forget: a transient email failure must not roll back a
+      // successful payment, and the webhook should still ack 200 quickly.
+      void this.receiptEmail.sendShopOrderReceipt({
+        orderId,
+        paymentIntentId: intent.id,
       });
     } catch (err) {
       this.logger.error(`Shop order finalize failed for ${referenceId}`, err);
@@ -1016,6 +1144,10 @@ export class PaymentsService {
           metadata: _xenditData as object,
         },
       });
+      // Fire-and-forget transactional receipt.
+      void this.receiptEmail.sendWalletTopUpReceipt({
+        paymentIntentId: intent.id,
+      });
     } catch (err) {
       this.logger.error(`Wallet top-up failed for ${referenceId}`, err);
       await this.prisma.paymentIntent.update({
@@ -1045,6 +1177,139 @@ export class PaymentsService {
       (sum, line) => sum + line.unitPriceCents * line.qty,
       0,
     );
+  }
+
+  private async resolveCustomerVoucherDiscount(
+    customerId: string,
+    customerVoucherId: string,
+    subtotalCents: number,
+  ): Promise<{ customerVoucherId: string; discountCents: number }> {
+    const row = await this.prisma.customerVoucher.findFirst({
+      where: {
+        id: customerVoucherId,
+        customerId,
+        status: 'ISSUED',
+      },
+      include: {
+        definition: { select: { id: true, title: true } },
+      },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'VOUCHER_NOT_FOUND',
+        message: 'Voucher not found in your wallet.',
+      });
+    }
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException({
+        code: 'VOUCHER_EXPIRED',
+        message: 'This voucher has expired.',
+      });
+    }
+    const map = await loadDefinitionDiscountMap(this.prisma, [row.definition.id]);
+    const meta = map.get(row.definition.id);
+    if (meta?.minSpendSen != null && subtotalCents < meta.minSpendSen) {
+      throw new BadRequestException({
+        code: 'VOUCHER_MIN_SPEND',
+        message: 'Order does not meet the minimum spend for this voucher.',
+      });
+    }
+    const discountCents = discountCentsFromRebate(subtotalCents, meta);
+    if (discountCents <= 0) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NO_DISCOUNT',
+        message:
+          'This voucher has no rebate amount configured. Contact support if this looks wrong.',
+      });
+    }
+    return { customerVoucherId: row.id, discountCents };
+  }
+
+  private async resolveRewardDefinitionDiscount(
+    customerId: string,
+    definitionId: string,
+    subtotalCents: number,
+  ): Promise<{ discountCents: number; pointsCost: number }> {
+    const def = await this.prisma.voucherDefinition.findFirst({
+      where: { id: definitionId, ...memberRewardsCatalogWhere() },
+      select: { id: true, title: true, pointsCost: true },
+    });
+    if (!def) {
+      throw new NotFoundException({
+        code: 'REWARD_NOT_FOUND',
+        message: 'Reward is not available.',
+      });
+    }
+    const pointsCost = def.pointsCost ?? 0;
+    if (pointsCost <= 0) {
+      throw new BadRequestException({
+        code: 'REWARD_NOT_REDEEMABLE',
+        message: 'This reward cannot be redeemed with points.',
+      });
+    }
+    const wallet = await this.loyalty.getWalletSummary(customerId);
+    if (wallet.pointsBalance < pointsCost) {
+      throw new BadRequestException({
+        code: 'INSUFFICIENT_POINTS',
+        message: 'Not enough points for this reward.',
+      });
+    }
+    const map = await loadDefinitionDiscountMap(this.prisma, [def.id]);
+    const meta = map.get(def.id);
+    if (meta?.minSpendSen != null && subtotalCents < meta.minSpendSen) {
+      throw new BadRequestException({
+        code: 'REWARD_MIN_SPEND',
+        message: 'Order does not meet the minimum spend for this reward.',
+      });
+    }
+    const discountCents = discountCentsFromRebate(subtotalCents, meta);
+    if (discountCents <= 0) {
+      throw new BadRequestException({
+        code: 'REWARD_NO_DISCOUNT',
+        message:
+          'This reward has no discount value configured. Contact support if this looks wrong.',
+      });
+    }
+    return { discountCents, pointsCost };
+  }
+
+  private async finalizeShopPromotions(input: {
+    customerId: string;
+    orderId: string;
+    voucherLockToken?: string | null;
+    customerVoucherId?: string | null;
+    rewardDefinitionId?: string | null;
+    pointsCost?: number | null;
+  }): Promise<void> {
+    if (input.voucherLockToken) {
+      await this.rewardsWorkflow.finalizeVoucherRedemption(
+        input.voucherLockToken,
+        input.orderId,
+      );
+    }
+    if (input.customerVoucherId) {
+      await this.prisma.customerVoucher.updateMany({
+        where: {
+          id: input.customerVoucherId,
+          customerId: input.customerId,
+          status: 'ISSUED',
+        },
+        data: { status: 'REDEEMED', redeemedAt: new Date() },
+      });
+    }
+    if (
+      input.rewardDefinitionId &&
+      input.pointsCost != null &&
+      input.pointsCost > 0
+    ) {
+      await this.loyalty.appendLedgerEntry({
+        customerId: input.customerId,
+        deltaPoints: -input.pointsCost,
+        reason: `checkout_redeem_${input.rewardDefinitionId}`,
+        referenceType: 'customer_order',
+        referenceId: input.orderId,
+      });
+    }
   }
 }
 

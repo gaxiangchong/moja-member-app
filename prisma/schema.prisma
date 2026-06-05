@@ -442,6 +442,8 @@ model Customer {
   status      CustomerStatus @default(DRAFT)
   displayName String?        @map("display_name")
   email       String?
+  /// Opaque SalesPlay POS customer id (returned by the SalesPlay customer API).
+  salesplayCustomerId String? @map("salesplay_customer_id")
   birthday    DateTime?      @db.Date
   gender      String?        @map("gender")
   preferredStore String?     @map("preferred_store")
@@ -558,6 +560,8 @@ model CustomerOrderLine {
 model OtpChallenge {
   id         String    @id @default(uuid()) @db.Uuid
   phoneE164  String    @map("phone_e164")
+  email      String?   @map("email")
+  deliveryChannel String @default("dev") @map("delivery_channel") @db.VarChar(20)
   otpHash    String    @map("otp_hash")
   purpose    OtpPurpose @default(REGISTER) @map("purpose")
   expiresAt  DateTime  @map("expires_at")
@@ -573,6 +577,7 @@ model OtpChallenge {
 model OtpRequestLog {
   id        String   @id @default(uuid()) @db.Uuid
   phoneE164 String   @map("phone_e164")
+  email     String?  @map("email")
   ipAddress String?  @map("ip_address")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -655,6 +660,11 @@ model VoucherDefinition {
   description String?
   pointsCost  Int?     @map("points_cost")
   isActive    Boolean  @default(true) @map("is_active")
+  /// Cash discount (in sen) applied at checkout when this reward is redeemed.
+  /// Set directly on the series so no perks campaign is needed for a flat RM off.
+  rebateValueSen        Int?      @map("rebate_value_sen")
+  /// Optional minimum order subtotal (in sen) required to apply the discount.
+  minSpendSen           Int?      @map("min_spend_sen")
   /// Image URL for member app rewards catalog (HTTPS recommended).
   imageUrl              String?   @map("image_url")
   /// Optional grouping in UI: food, drinks, other.
