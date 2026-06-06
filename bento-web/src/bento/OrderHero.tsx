@@ -15,12 +15,12 @@ export function OrderHero({ profile, selectedPackage }: Props) {
         <div style={{ flex: 1 }}>
           <span className="heroTag">Step 1 of 3 &nbsp;·&nbsp; Choose plan</span>
           <h1 style={{ marginTop: 4 }}>
-            {firstName ? `Hey ${firstName}! 👋` : 'Order Bento 🍱'}
+            {firstName ? `Hey ${firstName}! 👋` : 'Order Meals 🍽️'}
           </h1>
           <p className="heroSubtitle">
             {selectedPackage
               ? `Great choice — ${selectedPackage.label} selected. Continue below to set your meal preferences.`
-              : 'Pick a meal plan below. Fresh bento delivered on your schedule, starting this week.'}
+              : 'Pick a meal plan below. Fresh, chef-prepared meals on your schedule, starting this week.'}
           </p>
         </div>
         {!selectedPackage && (

@@ -472,23 +472,18 @@ button {
   margin-top: 1px;
 }
 
-.pkgTblSavings {
-  color: #15803d;
-  font-weight: 700;
-  font-size: 0.82rem;
-}
-
-.pkgTblCheck {
-  color: var(--primary);
+.pkgTblSaveBadge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
   font-weight: 800;
-  font-size: 1rem;
-}
-
-.pkgTblPerks {
-  color: #7c3aed;
-  font-size: 0.73rem;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 6px rgba(21, 128, 61, 0.3);
+  white-space: nowrap;
 }
 
 .pkgTblNone {
@@ -1686,6 +1681,47 @@ button {
 
 .calSheetQtyValue.active {
   color: var(--primary);
+}
+
+/* ---- Menu language toggle ---- */
+.menuHeaderRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.menuLangToggle {
+  display: flex;
+  gap: 2px;
+  background: #f5f0ea;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+.menuLangBtn {
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 130ms;
+  white-space: nowrap;
+}
+
+.menuLangBtn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(43, 33, 24, 0.1);
+}
+
+.menuLangRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 /* ---- Menu diet toggle ---- */

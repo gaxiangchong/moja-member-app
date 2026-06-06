@@ -1060,9 +1060,22 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 22px;
+}
+
+.authBrandName {
+  display: block;
   font-weight: 800;
   font-size: 1.15rem;
   color: #c2410c;
+  line-height: 1.2;
+}
+
+.authBrandTagline {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #9a7060;
+  letter-spacing: 0.02em;
 }
 
 .authBrandLogo {

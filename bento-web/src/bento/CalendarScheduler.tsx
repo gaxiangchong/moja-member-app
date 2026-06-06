@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { scheduleBentoSubscription } from '../api';
 import {
-  BENTO_MIN_SCHEDULE_LEAD_DAYS,
   addDaysUtc,
   earliestSchedulableDateIso,
   formatDateOnly,
@@ -278,6 +277,7 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
       setChangedSinceSave(false);
       setSavedBanner(true);
+      onScheduled();
       setTimeout(() => setSavedBanner(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');

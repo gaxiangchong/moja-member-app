@@ -7,19 +7,18 @@ type Props = {
   onSelect: (code: BentoPackage['code']) => void;
 };
 
-type FeatureKey = 'price' | 'meals' | 'duration' | 'savings' | 'drinks' | 'perks';
+type FeatureKey = 'price' | 'meals' | 'duration' | 'savings';
 
 const FEATURES: { key: FeatureKey; label: string }[] = [
   { key: 'price',    label: 'Price' },
   { key: 'meals',    label: 'Meals' },
   { key: 'duration', label: 'Duration' },
-  { key: 'savings',  label: 'Save / meal' },
-  { key: 'drinks',   label: 'Free drinks' },
-  { key: 'perks',    label: 'Perks' },
+  { key: 'savings',  label: 'Total saving' },
 ];
 
 function cellValue(pkg: BentoPackage, key: FeatureKey) {
-  const savings = Math.max(0, SAVINGS_BASELINE_CENTS - pkg.pricePerMealCents);
+  const savingsPerMeal = Math.max(0, SAVINGS_BASELINE_CENTS - pkg.pricePerMealCents);
+  const totalSavings = savingsPerMeal * pkg.mealCredits;
   switch (key) {
     case 'price':
       return (
@@ -33,16 +32,8 @@ function cellValue(pkg: BentoPackage, key: FeatureKey) {
     case 'duration':
       return `${pkg.durationDays}d`;
     case 'savings':
-      return savings > 0
-        ? <span className="pkgTblSavings">−{formatRm(savings)}</span>
-        : <span className="pkgTblNone">—</span>;
-    case 'drinks':
-      return pkg.includeFreeSoupAndDrinks
-        ? <span className="pkgTblCheck">✓</span>
-        : <span className="pkgTblNone">—</span>;
-    case 'perks':
-      return pkg.perksLabel
-        ? <span className="pkgTblPerks">{pkg.perksLabel}</span>
+      return totalSavings > 0
+        ? <span className="pkgTblSaveBadge">Save {formatRm(totalSavings)}</span>
         : <span className="pkgTblNone">—</span>;
   }
 }
@@ -60,7 +51,7 @@ export function PackageSelector({ packages, selected, onSelect }: Props) {
       <div className="sectionHeader">
         <div>
           <h2>Choose your meal plan</h2>
-          <p className="caption">All prices fixed at checkout — schedule pickup days after payment.</p>
+          <p className="caption">All prices fixed at checkout — pick your meal days after payment.</p>
         </div>
       </div>
 
