@@ -9,17 +9,35 @@ import {
   verifyOtp,
 } from '../api';
 import { OtpBoxes } from '../components/OtpBoxes';
-import OrgOnboarding from './OrgOnboarding';
 
-type Step = 'phone' | 'pin' | 'code' | 'setPin';
+type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin';
+type OtpFlowPurpose = 'register' | 'recovery';
 
 type Props = {
   onAuthenticated: () => void;
 };
 
+function applyOtpHint(
+  res: { channel?: string; _devCode?: string },
+  setHint: (h: string | null) => void,
+) {
+  if (res.channel === 'email') {
+    setHint('Check your email inbox for the verification code.');
+  } else if (res.channel === 'mock' && res._devCode) {
+    setHint(`Test mode: your OTP is ${res._devCode}`);
+  } else if (res._devCode) {
+    setHint(`Dev mode: your code is ${res._devCode}`);
+  } else {
+    setHint('If you did not receive a code, check your email or try again.');
+  }
+}
+
 export function AuthScreens({ onAuthenticated }: Props) {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [maskedEmailHint, setMaskedEmailHint] = useState<string | null>(null);
+  const [otpFlowPurpose, setOtpFlowPurpose] = useState<OtpFlowPurpose>('register');
   const [loginPin, setLoginPin] = useState('');
   const [code, setCode] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -29,8 +47,6 @@ export function AuthScreens({ onAuthenticated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
-  const [accountType, setAccountType] = useState<'individual' | 'organization'>('individual');
-  const [showOrgPreview, setShowOrgPreview] = useState(false);
 
   const finishAuth = useCallback(
     (token: string) => {
@@ -46,26 +62,57 @@ export function AuthScreens({ onAuthenticated }: Props) {
     setHint(null);
     setLoading(true);
     try {
-      const { registered, hasPin } = await lookupLogin(phone);
+      const { registered, hasPin, maskedEmail } = await lookupLogin(phone);
       if (registered && hasPin) {
         setStep('pin');
         setLoginPin('');
         return;
       }
-      const purpose = registered && !hasPin ? 'recovery' : 'register';
-      const res = await requestOtp(phone, purpose);
-      if (res.channel === 'whatsapp') {
-        setHint('Check WhatsApp for your verification code.');
-      } else if (res._devCode) {
-        setHint(`Test mode: your OTP is ${res._devCode}`);
-      }
-      setStep('code');
+      const purpose: OtpFlowPurpose =
+        registered && !hasPin ? 'recovery' : 'register';
+      setOtpFlowPurpose(purpose);
+      setMaskedEmailHint(maskedEmail);
+      setEmail('');
+      setStep('email');
       setCode('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendVerificationCode = async () => {
+    setError(null);
+    setHint(null);
+    setLoading(true);
+    try {
+      const res = await requestOtp(phone, otpFlowPurpose, email);
+      applyOtpHint(res, setHint);
+      setCode('');
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await sendVerificationCode();
+    if (ok) setStep('code');
+  };
+
+  const handleForgotPin = () => {
+    setError(null);
+    setHint(null);
+    setOtpFlowPurpose('recovery');
+    setMaskedEmailHint(null);
+    setEmail('');
+    setStep('email');
+    setCode('');
   };
 
   const submitPinLogin = async (pin: string) => {
@@ -86,7 +133,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const verified = await verifyOtp(phone, codeValue);
+      const verified = await verifyOtp(phone, codeValue, email);
       setSetupToken(verified.setupToken);
       setCode('');
       setNewPin('');
@@ -136,38 +183,6 @@ export function AuthScreens({ onAuthenticated }: Props) {
             <p className="authSub">
               Sign in with your Moja account to enjoy fresh, chef-prepared meals on your schedule.
             </p>
-            <div className="accountTypeRow">
-              <label className="accountTypeLabel">Continue as</label>
-              <div className="accountTypeOptions">
-                <label>
-                  <input
-                    type="radio"
-                    name="accountType"
-                    value="individual"
-                    checked={accountType === 'individual'}
-                    onChange={() => setAccountType('individual')}
-                  />
-                  Individual
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="accountType"
-                    value="organization"
-                    checked={accountType === 'organization'}
-                    onChange={() => setAccountType('organization')}
-                  />
-                  Organization
-                </label>
-              </div>
-              {accountType === 'organization' && (
-                <div style={{ marginTop: 8 }}>
-                  <button type="button" className="btnSecondary" onClick={() => setShowOrgPreview(true)}>
-                    Preview organization onboarding
-                  </button>
-                </div>
-              )}
-            </div>
             <form onSubmit={handlePhoneContinue}>
               <label htmlFor="phone">Phone number</label>
               <input
@@ -183,6 +198,9 @@ export function AuthScreens({ onAuthenticated }: Props) {
               <button type="submit" className="btnPrimary" disabled={loading}>
                 {loading ? 'Checking…' : 'Continue'}
               </button>
+              <p className="authTrust">
+                New sign-ins use a one-time code sent to your email — same as the Moja member app.
+              </p>
             </form>
           </>
         )}
@@ -209,31 +227,66 @@ export function AuthScreens({ onAuthenticated }: Props) {
             <button
               type="button"
               className="btnSecondary"
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  const res = await requestOtp(phone, 'recovery');
-                  if (res._devCode) setHint(`Test mode: OTP ${res._devCode}`);
-                  setStep('code');
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
-                } finally {
-                  setLoading(false);
-                }
+              onClick={handleForgotPin}
+              disabled={loading}
+            >
+              Forgot PIN? Use email OTP
+            </button>
+            <p className="caption" style={{ marginTop: 8 }}>
+              Use your registered email to verify and set a new PIN.
+            </p>
+          </>
+        )}
+
+        {step === 'email' && (
+          <>
+            <button
+              type="button"
+              className="linkBtn"
+              onClick={() => {
+                setStep(otpFlowPurpose === 'recovery' ? 'pin' : 'phone');
+                setError(null);
+                setHint(null);
               }}
             >
-              Forgot PIN? Use WhatsApp OTP
+              ← Back
             </button>
+            <h1>Verify with email</h1>
+            <p className="authSub">
+              Enter the email for <strong>{phone}</strong> to receive a 6-digit verification code.
+            </p>
+            {maskedEmailHint && (
+              <p className="hint">Registered email hint: {maskedEmailHint}</p>
+            )}
+            <form onSubmit={handleEmailContinue}>
+              <label htmlFor="email-otp">Email address</label>
+              <input
+                id="email-otp"
+                type="email"
+                autoComplete="email"
+                placeholder="you@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+              {error && <p className="err">{error}</p>}
+              <button type="submit" className="btnPrimary" disabled={loading || !email.trim()}>
+                {loading ? 'Sending…' : 'Send verification code'}
+              </button>
+            </form>
           </>
         )}
 
         {step === 'code' && (
           <>
-            <button type="button" className="linkBtn" onClick={() => setStep('phone')}>
+            <button type="button" className="linkBtn" onClick={() => setStep('email')}>
               ← Back
             </button>
             <h1>Verification code</h1>
-            <p className="authSub">We sent a 6-digit code to {phone}</p>
+            <p className="authSub">
+              Enter the 6-digit code sent to <strong>{email.trim() || 'your email'}</strong>.
+            </p>
             {hint && <p className="hint">{hint}</p>}
             <OtpBoxes
               value={code}
@@ -245,6 +298,14 @@ export function AuthScreens({ onAuthenticated }: Props) {
               disabled={loading}
             />
             {error && <p className="err">{error}</p>}
+            <button
+              type="button"
+              className="btnSecondary"
+              disabled={loading}
+              onClick={() => void sendVerificationCode()}
+            >
+              Resend code
+            </button>
           </>
         )}
 
@@ -271,7 +332,6 @@ export function AuthScreens({ onAuthenticated }: Props) {
           </>
         )}
       </div>
-      {showOrgPreview && <OrgOnboarding onClose={() => setShowOrgPreview(false)} />}
     </main>
   );
 }

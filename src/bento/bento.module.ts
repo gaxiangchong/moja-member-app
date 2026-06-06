@@ -4,9 +4,10 @@ import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BentoController } from './bento.controller';
 import { BentoService } from './bento.service';
+import { BentoMenuModule } from './bento-menu.module';
 
 @Module({
-  imports: [PrismaModule, JwtAccessModule, PaymentsModule],
+  imports: [PrismaModule, JwtAccessModule, PaymentsModule, BentoMenuModule],
   controllers: [BentoController],
   providers: [BentoService],
   exports: [BentoService],

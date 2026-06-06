@@ -1,4 +1,8 @@
 import { BENTO_MENU } from './bento-menu.constants';
+import type {
+  BentoMenuConfig,
+  BentoWeekdayCode,
+} from './bento-menu.service';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -32,51 +36,60 @@ export function addDaysUtc(d: Date, days: number): Date {
   return next;
 }
 
-export function buildWeeklyMenu() {
+type WeeklyMenuMeal = {
+  title: string;
+  description: string;
+  /** Regular / non-vegetarian dish (default shown in the client). */
+  dish: string;
+  /** Vegetarian dish (shown when the client's Veg toggle is on). */
+  dishVeg: string;
+};
+
+/**
+ * Builds the current week's menu (Mon–Sun) from the admin-managed config. Falls
+ * back to empty dish names only when a weekday is missing; callers pass the
+ * config from `BentoMenuService.getConfig()` which always returns all 7 days.
+ */
+export function buildWeeklyMenu(config?: BentoMenuConfig) {
   const weekStart = weekStartMondayIso();
   const start = parseDateOnly(weekStart);
   const days: Array<{
     date: string;
     weekday: string;
     isSunday: boolean;
-    lunch: { title: string; description: string; dish: string };
-    dinner: { title: string; description: string; dish: string };
+    closed: boolean;
+    lunch: WeeklyMenuMeal;
+    dinner: WeeklyMenuMeal;
   }> = [];
 
-  const lunchDishes = [
-    'Teriyaki chicken bento',
-    'Sambal fish bento',
-    'Vegetable curry bento',
-    'Beef rendang bento',
-    'Honey soy tofu bento',
-    'Grilled salmon bento',
-  ];
-  const dinnerDishes = [
-    'Tom yum soup set',
-    'Miso salmon soup set',
-    'Vegetable broth set',
-    'Chicken corn soup set',
-    'Laksa-inspired soup set',
-    'Mushroom soup set',
-  ];
+  const byDay = new Map<BentoWeekdayCode, BentoMenuConfig['weekdays'][number]>(
+    (config?.weekdays ?? []).map((d) => [d.weekday, d]),
+  );
 
   for (let i = 0; i < 7; i++) {
     const d = addDaysUtc(start, i);
     const iso = formatDateOnly(d);
     const wd = d.getUTCDay();
+    const code = (WEEKDAY_NAMES[wd] ?? '') as BentoWeekdayCode;
+    const cfg = byDay.get(code);
+    const isSunday = wd === 0;
+    const closed = cfg?.closed ?? isSunday;
     days.push({
       date: iso,
       weekday: WEEKDAY_NAMES[wd] ?? '',
-      isSunday: wd === 0,
+      isSunday,
+      closed,
       lunch: {
         title: BENTO_MENU.lunch.title,
         description: BENTO_MENU.lunch.description,
-        dish: lunchDishes[i % lunchDishes.length]!,
+        dish: cfg?.lunch.regular ?? '',
+        dishVeg: cfg?.lunch.veg ?? '',
       },
       dinner: {
         title: BENTO_MENU.dinner.title,
         description: BENTO_MENU.dinner.description,
-        dish: dinnerDishes[i % dinnerDishes.length]!,
+        dish: cfg?.dinner.regular ?? '',
+        dishVeg: cfg?.dinner.veg ?? '',
       },
     });
   }

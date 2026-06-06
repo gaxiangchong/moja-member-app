@@ -75,31 +75,31 @@ describe('quoteBentoCheckout', () => {
   it('adds brown rice and drinks per meal slot on standard plans', () => {
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_7,
-      mealCredits: 7,
+      mealCredits: 10,
       pricePerMealCents: 1600,
       fixedCheckoutCents: null,
       mealOption: BentoMealOption.LUNCH,
       riceType: BentoRiceType.BROWN,
       includeDrinkAddon: true,
     });
-    expect(q.brownRiceAddonCents).toBe(7 * 200);
-    expect(q.drinkAddonCents).toBe(7 * 400);
-    expect(q.totalCents).toBe(7 * 1600 + 7 * 200 + 7 * 400);
+    expect(q.brownRiceAddonCents).toBe(10 * 200);
+    expect(q.drinkAddonCents).toBe(10 * 400);
+    expect(q.totalCents).toBe(10 * 1600 + 10 * 200 + 10 * 400);
   });
 
   it('computes DINNER-only with +RM1 per meal', () => {
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_15,
-      mealCredits: 15,
+      mealCredits: 20,
       pricePerMealCents: 1500,
       fixedCheckoutCents: null,
       mealOption: BentoMealOption.DINNER,
       riceType: BentoRiceType.WHITE,
       includeDrinkAddon: false,
     });
-    expect(q.dinnerCredits).toBe(15);
-    expect(q.totalCents).toBe(15 * 1600);
-    expect(q.dinnerPremiumCents).toBe(15 * 100);
+    expect(q.dinnerCredits).toBe(20);
+    expect(q.totalCents).toBe(20 * 1600);
+    expect(q.dinnerPremiumCents).toBe(20 * 100);
   });
 
   it('computes newcomer RM39 lunch base with add-ons', () => {

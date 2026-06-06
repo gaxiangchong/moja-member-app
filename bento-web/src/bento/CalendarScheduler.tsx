@@ -28,6 +28,8 @@ type SheetTarget =
   | { kind: 'single'; date: string }
   | { kind: 'range'; dates: string[]; from: string; to: string };
 
+type ScheduleViewMode = 'calendar' | 'list';
+
 // ── date helpers ───────────────────────────────────────────────────────────
 
 function getMonthGrid(year: number, month: number): (string | null)[] {
@@ -167,6 +169,7 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
   const [viewYear, setViewYear]   = useState(() => todayUtc().getUTCFullYear());
   const [viewMonth, setViewMonth] = useState(() => todayUtc().getUTCMonth() + 1);
+  const [viewMode, setViewMode]   = useState<ScheduleViewMode>('calendar');
 
   // ── Credit counters ──────────────────────────────────────────────────────
   const todayIso       = formatDateOnly(todayUtc());
@@ -180,6 +183,23 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
   const getRow = (date: string): DaySelection =>
     selections.find(s => s.date === date) ?? { date, lunchQty: 0, dinnerQty: 0 };
+
+  const listDates = useMemo(
+    () => allDatesInRange(displayStart, combinedWindow.windowEndDate),
+    [displayStart, combinedWindow.windowEndDate],
+  );
+
+  const isDayInteractive = (iso: string): boolean =>
+    windowSet.has(iso) && !isSunday(iso) && !isPast(iso) && !isLocked(iso) && isDateSchedulable(iso);
+
+  const dayStatusLabel = (iso: string): string | null => {
+    if (isSunday(iso)) return 'Closed';
+    if (isPast(iso)) return 'Past';
+    if (!windowSet.has(iso)) return 'Outside plan';
+    if (!isDateSchedulable(iso)) return 'Too soon';
+    if (isLocked(iso)) return 'Locked';
+    return null;
+  };
 
   // ── Qty updater ──────────────────────────────────────────────────────────
   const setQty = (dates: string[], lunchQty: number | null, dinnerQty: number | null) => {
@@ -349,10 +369,33 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
         {anyUnscheduled && (
           <div className="calUnschedWarn">
-            You have unused meal credits — tap days below to assign them.
+            You have unused meal credits — {viewMode === 'calendar' ? 'tap days below' : 'use the list below'} to assign them.
           </div>
         )}
 
+        <div className="calViewToggle" role="tablist" aria-label="Schedule view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'calendar'}
+            className={`calViewBtn${viewMode === 'calendar' ? ' active' : ''}`}
+            onClick={() => { setViewMode('calendar'); setRangeStart(null); }}
+          >
+            Calendar
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'list'}
+            className={`calViewBtn${viewMode === 'list' ? ' active' : ''}`}
+            onClick={() => { setViewMode('list'); setRangeStart(null); setSheetTarget(null); }}
+          >
+            List
+          </button>
+        </div>
+
+        {viewMode === 'calendar' ? (
+          <>
         {/* Tap hint / range in-progress */}
         {rangeStart ? (
           <div className="calRangeHint">
@@ -389,7 +432,7 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
             const hasSel      = row.lunchQty > 0 || row.dinnerQty > 0;
             const totalQty    = row.lunchQty + row.dinnerQty;
             const isStart     = iso === rangeStart;
-            const interactive = inWindow && !sun && !past && !locked && isDateSchedulable(iso);
+            const interactive = isDayInteractive(iso);
             const dayNum      = parseInt(iso.split('-')[2]!, 10);
 
             let stateClass = 'calOutside';
@@ -423,6 +466,87 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
             );
           })}
         </div>
+          </>
+        ) : (
+          <>
+            <p className="calTip">Pick lunch and dinner sets for each day — easier if you prefer a checklist over the calendar.</p>
+            <ul className="calListView">
+              {listDates.map((iso) => {
+                const row = getRow(iso);
+                const interactive = isDayInteractive(iso);
+                const status = dayStatusLabel(iso);
+                const hasSel = row.lunchQty > 0 || row.dinnerQty > 0;
+                const rowLunchMax = Math.min(N, Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + row.lunchQty));
+                const rowDinnerMax = Math.min(N, Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + row.dinnerQty));
+
+                if (!interactive && !hasSel) return null;
+
+                return (
+                  <li
+                    key={iso}
+                    className={`calListRow${!interactive ? ' calListRowOff' : ''}${hasSel ? ' calListRowSelected' : ''}`}
+                  >
+                    <div className="calListDate">
+                      <strong>{shortDate(iso)}</strong>
+                      <span className="calListDateIso">{iso}</span>
+                      {status && <span className="calListStatus">{status}</span>}
+                    </div>
+                    <div className="calListMeals">
+                      {allowLunch && (
+                        <div className="calListMeal">
+                          <span className="calListMealLabel">🌞 Lunch</span>
+                          {interactive ? (
+                            <div className="calSheetQtyControl">
+                              <button
+                                type="button"
+                                className="calSheetQtyBtn"
+                                disabled={row.lunchQty <= 0}
+                                onClick={() => setQty([iso], row.lunchQty - 1, null)}
+                              >−</button>
+                              <span className={`calSheetQtyValue${row.lunchQty > 0 ? ' active' : ''}`}>{row.lunchQty}</span>
+                              <button
+                                type="button"
+                                className="calSheetQtyBtn"
+                                disabled={row.lunchQty >= rowLunchMax}
+                                onClick={() => setQty([iso], row.lunchQty + 1, null)}
+                              >+</button>
+                            </div>
+                          ) : (
+                            <span className="calListQtyReadonly">{row.lunchQty > 0 ? row.lunchQty : '—'}</span>
+                          )}
+                        </div>
+                      )}
+                      {allowDinner && (
+                        <div className="calListMeal">
+                          <span className="calListMealLabel">🌙 Dinner</span>
+                          {interactive ? (
+                            <div className="calSheetQtyControl">
+                              <button
+                                type="button"
+                                className="calSheetQtyBtn"
+                                disabled={row.dinnerQty <= 0}
+                                onClick={() => setQty([iso], null, row.dinnerQty - 1)}
+                              >−</button>
+                              <span className={`calSheetQtyValue${row.dinnerQty > 0 ? ' active' : ''}`}>{row.dinnerQty}</span>
+                              <button
+                                type="button"
+                                className="calSheetQtyBtn"
+                                disabled={row.dinnerQty >= rowDinnerMax}
+                                onClick={() => setQty([iso], null, row.dinnerQty + 1)}
+                              >+</button>
+                            </div>
+                          ) : (
+                            <span className="calListQtyReadonly">{row.dinnerQty > 0 ? row.dinnerQty : '—'}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
 
         {error && <p className="err" style={{ marginTop: 12 }}>{error}</p>}
 

@@ -2,18 +2,18 @@ export const BENTO_MENU = {
   lunch: {
     title: 'Lunch set',
     description:
-      'Main dish, side, and rice — choose vegetarian or non-vegetarian.',
+      'Main dish, side, and rice — choose regular or vegetarian.',
     variants: [
+      { code: 'NONVEG', label: 'Regular' },
       { code: 'VEG', label: 'Vegetarian' },
-      { code: 'NONVEG', label: 'Non-vegetarian' },
     ],
   },
   dinner: {
     title: 'Dinner set',
     description: 'Main dish with soup, side, and rice (+RM1 per dinner meal).',
     variants: [
+      { code: 'NONVEG', label: 'Regular' },
       { code: 'VEG', label: 'Vegetarian' },
-      { code: 'NONVEG', label: 'Non-vegetarian' },
     ],
   },
   rice: [

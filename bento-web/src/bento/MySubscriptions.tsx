@@ -7,7 +7,7 @@ import type { BentoSubscription } from './types';
 import { formatRm } from './types';
 
 function dietLabel(v: string) {
-  return v === 'VEG' ? 'Vegetarian' : 'Non-veg';
+  return v === 'VEG' ? 'Vegetarian' : 'Regular';
 }
 
 export function MySubscriptions() {

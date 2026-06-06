@@ -91,21 +91,21 @@ export function MenuTab({ onOrderNow }: Props) {
           </div>
         </div>
 
-        {/* Veg / Non-veg toggle */}
+        {/* Regular / Vegetarian toggle */}
         <div className="menuDietSwitch">
-          <button
-            type="button"
-            className={`menuDietBtn${!showVeg ? ' active' : ''}`}
-            onClick={() => setShowVeg(false)}
-          >
-            {t.regular}
-          </button>
           <button
             type="button"
             className={`menuDietBtn${showVeg ? ' active' : ''}`}
             onClick={() => setShowVeg(true)}
           >
             {t.veg}
+          </button>
+          <button
+            type="button"
+            className={`menuDietBtn${!showVeg ? ' active' : ''}`}
+            onClick={() => setShowVeg(false)}
+          >
+            {t.regular}
           </button>
         </div>
 
@@ -118,34 +118,33 @@ export function MenuTab({ onOrderNow }: Props) {
         <ul className="wkMenuList">
           {data.menu.days.map((day) => {
             const dayLabel = lang === 'zh' ? (WEEKDAY_ZH[day.weekday] ?? day.weekday) : day.weekday;
+            const isClosed = day.closed ?? day.isSunday;
+            const dishFor = (meal: { dish: string; dishVeg: string }) =>
+              showVeg ? (meal.dishVeg || meal.dish) : meal.dish;
             return (
               <li
                 key={day.date}
-                className={`wkMenuDay${day.isSunday ? ' wkMenuDayClosed' : ''}${showVeg ? ' veg' : ''}`}
+                className={`wkMenuDay${isClosed ? ' wkMenuDayClosed' : ''}${showVeg ? ' veg' : ''}`}
               >
                 <div className="wkMenuDayHead">
                   <strong>{dayLabel}</strong>
                   <span className="wkMenuDayDate">{day.date.slice(5).replace('-', '/')}</span>
-                  {day.isSunday && <span className="wkMenuDayTag">{t.closed}</span>}
+                  {isClosed && <span className="wkMenuDayTag">{t.closed}</span>}
                 </div>
-                {!day.isSunday && (
+                {!isClosed && (
                   <div className="wkMenuMeals">
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌞</span>
                       <div className="wkMenuMealContent">
                         <span className="wkMenuMealLabel">{t.lunch}</span>
-                        <span className="wkMenuMealText">
-                          {showVeg ? `${lang === 'zh' ? '素食 ' : 'Vegetarian '}${day.lunch.dish}` : day.lunch.dish}
-                        </span>
+                        <span className="wkMenuMealText">{dishFor(day.lunch)}</span>
                       </div>
                     </div>
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌙</span>
                       <div className="wkMenuMealContent">
                         <span className="wkMenuMealLabel">{t.dinner}</span>
-                        <span className="wkMenuMealText">
-                          {showVeg ? `${lang === 'zh' ? '素食 ' : 'Vegetarian '}${day.dinner.dish}` : day.dinner.dish}
-                        </span>
+                        <span className="wkMenuMealText">{dishFor(day.dinner)}</span>
                       </div>
                     </div>
                   </div>

@@ -45,16 +45,35 @@ export async function lookupLogin(phone: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
-  const data = await parseJson<{ registered?: boolean; hasPin?: boolean; message?: string | string[] }>(res);
+  const data = await parseJson<{
+    registered?: boolean;
+    hasPin?: boolean;
+    hasEmail?: boolean;
+    maskedEmail?: string | null;
+    message?: string | string[];
+  }>(res);
   if (!res.ok) throw new Error(errMsg(data));
-  return { registered: Boolean(data.registered), hasPin: Boolean(data.hasPin) };
+  return {
+    registered: Boolean(data.registered),
+    hasPin: Boolean(data.hasPin),
+    hasEmail: Boolean(data.hasEmail),
+    maskedEmail: typeof data.maskedEmail === 'string' ? data.maskedEmail : null,
+  };
 }
 
-export async function requestOtp(phone: string, purpose?: 'register' | 'recovery') {
+export async function requestOtp(
+  phone: string,
+  purpose?: 'register' | 'recovery',
+  email?: string,
+) {
   const res = await fetch(`${base}/auth/otp/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, ...(purpose ? { purpose } : {}) }),
+    body: JSON.stringify({
+      phone,
+      ...(purpose ? { purpose } : {}),
+      ...(email?.trim() ? { email: email.trim() } : {}),
+    }),
   });
   const data = await parseJson<{
     sent?: boolean;
@@ -67,11 +86,15 @@ export async function requestOtp(phone: string, purpose?: 'register' | 'recovery
   return data;
 }
 
-export async function verifyOtp(phone: string, code: string) {
+export async function verifyOtp(phone: string, code: string, email?: string) {
   const res = await fetch(`${base}/auth/otp/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, code }),
+    body: JSON.stringify({
+      phone,
+      code,
+      ...(email?.trim() ? { email: email.trim() } : {}),
+    }),
   });
   const data = await parseJson<{
     setupToken?: string;
@@ -218,12 +241,23 @@ export async function checkoutBentoSubscription(body: {
   }>;
 }
 
+export type WeeklyMenuMeal = {
+  title: string;
+  description: string;
+  /** Regular / non-vegetarian dish (default). */
+  dish: string;
+  /** Vegetarian dish (shown when the Veg toggle is on). */
+  dishVeg: string;
+};
+
 export type WeeklyMenuDay = {
   date: string;
   weekday: string;
   isSunday: boolean;
-  lunch: { title: string; description: string; dish: string };
-  dinner: { title: string; description: string; dish: string };
+  /** Whether this day is closed (no meals) — admin-managed. */
+  closed: boolean;
+  lunch: WeeklyMenuMeal;
+  dinner: WeeklyMenuMeal;
 };
 
 export type WeeklyMenuPayload = {

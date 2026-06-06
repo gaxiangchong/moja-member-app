@@ -16,12 +16,17 @@ import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AdminService } from './admin.service';
 import { AdminDailyCommerceDateDto } from './dto/admin-daily-commerce.dto';
+import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
+import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
 
 @Controller('admin/reports')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
 export class AdminReportsController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly bentoOrdersReport: BentoOrdersReportService,
+  ) {}
 
   @Get('dashboard')
   @RequirePermissions(P.REPORT_VIEW)
@@ -60,5 +65,34 @@ export class AdminReportsController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.closeDailyCommerce(body.date, auth);
+  }
+
+  @Get('bento-meal-orders')
+  @RequirePermissions(P.REPORT_VIEW)
+  async bentoMealOrders(
+    @Query() query: BentoOrdersReportQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const defaults = this.bentoOrdersReport.defaultRange();
+    const from = query.from ?? defaults.from;
+    const to = query.to ?? defaults.to;
+
+    if (query.format === 'xlsx') {
+      const { buffer, filename } = await this.bentoOrdersReport.exportXlsx(
+        from,
+        to,
+      );
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+      return buffer;
+    }
+
+    return this.bentoOrdersReport.getCounts(from, to);
   }
 }

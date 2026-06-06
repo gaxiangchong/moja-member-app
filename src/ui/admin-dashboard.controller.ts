@@ -23,6 +23,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'customer-orders': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
+    'settings-bento-menu': true,
     'settings-shop-layout': true,
     'settings-popular-items': true,
     'settings-home-ads': true,
@@ -1012,6 +1013,7 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-bento-menu">Bento weekly menu</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-shop-layout">Shop layout</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
@@ -2511,6 +2513,81 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="settings-bento-menu" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Bento weekly menu</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshBentoMenuBtn">Refresh</button>
+                <button type="button" class="btn-primary" id="bentoMenuSaveBtn">Save menu</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. This is separate from the cake-sales shopping catalog &mdash; it has its own storage (<code>data/bento-menu.json</code>) and does not affect cake products. Leave a day's fields blank or tick <strong>Closed</strong> to hide that day. Sunday is closed by default.
+              </p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Day</th>
+                      <th>Lunch &mdash; Vegetarian</th>
+                      <th>Lunch &mdash; Regular</th>
+                      <th>Dinner &mdash; Vegetarian</th>
+                      <th>Dinner &mdash; Regular</th>
+                      <th style="text-align:center">Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoMenuBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoMenuSaveResult"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Bento meal orders export</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="bentoOrdersPreviewBtn">Preview</button>
+                <button type="button" class="btn-primary" id="bentoOrdersExportBtn">Export Excel</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Count scheduled bento meal sets (lunch + dinner) per day and per week from customer pickup schedules. Excel file has <strong>Daily</strong> and <strong>Weekly</strong> sheets.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px;margin-bottom:12px">
+                <div>
+                  <label for="bentoOrdersFrom">From</label>
+                  <input type="date" id="bentoOrdersFrom" />
+                </div>
+                <div>
+                  <label for="bentoOrdersTo">To</label>
+                  <input type="date" id="bentoOrdersTo" />
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Weekday</th>
+                      <th>Lunch sets</th>
+                      <th>Dinner sets</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoOrdersPreviewBody">
+                    <tr><td colspan="5" class="muted-hint">Click Preview to load counts for the date range.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoOrdersExportResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="settings-shop-layout" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
@@ -2875,7 +2952,7 @@ export class AdminDashboardController {
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-bento-menu', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -2944,6 +3021,7 @@ export class AdminDashboardController {
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
+      'settings-bento-menu': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 4v6"/><path d="M14 14h3"/>',
       'settings-shop-layout': '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
       'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
@@ -2985,6 +3063,7 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
+      'settings-bento-menu': 'Settings · Bento weekly menu',
       'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
@@ -3594,6 +3673,23 @@ export class AdminDashboardController {
       }
       const res = await fetch(path, {
         method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('Request failed (' + res.status + '): ' + txt);
+      }
+      return res.json();
+    }
+
+    async function apiPut(path, body) {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      if (currentAuthMode === 'key') {
+        localStorage.setItem('moja_admin_api_key', normalizeKey(apiKeyInput.value));
+      }
+      const res = await fetch(path, {
+        method: 'PUT',
         headers,
         body: JSON.stringify(body),
       });
@@ -4482,10 +4578,133 @@ export class AdminDashboardController {
       document.getElementById('adminUsersBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
+    var lastBentoMenu = [];
+    function bmAttr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+    function renderBentoMenu() {
+      var body = document.getElementById('bentoMenuBody');
+      if (!body) return;
+      body.innerHTML = (lastBentoMenu || []).map(function (d) {
+        var lunch = d.lunch || {};
+        var dinner = d.dinner || {};
+        var dis = d.closed ? ' disabled' : '';
+        function inp(field, val) {
+          return '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + (d.closed ? 'Closed' : 'Dish name') + '" />';
+        }
+        return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
+          '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
+          '<td>' + inp('lunch.veg', lunch.veg) + '</td>' +
+          '<td>' + inp('lunch.regular', lunch.regular) + '</td>' +
+          '<td>' + inp('dinner.veg', dinner.veg) + '</td>' +
+          '<td>' + inp('dinner.regular', dinner.regular) + '</td>' +
+          '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
+          '</tr>';
+      }).join('') || '<tr><td colspan="6">No data</td></tr>';
+    }
+    async function loadBentoMenu() {
+      const cfg = await api('/admin/bento-menu');
+      lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
+      renderBentoMenu();
+    }
+    function collectBentoMenu() {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('#bentoMenuBody tr[data-weekday]'));
+      return {
+        weekdays: rows.map(function (tr) {
+          var closedEl = tr.querySelector('.bm-closed');
+          var closed = closedEl ? closedEl.checked : false;
+          function val(field) {
+            var el = tr.querySelector('[data-field="' + field + '"]');
+            return el ? el.value.trim() : '';
+          }
+          return {
+            weekday: tr.getAttribute('data-weekday'),
+            closed: closed,
+            lunch: { regular: val('lunch.regular'), veg: val('lunch.veg') },
+            dinner: { regular: val('dinner.regular'), veg: val('dinner.veg') },
+          };
+        }),
+      };
+    }
+    async function saveBentoMenu() {
+      var out = document.getElementById('bentoMenuSaveResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var saved = await apiPut('/admin/bento-menu', collectBentoMenu());
+        lastBentoMenu = (saved && Array.isArray(saved.weekdays)) ? saved.weekdays : [];
+        renderBentoMenu();
+        if (out) out.textContent = 'Saved. Live in the Bento app weekly menu.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
+    function bentoOrdersIsoDateUtc(d) {
+      return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+    }
+    function bentoOrdersInitDates() {
+      var fromEl = document.getElementById('bentoOrdersFrom');
+      var toEl = document.getElementById('bentoOrdersTo');
+      if (!fromEl || !toEl || (fromEl.value && toEl.value)) return;
+      var now = new Date();
+      var day = now.getUTCDay();
+      var diff = day === 0 ? -6 : 1 - day;
+      var mon = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff));
+      var end = new Date(mon.getTime() + (8 * 7 - 1) * 86400000);
+      fromEl.value = bentoOrdersIsoDateUtc(mon);
+      toEl.value = bentoOrdersIsoDateUtc(end);
+    }
+    function bentoOrdersQueryString(extra) {
+      var fromEl = document.getElementById('bentoOrdersFrom');
+      var toEl = document.getElementById('bentoOrdersTo');
+      var parts = [];
+      if (fromEl && fromEl.value) parts.push('from=' + encodeURIComponent(fromEl.value));
+      if (toEl && toEl.value) parts.push('to=' + encodeURIComponent(toEl.value));
+      if (extra) parts.push(extra);
+      return parts.length ? '?' + parts.join('&') : '';
+    }
+    async function previewBentoOrders() {
+      var out = document.getElementById('bentoOrdersExportResult');
+      var body = document.getElementById('bentoOrdersPreviewBody');
+      if (out) out.textContent = 'Loading…';
+      try {
+        bentoOrdersInitDates();
+        var data = await api('/admin/reports/bento-meal-orders' + bentoOrdersQueryString());
+        var rows = (data && Array.isArray(data.daily)) ? data.daily : [];
+        if (body) {
+          body.innerHTML = rows.length
+            ? rows.map(function (r) {
+              return '<tr><td>' + fmt(r.date) + '</td><td>' + fmt(r.weekday) + '</td><td>' + fmt(r.lunchSets) + '</td><td>' + fmt(r.dinnerSets) + '</td><td><strong>' + fmt(r.totalSets) + '</strong></td></tr>';
+            }).join('')
+            : '<tr><td colspan="5">No scheduled meals in this range.</td></tr>';
+        }
+        if (out) out.textContent = rows.length
+          ? ('Showing ' + rows.length + ' day(s) · ' + (data.from || '') + ' to ' + (data.to || ''))
+          : 'No scheduled meals in this range.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function exportBentoOrdersExcel() {
+      var out = document.getElementById('bentoOrdersExportResult');
+      if (out) out.textContent = 'Preparing Excel…';
+      try {
+        bentoOrdersInitDates();
+        await apiDownload('/admin/reports/bento-meal-orders' + bentoOrdersQueryString('format=xlsx'), 'bento-meal-orders.xlsx');
+        if (out) out.textContent = 'Excel downloaded.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
     async function loadShopCatalog() {
       const data = await api('/admin/shop-catalog/products');
       lastShopCatalogProducts = data || [];
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      const trashSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
       document.getElementById('shopCatalogBody').innerHTML = (data || []).map(function (p) {
         var priceCell;
         if (Array.isArray(p.variants) && p.variants.length > 0) {
@@ -4503,7 +4722,7 @@ export class AdminDashboardController {
           ? ' <span title="Manual edits — protected from sync" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">\uD83D\uDD12 EDITED</span>'
           : '';
         return '<tr><td>' + fmt(p.name) + lockBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
-          (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button></td></tr>';
+          (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button> <button type="button" class="icon-btn sc-delete-btn" data-id="' + fmt(p.id) + '" data-name="' + fmt(p.name) + '" title="Delete product">' + trashSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6">No products</td></tr>';
     }
 
@@ -5392,6 +5611,7 @@ export class AdminDashboardController {
         loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
+        loadBentoMenu(),
         scRefreshSitesCatalogFileHint(),
         loadShopLayout(),
         loadHomeAdSlides(),
@@ -5830,6 +6050,45 @@ export class AdminDashboardController {
       loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; });
       scRefreshSitesCatalogFileHint().catch(function () {});
     });
+    var refreshBentoMenuBtn = document.getElementById('refreshBentoMenuBtn');
+    if (refreshBentoMenuBtn) {
+      refreshBentoMenuBtn.addEventListener('click', function () {
+        loadBentoMenu().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var bentoMenuSaveBtn = document.getElementById('bentoMenuSaveBtn');
+    if (bentoMenuSaveBtn) {
+      bentoMenuSaveBtn.addEventListener('click', function () {
+        saveBentoMenu();
+      });
+    }
+    var bentoMenuBody = document.getElementById('bentoMenuBody');
+    if (bentoMenuBody) {
+      bentoMenuBody.addEventListener('change', function (e) {
+        var cb = e.target;
+        if (cb && cb.classList && cb.classList.contains('bm-closed')) {
+          var tr = cb.closest('tr');
+          if (!tr) return;
+          var disabled = cb.checked;
+          tr.querySelectorAll('.bm-input').forEach(function (inp) {
+            inp.disabled = disabled;
+            inp.placeholder = disabled ? 'Closed' : 'Dish name';
+          });
+        }
+      });
+    }
+    var bentoOrdersPreviewBtn = document.getElementById('bentoOrdersPreviewBtn');
+    if (bentoOrdersPreviewBtn) {
+      bentoOrdersPreviewBtn.addEventListener('click', function () {
+        previewBentoOrders().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var bentoOrdersExportBtn = document.getElementById('bentoOrdersExportBtn');
+    if (bentoOrdersExportBtn) {
+      bentoOrdersExportBtn.addEventListener('click', function () {
+        exportBentoOrdersExcel().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
     var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
     if (scSitesCatalogSaveBtn) {
       scSitesCatalogSaveBtn.addEventListener('click', function () {
@@ -6665,7 +6924,24 @@ export class AdminDashboardController {
       return res.json();
     }
 
-    document.getElementById('shopCatalogBody').addEventListener('click', (e) => {
+    document.getElementById('shopCatalogBody').addEventListener('click', async (e) => {
+      var delBtn = e.target.closest('.sc-delete-btn');
+      if (delBtn) {
+        var delId = delBtn.getAttribute('data-id');
+        var delName = delBtn.getAttribute('data-name') || delId;
+        if (!delId) return;
+        if (!window.confirm('Delete "' + delName + '" from the shop catalog? This cannot be undone.')) return;
+        delBtn.disabled = true;
+        try {
+          await apiDelete('/admin/shop-catalog/products/' + encodeURIComponent(delId));
+          await loadShopCatalog();
+        } catch (err) {
+          delBtn.disabled = false;
+          window.alert('Delete failed: ' + (err && err.message ? err.message : err));
+        }
+        return;
+      }
+
       var btn = e.target.closest('.sc-edit-btn');
       if (!btn) return;
       var id = btn.getAttribute('data-id');
@@ -7016,6 +7292,12 @@ export class AdminDashboardController {
           }
           if (view === 'vouchers-rewards-hub' && isConnected) {
             loadVouchers().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'settings-bento-menu' && isConnected) {
+            bentoOrdersInitDates();
+            loadBentoMenu().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

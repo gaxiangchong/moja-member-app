@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseGuards,
@@ -52,6 +53,8 @@ import {
 } from './dto/sync-shop-catalog-from-sites.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
+import { BentoMenuService } from '../bento/bento-menu.service';
+import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -61,6 +64,7 @@ export class AdminController {
     private readonly approvals: ApprovalsService,
     private readonly shopCatalog: ShopCatalogService,
     private readonly homeAds: HomeAdsService,
+    private readonly bentoMenu: BentoMenuService,
   ) {}
 
   @Get('commerce/orders')
@@ -367,10 +371,30 @@ export class AdminController {
     return this.shopCatalog.clearProductImage(id);
   }
 
+  @Delete('shop-catalog/products/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  deleteShopCatalogProduct(@Param('id') id: string) {
+    return this.shopCatalog.deleteProduct(id);
+  }
+
   @Post('shop-catalog/products/:id/reset-sync-overrides')
   @RequirePermissions(P.VOUCHER_UPDATE)
   resetShopCatalogProductSyncOverrides(@Param('id') id: string) {
     return this.shopCatalog.resetProductSyncOverrides(id);
+  }
+
+  // --- Bento weekly menu (separate from the cake-sales shop catalog) ---
+
+  @Get('bento-menu')
+  @RequirePermissions(P.VOUCHER_READ)
+  getBentoMenu() {
+    return this.bentoMenu.getConfig();
+  }
+
+  @Put('bento-menu')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateBentoMenu(@Body() dto: UpdateBentoMenuDto) {
+    return this.bentoMenu.setConfig(dto);
   }
 
   @Get('shop-catalog/popular')

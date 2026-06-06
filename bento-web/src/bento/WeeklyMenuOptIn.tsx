@@ -38,26 +38,29 @@ export function WeeklyMenuOptIn({ data, onDone }: Props) {
           before you schedule pickup days.
         </p>
         <ul className="weeklyMenuList">
-          {data.menu.days.map((day) => (
-            <li key={day.date} className={day.isSunday ? 'weeklyDayOff' : ''}>
-              <div className="weeklyDayHead">
-                <strong>
-                  {day.weekday} {day.date.slice(8)}
-                </strong>
-                {day.isSunday && <span className="dayOffTag">Kitchen closed</span>}
-              </div>
-              {!day.isSunday && (
-                <>
-                  <p className="weeklyMeal">
-                    <span className="weeklyMealLabel">Lunch</span> {day.lunch.dish}
-                  </p>
-                  <p className="weeklyMeal">
-                    <span className="weeklyMealLabel">Dinner</span> {day.dinner.dish}
-                  </p>
-                </>
-              )}
-            </li>
-          ))}
+          {data.menu.days.map((day) => {
+            const isClosed = day.closed ?? day.isSunday;
+            return (
+              <li key={day.date} className={isClosed ? 'weeklyDayOff' : ''}>
+                <div className="weeklyDayHead">
+                  <strong>
+                    {day.weekday} {day.date.slice(8)}
+                  </strong>
+                  {isClosed && <span className="dayOffTag">Kitchen closed</span>}
+                </div>
+                {!isClosed && (
+                  <>
+                    <p className="weeklyMeal">
+                      <span className="weeklyMealLabel">Lunch</span> {day.lunch.dish}
+                    </p>
+                    <p className="weeklyMeal">
+                      <span className="weeklyMealLabel">Dinner</span> {day.dinner.dish}
+                    </p>
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
 

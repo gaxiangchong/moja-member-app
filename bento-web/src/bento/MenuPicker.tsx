@@ -46,19 +46,19 @@ export function MenuPicker({
           <div className="variantGrid">
             <button
               type="button"
+              className={`variantCard${lunchVariant === 'NONVEG' ? ' active' : ''}`}
+              onClick={() => onLunchVariantChange('NONVEG')}
+            >
+              <span className="variantTitle">Regular</span>
+              <span className="variantLabel">Protein-rich and hearty.</span>
+            </button>
+            <button
+              type="button"
               className={`variantCard${lunchVariant === 'VEG' ? ' active' : ''}`}
               onClick={() => onLunchVariantChange('VEG')}
             >
               <span className="variantTitle">Vegetarian</span>
               <span className="variantLabel">Light and balanced.</span>
-            </button>
-            <button
-              type="button"
-              className={`variantCard${lunchVariant === 'NONVEG' ? ' active' : ''}`}
-              onClick={() => onLunchVariantChange('NONVEG')}
-            >
-              <span className="variantTitle">Non-vegetarian</span>
-              <span className="variantLabel">Protein-rich and hearty.</span>
             </button>
           </div>
         </div>
@@ -77,19 +77,19 @@ export function MenuPicker({
           <div className="variantGrid">
             <button
               type="button"
+              className={`variantCard${dinnerVariant === 'NONVEG' ? ' active' : ''}`}
+              onClick={() => onDinnerVariantChange('NONVEG')}
+            >
+              <span className="variantTitle">Regular</span>
+              <span className="variantLabel">Hearty evening meal.</span>
+            </button>
+            <button
+              type="button"
               className={`variantCard${dinnerVariant === 'VEG' ? ' active' : ''}`}
               onClick={() => onDinnerVariantChange('VEG')}
             >
               <span className="variantTitle">Vegetarian</span>
               <span className="variantLabel">Garden-fresh dinner.</span>
-            </button>
-            <button
-              type="button"
-              className={`variantCard${dinnerVariant === 'NONVEG' ? ' active' : ''}`}
-              onClick={() => onDinnerVariantChange('NONVEG')}
-            >
-              <span className="variantTitle">Non-vegetarian</span>
-              <span className="variantLabel">Hearty evening meal.</span>
             </button>
           </div>
         </div>
@@ -132,7 +132,7 @@ export function MenuPicker({
               checked={includeDrinkAddon}
               onChange={(e) => onDrinkAddonChange(e.target.checked)}
             />
-            Extra drink add-on <small>(+RM4/meal)</small>
+            Drink add-on <small>(+RM4/meal)</small>
           </label>
         )}
       </div>

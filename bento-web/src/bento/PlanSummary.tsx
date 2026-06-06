@@ -46,7 +46,7 @@ export function PlanSummary({ selectedPackage, draft }: Props) {
         </div>
         <div className="planDetailItem">
           <span>Drinks</span>
-          <strong>{draft.includeDrinkAddon ? 'Extra drink add-on' : 'Standard drink included'}</strong>
+          <strong>{draft.includeDrinkAddon ? 'Drink add-on' : 'Standard drink included'}</strong>
         </div>
       </div>
       <div className="planSummaryFooter">

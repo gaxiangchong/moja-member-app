@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
+import { BentoMenuService } from './bento-menu.service';
 import {
   quoteBentoCheckout,
   splitMealCredits,
@@ -44,6 +45,7 @@ const PACKAGE_SEED: Array<{
   pricePerMealCents: number;
   fixedCheckoutCents?: number;
   includeFreeSoupAndDrinks?: boolean;
+  isActive?: boolean;
 }> = [
   {
     code: BentoPackageCode.NEWCOMER_3,
@@ -59,25 +61,26 @@ const PACKAGE_SEED: Array<{
     durationDays: 7,
     mealCredits: 1,
     pricePerMealCents: 1800,
+    isActive: false,
   },
   {
     code: BentoPackageCode.DAYS_7,
-    label: '7 meals',
-    durationDays: 14,
-    mealCredits: 7,
+    label: '10 meals',
+    durationDays: 30,
+    mealCredits: 10,
     pricePerMealCents: 1600,
   },
   {
     code: BentoPackageCode.DAYS_15,
-    label: '15 meals',
-    durationDays: 21,
-    mealCredits: 15,
+    label: '20 meals',
+    durationDays: 45,
+    mealCredits: 20,
     pricePerMealCents: 1500,
   },
   {
     code: BentoPackageCode.DAYS_30,
     label: '30 meals',
-    durationDays: 35,
+    durationDays: 60,
     mealCredits: 30,
     pricePerMealCents: 1300,
   },
@@ -88,6 +91,7 @@ const PACKAGE_SEED: Array<{
     mealCredits: 60,
     pricePerMealCents: 1300,
     includeFreeSoupAndDrinks: true,
+    isActive: false,
   },
 ];
 
@@ -96,6 +100,7 @@ export class BentoService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payments: PaymentsService,
+    private readonly bentoMenu: BentoMenuService,
   ) {}
 
   async onModuleInit() {
@@ -114,6 +119,7 @@ export class BentoService implements OnModuleInit {
           pricePerMealCents: pkg.pricePerMealCents,
           fixedCheckoutCents: pkg.fixedCheckoutCents ?? null,
           includeFreeSoupAndDrinks: pkg.includeFreeSoupAndDrinks ?? false,
+          isActive: pkg.isActive ?? true,
         },
         update: {
           label: pkg.label,
@@ -122,7 +128,7 @@ export class BentoService implements OnModuleInit {
           pricePerMealCents: pkg.pricePerMealCents,
           fixedCheckoutCents: pkg.fixedCheckoutCents ?? null,
           includeFreeSoupAndDrinks: pkg.includeFreeSoupAndDrinks ?? false,
-          isActive: true,
+          isActive: pkg.isActive ?? true,
         },
       });
     }
@@ -170,7 +176,7 @@ export class BentoService implements OnModuleInit {
   }
 
   getWeeklyMenu() {
-    return buildWeeklyMenu();
+    return buildWeeklyMenu(this.bentoMenu.getConfig());
   }
 
   async getWeeklyOptInStatus(customerId: string) {
@@ -193,7 +199,7 @@ export class BentoService implements OnModuleInit {
       optedIn: row?.optedIn ?? null,
       /** Show weekly menu only after purchase, when scheduling is pending. */
       showPrompt: row == null && awaitingSchedule != null,
-      menu: buildWeeklyMenu(),
+      menu: buildWeeklyMenu(this.bentoMenu.getConfig()),
       minScheduleLeadDays: BENTO_MIN_SCHEDULE_LEAD_DAYS,
       pendingSubscriptionId: awaitingSchedule?.id ?? null,
     };

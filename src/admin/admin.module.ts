@@ -12,6 +12,7 @@ import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { HomeAdsModule } from '../home-ads/home-ads.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { AdminEmployeesController } from './admin-employees.controller';
+import { BentoMenuModule } from '../bento/bento-menu.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AdminEmployeesController } from './admin-employees.controller';
     ShopCatalogModule,
     HomeAdsModule,
     EmployeesModule,
+    BentoMenuModule,
   ],
   controllers: [
     AdminController,

@@ -36,7 +36,7 @@ VITE_API_BASE_URL=http://localhost:3153
 
 ## Features
 
-- Same WhatsApp OTP + PIN registration as Moja member (`/auth/*`)
+- Same email OTP + PIN registration as Moja member (`/auth/*`)
 - Bento-themed login background (`public/images/bento-bg.png` — replace with your own artwork)
 - Meal plans: 1 / 7 / 15 / 30 meals (per-meal tier pricing); newcomer 3 lunches RM39 (first purchase only)
 - Lunch only, dinner only (+RM1/meal), or both (e.g. 15+15 for 30 meals)

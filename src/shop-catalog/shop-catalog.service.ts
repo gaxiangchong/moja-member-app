@@ -593,6 +593,32 @@ export class ShopCatalogService {
     return next;
   }
 
+  /**
+   * Permanently removes a product from the member catalog: deletes the record,
+   * cleans up any locally-uploaded images, and drops dangling references from
+   * the home/shop layout and the popular config.
+   */
+  deleteProduct(id: string): { id: string; deleted: true } {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
+    const [removed] = all.splice(idx, 1);
+    this.writeAll(all);
+
+    if (removed?.imageUrl) this.tryRemoveLocalProductImage(removed.imageUrl);
+    if (Array.isArray(removed?.images)) {
+      for (const img of removed.images) {
+        this.tryRemoveLocalProductImage(img?.src);
+      }
+    }
+
+    // Re-saving layout / popular prunes ids that no longer exist in the catalog.
+    this.setLayout(this.readLayout());
+    this.setPopularConfig(this.getPopularConfig());
+
+    return { id, deleted: true };
+  }
+
   resetProductSyncOverrides(id: string): ShopCatalogProduct {
     const all = this.readAll();
     const idx = all.findIndex((p) => p.id === id);

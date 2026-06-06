@@ -1,5 +1,5 @@
 import type { BentoPackage } from './types';
-import { SAVINGS_BASELINE_CENTS, formatRm } from './types';
+import { SAVINGS_BASELINE_CENTS, formatPlanDuration, formatRm } from './types';
 
 type Props = {
   packages: BentoPackage[];
@@ -12,7 +12,7 @@ type FeatureKey = 'price' | 'meals' | 'duration' | 'savings';
 const FEATURES: { key: FeatureKey; label: string }[] = [
   { key: 'price',    label: 'Price' },
   { key: 'meals',    label: 'Meals' },
-  { key: 'duration', label: 'Duration' },
+  { key: 'duration', label: 'Valid for' },
   { key: 'savings',  label: 'Total saving' },
 ];
 
@@ -23,6 +23,11 @@ function cellValue(pkg: BentoPackage, key: FeatureKey) {
     case 'price':
       return (
         <>
+          {SAVINGS_BASELINE_CENTS > pkg.pricePerMealCents && (
+            <span className="pkgTblWas">
+              was <s>{formatRm(SAVINGS_BASELINE_CENTS)}</s>
+            </span>
+          )}
           <strong>{formatRm(pkg.pricePerMealCents)}</strong>
           <span className="pkgTblSub">/ meal</span>
         </>
@@ -30,10 +35,15 @@ function cellValue(pkg: BentoPackage, key: FeatureKey) {
     case 'meals':
       return <strong>{pkg.mealCredits}</strong>;
     case 'duration':
-      return `${pkg.durationDays}d`;
+      return <strong>{formatPlanDuration(pkg.durationDays)}</strong>;
     case 'savings':
       return totalSavings > 0
-        ? <span className="pkgTblSaveBadge">Save {formatRm(totalSavings)}</span>
+        ? (
+          <span className="pkgTblSaveBadge">
+            <span className="pkgTblSaveWord">Save</span>
+            <span className="pkgTblSaveAmt">{formatRm(totalSavings)}</span>
+          </span>
+        )
         : <span className="pkgTblNone">—</span>;
   }
 }
@@ -51,7 +61,7 @@ export function PackageSelector({ packages, selected, onSelect }: Props) {
       <div className="sectionHeader">
         <div>
           <h2>Choose your meal plan</h2>
-          <p className="caption">All prices fixed at checkout — pick your meal days after payment.</p>
+          <p className="caption">All prices fixed at checkout — schedule your meals within the valid period after payment.</p>
         </div>
       </div>
 

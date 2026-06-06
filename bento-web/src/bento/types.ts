@@ -92,5 +92,10 @@ export function formatRm(cents: number): string {
   return `RM ${(cents / 100).toFixed(2)}`;
 }
 
+/** Human-readable scheduling window shown in the plan picker. */
+export function formatPlanDuration(days: number): string {
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
 /** @deprecated use BentoDietVariant */
 export type BentoDinnerVariant = BentoDietVariant;

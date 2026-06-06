@@ -25,7 +25,7 @@ import type { BentoPackage, BentoPackageCode, OrderDraft } from './bento/types';
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
 
 function dietLabel(v: string) {
-  return v === 'VEG' ? 'Vegetarian' : 'Non-veg';
+  return v === 'VEG' ? 'Vegetarian' : 'Regular';
 }
 
 function statusLabel(s: string) {

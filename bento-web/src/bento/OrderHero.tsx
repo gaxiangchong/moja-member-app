@@ -1,5 +1,6 @@
 import type { MemberProfile } from '../api';
 import type { BentoPackage } from './types';
+import { formatPlanDuration } from './types';
 
 type Props = {
   profile: MemberProfile | null;
@@ -39,8 +40,8 @@ export function OrderHero({ profile, selectedPackage }: Props) {
             <strong>{selectedPackage.mealCredits}</strong>
           </div>
           <div className="heroStat">
-            <span className="heroStatLabel">Duration</span>
-            <strong>{selectedPackage.durationDays}d</strong>
+            <span className="heroStatLabel">Valid for</span>
+            <strong>{formatPlanDuration(selectedPackage.durationDays)}</strong>
           </div>
         </div>
       ) : (
