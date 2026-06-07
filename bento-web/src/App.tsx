@@ -22,6 +22,7 @@ import { OrderHero } from './bento/OrderHero';
 import { PackageSelector } from './bento/PackageSelector';
 import { ScheduleTab } from './bento/ScheduleTab';
 import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
+import { useVisualViewportHeight } from './lib/useVisualViewportHeight';
 import type { BentoPackage, BentoPackageCode, OrderDraft } from './bento/types';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
@@ -321,6 +322,8 @@ export default function App() {
     }
   }, []);
 
+  useVisualViewportHeight(authed);
+
   const selectPackage = (code: BentoPackageCode) => {
     const pkg = packages.find((p) => p.code === code);
     if (!pkg) return;
@@ -370,6 +373,7 @@ export default function App() {
                   value={draft.mealOption}
                   packageCode={draft.packageCode}
                   mealCredits={selectedPkg.mealCredits}
+                  drinksAndSoupEnabled={drinksAndSoupEnabled}
                   onChange={(mealOption) => setDraft((d) => ({ ...d, mealOption }))}
                 />
                 <MenuPicker

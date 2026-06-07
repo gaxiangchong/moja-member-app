@@ -4,10 +4,17 @@ type Props = {
   value: BentoMealOption;
   packageCode: BentoPackageCode | null;
   mealCredits: number;
+  drinksAndSoupEnabled?: boolean;
   onChange: (v: BentoMealOption) => void;
 };
 
-export function MealOptionPicker({ value, packageCode, mealCredits, onChange }: Props) {
+export function MealOptionPicker({
+  value,
+  packageCode,
+  mealCredits,
+  drinksAndSoupEnabled = true,
+  onChange,
+}: Props) {
   const newcomerOnly = packageCode === 'NEWCOMER_3';
   const lunchOn = value === 'LUNCH' || value === 'BOTH';
   const dinnerOn = value === 'DINNER' || value === 'BOTH';
@@ -69,7 +76,7 @@ export function MealOptionPicker({ value, packageCode, mealCredits, onChange }: 
           <span className="mealToggleTitle">Dinner</span>
           <span className="mealToggleSub">
             {mealCredits} meals
-            {!newcomerOnly && <> · +RM1/meal</>}
+            {!newcomerOnly && drinksAndSoupEnabled && <> · +RM1/meal</>}
           </span>
           {newcomerOnly && <span className="mealToggleTag">Unavailable</span>}
         </button>
