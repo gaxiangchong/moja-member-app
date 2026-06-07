@@ -10,7 +10,11 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
-import { buildKitchenPickupId } from './kitchen-pickup-id.util';
+import {
+  formatKitchenPickupCode,
+  KITCHEN_PICKUP_CODE_MAX,
+  KITCHEN_PICKUP_CODE_MIN,
+} from './kitchen-pickup-code.util';
 import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
@@ -155,6 +159,57 @@ export class CustomersService {
     throw new Error('REFERRAL_CODE_GENERATION_FAILED');
   }
 
+  private async nextKitchenPickupCodeCandidate(): Promise<string> {
+    const rows = await this.prisma.$queryRaw<{ max_code: string | null }[]>`
+      SELECT MAX(CAST(kitchen_pickup_code AS INTEGER))::text AS max_code
+      FROM customers
+      WHERE kitchen_pickup_code ~ '^[0-9]{6}$'
+    `;
+    const maxRaw = rows[0]?.max_code;
+    const next = maxRaw
+      ? Number.parseInt(maxRaw, 10) + 1
+      : KITCHEN_PICKUP_CODE_MIN;
+    if (!Number.isFinite(next) || next > KITCHEN_PICKUP_CODE_MAX) {
+      throw new Error('KITCHEN_PICKUP_CODE_EXHAUSTED');
+    }
+    return formatKitchenPickupCode(next);
+  }
+
+  /** Assigns a persistent unique 6-digit kitchen pickup code (idempotent). */
+  async ensureKitchenPickupCode(customerId: string): Promise<string> {
+    const existing = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { kitchenPickupCode: true },
+    });
+    if (existing?.kitchenPickupCode) return existing.kitchenPickupCode;
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const candidate = await this.nextKitchenPickupCodeCandidate();
+      try {
+        const updated = await this.prisma.customer.updateMany({
+          where: { id: customerId, kitchenPickupCode: null },
+          data: { kitchenPickupCode: candidate },
+        });
+        if (updated.count === 1) return candidate;
+
+        const after = await this.prisma.customer.findUnique({
+          where: { id: customerId },
+          select: { kitchenPickupCode: true },
+        });
+        if (after?.kitchenPickupCode) return after.kitchenPickupCode;
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('KITCHEN_PICKUP_CODE_GENERATION_FAILED');
+  }
+
   private async resolveReferrerId(
     code: string | null | undefined,
   ): Promise<string | null> {
@@ -195,7 +250,10 @@ export class CustomersService {
           data: { referralCode: code, ...(normalizedEmail ? { email: normalizedEmail } : {}) },
         });
       }
-      return existing;
+      if (!existing.kitchenPickupCode) {
+        await this.ensureKitchenPickupCode(existing.id);
+        return this.findByIdOrThrow(existing.id);
+      }
     }
 
     let referredById: string | null = null;
@@ -216,6 +274,7 @@ export class CustomersService {
     });
     await this.loyalty.ensureWallet(customer.id);
     await this.wallet.ensureWallet(customer.id);
+    await this.ensureKitchenPickupCode(customer.id);
     this.syncToSalesplay(customer);
     return customer;
   }
@@ -280,6 +339,8 @@ export class CustomersService {
       });
     }
 
+    const kitchenPickupId = await this.ensureKitchenPickupCode(customerId);
+
     // Birthday gift is evaluated lazily on profile access (and after a birthday
     // update, since updateMe returns this bundle). Idempotent and month-gated.
     await this.maybeGrantBirthdayReward(customerId);
@@ -288,7 +349,7 @@ export class CustomersService {
     return {
       id: customer.id,
       phoneE164: customer.phoneE164,
-      kitchenPickupId: buildKitchenPickupId(customer.email, customer.phoneE164),
+      kitchenPickupId,
       status: customer.status,
       displayName: customer.displayName,
       email: customer.email,

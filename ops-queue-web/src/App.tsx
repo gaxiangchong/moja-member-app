@@ -13,6 +13,7 @@ import {
   type QueueOrderDetail,
   type QueueOrderSummary,
 } from './api';
+import { BentoPickupPanel } from './BentoPickupPanel';
 import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
 import { formatOrderPickupLabel } from './orderRef';
 
@@ -477,6 +478,7 @@ export function App() {
   const [sortPickup, setSortPickup] = useState<'desc' | 'asc'>('asc');
   const [todayOnly, setTodayOnly] = useState(false);
   const [pollErr, setPollErr] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<'shop' | 'bento'>('shop');
   const [pollOk, setPollOk] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(() => new Set());
@@ -648,28 +650,56 @@ export function App() {
     <div className="queueApp">
       <header className="topBar">
         <div>
-          <h1>Order queue</h1>
-          <div className={`livePill${pollOk ? ' ok' : ''}`}>
-            <span className="dot" aria-hidden />
-            {pollOk ? 'Live · polling every 2.5s' : 'Connecting…'}
-          </div>
+          <h1>{workspace === 'bento' ? 'Bento pickup' : 'Order queue'}</h1>
+          {workspace === 'shop' ? (
+            <div className={`livePill${pollOk ? ' ok' : ''}`}>
+              <span className="dot" aria-hidden />
+              {pollOk ? 'Live · polling every 2.5s' : 'Connecting…'}
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>
+              Collect today&apos;s scheduled bento meals by pickup code.
+            </p>
+          )}
         </div>
         <div className="btnRow">
-          <button type="button" className="btnGhost" onClick={() => openScanPopup()}>
-            Scan QR
+          <button
+            type="button"
+            className={workspace === 'shop' ? 'btnPrimary' : 'btnGhost'}
+            onClick={() => setWorkspace('shop')}
+          >
+            Shop queue
           </button>
-          <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
-            Timesheet
+          <button
+            type="button"
+            className={workspace === 'bento' ? 'btnPrimary' : 'btnGhost'}
+            onClick={() => setWorkspace('bento')}
+          >
+            Bento pickup
           </button>
-          <button type="button" className="btnGhost" onClick={() => void poll()}>
-            Refresh now
-          </button>
+          {workspace === 'shop' ? (
+            <>
+              <button type="button" className="btnGhost" onClick={() => openScanPopup()}>
+                Scan QR
+              </button>
+              <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
+                Timesheet
+              </button>
+              <button type="button" className="btnGhost" onClick={() => void poll()}>
+                Refresh now
+              </button>
+            </>
+          ) : null}
           <button type="button" className="btnGhost" onClick={onDisconnect}>
             Change key
           </button>
         </div>
       </header>
 
+      {workspace === 'bento' ? (
+        <BentoPickupPanel apiKey={apiKey} baseUrl={apiBase} />
+      ) : (
+        <>
       {pollErr ? (
         <p className="err" style={{ marginBottom: 16 }}>
           {pollErr}
@@ -848,6 +878,8 @@ export function App() {
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

@@ -627,6 +627,120 @@ body {
   margin-bottom: 12px;
 }
 
+.bentoPickupPanel {
+  max-width: 720px;
+}
+
+.bentoPickupHead {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.bentoLookupForm label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.bentoLookupRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bentoLookupRow input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.bentoLookupCard {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bentoLookupMeta {
+  display: grid;
+  gap: 10px;
+}
+
+.bentoLookupMeta > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bentoLookupCode {
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+}
+
+.bentoPackSummary {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface2);
+}
+
+.bentoPackTotal {
+  margin: 0 0 10px;
+}
+
+.bentoPackRows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.bentoPackRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.bentoPackDots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.bentoStatusOk {
+  margin: 0;
+  color: #166534;
+  font-weight: 600;
+}
+
+.packDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.packDot-orange {
+  background: #f97316;
+}
+
+.packDot-green {
+  background: #22c55e;
+}
+
+.packDot-brown {
+  background: #92400e;
+}
+
+.packDot-blue {
+  background: #3b82f6;
+}
+
 .scanCameraGate .btnPrimary {
   width: 100%;
 }

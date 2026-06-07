@@ -458,6 +458,8 @@ model Customer {
   loginPinHash String?       @map("login_pin_hash")
   /// Shareable code for referral attribution (set on first login / create).
   referralCode          String?   @unique @map("referral_code") @db.VarChar(20)
+  /// Unique 6-digit kitchen pickup code for bento collection (e.g. 100042).
+  kitchenPickupCode     String?   @unique @map("kitchen_pickup_code") @db.VarChar(6)
   referredByCustomerId  String?   @map("referred_by_customer_id") @db.Uuid
   referredBy            Customer? @relation("CustomerReferrer", fields: [referredByCustomerId], references: [id], onDelete: SetNull)
   referredMembers       Customer[] @relation("CustomerReferrer")

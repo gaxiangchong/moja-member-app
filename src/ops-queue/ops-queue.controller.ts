@@ -46,6 +46,16 @@ export class OpsQueueController {
     return { id: o.id, orderNumber: o.orderNumber, status: o.status };
   }
 
+  @Get('bento/lookup/:code')
+  lookupBento(@Param('code') code: string) {
+    return this.ops.lookupBentoPickup(code);
+  }
+
+  @Patch('bento/collect/:code')
+  collectBento(@Param('code') code: string) {
+    return this.ops.collectBentoPickup(code);
+  }
+
   @Post('timesheet/clock-in')
   clockIn(@Body() body: TimesheetCodeDto) {
     return this.employees.clockIn(body.employeeCode);

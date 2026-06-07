@@ -1670,6 +1670,28 @@ button {
   color: #15803d;
 }
 
+.pickupReminderQrBlock {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pickupReminderQrImg {
+  border-radius: 10px;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  background: #fff;
+}
+
+.pickupReminderQrLoading,
+.pickupReminderQrHint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #57534e;
+}
+
 .pickupPackColorSummary {
   margin-top: 8px;
 }

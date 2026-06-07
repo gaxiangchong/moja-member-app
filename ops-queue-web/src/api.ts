@@ -167,3 +167,64 @@ export async function timesheetClockOut(
   }
   return data as TimesheetClockResponse;
 }
+
+export type BentoPickupLookup = {
+  pickupCode: string;
+  deliveryDate: string;
+  customerDisplayName: string | null;
+  customerPhoneMasked: string;
+  summary: {
+    totalPacks: number;
+    lunchCount: number;
+    dinnerCount: number;
+    regular: number;
+    vegetarian: number;
+    regularBrown: number;
+    vegetarianBrown: number;
+    withDrink: number;
+  };
+  pendingCount: number;
+  alreadyCollected: boolean;
+  nothingScheduled: boolean;
+  deliveries: Array<{
+    id: string;
+    status: string;
+    includesLunch: boolean;
+    includesDinner: boolean;
+  }>;
+};
+
+export async function fetchBentoPickupLookup(
+  apiKey: string,
+  pickupCode: string,
+  baseUrl: string = defaultBase,
+): Promise<BentoPickupLookup> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/queue/bento/lookup/${encodeURIComponent(pickupCode)}`,
+    { headers: { 'x-ops-api-key': apiKey } },
+  );
+  const data = await parseJson<BentoPickupLookup & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    throw new Error(formatHttpError(res.status, data));
+  }
+  return data as BentoPickupLookup;
+}
+
+export async function collectBentoPickup(
+  apiKey: string,
+  pickupCode: string,
+  baseUrl: string = defaultBase,
+): Promise<{ pickupCode: string; deliveryDate: string; collectedCount: number; status: string }> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/queue/bento/collect/${encodeURIComponent(pickupCode)}`,
+    {
+      method: 'PATCH',
+      headers: { 'x-ops-api-key': apiKey },
+    },
+  );
+  const data = await parseJson<{ message?: string | string[]; pickupCode?: string }>(res);
+  if (!res.ok) {
+    throw new Error(formatHttpError(res.status, data));
+  }
+  return data as { pickupCode: string; deliveryDate: string; collectedCount: number; status: string };
+}

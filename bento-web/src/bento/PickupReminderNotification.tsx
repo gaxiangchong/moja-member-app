@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { toDataURL } from 'qrcode';
 import {
   PICKUP_ADDRESS_LINE,
   PICKUP_GOOGLE_MAPS_URL,
@@ -5,6 +7,48 @@ import {
 } from './pickupLocation';
 import { PickupPackColorBesideId } from './PickupPackColorSummary';
 import type { PickupDayPackSummary } from './pickupPackSummary';
+
+function PickupQrBlock({ pickupId }: { pickupId: string }) {
+  const payload = `BENTO:${pickupId}`;
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    toDataURL(payload, {
+      margin: 1,
+      width: 168,
+      color: { dark: '#2B2B2B', light: '#ffffff' },
+    })
+      .then((url) => {
+        if (alive) setSrc(url);
+      })
+      .catch(() => {
+        if (alive) setSrc(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [payload]);
+
+  return (
+    <div className="pickupReminderQrBlock">
+      {src ? (
+        <img
+          src={src}
+          alt={`Pickup QR for ${pickupId}`}
+          width={168}
+          height={168}
+          className="pickupReminderQrImg"
+        />
+      ) : (
+        <p className="pickupReminderQrLoading">Generating QR…</p>
+      )}
+      <p className="pickupReminderQrHint">
+        Staff can scan this QR at the counter to collect your meals.
+      </p>
+    </div>
+  );
+}
 
 type Props = {
   justConfirmed?: boolean;
@@ -70,8 +114,9 @@ export function PickupReminderNotification({
                 <PickupPackColorBesideId summary={nextPickup} />
               )}
             </div>
+            {pickupId ? <PickupQrBlock pickupId={pickupId} /> : null}
             <span className="pickupReminderIdHint">
-              Show this ID and the colour dots to Moja staff when collecting your meals.
+              Show this ID or QR and the colour dots to Moja staff when collecting your meals.
             </span>
           </div>
         )}

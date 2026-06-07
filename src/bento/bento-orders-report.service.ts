@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { BentoDeliveryStatus, BentoSubscriptionStatus } from '@prisma/client';
-import { buildKitchenPickupId } from '../customers/kitchen-pickup-id.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   addDaysUtc,
@@ -95,6 +94,7 @@ export class BentoOrdersReportService {
                 displayName: true,
                 email: true,
                 phoneE164: true,
+                kitchenPickupCode: true,
               },
             },
             package: {
@@ -114,7 +114,7 @@ export class BentoOrdersReportService {
       const weekday = WEEKDAY_NAMES[row.deliveryDate.getUTCDay()] ?? '';
       const cur = dailyMap.get(iso) ?? { lunch: 0, dinner: 0 };
       const customer = row.subscription.customer;
-      const pickupId = buildKitchenPickupId(customer.email, customer.phoneE164);
+      const pickupId = customer.kitchenPickupCode?.trim() || '—';
       const customerName = customer.displayName?.trim() || '—';
       const email = customer.email?.trim() || '—';
       const packageLabel = row.subscription.package.label;
