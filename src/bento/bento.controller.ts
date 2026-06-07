@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -37,6 +38,16 @@ export class BentoController {
   @Get('weekly-menu')
   getWeeklyMenu() {
     return this.bento.getWeeklyMenu();
+  }
+
+  @Get('schedule-capacity')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  getScheduleCapacity(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.bento.getScheduleCapacity(from, to);
   }
 
   @Get('weekly-opt-in')

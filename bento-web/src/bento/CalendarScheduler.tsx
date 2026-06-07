@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { scheduleBentoSubscription } from '../api';
+import { fetchScheduleCapacity, scheduleBentoSubscription } from '../api';
 import { isPickupDateLocked, PICKUP_LOCK_POLICY } from '../lib/pickupLock';
 import {
   addDaysUtc,
@@ -13,6 +13,7 @@ import {
 } from '../lib/dateUtils';
 import { PickupReminderNotification } from './PickupReminderNotification';
 import { PickupPackColorSummary } from './PickupPackColorSummary';
+import { CapacityUrgencyNotice } from './CapacityUrgencyNotice';
 import { buildUpcomingPickupSummaries } from './pickupPackSummary';
 import {
   allCreditsScheduled,
@@ -38,6 +39,21 @@ type SheetTarget =
   | { kind: 'range'; dates: string[]; from: string; to: string };
 
 type ScheduleViewMode = 'calendar' | 'list';
+
+type DayCapacity = {
+  remainingPacks: number;
+  isFull: boolean;
+};
+
+/** Max lunch + dinner packs this customer can place on a day (global kitchen limit). */
+function maxTotalPacksOnDay(
+  row: DaySelection,
+  capacity: DayCapacity | undefined,
+): number {
+  const current = row.lunchQty + row.dinnerQty;
+  if (!capacity) return current + 999;
+  return current + capacity.remainingPacks;
+}
 
 // ── date helpers ───────────────────────────────────────────────────────────
 
@@ -178,6 +194,34 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const [viewYear, setViewYear]   = useState(() => todayUtc().getUTCFullYear());
   const [viewMonth, setViewMonth] = useState(() => todayUtc().getUTCMonth() + 1);
   const [viewMode, setViewMode]   = useState<ScheduleViewMode>('calendar');
+  const [capacityByDate, setCapacityByDate] = useState<Map<string, DayCapacity>>(new Map());
+  const [dailyCapacityPacks, setDailyCapacityPacks] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchScheduleCapacity(displayStart, combinedWindow.windowEndDate)
+      .then((data) => {
+        if (cancelled) return;
+        setDailyCapacityPacks(data.dailyCapacityPacks);
+        const map = new Map<string, DayCapacity>();
+        for (const day of data.days) {
+          map.set(day.date, {
+            remainingPacks: day.remainingPacks,
+            isFull: day.isFull,
+          });
+        }
+        setCapacityByDate(map);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCapacityByDate(new Map());
+          setDailyCapacityPacks(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [displayStart, combinedWindow.windowEndDate, subscriptions]);
 
   useEffect(() => {
     const merged = mergeDeliveries(subscriptions);
@@ -228,8 +272,14 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
     [displayStart, combinedWindow.windowEndDate],
   );
 
-  const isDayInteractive = (iso: string): boolean =>
-    windowSet.has(iso) && !isSunday(iso) && !isPast(iso) && !isPickupDateLocked(iso) && isDateSchedulable(iso);
+  const isDayInteractive = (iso: string): boolean => {
+    if (!windowSet.has(iso) || isSunday(iso) || isPast(iso) || isPickupDateLocked(iso) || !isDateSchedulable(iso)) {
+      return false;
+    }
+    const row = getRow(iso);
+    if (row.lunchQty > 0 || row.dinnerQty > 0) return true;
+    return !capacityByDate.get(iso)?.isFull;
+  };
 
   const dayStatusLabel = (iso: string): string | null => {
     if (isSunday(iso)) return 'Closed';
@@ -237,6 +287,10 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
     if (!windowSet.has(iso)) return 'Outside plan';
     if (!isDateSchedulable(iso)) return 'Too soon';
     if (isPickupDateLocked(iso)) return 'Confirmed';
+    const row = getRow(iso);
+    if (capacityByDate.get(iso)?.isFull && row.lunchQty === 0 && row.dinnerQty === 0) {
+      return 'Full';
+    }
     return null;
   };
 
@@ -248,10 +302,20 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
       const outside = prev.filter(s => !dates.includes(s.date));
       const updated = dates.map(date => {
         const cur = prev.find(s => s.date === date) ?? { date, lunchQty: 0, dinnerQty: 0 };
+        let nextLunch = lunchQty !== null ? Math.max(0, lunchQty) : cur.lunchQty;
+        let nextDinner = dinnerQty !== null ? Math.max(0, dinnerQty) : cur.dinnerQty;
+        const maxTotal = maxTotalPacksOnDay(cur, capacityByDate.get(date));
+        while (nextLunch + nextDinner > maxTotal) {
+          if (dinnerQty !== null && nextDinner > cur.dinnerQty) nextDinner--;
+          else if (lunchQty !== null && nextLunch > cur.lunchQty) nextLunch--;
+          else if (nextDinner > 0) nextDinner--;
+          else if (nextLunch > 0) nextLunch--;
+          else break;
+        }
         return {
           date,
-          lunchQty:  lunchQty  !== null ? Math.max(0, lunchQty)  : cur.lunchQty,
-          dinnerQty: dinnerQty !== null ? Math.max(0, dinnerQty) : cur.dinnerQty,
+          lunchQty: nextLunch,
+          dinnerQty: nextDinner,
         };
       });
       return [...outside, ...updated]
@@ -271,7 +335,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
   // ── Tap handler (range selection) ────────────────────────────────────────
   const handleDayTap = (iso: string) => {
-    if (!windowSet.has(iso) || isSunday(iso) || !isDateSchedulable(iso) || isPickupDateLocked(iso)) return;
+    if (!isDayInteractive(iso)) return;
     if (rangeStart === null) {
       setRangeStart(iso);
     } else if (rangeStart === iso) {
@@ -281,7 +345,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
       const from = rangeStart < iso ? rangeStart : iso;
       const to   = rangeStart < iso ? iso : rangeStart;
       const dates = windowDates.filter(d =>
-        d >= from && d <= to && !isSunday(d) && isDateSchedulable(d) && !isPickupDateLocked(d),
+        d >= from && d <= to && isDayInteractive(d),
       );
       setRangeStart(null);
       setSheetTarget(dates.length <= 1
@@ -395,11 +459,25 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
   // ── Sheet qty limits for the open day/range ───────────────────────────────
   const sheetRow = sheetTarget?.kind === 'single' ? getRow(sheetTarget.date) : null;
+  const sheetCapacity = sheetTarget?.kind === 'single'
+    ? capacityByDate.get(sheetTarget.date)
+    : undefined;
+  const sheetMaxTotalPacks = sheetRow
+    ? maxTotalPacksOnDay(sheetRow, sheetCapacity)
+    : 999;
   // Remaining credits available (excluding what this day already uses)
   const sheetLunchBase  = sheetRow ? lunchUpcoming  - sheetRow.lunchQty  : lunchUpcoming;
   const sheetDinnerBase = sheetRow ? dinnerUpcoming - sheetRow.dinnerQty : dinnerUpcoming;
-  const maxLunchQty  = Math.min(N, Math.max(0, totalLunch  - lunchConsumed  - sheetLunchBase));
-  const maxDinnerQty = Math.min(N, Math.max(0, totalDinner - dinnerConsumed - sheetDinnerBase));
+  const maxLunchQty  = Math.min(
+    N,
+    Math.max(0, totalLunch - lunchConsumed - sheetLunchBase),
+    sheetRow ? sheetMaxTotalPacks - sheetRow.dinnerQty : N,
+  );
+  const maxDinnerQty = Math.min(
+    N,
+    Math.max(0, totalDinner - dinnerConsumed - sheetDinnerBase),
+    sheetRow ? sheetMaxTotalPacks - sheetRow.lunchQty : N,
+  );
 
   const cells = getMonthGrid(viewYear, viewMonth);
 
@@ -428,6 +506,11 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
           <p className="caption" style={{ marginBottom: 12 }}>
             Update your pickup days below, then tap Confirm to save.
           </p>
+        )}
+        {!isEditingSchedule && showScheduler && anyNeedsSchedule && (
+          <div className="capacityUrgencyCard">
+            <CapacityUrgencyNotice />
+          </div>
         )}
         {!isEditingSchedule && showScheduler && anyUnscheduled && (
           <p className="caption" style={{ marginBottom: 12 }}>
@@ -549,7 +632,12 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             <button type="button" className="calRangeCancel" onClick={() => setRangeStart(null)}>✕</button>
           </div>
         ) : (
-          <p className="calTip">Tap once to start a range · tap same day again to edit just that day</p>
+          <p className="calTip">
+            Tap once to start a range · tap same day again to edit just that day
+            {dailyCapacityPacks != null && (
+              <> · grey days are fully booked ({dailyCapacityPacks} packs/day)</>
+            )}
+          </p>
         )}
 
         {/* Month nav */}
@@ -579,6 +667,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             const totalQty    = row.lunchQty + row.dinnerQty;
             const isStart     = iso === rangeStart;
             const interactive = isDayInteractive(iso);
+            const atCapacity  = !hasSel && Boolean(capacityByDate.get(iso)?.isFull);
             const dayNum      = parseInt(iso.split('-')[2]!, 10);
 
             let stateClass = 'calOutside';
@@ -590,6 +679,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
               else if (!isDateSchedulable(iso))    stateClass = 'calTooSoon';
               else if (locked && hasSel)           stateClass = 'calScheduledLocked';
               else if (locked)                     stateClass = 'calTooSoon';
+              else if (atCapacity)                 stateClass = 'calFull';
               else if (hasSel)                     stateClass = 'calScheduled';
               else                                 stateClass = 'calAvailable';
             }
@@ -601,8 +691,10 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 className={`calCell ${stateClass}`}
                 disabled={!interactive}
                 onClick={() => handleDayTap(iso)}
+                title={atCapacity ? 'Fully booked' : undefined}
               >
                 <span className="calDayNum">{dayNum}</span>
+                {atCapacity && <span className="calFullTag">Full</span>}
                 {hasSel && !isStart && (
                   <span className="calDot">
                     {totalQty > 1 ? `×${totalQty}` : '●'}
@@ -622,15 +714,25 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 const interactive = isDayInteractive(iso);
                 const status = dayStatusLabel(iso);
                 const hasSel = row.lunchQty > 0 || row.dinnerQty > 0;
-                const rowLunchMax = Math.min(N, Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + row.lunchQty));
-                const rowDinnerMax = Math.min(N, Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + row.dinnerQty));
+                const dayCapacity = capacityByDate.get(iso);
+                const maxTotal = maxTotalPacksOnDay(row, dayCapacity);
+                const rowLunchMax = Math.min(
+                  N,
+                  Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + row.lunchQty),
+                  maxTotal - row.dinnerQty,
+                );
+                const rowDinnerMax = Math.min(
+                  N,
+                  Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + row.dinnerQty),
+                  maxTotal - row.lunchQty,
+                );
 
-                if (!interactive && !hasSel) return null;
+                if (!interactive && !hasSel && status !== 'Full') return null;
 
                 return (
                   <li
                     key={iso}
-                    className={`calListRow${!interactive ? ' calListRowOff' : ''}${hasSel ? ' calListRowSelected' : ''}`}
+                    className={`calListRow${!interactive ? ' calListRowOff' : ''}${hasSel ? ' calListRowSelected' : ''}${status === 'Full' ? ' calListRowFull' : ''}`}
                   >
                     <div className="calListDate">
                       <strong>{shortDate(iso)}</strong>

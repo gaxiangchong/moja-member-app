@@ -4,6 +4,7 @@ import { formatRm } from './types';
 type Props = {
   selectedPackage: BentoPackage;
   draft: OrderDraft;
+  drinksAndSoupEnabled?: boolean;
 };
 
 const LABELS = {
@@ -17,7 +18,7 @@ const RICE_LABELS = {
   BROWN: 'Brown rice',
 } as const;
 
-export function PlanSummary({ selectedPackage, draft }: Props) {
+export function PlanSummary({ selectedPackage, draft, drinksAndSoupEnabled = true }: Props) {
   return (
     <section className="section planSummary">
       <div className="planSummaryHeader">
@@ -44,10 +45,12 @@ export function PlanSummary({ selectedPackage, draft }: Props) {
           <span>Rice</span>
           <strong>{RICE_LABELS[draft.riceType]}</strong>
         </div>
-        <div className="planDetailItem">
-          <span>Drinks</span>
-          <strong>{draft.includeDrinkAddon ? 'Drink add-on' : 'Standard drink included'}</strong>
-        </div>
+        {drinksAndSoupEnabled && (
+          <div className="planDetailItem">
+            <span>Drinks</span>
+            <strong>{draft.includeDrinkAddon ? 'Drink add-on' : 'Standard drink included'}</strong>
+          </div>
+        )}
       </div>
       <div className="planSummaryFooter">
         <p className="caption">You can schedule pickup days and adjust your menu after checkout.</p>

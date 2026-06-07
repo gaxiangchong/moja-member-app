@@ -21,6 +21,7 @@ import { MenuTab } from './bento/MenuTab';
 import { OrderHero } from './bento/OrderHero';
 import { PackageSelector } from './bento/PackageSelector';
 import { ScheduleTab } from './bento/ScheduleTab';
+import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
 import type { BentoPackage, BentoPackageCode, OrderDraft } from './bento/types';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
@@ -213,7 +214,7 @@ function AccountTab({
       <p className="caption">{profile.phoneE164}</p>
       {incomplete && (
         <p className="profileIncompleteCue" role="status">
-          Please complete your profile — name, email, birthday, sex, and delivery address are required.
+          Please complete your profile — name, email, birthday, sex, and work/home address are required.
         </p>
       )}
       <form onSubmit={(e) => void save(e)}>
@@ -259,6 +260,7 @@ export default function App() {
   const [orderStep, setOrderStep] = useState<'configure' | 'checkout'>('configure');
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [packages, setPackages] = useState<BentoPackage[]>([]);
+  const [drinksAndSoupEnabled, setDrinksAndSoupEnabled] = useState(true);
   const [paymentBanner, setPaymentBanner] = useState<'success' | 'paid_schedule' | 'failed' | null>(null);
 
   const [draft, setDraft] = useState<OrderDraft>(() => ({
@@ -286,6 +288,10 @@ export default function App() {
     setAuthed(true);
     const pkgRes = await fetchBentoPackages();
     setPackages(pkgRes.packages.filter((p) => p.code !== 'DAYS_60' && p.code !== 'ONE_TIME'));
+    setDrinksAndSoupEnabled(pkgRes.features.drinksAndSoupEnabled);
+    if (!pkgRes.features.drinksAndSoupEnabled) {
+      setDraft((d) => ({ ...d, includeDrinkAddon: false }));
+    }
   }, []);
 
   useEffect(() => {
@@ -334,11 +340,13 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app appShell">
       <main className="shell">
         {paymentBanner === 'paid_schedule' && (
           <div className="paymentBanner success">
-            Payment received — head to Schedule to pick your pickup days.
+            <p className="paymentBannerTitle">Payment received</p>
+            <p className="paymentBannerLead">Head to Schedule below to pick your pickup days.</p>
+            <CapacityUrgencyNotice variant="banner" />
           </div>
         )}
 
@@ -371,6 +379,7 @@ export default function App() {
                   riceType={draft.riceType}
                   includeDrinkAddon={draft.includeDrinkAddon}
                   includeFreeSoupAndDrinks={selectedPkg.includeFreeSoupAndDrinks}
+                  drinksAndSoupEnabled={drinksAndSoupEnabled}
                   onLunchVariantChange={(lunchVariant) => setDraft((d) => ({ ...d, lunchVariant }))}
                   onDinnerVariantChange={(dinnerVariant) => setDraft((d) => ({ ...d, dinnerVariant }))}
                   onRiceTypeChange={(riceType) => setDraft((d) => ({ ...d, riceType }))}

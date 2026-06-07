@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BentoMenuService } from './bento-menu.service';
 import { BentoOrdersReportService } from './bento-orders-report.service';
+import { BentoSettingsService } from './bento-settings.service';
+import { BentoFeaturesService } from './bento-features.service';
 
 /**
  * Standalone, dependency-light module so both the bento module (public reads)
@@ -10,7 +12,7 @@ import { BentoOrdersReportService } from './bento-orders-report.service';
  */
 @Module({
   imports: [PrismaModule],
-  providers: [BentoMenuService, BentoOrdersReportService],
-  exports: [BentoMenuService, BentoOrdersReportService],
+  providers: [BentoMenuService, BentoOrdersReportService, BentoSettingsService, BentoFeaturesService],
+  exports: [BentoMenuService, BentoOrdersReportService, BentoSettingsService, BentoFeaturesService],
 })
 export class BentoMenuModule {}

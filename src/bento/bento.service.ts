@@ -14,6 +14,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { BentoMenuService } from './bento-menu.service';
+import { BentoSettingsService } from './bento-settings.service';
+import { BentoFeaturesService } from './bento-features.service';
+import { packsInDeliveryRow } from './bento-capacity.util';
+import {
+  buildRemainingByDate,
+  evaluatePurchaseCapacity,
+  type PurchaseCapacityEvaluation,
+} from './bento-purchase-capacity.util';
 import {
   isPickupDateLocked,
   pickupLockMessage,
@@ -106,6 +114,8 @@ export class BentoService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly payments: PaymentsService,
     private readonly bentoMenu: BentoMenuService,
+    private readonly bentoSettings: BentoSettingsService,
+    private readonly bentoFeatures: BentoFeaturesService,
   ) {}
 
   async onModuleInit() {
@@ -188,15 +198,195 @@ export class BentoService implements OnModuleInit {
         return a.mealCredits - b.mealCredits;
       });
 
-    return { newcomerEligible, packages };
+    return {
+      newcomerEligible,
+      packages,
+      features: {
+        drinksAndSoupEnabled: this.bentoFeatures.drinksAndSoupEnabled(),
+      },
+    };
   }
 
   getMenu() {
-    return BENTO_MENU;
+    if (this.bentoFeatures.drinksAndSoupEnabled()) {
+      return BENTO_MENU;
+    }
+    return {
+      lunch: BENTO_MENU.lunch,
+      dinner: {
+        ...BENTO_MENU.dinner,
+        description: 'Main dish, side, and rice.',
+      },
+      rice: BENTO_MENU.rice,
+    };
   }
 
   getWeeklyMenu() {
     return buildWeeklyMenu(this.bentoMenu.getConfig());
+  }
+
+  async getScheduleCapacity(fromIso?: string, toIso?: string) {
+    const from = fromIso ? parseDateOnly(fromIso) : earliestSchedulableDate();
+    const to = toIso ? parseDateOnly(toIso) : addDaysUtc(from, 120);
+    if (to < from) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: '"to" must be on or after "from".',
+      });
+    }
+
+    const capacity = this.bentoSettings.getDailyCapacityPacks();
+    const deliveries = await this.prisma.bentoDeliveryDay.findMany({
+      where: {
+        deliveryDate: { gte: from, lte: to },
+        status: BentoDeliveryStatus.SCHEDULED,
+        subscription: {
+          status: {
+            in: [
+              BentoSubscriptionStatus.ACTIVE,
+              BentoSubscriptionStatus.COMPLETED,
+            ],
+          },
+        },
+      },
+      select: {
+        deliveryDate: true,
+        includesLunch: true,
+        includesDinner: true,
+      },
+    });
+
+    const scheduledByDate = new Map<string, number>();
+    for (const d of deliveries) {
+      const iso = formatDateOnly(d.deliveryDate);
+      scheduledByDate.set(
+        iso,
+        (scheduledByDate.get(iso) ?? 0) + packsInDeliveryRow(d),
+      );
+    }
+
+    const days: Array<{
+      date: string;
+      scheduledPacks: number;
+      remainingPacks: number;
+      isFull: boolean;
+    }> = [];
+    let cur = from;
+    while (cur <= to) {
+      const iso = formatDateOnly(cur);
+      const scheduledPacks = scheduledByDate.get(iso) ?? 0;
+      days.push({
+        date: iso,
+        scheduledPacks,
+        remainingPacks: Math.max(0, capacity - scheduledPacks),
+        isFull: scheduledPacks >= capacity,
+      });
+      cur = addDaysUtc(cur, 1);
+    }
+
+    return { dailyCapacityPacks: capacity, days };
+  }
+
+  async evaluatePurchaseCapacityForPackage(
+    durationDays: number,
+    requiredPacks: number,
+  ): Promise<PurchaseCapacityEvaluation> {
+    const dailyCapacityPacks = this.bentoSettings.getDailyCapacityPacks();
+    const ordersPaused = this.bentoSettings.getBlockNewOrders();
+    const minStart = earliestSchedulableDate();
+    const searchEnd = addDaysUtc(minStart, durationDays + 180);
+    const scheduledByDate = await this.loadScheduledPacksByDate(
+      minStart,
+      searchEnd,
+    );
+    const remainingByDate = buildRemainingByDate(
+      minStart,
+      searchEnd,
+      dailyCapacityPacks,
+      scheduledByDate,
+    );
+    return evaluatePurchaseCapacity({
+      durationDays,
+      requiredPacks,
+      dailyCapacityPacks,
+      remainingByDate,
+      ordersPaused,
+    });
+  }
+
+  private async loadScheduledPacksByDate(
+    from: Date,
+    to: Date,
+  ): Promise<Map<string, number>> {
+    const deliveries = await this.prisma.bentoDeliveryDay.findMany({
+      where: {
+        deliveryDate: { gte: from, lte: to },
+        status: BentoDeliveryStatus.SCHEDULED,
+        subscription: {
+          status: {
+            in: [
+              BentoSubscriptionStatus.ACTIVE,
+              BentoSubscriptionStatus.COMPLETED,
+            ],
+          },
+        },
+      },
+      select: {
+        deliveryDate: true,
+        includesLunch: true,
+        includesDinner: true,
+      },
+    });
+    const scheduledByDate = new Map<string, number>();
+    for (const d of deliveries) {
+      const iso = formatDateOnly(d.deliveryDate);
+      scheduledByDate.set(
+        iso,
+        (scheduledByDate.get(iso) ?? 0) + packsInDeliveryRow(d),
+      );
+    }
+    return scheduledByDate;
+  }
+
+  private purchaseCapacityMessage(
+    evaluation: PurchaseCapacityEvaluation,
+  ): string {
+    if (evaluation.ordersPaused) {
+      return 'New meal plans are temporarily unavailable. Please check back later.';
+    }
+    const { requiredPacks, availablePacksInWindow, windowDays } = evaluation;
+    let msg =
+      `We can't accept this order right now — only ${availablePacksInWindow} of ${requiredPacks} meal slots are free in the next ${windowDays}-day scheduling window.`;
+    if (evaluation.nextAvailableDate) {
+      const dayHint =
+        evaluation.daysUntilAvailable != null && evaluation.daysUntilAvailable > 0
+          ? ` (about ${evaluation.daysUntilAvailable} day${evaluation.daysUntilAvailable === 1 ? '' : 's'} from now)`
+          : '';
+      msg += ` Please come back from ${evaluation.nextAvailableDate}${dayHint} when more dates open up.`;
+    } else {
+      msg += ' Please try again later.';
+    }
+    return msg;
+  }
+
+  private async assertCanPurchase(
+    pkg: BentoPackage,
+    requiredPacks: number,
+  ): Promise<PurchaseCapacityEvaluation> {
+    const evaluation = await this.evaluatePurchaseCapacityForPackage(
+      pkg.durationDays,
+      requiredPacks,
+    );
+    if (!evaluation.canPurchase) {
+      throw new BadRequestException({
+        code: evaluation.ordersPaused
+          ? 'BENTO_ORDERS_PAUSED'
+          : 'BENTO_CAPACITY_EXHAUSTED',
+        message: this.purchaseCapacityMessage(evaluation),
+        purchaseAvailability: evaluation,
+      });
+    }
+    return evaluation;
   }
 
   async getWeeklyOptInStatus(customerId: string) {
@@ -248,9 +438,16 @@ export class BentoService implements OnModuleInit {
   async quote(
     customerId: string,
     dto: BentoQuoteDto,
-  ): Promise<BentoQuoteResult & { package: ReturnType<typeof this.mapPackage> }> {
+  ): Promise<
+    BentoQuoteResult & {
+      package: ReturnType<typeof this.mapPackage>;
+      purchaseAvailability: PurchaseCapacityEvaluation;
+    }
+  > {
     const pkg = await this.resolvePackage(dto.packageCode);
     await this.validateCheckoutInput(customerId, pkg, dto);
+    const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
+    const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -259,14 +456,23 @@ export class BentoService implements OnModuleInit {
       includeFreeSoupAndDrinks: pkg.includeFreeSoupAndDrinks,
       mealOption: dto.mealOption,
       riceType: dto.riceType,
-      includeDrinkAddon: dto.includeDrinkAddon,
+      includeDrinkAddon,
+      drinksAndSoupEnabled,
     });
-    return { ...quote, package: this.mapPackage(pkg) };
+    const sets = Math.min(10, Math.max(1, dto.sets ?? 1));
+    const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
+    const purchaseAvailability = await this.evaluatePurchaseCapacityForPackage(
+      pkg.durationDays,
+      requiredPacks,
+    );
+    return { ...quote, package: this.mapPackage(pkg), purchaseAvailability };
   }
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
     const pkg = await this.resolvePackage(dto.packageCode);
     await this.validateCheckoutInput(customerId, pkg, dto);
+    const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
+    const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -275,8 +481,12 @@ export class BentoService implements OnModuleInit {
       includeFreeSoupAndDrinks: pkg.includeFreeSoupAndDrinks,
       mealOption: dto.mealOption,
       riceType: dto.riceType,
-      includeDrinkAddon: dto.includeDrinkAddon,
+      includeDrinkAddon,
+      drinksAndSoupEnabled,
     });
+    const sets = Math.min(10, Math.max(1, dto.sets ?? 1));
+    const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
+    await this.assertCanPurchase(pkg, requiredPacks);
 
     if (quote.totalCents < 100) {
       throw new BadRequestException({
@@ -294,7 +504,8 @@ export class BentoService implements OnModuleInit {
         dinnerVariant: dto.dinnerVariant,
         riceType: dto.riceType,
         includeDrinkAddon:
-          pkg.includeFreeSoupAndDrinks || dto.includeDrinkAddon,
+          drinksAndSoupEnabled &&
+          (pkg.includeFreeSoupAndDrinks || includeDrinkAddon),
         mealCreditsTotal: pkg.mealCredits,
         lunchCredits: quote.lunchCredits,
         dinnerCredits: quote.dinnerCredits,
@@ -341,6 +552,8 @@ export class BentoService implements OnModuleInit {
       sub.dinnerCredits,
       dto.slots,
     );
+
+    await this.assertDailyCapacity(subscriptionId, rows);
 
     this.assertLockedDeliveriesUnchanged(sub.deliveries, rows);
 
@@ -503,7 +716,7 @@ export class BentoService implements OnModuleInit {
       if (dto.mealOption !== BentoMealOption.LUNCH) {
         throw new BadRequestException({
           code: 'BENTO_NEWCOMER_LUNCH_ONLY',
-          message: 'Trial pack is lunch-only. Add-ons (brown rice, drinks, vegetarian) are still available.',
+          message: 'Trial pack is lunch-only. Add-ons (brown rice, vegetarian) are still available.',
         });
       }
       await this.assertNewcomerEligible(customerId);
@@ -626,8 +839,72 @@ export class BentoService implements OnModuleInit {
       }));
   }
 
+  private async assertDailyCapacity(
+    subscriptionId: string,
+    rows: Array<{
+      deliveryDate: Date;
+      includesLunch: boolean;
+      includesDinner: boolean;
+    }>,
+  ): Promise<void> {
+    const capacity = this.bentoSettings.getDailyCapacityPacks();
+    const packsByDate = new Map<string, number>();
+    for (const row of rows) {
+      const iso = formatDateOnly(row.deliveryDate);
+      packsByDate.set(
+        iso,
+        (packsByDate.get(iso) ?? 0) + packsInDeliveryRow(row),
+      );
+    }
+
+    for (const [iso, subPacks] of packsByDate) {
+      const others = await this.countScheduledPacksOnDate(iso, subscriptionId);
+      const total = others + subPacks;
+      if (total > capacity) {
+        const remaining = Math.max(0, capacity - others);
+        throw new BadRequestException({
+          code: 'BENTO_DAY_CAPACITY_FULL',
+          message:
+            remaining > 0
+              ? `${iso} only has ${remaining} pack slot(s) left (${capacity} per day). Reduce meals on that day or choose another date.`
+              : `${iso} is fully booked (${capacity} packs per day). Please choose another date.`,
+          date: iso,
+          dailyCapacityPacks: capacity,
+          scheduledPacks: others,
+          remainingPacks: remaining,
+        });
+      }
+    }
+  }
+
+  private async countScheduledPacksOnDate(
+    iso: string,
+    excludeSubscriptionId: string,
+  ): Promise<number> {
+    const deliveries = await this.prisma.bentoDeliveryDay.findMany({
+      where: {
+        deliveryDate: parseDateOnly(iso),
+        status: BentoDeliveryStatus.SCHEDULED,
+        subscription: {
+          id: { not: excludeSubscriptionId },
+          status: {
+            in: [
+              BentoSubscriptionStatus.ACTIVE,
+              BentoSubscriptionStatus.COMPLETED,
+            ],
+          },
+        },
+      },
+      select: { includesLunch: true, includesDinner: true },
+    });
+    return deliveries.reduce((sum, d) => sum + packsInDeliveryRow(d), 0);
+  }
+
   private mapPackage(p: BentoPackage) {
     const split = splitMealCredits(p.mealCredits, BentoMealOption.BOTH);
+    const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
+    const includeFreeSoupAndDrinks =
+      drinksAndSoupEnabled && p.includeFreeSoupAndDrinks;
     return {
       id: p.id,
       code: p.code,
@@ -639,8 +916,8 @@ export class BentoService implements OnModuleInit {
       fixedCheckoutCents: p.fixedCheckoutCents,
       isNewcomer: p.code === BentoPackageCode.NEWCOMER_3,
       newcomerLunchOnly: p.code === BentoPackageCode.NEWCOMER_3,
-      includeFreeSoupAndDrinks: p.includeFreeSoupAndDrinks,
-      perksLabel: p.includeFreeSoupAndDrinks
+      includeFreeSoupAndDrinks,
+      perksLabel: includeFreeSoupAndDrinks
         ? 'Free soup + free drinks included'
         : null,
     };

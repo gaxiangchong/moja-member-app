@@ -172,14 +172,14 @@ export function AuthScreens({ onAuthenticated }: Props) {
         <div className="authBrand">
           <img src="/logo.png" alt="" className="authBrandLogo" />
           <div>
-            <span className="authBrandName">Moja Daily</span>
+            <span className="authBrandName">Moja Bento</span>
             <span className="authBrandTagline">Fresh meal everyday</span>
           </div>
         </div>
 
         {step === 'phone' && (
           <>
-            <h1>Welcome to Moja Daily</h1>
+            <h1>Welcome to Moja Bento</h1>
             <p className="authSub">
               Sign in with your Moja account to enjoy fresh, chef-prepared meals on your schedule.
             </p>

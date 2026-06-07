@@ -228,14 +228,19 @@ async function authFetch<T = unknown>(path: string, init?: RequestInit): Promise
 export async function fetchBentoPackages(): Promise<{
   packages: BentoPackage[];
   newcomerEligible: boolean;
+  features: { drinksAndSoupEnabled: boolean };
 }> {
   const data = (await authFetch('/bento/packages')) as {
     packages: BentoPackage[];
     newcomerEligible: boolean;
+    features?: { drinksAndSoupEnabled?: boolean };
   };
   return {
     packages: data.packages ?? [],
     newcomerEligible: Boolean(data.newcomerEligible),
+    features: {
+      drinksAndSoupEnabled: data.features?.drinksAndSoupEnabled !== false,
+    },
   };
 }
 
@@ -251,6 +256,7 @@ export async function quoteBentoSubscription(body: {
   dinnerVariant: BentoDietVariant;
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
+  sets?: number;
 }): Promise<BentoQuote> {
   return authFetch('/bento/subscriptions/quote', {
     method: 'POST',
@@ -266,6 +272,7 @@ export async function checkoutBentoSubscription(body: {
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
   channelCode?: string;
+  sets?: number;
 }) {
   return authFetch('/bento/subscriptions/checkout', {
     method: 'POST',
@@ -323,6 +330,22 @@ export async function setWeeklyOptIn(optedIn: boolean) {
     method: 'POST',
     body: JSON.stringify({ optedIn }),
   });
+}
+
+export async function fetchScheduleCapacity(
+  from: string,
+  to: string,
+): Promise<{
+  dailyCapacityPacks: number;
+  days: Array<{
+    date: string;
+    scheduledPacks: number;
+    remainingPacks: number;
+    isFull: boolean;
+  }>;
+}> {
+  const q = new URLSearchParams({ from, to });
+  return authFetch(`/bento/schedule-capacity?${q.toString()}`);
 }
 
 export async function scheduleBentoSubscription(

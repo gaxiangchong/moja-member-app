@@ -54,7 +54,9 @@ import {
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
+import { BentoSettingsService } from '../bento/bento-settings.service';
 import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
+import { UpdateBentoSettingsDto } from './dto/update-bento-settings.dto';
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -65,6 +67,7 @@ export class AdminController {
     private readonly shopCatalog: ShopCatalogService,
     private readonly homeAds: HomeAdsService,
     private readonly bentoMenu: BentoMenuService,
+    private readonly bentoSettings: BentoSettingsService,
   ) {}
 
   @Get('commerce/orders')
@@ -395,6 +398,30 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateBentoMenu(@Body() dto: UpdateBentoMenuDto) {
     return this.bentoMenu.setConfig(dto);
+  }
+
+  @Get('bento-settings')
+  @RequirePermissions(P.VOUCHER_READ)
+  getBentoSettings() {
+    const file = this.bentoSettings.getSettings();
+    const effective = this.bentoSettings.getDailyCapacityPacks();
+    return {
+      ...file,
+      effectiveDailyCapacityPacks: effective,
+      envOverride: effective !== file.dailyCapacityPacks,
+    };
+  }
+
+  @Put('bento-settings')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateBentoSettings(@Body() dto: UpdateBentoSettingsDto) {
+    const saved = this.bentoSettings.setSettings(dto);
+    const effective = this.bentoSettings.getDailyCapacityPacks();
+    return {
+      ...saved,
+      effectiveDailyCapacityPacks: effective,
+      envOverride: effective !== saved.dailyCapacityPacks,
+    };
   }
 
   @Get('shop-catalog/popular')

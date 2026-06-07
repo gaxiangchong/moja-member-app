@@ -11,8 +11,11 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -34,6 +37,13 @@ export class BentoQuoteDto {
 
   @IsBoolean()
   includeDrinkAddon!: boolean;
+
+  /** Group-buy quantity (defaults to 1). Used for capacity checks before payment. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  sets?: number;
 }
 
 export class BentoCheckoutDto extends BentoQuoteDto {

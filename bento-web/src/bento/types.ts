@@ -24,6 +24,19 @@ export type BentoPackage = {
   perksLabel?: string | null;
 };
 
+export type PurchaseCapacityInfo = {
+  canPurchase: boolean;
+  requiredPacks: number;
+  availablePacksInWindow: number;
+  windowDays: number;
+  windowStartDate: string;
+  windowEndDate: string;
+  nextAvailableDate: string | null;
+  daysUntilAvailable: number | null;
+  dailyCapacityPacks: number;
+  ordersPaused: boolean;
+};
+
 export type BentoQuote = {
   lines: Array<{ label: string; amountCents: number }>;
   subtotalMealsCents: number;
@@ -37,6 +50,7 @@ export type BentoQuote = {
   dinnerCredits: number;
   mealCredits: number;
   package: BentoPackage;
+  purchaseAvailability?: PurchaseCapacityInfo;
 };
 
 export type BentoSchedulingMeta = {

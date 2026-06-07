@@ -7,6 +7,7 @@ type Props = {
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
   includeFreeSoupAndDrinks?: boolean;
+  drinksAndSoupEnabled?: boolean;
   onLunchVariantChange: (v: BentoDietVariant) => void;
   onDinnerVariantChange: (v: BentoDietVariant) => void;
   onRiceTypeChange: (v: BentoRiceType) => void;
@@ -20,6 +21,7 @@ export function MenuPicker({
   riceType,
   includeDrinkAddon,
   includeFreeSoupAndDrinks,
+  drinksAndSoupEnabled = true,
   onLunchVariantChange,
   onDinnerVariantChange,
   onRiceTypeChange,
@@ -33,7 +35,11 @@ export function MenuPicker({
       <div className="sectionHeader">
         <div>
           <h2>Customize your menu</h2>
-          <p className="caption">Select your preferred meal type, rice, and drink options before checkout.</p>
+          <p className="caption">
+            {drinksAndSoupEnabled
+              ? 'Select your preferred meal type, rice, and drink options before checkout.'
+              : 'Select your preferred meal type and rice before checkout.'}
+          </p>
         </div>
       </div>
 
@@ -69,9 +75,9 @@ export function MenuPicker({
           <div className="menuSectionHeader">
             <h3>Dinner</h3>
             <p className="caption">
-              {includeFreeSoupAndDrinks
+              {drinksAndSoupEnabled && includeFreeSoupAndDrinks
                 ? 'Soup is included with your plan.'
-                : 'Choose your dinner style; soup is charged separately.'}
+                : 'Choose your dinner style for all dinner days.'}
             </p>
           </div>
           <div className="variantGrid">
@@ -119,23 +125,25 @@ export function MenuPicker({
         </div>
       </div>
 
-      <div className="menuSection">
-        <div className="menuSectionHeader">
-          <h3>Drinks</h3>
+      {drinksAndSoupEnabled && (
+        <div className="menuSection">
+          <div className="menuSectionHeader">
+            <h3>Drinks</h3>
+          </div>
+          {includeFreeSoupAndDrinks ? (
+            <p className="caption">Drinks are included in this plan, so no extra selection is needed.</p>
+          ) : (
+            <label className="checkRow">
+              <input
+                type="checkbox"
+                checked={includeDrinkAddon}
+                onChange={(e) => onDrinkAddonChange(e.target.checked)}
+              />
+              Drink add-on <small>(+RM4/meal)</small>
+            </label>
+          )}
         </div>
-        {includeFreeSoupAndDrinks ? (
-          <p className="caption">Drinks are included in this plan, so no extra selection is needed.</p>
-        ) : (
-          <label className="checkRow">
-            <input
-              type="checkbox"
-              checked={includeDrinkAddon}
-              onChange={(e) => onDrinkAddonChange(e.target.checked)}
-            />
-            Drink add-on <small>(+RM4/meal)</small>
-          </label>
-        )}
-      </div>
+      )}
     </section>
   );
 }

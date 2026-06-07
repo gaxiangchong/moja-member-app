@@ -54,9 +54,26 @@ button {
 /* ---- Shell ---- */
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: transparent;
+}
+
+/* Logged-in layout: only main scrolls; bottom nav stays pinned */
+.appShell {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.appShell .shell {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
 }
 
 .shell {
@@ -67,17 +84,102 @@ button {
   padding: 18px 16px 110px;
 }
 
+/* Capacity urgency (post-payment / scheduling) */
+.capacityUrgencyNotice {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #7c2d12;
+}
+
+.capacityUrgencyNotice strong {
+  font-weight: 800;
+}
+
+.capacityUrgencyNoticeBanner {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(22, 101, 52, 0.15);
+  color: #14532d;
+  font-size: 0.82rem;
+}
+
+.capacityUrgencyCard {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1px solid #fdba74;
+}
+
+.capacityUrgencyCard .capacityUrgencyNotice {
+  color: #9a3412;
+}
+
+/* Checkout — purchase blocked by capacity */
+.purchaseCapacityBlock {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.purchaseCapacityBlockPaused {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.purchaseCapacityTitle {
+  margin: 0 0 6px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #991b1b;
+}
+
+.purchaseCapacityBlockPaused .purchaseCapacityTitle {
+  color: #9a3412;
+}
+
+.purchaseCapacityBody,
+.purchaseCapacityAction {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+
+.purchaseCapacityBlockPaused .purchaseCapacityBody,
+.purchaseCapacityBlockPaused .purchaseCapacityAction {
+  color: #9a3412;
+}
+
+.purchaseCapacityAction {
+  margin-bottom: 0;
+}
+
+.purchaseCapacityBody strong,
+.purchaseCapacityAction strong {
+  font-weight: 800;
+}
+
 /* ---- Bottom tabs — enhanced ---- */
 .bottomTabs {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 100;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.96);
   border-top: 1px solid rgba(237, 232, 224, 0.9);
   padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   backdrop-filter: blur(16px);
   box-shadow: 0 -4px 20px rgba(43, 33, 24, 0.06);
+}
+
+.appShell .bottomTabs {
+  position: static;
 }
 
 .bottomTabsInner {
@@ -1336,6 +1438,27 @@ button {
   pointer-events: none;
 }
 
+.calCell.calFull {
+  pointer-events: none;
+  background: #e8e4df;
+  cursor: not-allowed;
+}
+
+.calCell.calFull .calDayNum {
+  color: #b0a598;
+  font-weight: 500;
+}
+
+.calFullTag {
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #9a8b7e;
+  line-height: 1;
+  margin-top: 1px;
+}
+
 .calDayNum {
   font-size: 0.83rem;
   font-weight: 600;
@@ -2035,6 +2158,17 @@ button {
 .calListRowOff {
   opacity: 0.72;
   background: #faf7f3;
+}
+
+.calListRowFull {
+  opacity: 0.85;
+  background: #ece8e4;
+  border-color: #ddd6ce;
+}
+
+.calListRowFull .calListStatus {
+  color: #9a8b7e;
+  font-weight: 700;
 }
 
 .calListRowSelected {

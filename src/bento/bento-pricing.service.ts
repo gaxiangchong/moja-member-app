@@ -32,6 +32,8 @@ export type BentoQuoteInput = {
   mealOption: BentoMealOption;
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
+  /** When false, soup surcharges and drink add-ons are not offered. */
+  drinksAndSoupEnabled?: boolean;
 };
 
 export type MealCreditSplit = {
@@ -80,11 +82,16 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
     mealOption,
     riceType,
     includeDrinkAddon,
+    drinksAndSoupEnabled = true,
   } = input;
 
-  const dinnerPremiumPerMeal = includeFreeSoupAndDrinks
+  const effectiveFreePerks =
+    drinksAndSoupEnabled && includeFreeSoupAndDrinks;
+  const dinnerPremiumPerMeal = effectiveFreePerks
     ? 0
-    : BENTO_DINNER_PREMIUM_CENTS;
+    : drinksAndSoupEnabled
+      ? BENTO_DINNER_PREMIUM_CENTS
+      : 0;
 
   if (packageCode === BentoPackageCode.NEWCOMER_3 && mealOption !== BentoMealOption.LUNCH) {
     throw new Error('NEWCOMER_3 requires lunch-only meal option');
@@ -112,7 +119,7 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
       : 0;
 
   const drinkAddonCents =
-    includeFreeSoupAndDrinks || !includeDrinkAddon
+    !drinksAndSoupEnabled || effectiveFreePerks || !includeDrinkAddon
       ? 0
       : totalMealSlots * BENTO_DRINK_ADDON_CENTS;
 
@@ -140,7 +147,7 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
   } else if (mealOption === BentoMealOption.DINNER) {
     const dinnerRate = pricePerMealCents + dinnerPremiumPerMeal;
     lines.push({
-      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${dinnerPremiumPerMeal ? '' : ' (soup included)'}`,
+      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${drinksAndSoupEnabled && !dinnerPremiumPerMeal ? ' (soup included)' : ''}`,
       amountCents: split.dinnerCredits * dinnerRate,
     });
   } else {
@@ -150,12 +157,12 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
     });
     const dinnerRate = pricePerMealCents + dinnerPremiumPerMeal;
     lines.push({
-      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${dinnerPremiumPerMeal ? ' (+RM1/meal)' : ' (soup included)'}`,
+      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${drinksAndSoupEnabled && dinnerPremiumPerMeal ? ' (+RM1/meal)' : drinksAndSoupEnabled ? ' (soup included)' : ''}`,
       amountCents: split.dinnerCredits * dinnerRate,
     });
   }
 
-  if (includeFreeSoupAndDrinks) {
+  if (effectiveFreePerks) {
     lines.push({
       label: 'Plan perk: free soup & drinks on all meals',
       amountCents: 0,
@@ -168,7 +175,7 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
       amountCents: brownRiceAddonCents,
     });
   }
-  if (drinkAddonCents > 0) {
+  if (drinksAndSoupEnabled && drinkAddonCents > 0) {
     lines.push({
       label: `Drinks add-on (${totalMealSlots} meals @ RM4)`,
       amountCents: drinkAddonCents,

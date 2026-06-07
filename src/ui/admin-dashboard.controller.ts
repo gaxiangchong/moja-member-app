@@ -2516,6 +2516,31 @@ export class AdminDashboardController {
         <section id="settings-bento-menu" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
+              <h2>Bento operations</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="bentoSettingsSaveBtn">Save capacity</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                Limit how many <strong>packs</strong> (each lunch or dinner counts as one pack) can be scheduled on the same calendar day across all customers. Scheduling is rejected when a day would exceed this limit.
+              </p>
+              <label for="bentoDailyCapacity">Daily capacity (packs)</label>
+              <input type="number" id="bentoDailyCapacity" min="1" max="10000" step="1" value="50" style="max-width:160px" />
+              <label class="field-hint" style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
+                <input type="checkbox" id="bentoBlockNewOrders" />
+                Pause all new meal plan orders (manual override)
+              </label>
+              <p class="field-hint" style="margin-top:4px">
+                When paused, customers cannot checkout even if individual days have slots. Automatic capacity checks still apply when this is off.
+              </p>
+              <p class="field-hint" id="bentoSettingsSaveResult"></p>
+              <p class="field-hint" id="bentoSettingsEnvHint" style="display:none;color:#b45309"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
               <h2>Bento weekly menu</h2>
               <div class="sheet-actions">
                 <button type="button" class="btn-outline" id="refreshBentoMenuBtn">Refresh</button>
@@ -4613,6 +4638,7 @@ export class AdminDashboardController {
         const cfg = await api('/admin/bento-menu');
         lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
         renderBentoMenu();
+        await loadBentoSettings();
       } catch (e) {
         var msg = e && e.message ? String(e.message) : String(e);
         if (msg.indexOf('401') !== -1 || msg.indexOf('ADMIN_UNAUTHORIZED') !== -1) {
@@ -4651,6 +4677,52 @@ export class AdminDashboardController {
           };
         }),
       };
+    }
+    async function loadBentoSettings() {
+      var capEl = document.getElementById('bentoDailyCapacity');
+      var blockEl = document.getElementById('bentoBlockNewOrders');
+      var envHint = document.getElementById('bentoSettingsEnvHint');
+      if (!capEl) return;
+      try {
+        var cfg = await api('/admin/bento-settings');
+        if (cfg && typeof cfg.dailyCapacityPacks === 'number') {
+          capEl.value = String(cfg.dailyCapacityPacks);
+        }
+        if (blockEl) {
+          blockEl.checked = Boolean(cfg && cfg.blockNewOrders);
+        }
+        if (envHint) {
+          if (cfg && cfg.envOverride) {
+            envHint.style.display = 'block';
+            envHint.textContent = 'Note: BENTO_DAILY_CAPACITY_PACKS in the API environment overrides this file (' + cfg.effectiveDailyCapacityPacks + ' packs effective).';
+          } else {
+            envHint.style.display = 'none';
+            envHint.textContent = '';
+          }
+        }
+      } catch (e) {
+        /* non-fatal */
+      }
+    }
+    async function saveBentoSettings() {
+      var out = document.getElementById('bentoSettingsSaveResult');
+      var capEl = document.getElementById('bentoDailyCapacity');
+      var blockEl = document.getElementById('bentoBlockNewOrders');
+      if (!capEl) return;
+      if (out) out.textContent = 'Saving…';
+      try {
+        var n = parseInt(String(capEl.value), 10);
+        if (!n || n < 1) throw new Error('Enter a capacity of at least 1 pack.');
+        var saved = await apiPut('/admin/bento-settings', {
+          dailyCapacityPacks: n,
+          blockNewOrders: blockEl ? blockEl.checked : false,
+        });
+        if (out) out.textContent = 'Saved. Daily limit is ' + (saved.effectiveDailyCapacityPacks || n) + ' packs.' +
+          (saved.blockNewOrders ? ' New orders are paused.' : '');
+        await loadBentoSettings();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
     }
     async function saveBentoMenu() {
       var out = document.getElementById('bentoMenuSaveResult');
@@ -6083,6 +6155,12 @@ export class AdminDashboardController {
     if (bentoMenuSaveBtn) {
       bentoMenuSaveBtn.addEventListener('click', function () {
         saveBentoMenu();
+      });
+    }
+    var bentoSettingsSaveBtn = document.getElementById('bentoSettingsSaveBtn');
+    if (bentoSettingsSaveBtn) {
+      bentoSettingsSaveBtn.addEventListener('click', function () {
+        saveBentoSettings();
       });
     }
     var bentoMenuBody = document.getElementById('bentoMenuBody');

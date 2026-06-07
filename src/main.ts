@@ -62,18 +62,23 @@ async function bootstrap() {
   const clientOrigins = process.env.CLIENT_WEB_ORIGIN?.split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const shopOrigin = process.env.SHOP_WEB_BASE_URL?.trim();
   const corsOrigins = [...(clientOrigins ?? [])];
-  if (shopOrigin) {
+
+  /** Also allow explicit public app URLs (avoids CORS misses when only BENTO_* is set). */
+  for (const raw of [
+    process.env.SHOP_WEB_BASE_URL?.trim(),
+    process.env.BENTO_APP_PUBLIC_URL?.trim(),
+    process.env.MEMBER_APP_PUBLIC_URL?.trim(),
+  ]) {
+    if (!raw) continue;
     try {
-      const origin = new URL(
-        shopOrigin.endsWith('/') ? shopOrigin : `${shopOrigin}/`,
-      ).origin;
+      const origin = new URL(raw.endsWith('/') ? raw : `${raw}/`).origin;
       if (!corsOrigins.includes(origin)) corsOrigins.push(origin);
     } catch {
-      /* ignore invalid SHOP_WEB_BASE_URL */
+      /* ignore invalid URL */
     }
   }
+
   app.enableCors({
     origin: corsOrigins.length ? corsOrigins : true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],

@@ -8,6 +8,7 @@ import {
 } from '../api';
 import type { OrderDraft } from './types';
 import { formatRm } from './types';
+import { PurchaseCapacityNotice } from './PurchaseCapacityNotice';
 
 type Props = {
   draft: OrderDraft;
@@ -29,7 +30,10 @@ export function Checkout({ draft, onSuccess }: Props) {
 
   const isTrialPack = draft.packageCode === 'NEWCOMER_3';
   const sets = isTrialPack ? 1 : groupBuy ? qty : 1;
-  const canCheckout = Boolean(draft.packageCode) && Boolean(quote);
+  const canCheckout =
+    Boolean(draft.packageCode) &&
+    Boolean(quote) &&
+    (quote?.purchaseAvailability?.canPurchase !== false);
 
   useEffect(() => {
     void fetchPaymentsConfig()
@@ -67,11 +71,12 @@ export function Checkout({ draft, onSuccess }: Props) {
       dinnerVariant: draft.dinnerVariant,
       riceType: draft.riceType,
       includeDrinkAddon: draft.includeDrinkAddon,
+      sets,
     })
       .then((q) => { if (!cancelled) { setQuote(q); setError(null); } })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Quote failed'); });
     return () => { cancelled = true; };
-  }, [draft]);
+  }, [draft, sets]);
 
   const handlePay = async () => {
     if (!draft.packageCode || !quote) return;
@@ -86,6 +91,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       riceType: draft.riceType,
       includeDrinkAddon: draft.includeDrinkAddon,
       channelCode: paymentsDemoMode ? undefined : channelCode || undefined,
+      sets,
     };
 
     try {
@@ -133,7 +139,11 @@ export function Checkout({ draft, onSuccess }: Props) {
 
       {!quote && draft.packageCode && <p className="caption">Calculating total…</p>}
 
-      {quote && (
+      {quote?.purchaseAvailability && !quote.purchaseAvailability.canPurchase && (
+        <PurchaseCapacityNotice availability={quote.purchaseAvailability} />
+      )}
+
+      {quote && quote.purchaseAvailability?.canPurchase !== false && (
         <>
           <ul className="quoteLines">
             {quote.lines.map((line) => (
@@ -228,7 +238,7 @@ export function Checkout({ draft, onSuccess }: Props) {
         </>
       )}
 
-      {paymentsDemoMode && (
+      {paymentsDemoMode && quote?.purchaseAvailability?.canPurchase !== false && (
         <p className="demoBanner">Demo mode — payment is bypassed for this preview.</p>
       )}
 

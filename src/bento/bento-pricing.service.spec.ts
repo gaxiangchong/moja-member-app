@@ -132,4 +132,24 @@ describe('quoteBentoCheckout', () => {
     expect(q.savingsPerMealCents).toBe(BENTO_SAVINGS_BASELINE_CENTS - 1300);
     expect(q.totalSavingsCents).toBe(500 * 30);
   });
+
+  it('skips soup surcharge and drink add-ons when drinksAndSoupEnabled is false', () => {
+    const q = quoteBentoCheckout({
+      packageCode: BentoPackageCode.DAYS_30,
+      mealCredits: 30,
+      pricePerMealCents: 1300,
+      fixedCheckoutCents: null,
+      includeFreeSoupAndDrinks: true,
+      mealOption: BentoMealOption.BOTH,
+      riceType: BentoRiceType.BROWN,
+      includeDrinkAddon: true,
+      drinksAndSoupEnabled: false,
+    });
+    expect(q.dinnerPremiumCents).toBe(0);
+    expect(q.drinkAddonCents).toBe(0);
+    expect(q.subtotalMealsCents).toBe(30 * 1300);
+    expect(q.totalCents).toBe(30 * 1300 + 30 * 200);
+    expect(q.lines.some((l) => l.label.includes('soup'))).toBe(false);
+    expect(q.lines.some((l) => l.label.includes('Drinks'))).toBe(false);
+  });
 });
