@@ -8,6 +8,7 @@ import {
   fetchMe,
   fetchMyBentoSubscriptions,
   getToken,
+  isProfileIncomplete,
   updateMe,
   type MemberProfile,
 } from './api';
@@ -166,9 +167,13 @@ function AccountTab({
   const [name, setName] = useState(profile.displayName ?? '');
   const [email, setEmail] = useState(profile.email ?? '');
   const [birthday, setBirthday] = useState(profile.birthday?.slice(0, 10) ?? '');
+  const [gender, setGender] = useState(profile.gender ?? '');
+  const [address, setAddress] = useState(profile.address ?? '');
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showHistoryPage, setShowHistoryPage] = useState(false);
+
+  const incomplete = isProfileIncomplete(profile);
 
   if (showHistoryPage) {
     return <PurchaseHistoryPage onBack={() => setShowHistoryPage(false)} />;
@@ -183,6 +188,8 @@ function AccountTab({
         displayName: name || undefined,
         email: email || undefined,
         birthday: birthday || undefined,
+        gender: gender || undefined,
+        address: address || undefined,
       });
       onProfileUpdated(updated);
       setMsg('Profile saved.');
@@ -195,15 +202,43 @@ function AccountTab({
 
   return (
     <section className="section accountForm">
-      <h2>Account</h2>
+      <h2>
+        Account
+        {incomplete && (
+          <span className="accountIncompleteMark" title="Profile incomplete" aria-hidden>
+            !
+          </span>
+        )}
+      </h2>
       <p className="caption">{profile.phoneE164}</p>
+      {incomplete && (
+        <p className="profileIncompleteCue" role="status">
+          Please complete your profile — name, email, birthday, sex, and delivery address are required.
+        </p>
+      )}
       <form onSubmit={(e) => void save(e)}>
         <label htmlFor="name">Name</label>
-        <input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
         <label htmlFor="email">Email</label>
-        <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <label htmlFor="birthday">Birthday</label>
-        <input id="birthday" type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
+        <input id="birthday" type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} required />
+        <label htmlFor="gender">Sex</label>
+        <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} required>
+          <option value="">Select…</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+        <label htmlFor="address">Address</label>
+        <textarea
+          id="address"
+          rows={3}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Office / home address"
+          required
+        />
         {msg && <p className="hint">{msg}</p>}
         <button type="submit" className="btnPrimary" disabled={saving}>
           {saving ? 'Saving…' : 'Save profile'}
@@ -238,6 +273,11 @@ export default function App() {
   const selectedPkg = useMemo(
     () => packages.find((p) => p.code === draft.packageCode) ?? null,
     [packages, draft.packageCode],
+  );
+
+  const profileIncomplete = useMemo(
+    () => (profile ? isProfileIncomplete(profile) : false),
+    [profile],
   );
 
   const loadMember = useCallback(async () => {
@@ -423,6 +463,9 @@ export default function App() {
           >
             <span className="tabIcon">👤</span>
             Account
+            {profileIncomplete && (
+              <span className="tabAlertBadge" aria-label="Profile incomplete">!</span>
+            )}
           </button>
         </div>
       </nav>

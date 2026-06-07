@@ -40,6 +40,7 @@
 }
 
 .bottomTabs button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -830,6 +831,68 @@
 .accountForm input:focus {
   outline: none;
   border-color: #c2410c;
+}
+
+.accountForm select,
+.accountForm textarea {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 140ms ease;
+  resize: vertical;
+}
+
+.accountForm select:focus,
+.accountForm textarea:focus {
+  outline: none;
+  border-color: #c2410c;
+}
+
+.accountIncompleteMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+.profileIncompleteCue {
+  color: #b42318;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  font-weight: 500;
+}
+
+.tabAlertBadge {
+  position: absolute;
+  top: 2px;
+  right: calc(50% - 28px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
 }
 
 /* ---- Schedule / Calendar ---- */

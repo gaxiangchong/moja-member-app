@@ -199,7 +199,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
                 {loading ? 'Checking…' : 'Continue'}
               </button>
               <p className="authTrust">
-                New sign-ins use a one-time code sent to your email — same as the Moja member app.
+                New sign-ins use a one-time code sent to your email. Kindly check your junk folder if you don't see it.
               </p>
             </form>
           </>

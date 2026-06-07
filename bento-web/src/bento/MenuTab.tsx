@@ -95,17 +95,17 @@ export function MenuTab({ onOrderNow }: Props) {
         <div className="menuDietSwitch">
           <button
             type="button"
-            className={`menuDietBtn${showVeg ? ' active' : ''}`}
-            onClick={() => setShowVeg(true)}
-          >
-            {t.veg}
-          </button>
-          <button
-            type="button"
             className={`menuDietBtn${!showVeg ? ' active' : ''}`}
             onClick={() => setShowVeg(false)}
           >
             {t.regular}
+          </button>
+          <button
+            type="button"
+            className={`menuDietBtn${showVeg ? ' active' : ''}`}
+            onClick={() => setShowVeg(true)}
+          >
+            {t.veg}
           </button>
         </div>
 

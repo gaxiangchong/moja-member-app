@@ -292,6 +292,7 @@ export class CustomersService {
       email: customer.email,
       birthday: customer.birthday,
       gender: customer.gender,
+      address: customer.address,
       preferredStore: customer.preferredStore,
       signupSource: customer.signupSource,
       memberTier: customer.memberTier,
@@ -328,6 +329,7 @@ export class CustomersService {
       email?: string;
       birthday?: string;
       gender?: string;
+      address?: string;
       preferredStore?: string;
       marketingConsent?: boolean;
     },
@@ -344,6 +346,7 @@ export class CustomersService {
               : null
             : undefined,
         gender: dto.gender ?? undefined,
+        address: dto.address ?? undefined,
         preferredStore: dto.preferredStore ?? undefined,
         marketingConsent: dto.marketingConsent ?? undefined,
       },

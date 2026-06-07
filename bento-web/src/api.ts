@@ -139,7 +139,19 @@ export type MemberProfile = {
   displayName: string | null;
   email: string | null;
   birthday: string | null;
+  gender: string | null;
+  address: string | null;
 };
+
+export function isProfileIncomplete(p: MemberProfile): boolean {
+  return (
+    !p.displayName?.trim() ||
+    !p.email?.trim() ||
+    !p.birthday?.trim() ||
+    !p.gender?.trim() ||
+    !p.address?.trim()
+  );
+}
 
 export async function fetchMe(): Promise<MemberProfile> {
   const token = getToken();
@@ -147,15 +159,27 @@ export async function fetchMe(): Promise<MemberProfile> {
   const res = await fetch(`${base}/customers/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const data = await parseJson<MemberProfile & { message?: string }>(res);
+  const data = await parseJson<
+    MemberProfile & { message?: string; gender?: string | null; address?: string | null }
+  >(res);
   if (!res.ok) throw new Error(data.message ?? 'Failed to load profile');
-  return data;
+  return {
+    id: data.id,
+    phoneE164: data.phoneE164,
+    displayName: data.displayName ?? null,
+    email: data.email ?? null,
+    birthday: data.birthday ?? null,
+    gender: data.gender ?? null,
+    address: data.address ?? null,
+  };
 }
 
 export async function updateMe(input: {
   displayName?: string;
   email?: string;
   birthday?: string;
+  gender?: string;
+  address?: string;
 }): Promise<MemberProfile> {
   const token = getToken();
   if (!token) throw new Error('Not signed in');
@@ -169,7 +193,15 @@ export async function updateMe(input: {
   });
   const data = await parseJson<MemberProfile & { message?: string }>(res);
   if (!res.ok) throw new Error(data.message ?? 'Failed to update profile');
-  return data;
+  return {
+    id: data.id,
+    phoneE164: data.phoneE164,
+    displayName: data.displayName ?? null,
+    email: data.email ?? null,
+    birthday: data.birthday ?? null,
+    gender: data.gender ?? null,
+    address: data.address ?? null,
+  };
 }
 
 async function authFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {

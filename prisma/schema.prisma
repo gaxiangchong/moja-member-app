@@ -446,6 +446,7 @@ model Customer {
   salesplayCustomerId String? @map("salesplay_customer_id")
   birthday    DateTime?      @db.Date
   gender      String?        @map("gender")
+  address     String?        @map("address")
   preferredStore String?     @map("preferred_store")
   signupSource String        @default("otp") @map("signup_source")
   memberTier  String         @default("standard") @map("member_tier")

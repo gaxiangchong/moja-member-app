@@ -30,6 +30,11 @@ export class UpdateMeDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(120)
   preferredStore?: string;
 
