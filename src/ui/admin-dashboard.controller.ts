@@ -696,6 +696,42 @@ export class AdminDashboardController {
       .form-row-2 { grid-template-columns: 1fr; }
     }
     .hidden { display: none !important; }
+    body.login-locked { overflow: hidden; }
+    .login-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: linear-gradient(165deg, #f8fafc 0%, #dbeafe 48%, var(--main-bg) 100%);
+    }
+    .login-card {
+      width: min(440px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow), 0 24px 48px rgba(15, 23, 42, 0.12);
+      padding: 28px 26px 24px;
+    }
+    .login-brand {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .login-brand span { color: var(--primary); }
+    .login-title { margin: 0 0 6px; font-size: 24px; font-weight: 800; color: var(--text); }
+    .login-lead { margin: 0 0 18px; font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+    .login-status {
+      min-height: 20px;
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--danger);
+    }
+    .login-status.ok { color: var(--ok); }
     .tab-panel { margin-top: 0; }
     .muted-box { padding: 16px 20px; color: var(--text-muted); font-size: 13px; }
     .mk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 20px; }
@@ -862,7 +898,41 @@ export class AdminDashboardController {
     }
   </style>
 </head>
-<body>
+<body class="login-locked">
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card" role="main">
+      <div class="login-brand">Moja <span>Member admin</span></div>
+      <h1 class="login-title">Sign in</h1>
+      <p class="login-lead">Authenticate before accessing the back-office dashboard.</p>
+      <div class="auth-form-grid">
+        <div class="auth-mode-tabs">
+          <button type="button" class="auth-mode-btn active" id="authTabKey">API key</button>
+          <button type="button" class="auth-mode-btn" id="authTabJwt">Email &amp; password</button>
+        </div>
+        <div id="authKeyPanel">
+          <div class="form-section" style="margin-top:0">
+            <label for="apiKey">Admin API key</label>
+            <input id="apiKey" type="password" placeholder="From ADMIN_API_KEYS in server env" autocomplete="off" />
+          </div>
+        </div>
+        <div id="authJwtPanel" class="hidden">
+          <div class="form-section" style="margin-top:0">
+            <label for="adminEmail">Admin email</label>
+            <input id="adminEmail" type="email" placeholder="admin@example.com" autocomplete="username" />
+          </div>
+          <div class="form-section">
+            <label for="adminPassword">Password</label>
+            <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" />
+          </div>
+        </div>
+        <p class="muted-hint" id="authHelpText">Use an API key for service access, or sign in with admin credentials.</p>
+      </div>
+      <button type="button" class="btn-primary" id="loginSubmitBtn" style="width:100%;margin-top:8px">Sign in</button>
+      <p class="login-status" id="loginStatus" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div id="dashboardApp" class="hidden">
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-brand">Moja <small>Member admin</small></div>
@@ -1049,8 +1119,7 @@ export class AdminDashboardController {
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" class="btn-primary btn-outline" id="refreshDataBtn">Refresh data</button>
-            <button type="button" class="btn-primary" id="connectBtn">Connect</button>
-            <button type="button" class="btn-primary btn-outline" id="disconnectBtn">Disconnect</button>
+            <button type="button" class="btn-primary btn-outline" id="disconnectBtn">Sign out</button>
           </div>
         </div>
       </div>
@@ -1064,7 +1133,7 @@ export class AdminDashboardController {
           <span class="phase-badge">Phase 1</span>
         </div>
 
-        <div class="info-banner" id="statusPanel">Use an <strong>API key</strong> or <strong>sign in</strong>, then choose <strong>Connect / refresh</strong> to load data.</div>
+        <div class="info-banner" id="statusPanel">Dashboard data loads from <code>/admin/*</code>. Use <strong>Refresh data</strong> to reload.</div>
 
         <section id="dashboard-overview" class="tab-panel">
           <div id="ovPanelMetrics">
@@ -2814,44 +2883,9 @@ export class AdminDashboardController {
       </div>
     </main>
   </div>
+  </div>
 
   <div id="editMemberBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
-  <div id="authBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
-  <div id="authModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-    <div class="modal-head">
-      <h2 id="authTitle">Connect to Admin API</h2>
-      <button type="button" class="icon-btn" id="authClose" aria-label="Close" style="margin:0">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="auth-form-grid">
-        <div class="auth-mode-tabs">
-          <button type="button" class="auth-mode-btn active" id="authTabKey">API key</button>
-          <button type="button" class="auth-mode-btn" id="authTabJwt">Email &amp; password</button>
-        </div>
-        <div id="authKeyPanel">
-          <div class="form-section" style="margin-top:0">
-            <label for="apiKey">Admin API key</label>
-            <input id="apiKey" type="password" placeholder="x-admin-api-key header value" autocomplete="off" />
-          </div>
-        </div>
-        <div id="authJwtPanel" class="hidden">
-          <div class="form-section" style="margin-top:0">
-            <label for="adminEmail">Admin email</label>
-            <input id="adminEmail" type="email" placeholder="admin@example.com" autocomplete="username" />
-          </div>
-          <div class="form-section">
-            <label for="adminPassword">Password</label>
-            <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" />
-          </div>
-        </div>
-        <p class="muted-hint" id="authHelpText">Use API key for service access, or sign in to get JWT.</p>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn-outline" id="authCancel">Cancel</button>
-      <button type="button" class="btn-primary" id="authSubmit">Connect</button>
-    </div>
-  </div>
   <div id="editMemberModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="editMemberTitle">
     <div class="modal-head">
       <h2 id="editMemberTitle">Edit member</h2>
@@ -2985,17 +3019,15 @@ export class AdminDashboardController {
     const titleIcon = document.getElementById('titleIcon');
     const statusPanel = document.getElementById('statusPanel');
     const apiKeyInput = document.getElementById('apiKey');
-    const connectBtn = document.getElementById('connectBtn');
     const refreshDataBtn = document.getElementById('refreshDataBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const connectionDot = document.getElementById('connectionDot');
     const connectionStateText = document.getElementById('connectionStateText');
     const connectionMeta = document.getElementById('connectionMeta');
-    const authBackdrop = document.getElementById('authBackdrop');
-    const authModal = document.getElementById('authModal');
-    const authClose = document.getElementById('authClose');
-    const authCancel = document.getElementById('authCancel');
-    const authSubmit = document.getElementById('authSubmit');
+    const loginScreen = document.getElementById('loginScreen');
+    const dashboardApp = document.getElementById('dashboardApp');
+    const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+    const loginStatus = document.getElementById('loginStatus');
     const authTabKey = document.getElementById('authTabKey');
     const authTabJwt = document.getElementById('authTabJwt');
     const authKeyPanel = document.getElementById('authKeyPanel');
@@ -3604,6 +3636,22 @@ export class AdminDashboardController {
     let currentAuthMode = localStorage.getItem('moja_admin_auth_mode') || (localStorage.getItem('moja_admin_jwt') ? 'jwt' : 'key');
     let isConnected = false;
 
+    function setLoginStatus(message, ok) {
+      if (!loginStatus) return;
+      loginStatus.textContent = message || '';
+      loginStatus.classList.toggle('ok', !!ok);
+    }
+
+    function showDashboard(on) {
+      loginScreen.classList.toggle('hidden', on);
+      dashboardApp.classList.toggle('hidden', !on);
+      document.body.classList.toggle('login-locked', !on);
+      if (!on) {
+        isConnected = false;
+        updateConnectionUi();
+      }
+    }
+
     function setAuthTab(mode) {
       currentAuthMode = mode === 'jwt' ? 'jwt' : 'key';
       localStorage.setItem('moja_admin_auth_mode', currentAuthMode);
@@ -3615,7 +3663,7 @@ export class AdminDashboardController {
       authHelpText.textContent = jwt
         ? 'Sign in with admin credentials to issue a JWT token.'
         : 'Use an API key for service-to-service access.';
-      authSubmit.textContent = jwt ? 'Sign in & connect' : 'Use API key';
+      if (loginSubmitBtn) loginSubmitBtn.textContent = jwt ? 'Sign in' : 'Sign in with API key';
     }
     setAuthTab(currentAuthMode);
 
@@ -3626,27 +3674,92 @@ export class AdminDashboardController {
         connectionMeta.textContent = currentAuthMode === 'jwt'
           ? 'Authenticated with email/password (JWT).'
           : 'Authenticated with API key.';
-        connectBtn.textContent = 'Manage connection';
       } else {
         connectionStateText.textContent = 'Not connected';
-        const hasJwt = !!localStorage.getItem('moja_admin_jwt');
-        const hasKey = !!normalizeKey(apiKeyInput.value);
-        connectionMeta.textContent = (hasJwt || hasKey)
-          ? 'Credentials saved locally. Click Refresh data to verify connectivity.'
-          : 'Authenticate with API key or email/password to load data.';
-        connectBtn.textContent = 'Connect';
+        connectionMeta.textContent = 'Sign in to load dashboard data.';
       }
     }
 
-    function openAuthModal() {
-      setAuthTab(currentAuthMode);
-      authBackdrop.classList.remove('hidden');
-      authModal.classList.remove('hidden');
+    async function submitLogin() {
+      setLoginStatus('');
+      loginSubmitBtn.disabled = true;
+      if (currentAuthMode === 'jwt') {
+        const email = adminEmail.value.trim();
+        const password = adminPassword.value;
+        if (!email || !password) {
+          setLoginStatus('Enter email and password.');
+          loginSubmitBtn.disabled = false;
+          return;
+        }
+        setLoginStatus('Signing in…', true);
+        try {
+          const res = await fetch('/admin/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          let data = {};
+          try { data = await res.json(); } catch (_) {}
+          if (!res.ok) {
+            const msg = data.message || data.error || res.statusText;
+            throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+          }
+          if (!data.accessToken) throw new Error('Login response missing accessToken');
+          localStorage.setItem('moja_admin_jwt', data.accessToken);
+          adminPassword.value = '';
+          await loadAll();
+          showDashboard(true);
+          setLoginStatus('');
+        } catch (err) {
+          isConnected = false;
+          updateConnectionUi();
+          setLoginStatus(err.message || String(err));
+        } finally {
+          loginSubmitBtn.disabled = false;
+        }
+        return;
+      }
+      const key = normalizeKey(apiKeyInput.value);
+      if (!key) {
+        setLoginStatus('Please enter your admin API key.');
+        loginSubmitBtn.disabled = false;
+        return;
+      }
+      apiKeyInput.value = key;
+      localStorage.setItem('moja_admin_api_key', key);
+      setLoginStatus('Verifying API key…', true);
+      try {
+        await loadAll();
+        showDashboard(true);
+        setLoginStatus('');
+      } catch (err) {
+        isConnected = false;
+        updateConnectionUi();
+        setLoginStatus(err.message || String(err));
+      } finally {
+        loginSubmitBtn.disabled = false;
+      }
     }
 
-    function closeAuthModal() {
-      authBackdrop.classList.add('hidden');
-      authModal.classList.add('hidden');
+    async function initSession() {
+      const hasJwt = !!localStorage.getItem('moja_admin_jwt');
+      const hasKey = !!normalizeKey(localStorage.getItem('moja_admin_api_key') || apiKeyInput.value);
+      if (!hasJwt && !hasKey) {
+        showDashboard(false);
+        return;
+      }
+      setLoginStatus('Verifying saved session…', true);
+      loginSubmitBtn.disabled = true;
+      try {
+        await loadAll();
+        showDashboard(true);
+        setLoginStatus('');
+      } catch (_) {
+        showDashboard(false);
+        setLoginStatus('Session expired or invalid. Sign in again.');
+      } finally {
+        loginSubmitBtn.disabled = false;
+      }
     }
     updateConnectionUi();
 
@@ -4643,7 +4756,7 @@ export class AdminDashboardController {
         var msg = e && e.message ? String(e.message) : String(e);
         if (msg.indexOf('401') !== -1 || msg.indexOf('ADMIN_UNAUTHORIZED') !== -1) {
           throw new Error(
-            'Authentication failed. Click Connect (top right), then use API key mode with the value from ADMIN_API_KEYS in your .env (local default: dev-admin-local), or sign in with admin email/password.',
+            'Authentication failed. Sign out and sign in again with a valid ADMIN_API_KEYS value or admin email/password.',
           );
         }
         throw e;
@@ -5806,7 +5919,7 @@ export class AdminDashboardController {
       }
     }
 
-    connectBtn.addEventListener('click', openAuthModal);
+    loginSubmitBtn.addEventListener('click', () => { submitLogin().catch(() => {}); });
     refreshDataBtn.addEventListener('click', () => {
       loadAll().catch(() => {});
     });
@@ -5817,69 +5930,16 @@ export class AdminDashboardController {
       adminPassword.value = '';
       isConnected = false;
       updateConnectionUi();
-      statusPanel.textContent = 'Disconnected. Open Connect to authenticate again.';
+      showDashboard(false);
+      setLoginStatus('Signed out.');
     });
     authTabKey.addEventListener('click', () => setAuthTab('key'));
     authTabJwt.addEventListener('click', () => setAuthTab('jwt'));
-    authClose.addEventListener('click', closeAuthModal);
-    authCancel.addEventListener('click', closeAuthModal);
-    authBackdrop.addEventListener('click', closeAuthModal);
-    authSubmit.addEventListener('click', async () => {
-      if (currentAuthMode === 'jwt') {
-        const email = adminEmail.value.trim();
-        const password = adminPassword.value;
-        if (!email || !password) {
-          statusPanel.textContent = 'Enter email and password.';
-          return;
-        }
-        statusPanel.textContent = 'Signing in…';
-        try {
-          const res = await fetch('/admin/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          });
-          let data = {};
-          try { data = await res.json(); } catch (_) {}
-          if (!res.ok) {
-            const msg = data.message || data.error || res.statusText;
-            throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-          }
-          if (!data.accessToken) throw new Error('Login response missing accessToken');
-          localStorage.setItem('moja_admin_jwt', data.accessToken);
-          adminPassword.value = '';
-          await loadAll();
-          closeAuthModal();
-          statusPanel.textContent = 'Connected with JWT.';
-        } catch (err) {
-          isConnected = false;
-          updateConnectionUi();
-          statusPanel.textContent = err.message || String(err);
-        }
-        return;
-      }
-      const key = normalizeKey(apiKeyInput.value);
-      if (!key) {
-        statusPanel.textContent = 'Please enter API key.';
-        return;
-      }
-      apiKeyInput.value = key;
-      localStorage.setItem('moja_admin_api_key', key);
-      try {
-        await loadAll();
-        closeAuthModal();
-        statusPanel.textContent = 'Connected with API key.';
-      } catch (err) {
-        isConnected = false;
-        updateConnectionUi();
-        statusPanel.textContent = err.message || String(err);
-      }
-    });
     [apiKeyInput, adminEmail, adminPassword].forEach((el) => {
       el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          authSubmit.click();
+          submitLogin().catch(() => {});
         }
       });
     });
@@ -5898,8 +5958,8 @@ export class AdminDashboardController {
     });
     document.getElementById('editMemberSave').addEventListener('click', () => saveEditMember().catch((e) => { statusPanel.textContent = e.message; }));
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !authModal.classList.contains('hidden')) {
-        closeAuthModal();
+      if (e.key === 'Escape' && dashboardApp.classList.contains('hidden')) {
+        adminPassword.value = '';
       }
       if (e.key === 'Escape' && !document.getElementById('editMemberModal').classList.contains('hidden')) {
         closeEditMemberModal();
@@ -7528,6 +7588,7 @@ export class AdminDashboardController {
     applyDashboardConfig().then(function () {
       wireNav();
       pcrRefreshCriteriaHint(false);
+      initSession().catch(function () {});
     });
   </script>
 </body>

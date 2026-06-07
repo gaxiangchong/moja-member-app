@@ -1,41 +1,25 @@
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useState } from 'react';
 import { timesheetClockIn, timesheetClockOut } from './api';
-import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
+import { OpsLoginScreen } from './OpsLoginScreen';
+import { defaultBase } from './opsSession';
+import { useOpsAuth } from './useOpsAuth';
 
 export function TimesheetWindowApp() {
-  const [apiKey, setApiKey] = useState(() => readStoredKey());
-  const [apiBase, setApiBase] = useState(() => readStoredBase());
-  const [unlockKey, setUnlockKey] = useState('');
-  const [unlockBase, setUnlockBase] = useState(() => readStoredBase());
+  const { state: authState, signIn } = useOpsAuth();
   const [employeeCode, setEmployeeCode] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const onUnlock = (e: FormEvent) => {
-    e.preventDefault();
-    const k = unlockKey.trim();
-    const b = unlockBase.trim() || defaultBase;
-    if (!k) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, k);
-      localStorage.setItem(STORAGE_BASE, b);
-    } catch {
-      /* private mode */
-    }
-    setApiKey(k);
-    setApiBase(b);
-  };
-
   const run = useCallback(
     async (mode: 'in' | 'out') => {
-      const k = apiKey.trim();
-      const b = apiBase.trim() || defaultBase;
-      const code = employeeCode.trim();
-      if (!k) {
-        setErr('No ops API key in this window. Unlock below or connect on the main queue tab first.');
+      if (authState.status !== 'authenticated') {
+        setErr('Sign in before clocking in or out.');
         return;
       }
+      const k = authState.apiKey.trim();
+      const b = authState.apiBase.trim() || defaultBase;
+      const code = employeeCode.trim();
       if (!code) {
         setErr('Enter your employee ID.');
         return;
@@ -60,77 +44,47 @@ export function TimesheetWindowApp() {
         setBusy(false);
       }
     },
-    [apiKey, apiBase, employeeCode],
+    [authState, employeeCode],
   );
 
-  if (!apiKey.trim()) {
+  if (authState.status !== 'authenticated') {
     return (
-      <div className="connectCard" style={{ marginTop: 24 }}>
-        <h1>Timesheet</h1>
-        <p className="muted" style={{ lineHeight: 1.5 }}>
-          This window needs the same <code>OPS_QUEUE_API_KEY</code> as the order queue. If you already
-          connected on the main tab, paste the key here once; it is saved in localStorage for this
-          browser.
-        </p>
-        <form onSubmit={onUnlock}>
-          <label htmlFor="tsUnlockBase">API base URL</label>
-          <input
-            id="tsUnlockBase"
-            value={unlockBase}
-            onChange={(ev) => setUnlockBase(ev.target.value)}
-            autoComplete="off"
-          />
-          <label htmlFor="tsUnlockKey">Ops API key</label>
-          <input
-            id="tsUnlockKey"
-            type="password"
-            value={unlockKey}
-            onChange={(ev) => setUnlockKey(ev.target.value)}
-            autoComplete="off"
-          />
-          <button type="submit" className="btnPrimary" style={{ marginTop: 16, width: '100%' }}>
-            Unlock
-          </button>
-        </form>
-      </div>
+      <OpsLoginScreen
+        title="Timesheet"
+        lead="Sign in with OPS_QUEUE_API_KEY before clocking in or out."
+        checking={authState.status === 'checking'}
+        onSubmit={signIn}
+      />
     );
   }
 
   return (
-    <div className="connectCard" style={{ marginTop: 24, maxWidth: 440 }}>
-      <h1>Timesheet</h1>
-      <p className="muted" style={{ lineHeight: 1.5 }}>
-        Enter your <strong>employee ID</strong> (same code configured in admin → Employee management),
-        then clock in at the start of shift and clock out at the end.
-      </p>
-      <label htmlFor="tsEmp">Employee ID</label>
-      <input
-        id="tsEmp"
-        value={employeeCode}
-        onChange={(ev) => setEmployeeCode(ev.target.value)}
-        autoComplete="username"
-        placeholder="e.g. E042"
-      />
-      <div className="btnRow" style={{ marginTop: 18 }}>
-        <button
-          type="button"
-          className="btnPrimary"
+    <div className="loginPage">
+      <div className="loginCard" style={{ maxWidth: 440 }}>
+        <div className="loginBrand">
+          Moja <span>Operations</span>
+        </div>
+        <h1 className="loginTitle">Timesheet</h1>
+        <p className="loginLead">Enter your employee ID, then clock in or out.</p>
+        <label htmlFor="tsEmployee">Employee ID</label>
+        <input
+          id="tsEmployee"
+          value={employeeCode}
+          onChange={(ev) => setEmployeeCode(ev.target.value)}
+          autoComplete="off"
           disabled={busy}
-          onClick={() => void run('in')}
-        >
-          {busy ? '…' : 'Clock in'}
-        </button>
-        <button
-          type="button"
-          className="btnGhost"
-          disabled={busy}
-          onClick={() => void run('out')}
-        >
-          Clock out
-        </button>
+        />
+        {err ? <p className="err">{err}</p> : null}
+        {msg ? <p className="loginStatus ok">{msg}</p> : null}
+        <div className="btnRow" style={{ marginTop: 16 }}>
+          <button type="button" className="btnPrimary" disabled={busy} onClick={() => void run('in')}>
+            Clock in
+          </button>
+          <button type="button" className="btnGhost" disabled={busy} onClick={() => void run('out')}>
+            Clock out
+          </button>
+        </div>
       </div>
-      {msg ? <p style={{ marginTop: 14, color: 'var(--ok, #16a34a)' }}>{msg}</p> : null}
-      {err ? <p className="err" style={{ marginTop: 14 }}>{err}</p> : null}
     </div>
   );
 }

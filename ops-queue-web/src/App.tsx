@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
 } from 'react';
 import {
   completeQueueOrder,
@@ -14,7 +13,9 @@ import {
   type QueueOrderSummary,
 } from './api';
 import { BentoPickupPanel } from './BentoPickupPanel';
+import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
+import { useOpsAuth } from './useOpsAuth';
 import { formatOrderPickupLabel } from './orderRef';
 
 /** Self pickup lines from ShopFlow: `Date: yyyy-mm-dd`, `Time: hh:mm`. */
@@ -194,8 +195,6 @@ function OrderDetailView({
 }) {
   const [apiKey, setApiKey] = useState(() => readStoredKey());
   const [apiBase, setApiBase] = useState(() => readStoredBase());
-  const [unlockKey, setUnlockKey] = useState('');
-  const [unlockBase, setUnlockBase] = useState(() => readStoredBase());
   const [data, setData] = useState<QueueOrderDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -216,59 +215,33 @@ function OrderDetailView({
 
   const detailShellClass = `detailShell${onDismiss ? ' detailShell--embedded' : ''}`;
 
-  const onUnlock = (e: FormEvent) => {
-    e.preventDefault();
-    const k = unlockKey.trim();
-    const b = unlockBase.trim() || defaultBase;
-    if (!k) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, k);
-      localStorage.setItem(STORAGE_BASE, b);
-    } catch {
-      /* private mode */
-    }
-    setApiKey(k);
-    setApiBase(b);
-  };
-
   if (!apiKey.trim()) {
     return (
-      <div className="connectCard" style={{ marginTop: onDismiss ? 0 : 24 }}>
-        <h1>Order detail</h1>
-        <p className="muted" style={{ lineHeight: 1.5 }}>
-          This window cannot read your ops key (private browsing, or first visit here only). Paste
-          the same key as <code>OPS_QUEUE_API_KEY</code> on the server, or use the main queue once
-          on this browser so the key is saved.
-        </p>
-        <form onSubmit={onUnlock}>
-          <label htmlFor="unlockBase">API base URL</label>
-          <input
-            id="unlockBase"
-            value={unlockBase}
-            onChange={(ev) => setUnlockBase(ev.target.value)}
-            autoComplete="off"
-          />
-          <label htmlFor="unlockKey">Ops API key</label>
-          <input
-            id="unlockKey"
-            type="password"
-            value={unlockKey}
-            onChange={(ev) => setUnlockKey(ev.target.value)}
-            autoComplete="off"
-          />
-          <button type="submit" className="btnPrimary" style={{ marginTop: 16, width: '100%' }}>
-            Unlock &amp; load order
+      <OpsLoginScreen
+        title="Order detail"
+        lead="Sign in with the same OPS_QUEUE_API_KEY as the main queue to view this order."
+        onSubmit={async (key, base) => {
+          await fetchQueueOrderDetail(key, orderId, base);
+          try {
+            localStorage.setItem(STORAGE_KEY, key);
+            localStorage.setItem(STORAGE_BASE, base);
+          } catch {
+            /* private mode */
+          }
+          setApiKey(key);
+          setApiBase(base);
+        }}
+        footer={
+          <button
+            type="button"
+            className="ghostBtn"
+            style={{ marginTop: 14 }}
+            onClick={() => (onDismiss ? onDismiss() : window.close())}
+          >
+            {onDismiss ? 'Close' : 'Close window'}
           </button>
-        </form>
-        <button
-          type="button"
-          className="ghostBtn"
-          style={{ marginTop: 14 }}
-          onClick={() => (onDismiss ? onDismiss() : window.close())}
-        >
-          {onDismiss ? 'Close' : 'Close window'}
-        </button>
-      </div>
+        }
+      />
     );
   }
 
@@ -462,14 +435,10 @@ function OrderCard({
 }
 
 export function App() {
+  const { state: authState, signIn, signOut, devKeyPrefill } = useOpsAuth();
   const [detailModalId, setDetailModalId] = useState<string | null>(() => detailIdFromSearch());
-  const [apiKey, setApiKey] = useState(() => readStoredKey());
-  const [apiBase, setApiBase] = useState(() => readStoredBase());
-  const [connectKey, setConnectKey] = useState(
-    () => (import.meta.env.VITE_OPS_API_KEY as string | undefined)?.trim() ?? '',
-  );
-  const [connectBase, setConnectBase] = useState(() => readStoredBase());
-  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const apiKey = authState.status === 'authenticated' ? authState.apiKey : '';
+  const apiBase = authState.status === 'authenticated' ? authState.apiBase : readStoredBase();
 
   const [rawPending, setRawPending] = useState<QueueOrderSummary[]>([]);
   const [rawHistory, setRawHistory] = useState<QueueOrderSummary[]>([]);
@@ -513,17 +482,6 @@ export function App() {
     return sortByPickupSlot(list, sortPickup);
   }, [rawHistory, hasPickupDateFilter, dateFrom, dateTo, sortPickup]);
 
-  const saveSession = useCallback((key: string, base: string) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, key);
-      localStorage.setItem(STORAGE_BASE, base);
-    } catch {
-      /* quota / private mode */
-    }
-    setApiKey(key);
-    setApiBase(base);
-  }, []);
-
   const poll = useCallback(async () => {
     if (!apiKey.trim()) return;
     try {
@@ -563,33 +521,8 @@ export function App() {
     prevPendingRef.current = next;
   }, [rawPending]);
 
-  const onConnect = (e: FormEvent) => {
-    e.preventDefault();
-    setConnectErr(null);
-    const k = connectKey.trim();
-    const b = connectBase.trim() || defaultBase;
-    if (!k) {
-      setConnectErr('Enter the ops API key from the server env OPS_QUEUE_API_KEY.');
-      return;
-    }
-    fetchQueueOrders(k, b)
-      .then(() => {
-        saveSession(k, b);
-        setConnectKey('');
-      })
-      .catch((err) => {
-        setConnectErr(err instanceof Error ? err.message : 'Could not reach API');
-      });
-  };
-
   const onDisconnect = () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(STORAGE_BASE);
-    } catch {
-      /* ignore */
-    }
-    setApiKey('');
+    signOut();
     setRawPending([]);
     setRawHistory([]);
     setPollErr(null);
@@ -609,40 +542,15 @@ export function App() {
       .finally(() => setCompletingId(null));
   };
 
-  if (!apiKey.trim()) {
+  if (authState.status !== 'authenticated') {
     return (
-      <div className="connectCard">
-        <h1>Operations — order queue</h1>
-        <p className="muted" style={{ lineHeight: 1.5 }}>
-          Enter the same secret configured on the API as <code>OPS_QUEUE_API_KEY</code>. For local
-          dev you can also set <code>VITE_OPS_API_KEY</code> in <code>ops-queue-web/.env</code> (same
-          value, prefixed with <code>VITE_</code> so Vite exposes it). Key is stored in{' '}
-          <strong>localStorage</strong> so Scan QR and Timesheet on this browser can use the same key.
-        </p>
-        <form onSubmit={onConnect}>
-          <label htmlFor="base">API base URL</label>
-          <input
-            id="base"
-            value={connectBase}
-            onChange={(ev) => setConnectBase(ev.target.value)}
-            placeholder="http://localhost:3153"
-            autoComplete="off"
-          />
-          <label htmlFor="key">Ops API key</label>
-          <input
-            id="key"
-            type="password"
-            value={connectKey}
-            onChange={(ev) => setConnectKey(ev.target.value)}
-            placeholder="From OPS_QUEUE_API_KEY"
-            autoComplete="off"
-          />
-          {connectErr ? <p className="err">{connectErr}</p> : null}
-          <button type="submit" className="btnPrimary" style={{ marginTop: 18, width: '100%' }}>
-            Connect
-          </button>
-        </form>
-      </div>
+      <OpsLoginScreen
+        title="Order queue"
+        lead="Sign in with the secret configured on the API as OPS_QUEUE_API_KEY before accessing the kitchen queue."
+        checking={authState.status === 'checking'}
+        devKeyPrefill={devKeyPrefill}
+        onSubmit={signIn}
+      />
     );
   }
 
@@ -691,7 +599,7 @@ export function App() {
             </>
           ) : null}
           <button type="button" className="btnGhost" onClick={onDisconnect}>
-            Change key
+            Sign out
           </button>
         </div>
       </header>

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { completeQueueOrder } from './api';
+import { OpsLoginScreen } from './OpsLoginScreen';
 import { ScanCollectModal } from './ScanCollectModal';
-import { defaultBase, readStoredBase, readStoredKey } from './opsSession';
+import { defaultBase, readStoredKey } from './opsSession';
+import { useOpsAuth } from './useOpsAuth';
 import { formatOrderPickupLabel } from './orderRef';
 
 /**
  * Minimal app for `window.open(..., '#/scan')` — same origin as queue so ops API key in localStorage works.
  */
 export function ScanWindowApp() {
+  const { state: authState, signIn } = useOpsAuth();
   const [, setTick] = useState(0);
-  const apiKey = readStoredKey();
   const [flash, setFlash] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,30 +32,29 @@ export function ScanWindowApp() {
   }, []);
 
   const onCollect = useCallback(async (orderToken: string) => {
-    const k = readStoredKey().trim();
-    if (!k) throw new Error('No ops API key');
-    const b = readStoredBase().trim() || defaultBase;
-    const res = await completeQueueOrder(k, orderToken, b);
+    if (authState.status !== 'authenticated') throw new Error('Not signed in');
+    const res = await completeQueueOrder(
+      authState.apiKey,
+      orderToken,
+      authState.apiBase.trim() || defaultBase,
+    );
     setFlash(`Collected order ${formatOrderPickupLabel(res.orderNumber)}`);
     window.setTimeout(() => setFlash(null), 3500);
-  }, []);
+  }, [authState]);
 
-  if (!apiKey.trim()) {
+  if (authState.status !== 'authenticated') {
     return (
-      <div className="connectCard" style={{ margin: '32px auto' }}>
-        <h1>Scan to collect</h1>
-        <p className="muted" style={{ lineHeight: 1.55 }}>
-          This window does not have your ops API key yet. On the <strong>main Order queue</strong> tab,
-          click <strong>Connect</strong> once — this popup will detect the key within a second (or close
-          and open Scan QR again).
-        </p>
-        <p className="muted" style={{ lineHeight: 1.55 }}>
-          Same browser profile: key is stored as <code>moja_ops_api_key</code> in localStorage.
-        </p>
-        <button type="button" className="btnGhost" onClick={() => window.close()}>
-          Close window
-        </button>
-      </div>
+      <OpsLoginScreen
+        title="Scan to collect"
+        lead="Sign in with OPS_QUEUE_API_KEY before scanning pickup QR codes."
+        checking={authState.status === 'checking'}
+        onSubmit={signIn}
+        footer={
+          <button type="button" className="ghostBtn" style={{ marginTop: 14 }} onClick={() => window.close()}>
+            Close window
+          </button>
+        }
+      />
     );
   }
 

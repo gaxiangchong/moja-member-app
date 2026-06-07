@@ -473,6 +473,83 @@ body {
   box-shadow: var(--shadow);
 }
 
+.loginPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.loginCard {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  padding: 28px 26px 24px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow), 0 24px 48px rgba(15, 23, 42, 0.1);
+}
+
+.loginBrand {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.loginBrand span {
+  color: var(--accent);
+}
+
+.loginTitle {
+  margin: 0 0 8px;
+  font-size: 1.65rem;
+  font-weight: 800;
+}
+
+.loginLead {
+  margin: 0 0 18px;
+  line-height: 1.55;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.loginCard label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.loginCard input {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.loginSubmit {
+  margin-top: 18px;
+  width: 100%;
+}
+
+.loginStatus {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--danger);
+}
+
+.loginStatus.ok {
+  color: var(--accent2);
+}
+
 .connectCard h1 {
   margin-top: 0;
 }
