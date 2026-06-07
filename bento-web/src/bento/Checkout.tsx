@@ -27,7 +27,8 @@ export function Checkout({ draft, onSuccess }: Props) {
   const [groupBuy, setGroupBuy] = useState(false);
   const [qty, setQty] = useState(MIN_QTY);
 
-  const sets = groupBuy ? qty : 1;
+  const isTrialPack = draft.packageCode === 'NEWCOMER_3';
+  const sets = isTrialPack ? 1 : groupBuy ? qty : 1;
   const canCheckout = Boolean(draft.packageCode) && Boolean(quote);
 
   useEffect(() => {
@@ -45,6 +46,13 @@ export function Checkout({ draft, onSuccess }: Props) {
       })
       .catch(() => {});
   }, [paymentsDemoMode]);
+
+  useEffect(() => {
+    if (isTrialPack && groupBuy) {
+      setGroupBuy(false);
+      setQty(MIN_QTY);
+    }
+  }, [isTrialPack, groupBuy]);
 
   useEffect(() => {
     if (!draft.packageCode) {
@@ -155,51 +163,52 @@ export function Checkout({ draft, onSuccess }: Props) {
             {sets > 1 ? ` (${sets} sets)` : ''}
           </p>
 
-          {/* Group buy */}
-          <div className="groupBuySection">
-            <label className="groupBuyToggleLabel">
-              <input
-                type="checkbox"
-                className="groupBuyToggleInput"
-                checked={groupBuy}
-                onChange={(e) => {
-                  setGroupBuy(e.target.checked);
-                  if (!e.target.checked) setQty(MIN_QTY);
-                }}
-              />
-              <span className="groupBuyToggleTrack">
-                <span className="groupBuyToggleThumb" />
-              </span>
-              <div>
-                <span className="groupBuyToggleText">Group buy</span>
-                <span className="groupBuyToggleDesc">Order multiple sets at once</span>
-              </div>
-            </label>
+          {!isTrialPack && (
+            <div className="groupBuySection">
+              <label className="groupBuyToggleLabel">
+                <input
+                  type="checkbox"
+                  className="groupBuyToggleInput"
+                  checked={groupBuy}
+                  onChange={(e) => {
+                    setGroupBuy(e.target.checked);
+                    if (!e.target.checked) setQty(MIN_QTY);
+                  }}
+                />
+                <span className="groupBuyToggleTrack">
+                  <span className="groupBuyToggleThumb" />
+                </span>
+                <div>
+                  <span className="groupBuyToggleText">Group buy</span>
+                  <span className="groupBuyToggleDesc">Order multiple sets at once</span>
+                </div>
+              </label>
 
-            {groupBuy && (
-              <div className="groupBuyQtyRow">
-                <span className="groupBuyQtyLabel">How many sets?</span>
-                <div className="groupBuyQtyControl">
-                  <button
-                    type="button"
-                    className="qtyBtn"
-                    disabled={qty <= MIN_QTY}
-                    onClick={() => setQty((q) => Math.max(MIN_QTY, q - 1))}
-                  >−</button>
-                  <span className="qtyValue">{qty}</span>
-                  <button
-                    type="button"
-                    className="qtyBtn"
-                    disabled={qty >= MAX_QTY}
-                    onClick={() => setQty((q) => Math.min(MAX_QTY, q + 1))}
-                  >+</button>
+              {groupBuy && (
+                <div className="groupBuyQtyRow">
+                  <span className="groupBuyQtyLabel">How many sets?</span>
+                  <div className="groupBuyQtyControl">
+                    <button
+                      type="button"
+                      className="qtyBtn"
+                      disabled={qty <= MIN_QTY}
+                      onClick={() => setQty((q) => Math.max(MIN_QTY, q - 1))}
+                    >−</button>
+                    <span className="qtyValue">{qty}</span>
+                    <button
+                      type="button"
+                      className="qtyBtn"
+                      disabled={qty >= MAX_QTY}
+                      onClick={() => setQty((q) => Math.min(MAX_QTY, q + 1))}
+                    >+</button>
+                  </div>
+                  <div className="groupBuyCalc">
+                    {formatRm(perSetTotal)} × {qty} = <strong>{formatRm(grandTotal)}</strong>
+                  </div>
                 </div>
-                <div className="groupBuyCalc">
-                  {formatRm(perSetTotal)} × {qty} = <strong>{formatRm(grandTotal)}</strong>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {!paymentsDemoMode && channels.length > 0 && (
             <div className="paymentOptionSection">

@@ -1063,8 +1063,9 @@
 }
 
 .weeklyMealLabel {
-  font-weight: 700;
-  color: #c2410c;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--text, #2b2118);
   margin-right: 6px;
 }
 

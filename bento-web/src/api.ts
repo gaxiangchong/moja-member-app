@@ -136,6 +136,7 @@ export async function loginWithPin(phone: string, pin: string) {
 export type MemberProfile = {
   id: string;
   phoneE164: string;
+  kitchenPickupId?: string;
   displayName: string | null;
   email: string | null;
   birthday: string | null;
@@ -160,12 +161,14 @@ export async function fetchMe(): Promise<MemberProfile> {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await parseJson<
-    MemberProfile & { message?: string; gender?: string | null; address?: string | null }
+    MemberProfile & { message?: string; gender?: string | null; address?: string | null; kitchenPickupId?: string }
   >(res);
   if (!res.ok) throw new Error(data.message ?? 'Failed to load profile');
   return {
     id: data.id,
     phoneE164: data.phoneE164,
+    kitchenPickupId:
+      typeof data.kitchenPickupId === 'string' ? data.kitchenPickupId : undefined,
     displayName: data.displayName ?? null,
     email: data.email ?? null,
     birthday: data.birthday ?? null,
@@ -191,11 +194,13 @@ export async function updateMe(input: {
     },
     body: JSON.stringify(input),
   });
-  const data = await parseJson<MemberProfile & { message?: string }>(res);
+  const data = await parseJson<MemberProfile & { message?: string; kitchenPickupId?: string }>(res);
   if (!res.ok) throw new Error(data.message ?? 'Failed to update profile');
   return {
     id: data.id,
     phoneE164: data.phoneE164,
+    kitchenPickupId:
+      typeof data.kitchenPickupId === 'string' ? data.kitchenPickupId : undefined,
     displayName: data.displayName ?? null,
     email: data.email ?? null,
     birthday: data.birthday ?? null,
@@ -276,10 +281,14 @@ export async function checkoutBentoSubscription(body: {
 export type WeeklyMenuMeal = {
   title: string;
   description: string;
-  /** Regular / non-vegetarian dish (default). */
+  /** Regular / non-vegetarian dish (English). */
   dish: string;
-  /** Vegetarian dish (shown when the Veg toggle is on). */
+  /** Vegetarian dish (English). */
   dishVeg: string;
+  /** Regular dish in Chinese (optional). */
+  dishZh: string;
+  /** Vegetarian dish in Chinese (optional). */
+  dishVegZh: string;
 };
 
 export type WeeklyMenuDay = {

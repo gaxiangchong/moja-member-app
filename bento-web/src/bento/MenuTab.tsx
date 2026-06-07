@@ -8,6 +8,8 @@ type Props = {
 type Lang = 'en' | 'zh';
 
 const WEEKDAY_ZH: Record<string, string> = {
+  Mon: '星期一', Tue: '星期二', Wed: '星期三', Thu: '星期四',
+  Fri: '星期五', Sat: '星期六', Sun: '星期日',
   Monday: '星期一', Tuesday: '星期二', Wednesday: '星期三',
   Thursday: '星期四', Friday: '星期五', Saturday: '星期六', Sunday: '星期日',
 };
@@ -119,8 +121,20 @@ export function MenuTab({ onOrderNow }: Props) {
           {data.menu.days.map((day) => {
             const dayLabel = lang === 'zh' ? (WEEKDAY_ZH[day.weekday] ?? day.weekday) : day.weekday;
             const isClosed = day.closed ?? day.isSunday;
-            const dishFor = (meal: { dish: string; dishVeg: string }) =>
-              showVeg ? (meal.dishVeg || meal.dish) : meal.dish;
+            const dishFor = (meal: {
+              dish: string;
+              dishVeg: string;
+              dishZh: string;
+              dishVegZh: string;
+            }) => {
+              const regular =
+                lang === 'zh' && meal.dishZh.trim() ? meal.dishZh : meal.dish;
+              const veg =
+                lang === 'zh' && meal.dishVegZh.trim()
+                  ? meal.dishVegZh
+                  : meal.dishVeg || meal.dish;
+              return showVeg ? veg : regular;
+            };
             return (
               <li
                 key={day.date}
@@ -136,14 +150,14 @@ export function MenuTab({ onOrderNow }: Props) {
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌞</span>
                       <div className="wkMenuMealContent">
-                        <span className="wkMenuMealLabel">{t.lunch}</span>
+                        <strong className="wkMenuMealLabel">{t.lunch}</strong>
                         <span className="wkMenuMealText">{dishFor(day.lunch)}</span>
                       </div>
                     </div>
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌙</span>
                       <div className="wkMenuMealContent">
-                        <span className="wkMenuMealLabel">{t.dinner}</span>
+                        <strong className="wkMenuMealLabel">{t.dinner}</strong>
                         <span className="wkMenuMealText">{dishFor(day.dinner)}</span>
                       </div>
                     </div>

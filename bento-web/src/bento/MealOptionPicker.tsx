@@ -34,7 +34,7 @@ export function MealOptionPicker({ value, packageCode, mealCredits, onChange }: 
 
       {newcomerOnly && (
         <p className="caption" style={{ marginBottom: 10, color: '#15803d' }}>
-          Newcomer promo includes lunch only.
+          Trial pack includes lunch only.
         </p>
       )}
 

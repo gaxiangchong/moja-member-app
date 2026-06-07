@@ -1481,7 +1481,7 @@ button {
   color: #fff;
 }
 
-/* Save success banner */
+/* Save success banner (legacy — replaced by pickup reminder) */
 .calSavedBanner {
   display: flex;
   align-items: center;
@@ -1494,6 +1494,378 @@ button {
   font-weight: 700;
   color: #166534;
   margin-bottom: 14px;
+}
+
+/* Pickup reminder notification */
+.pickupReminderNotification {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: linear-gradient(145deg, #fffbeb, #fef3c7);
+  border-radius: 16px;
+  border: 1.5px solid #fcd34d;
+  box-shadow: 0 8px 24px rgba(180, 83, 9, 0.08);
+}
+
+.pickupReminderNotificationConfirmed {
+  background: linear-gradient(145deg, #f0fdf4, #dcfce7);
+  border-color: #86efac;
+  box-shadow: 0 8px 24px rgba(22, 101, 52, 0.08);
+}
+
+.pickupReminderIcon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 12px;
+}
+
+.pickupReminderBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.pickupReminderTitle {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #78350f;
+  line-height: 1.35;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderTitle {
+  color: #166534;
+}
+
+.pickupReminderText {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #92400e;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderText {
+  color: #15803d;
+}
+
+.pickupReminderAddress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 12px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: #44403c;
+}
+
+.pickupReminderAddressHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.pickupMapLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #166534;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(22, 101, 52, 0.18);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.pickupMapLink:hover {
+  background: #dcfce7;
+  transform: scale(1.04);
+}
+
+.pickupMapLink:active {
+  transform: scale(0.98);
+}
+
+.pickupMapIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.pickupReminderAddressLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #78716c;
+  margin-bottom: 2px;
+}
+
+.pickupReminderAddress strong {
+  font-size: 0.9rem;
+  color: #1c1917;
+}
+
+.pickupReminderIdBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  border: 1.5px dashed #86efac;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderIdBlock {
+  border-color: #4ade80;
+}
+
+.pickupReminderIdRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.pickupReminderId {
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #166534;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  flex-shrink: 0;
+}
+
+.pickupIdColorCodes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pickupIdPackTotal {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #44403c;
+  white-space: nowrap;
+}
+
+.pickupReminderIdHint {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #15803d;
+}
+
+.pickupPackColorSummary {
+  margin-top: 8px;
+}
+
+.pickupPackColorSummary.compact {
+  margin-top: 6px;
+}
+
+.pickupPackColorSummary.compact .pickupPackLegendHint {
+  display: none;
+}
+
+.pickupPackTotal {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.pickupPackLegendHint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #78716c;
+}
+
+.packColorRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.packColorRows.inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.packColorRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.packColorRow.inline {
+  gap: 4px;
+}
+
+.packColorDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 36px;
+}
+
+.packColorDots.inline {
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.packDot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.packDot-orange {
+  background: #f97316;
+}
+
+.packDot-green {
+  background: #22c55e;
+}
+
+.packDot-brown {
+  background: #92400e;
+}
+
+.packDot-blue {
+  background: #3b82f6;
+}
+
+.packColorMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.packColorLabel {
+  font-size: 0.82rem;
+  color: #44403c;
+}
+
+.packColorCount {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.packColorRow.inline .packColorCount {
+  font-size: 0.8rem;
+}
+
+.pickupUpcomingList li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pickupUpcomingSummary {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background: #faf8f5;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.pickupUpcomingTitle {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.pickupUpcomingList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pickupUpcomingList li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.pickupUpcomingDate {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pickupUpcomingMeals {
+  font-size: 0.8rem;
+  color: #78716c;
+}
+
+.pickupEditBtn {
+  width: 100%;
+}
+
+.calLockPolicy {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  color: #92400e;
+  line-height: 1.45;
+}
+
+.scheduleWarningDialog {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 120;
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 18px 16px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1.5px solid #fecaca;
+  box-shadow: 0 20px 50px rgba(39, 28, 21, 0.18);
+}
+
+.scheduleWarningDialog h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: #991b1b;
+}
+
+.scheduleWarningDialog p {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #44403c;
 }
 
 /* Credit summary block */
@@ -1906,11 +2278,10 @@ button {
 }
 
 .wkMenuMealLabel {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.02em;
 }
 
 .wkMenuMealText {
@@ -2083,10 +2454,18 @@ button {
   flex-shrink: 0;
 }
 
+.wkMenuMealLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
 .wkMenuMealText {
   font-size: 0.84rem;
-  color: var(--text);
-  line-height: 1.3;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 /* ---- Schedule summary view ---- */

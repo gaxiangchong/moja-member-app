@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
+import { buildKitchenPickupId } from './kitchen-pickup-id.util';
 import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
@@ -287,6 +288,7 @@ export class CustomersService {
     return {
       id: customer.id,
       phoneE164: customer.phoneE164,
+      kitchenPickupId: buildKitchenPickupId(customer.email, customer.phoneE164),
       status: customer.status,
       displayName: customer.displayName,
       email: customer.email,

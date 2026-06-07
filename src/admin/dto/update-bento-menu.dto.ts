@@ -20,6 +20,16 @@ class BentoMealDishesDto {
   @IsString()
   @MaxLength(200)
   veg?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  regularZh?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  vegZh?: string;
 }
 
 class BentoWeekdayMenuDto {

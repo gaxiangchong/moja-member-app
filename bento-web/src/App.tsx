@@ -413,7 +413,7 @@ export default function App() {
         )}
 
         {/* Schedule tab — calendar scheduling */}
-        {tab === 'schedule' && <ScheduleTab />}
+        {tab === 'schedule' && <ScheduleTab profile={profile} />}
 
         {/* Account tab */}
         {tab === 'account' && profile && (

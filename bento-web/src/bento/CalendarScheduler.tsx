@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { scheduleBentoSubscription } from '../api';
+import { isPickupDateLocked, PICKUP_LOCK_POLICY } from '../lib/pickupLock';
 import {
   addDaysUtc,
   earliestSchedulableDateIso,
@@ -10,11 +11,19 @@ import {
   schedulableWindowDates,
   todayUtc,
 } from '../lib/dateUtils';
+import { PickupReminderNotification } from './PickupReminderNotification';
+import { PickupPackColorSummary } from './PickupPackColorSummary';
+import { buildUpcomingPickupSummaries } from './pickupPackSummary';
+import {
+  allCreditsScheduled,
+  unscheduledCreditSummary,
+} from './scheduleCredits';
 import type { BentoSubscription } from './types';
 
 type Props = {
   subscriptions: BentoSubscription[];
   onScheduled: () => void;
+  kitchenPickupId?: string | null;
 };
 
 /** Internal selection — quantity per meal per day. */
@@ -60,11 +69,6 @@ function fullDate(iso: string) {
   const D = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${D[d.getUTCDay()]}, ${d.getUTCDate()} ${M[d.getUTCMonth()]}`;
-}
-
-function isLocked(iso: string): boolean {
-  const [y, m, d] = iso.split('-').map(Number);
-  return Date.now() >= new Date(y!, m! - 1, d! - 1, 17, 0, 0, 0).getTime();
 }
 
 function isPast(iso: string): boolean {
@@ -115,7 +119,7 @@ function mergeDeliveries(subs: BentoSubscription[]): DaySelection[] {
 
 // ── component ──────────────────────────────────────────────────────────────
 
-export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
+export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId }: Props) {
   const N = subscriptions.length; // total sets
 
   // ── Aggregate across all subscriptions ──────────────────────────────────
@@ -123,6 +127,10 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   const totalDinner = subscriptions.reduce((s, sub) => s + sub.dinnerCredits, 0);
   const allowLunch  = subscriptions.some(s => s.scheduling?.allowLunch  ?? s.mealOption !== 'DINNER');
   const allowDinner = subscriptions.some(s => s.scheduling?.allowDinner ?? s.mealOption !== 'LUNCH');
+
+  const [showScheduler, setShowScheduler] = useState(
+    () => !allCreditsScheduled(subscriptions, allowLunch, allowDinner),
+  );
 
   const combinedWindow = useMemo(() => {
     const earlyDates = subscriptions.map(s => s.scheduling?.earliestDate ?? earliestSchedulableDateIso());
@@ -151,8 +159,6 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
     [displayStart, combinedWindow.windowEndDate],
   );
 
-  const anyNeedsSchedule = subscriptions.some(s => s.needsSchedule);
-
   // ── Selections (qty per day) ─────────────────────────────────────────────
   const [selections, setSelections] = useState<DaySelection[]>(() => {
     const merged = mergeDeliveries(subscriptions);
@@ -164,12 +170,21 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
-  const [savedBanner, setSavedBanner] = useState(false);
+  const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
+  const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [changedSinceSave, setChangedSinceSave] = useState(false);
 
   const [viewYear, setViewYear]   = useState(() => todayUtc().getUTCFullYear());
   const [viewMonth, setViewMonth] = useState(() => todayUtc().getUTCMonth() + 1);
   const [viewMode, setViewMode]   = useState<ScheduleViewMode>('calendar');
+
+  useEffect(() => {
+    const merged = mergeDeliveries(subscriptions);
+    if (merged.length > 0 && !changedSinceSave) {
+      setSelections(merged);
+    }
+  }, [subscriptions, changedSinceSave]);
 
   // ── Credit counters ──────────────────────────────────────────────────────
   const todayIso       = formatDateOnly(todayUtc());
@@ -181,6 +196,30 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   const dinnerUnscheduled = totalDinner - dinnerConsumed - dinnerUpcoming;
   const anyUnscheduled = (allowLunch && lunchUnscheduled > 0) || (allowDinner && dinnerUnscheduled > 0);
 
+  const anyNeedsSchedule = subscriptions.some(s => s.needsSchedule);
+  const hasSavedSchedule = subscriptions.some((s) => s.deliveries.length > 0);
+  const allMealsScheduled = !anyUnscheduled;
+  const canShowNotification =
+    allMealsScheduled && !showScheduler && (scheduleConfirmed || hasSavedSchedule);
+  const incompleteSummary = unscheduledCreditSummary(
+    totalLunch,
+    totalDinner,
+    lunchConsumed + lunchUpcoming,
+    dinnerConsumed + dinnerUpcoming,
+    allowLunch,
+    allowDinner,
+  );
+
+  useEffect(() => {
+    if (!allMealsScheduled) {
+      setShowScheduler(true);
+      return;
+    }
+    if (hasSavedSchedule && !changedSinceSave && !isEditingSchedule) {
+      setShowScheduler(false);
+    }
+  }, [allMealsScheduled, hasSavedSchedule, changedSinceSave, isEditingSchedule]);
+
   const getRow = (date: string): DaySelection =>
     selections.find(s => s.date === date) ?? { date, lunchQty: 0, dinnerQty: 0 };
 
@@ -190,19 +229,20 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   );
 
   const isDayInteractive = (iso: string): boolean =>
-    windowSet.has(iso) && !isSunday(iso) && !isPast(iso) && !isLocked(iso) && isDateSchedulable(iso);
+    windowSet.has(iso) && !isSunday(iso) && !isPast(iso) && !isPickupDateLocked(iso) && isDateSchedulable(iso);
 
   const dayStatusLabel = (iso: string): string | null => {
     if (isSunday(iso)) return 'Closed';
     if (isPast(iso)) return 'Past';
     if (!windowSet.has(iso)) return 'Outside plan';
     if (!isDateSchedulable(iso)) return 'Too soon';
-    if (isLocked(iso)) return 'Locked';
+    if (isPickupDateLocked(iso)) return 'Confirmed';
     return null;
   };
 
   // ── Qty updater ──────────────────────────────────────────────────────────
   const setQty = (dates: string[], lunchQty: number | null, dinnerQty: number | null) => {
+    if (dates.some((date) => isPickupDateLocked(date))) return;
     setChangedSinceSave(true);
     setSelections(prev => {
       const outside = prev.filter(s => !dates.includes(s.date));
@@ -224,12 +264,14 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   const clearAll = () => {
     setChangedSinceSave(true);
     setRangeStart(null);
-    setSelections(prev => prev.filter(s => isPast(s.date)));
+    setSelections((prev) =>
+      prev.filter((s) => isPast(s.date) || isPickupDateLocked(s.date)),
+    );
   };
 
   // ── Tap handler (range selection) ────────────────────────────────────────
   const handleDayTap = (iso: string) => {
-    if (!windowSet.has(iso) || isSunday(iso) || !isDateSchedulable(iso) || isLocked(iso)) return;
+    if (!windowSet.has(iso) || isSunday(iso) || !isDateSchedulable(iso) || isPickupDateLocked(iso)) return;
     if (rangeStart === null) {
       setRangeStart(iso);
     } else if (rangeStart === iso) {
@@ -239,7 +281,7 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
       const from = rangeStart < iso ? rangeStart : iso;
       const to   = rangeStart < iso ? iso : rangeStart;
       const dates = windowDates.filter(d =>
-        d >= from && d <= to && !isSunday(d) && isDateSchedulable(d) && !isLocked(d),
+        d >= from && d <= to && !isSunday(d) && isDateSchedulable(d) && !isPickupDateLocked(d),
       );
       setRangeStart(null);
       setSheetTarget(dates.length <= 1
@@ -259,12 +301,12 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
   const nextMonth = () => { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
 
   // ── Save (round-robin distribution across subscriptions) ─────────────────
-  const save = async () => {
-    setLoading(true); setError(null);
+  const persistSchedule = async (): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
     try {
       const sorted = [...selections].sort((a, b) => a.date.localeCompare(b.date));
 
-      // Flatten: each "slot unit" is one (date, meal) assignment
       const lunchSlots: string[] = [];
       const dinnerSlots: string[] = [];
       for (const sel of sorted) {
@@ -272,7 +314,6 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
         for (let i = 0; i < sel.dinnerQty; i++) dinnerSlots.push(sel.date);
       }
 
-      // Distribute round-robin: slot[idx] → subscription[idx % N]
       for (let si = 0; si < N; si++) {
         const sub = subscriptions[si]!;
         const myLunch  = lunchSlots.filter((_,  idx) => idx % N === si);
@@ -296,18 +337,61 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
       }
 
       setChangedSinceSave(false);
-      setSavedBanner(true);
       onScheduled();
-      setTimeout(() => setSavedBanner(false), 3000);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
+  const finishToNotification = () => {
+    setScheduleConfirmed(true);
+    setIsEditingSchedule(false);
+    setShowScheduler(false);
+    setShowIncompleteWarning(false);
+  };
+
+  const handleConfirm = async () => {
+    if (anyUnscheduled) {
+      if (changedSinceSave) {
+        const ok = await persistSchedule();
+        if (!ok) return;
+      }
+      setShowIncompleteWarning(true);
+      setShowScheduler(true);
+      return;
+    }
+
+    if (changedSinceSave || anyNeedsSchedule || isEditingSchedule) {
+      const ok = await persistSchedule();
+      if (!ok) return;
+    }
+    finishToNotification();
+  };
+
   const hasFutureSelections = lunchUpcoming > 0 || dinnerUpcoming > 0;
-  const canSave = changedSinceSave && hasFutureSelections;
+  const canConfirmSchedule =
+    hasFutureSelections &&
+    (anyNeedsSchedule || changedSinceSave || isEditingSchedule);
+  const confirmDayCount = selections.filter((s) => s.date >= todayIso).length;
+
+  const cancelEditing = () => {
+    if (!allMealsScheduled) {
+      setShowIncompleteWarning(true);
+      return;
+    }
+    const merged = mergeDeliveries(subscriptions);
+    if (merged.length > 0) {
+      setSelections(merged);
+    }
+    setChangedSinceSave(false);
+    setIsEditingSchedule(false);
+    setShowScheduler(false);
+    setError(null);
+  };
 
   // ── Sheet qty limits for the open day/range ───────────────────────────────
   const sheetRow = sheetTarget?.kind === 'single' ? getRow(sheetTarget.date) : null;
@@ -319,20 +403,82 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
   const cells = getMonthGrid(viewYear, viewMonth);
 
+  const pickupSummaries = useMemo(
+    () => buildUpcomingPickupSummaries(subscriptions, todayIso),
+    [subscriptions, todayIso],
+  );
+
+  const nextPickupSummary = pickupSummaries[0] ?? null;
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <section className="section">
-        <h2 style={{ margin: '0 0 4px' }}>Schedule</h2>
-        {N > 1 && (
+        <h2 style={{ margin: '0 0 4px' }}>
+          {canShowNotification
+            ? 'Pickup reminder'
+            : isEditingSchedule
+              ? 'Change pickup days'
+              : 'Schedule'}
+        </h2>
+        {(isEditingSchedule || showScheduler) && (
+          <p className="caption calLockPolicy">{PICKUP_LOCK_POLICY}</p>
+        )}
+        {isEditingSchedule && (
+          <p className="caption" style={{ marginBottom: 12 }}>
+            Update your pickup days below, then tap Confirm to save.
+          </p>
+        )}
+        {!isEditingSchedule && showScheduler && anyUnscheduled && (
+          <p className="caption" style={{ marginBottom: 12 }}>
+            Schedule all purchased meals before continuing to your pickup reminder.
+          </p>
+        )}
+        {N > 1 && showScheduler && (
           <p className="caption" style={{ marginBottom: 12 }}>
             {N} active plans · up to {N} sets per day
           </p>
         )}
 
-        {/* Success banner */}
-        {savedBanner && <div className="calSavedBanner">✅ Schedule saved</div>}
+        {canShowNotification && (
+          <PickupReminderNotification
+            justConfirmed={scheduleConfirmed}
+            pickupId={kitchenPickupId}
+            nextPickup={nextPickupSummary}
+          />
+        )}
 
+        {canShowNotification && (
+          <div className="pickupUpcomingSummary">
+            {pickupSummaries.length > 0 && (
+              <>
+                <p className="pickupUpcomingTitle">Your upcoming pickups</p>
+                <ul className="pickupUpcomingList">
+                  {pickupSummaries.map((summary) => (
+                    <li key={summary.date}>
+                      <span className="pickupUpcomingDate">{fullDate(summary.date)}</span>
+                      <PickupPackColorSummary summary={summary} compact />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <button
+              type="button"
+              className="btnSecondary pickupEditBtn"
+              onClick={() => {
+                setScheduleConfirmed(false);
+                setIsEditingSchedule(true);
+                setShowScheduler(true);
+              }}
+            >
+              Change pickup days
+            </button>
+          </div>
+        )}
+
+        {showScheduler && (
+          <>
         {/* Credit summary */}
         <div className="calCreditsSummary">
           {allowLunch && (
@@ -427,7 +573,7 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
             const inWindow    = windowSet.has(iso);
             const sun         = isSunday(iso);
             const past        = isPast(iso);
-            const locked      = !past && isLocked(iso);
+            const locked      = !past && isPickupDateLocked(iso);
             const row         = getRow(iso);
             const hasSel      = row.lunchQty > 0 || row.dinnerQty > 0;
             const totalQty    = row.lunchQty + row.dinnerQty;
@@ -552,19 +698,31 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
 
         {/* Action buttons */}
         <div className="calActionRow">
-          {(canSave || (anyNeedsSchedule && !changedSinceSave && hasFutureSelections)) && (
+          {canConfirmSchedule && (
             <button
               type="button"
               className="btnPrimary"
               disabled={loading}
-              onClick={() => void save()}
+              onClick={() => void handleConfirm()}
             >
-              {loading ? 'Saving…'
-                : changedSinceSave ? 'Save changes'
-                : `Confirm ${selections.filter(s => s.date >= todayIso).length} days`}
+              {loading
+                ? 'Saving…'
+                : changedSinceSave
+                  ? 'Save changes'
+                  : `Confirm ${confirmDayCount} day${confirmDayCount === 1 ? '' : 's'}`}
             </button>
           )}
-          {hasFutureSelections && (
+          {isEditingSchedule && (
+            <button
+              type="button"
+              className="btnSecondary calClearBtn"
+              disabled={loading}
+              onClick={cancelEditing}
+            >
+              Cancel
+            </button>
+          )}
+          {!isEditingSchedule && hasFutureSelections && (
             <button
               type="button"
               className="btnSecondary calClearBtn"
@@ -575,10 +733,33 @@ export function CalendarScheduler({ subscriptions, onScheduled }: Props) {
             </button>
           )}
         </div>
+          </>
+        )}
       </section>
 
+      {showIncompleteWarning && (
+        <>
+          <div className="calOverlay" onClick={() => setShowIncompleteWarning(false)} />
+          <div className="scheduleWarningDialog" role="alertdialog" aria-labelledby="scheduleWarningTitle">
+            <h3 id="scheduleWarningTitle">Meals still unscheduled</h3>
+            <p>
+              You still have{' '}
+              <strong>{incompleteSummary.join(' and ')}</strong>{' '}
+              to assign. Please schedule every purchased meal before viewing your pickup reminder.
+            </p>
+            <button
+              type="button"
+              className="btnPrimary"
+              onClick={() => setShowIncompleteWarning(false)}
+            >
+              Continue scheduling
+            </button>
+          </div>
+        </>
+      )}
+
       {/* ── Bottom sheet ── */}
-      {sheetTarget && (
+      {showScheduler && sheetTarget && (
         <>
           <div className="calOverlay" onClick={() => setSheetTarget(null)} />
           <div className="calBottomSheet">

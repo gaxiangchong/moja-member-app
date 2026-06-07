@@ -39,10 +39,14 @@ export function addDaysUtc(d: Date, days: number): Date {
 type WeeklyMenuMeal = {
   title: string;
   description: string;
-  /** Regular / non-vegetarian dish (default shown in the client). */
+  /** Regular / non-vegetarian dish (English). */
   dish: string;
-  /** Vegetarian dish (shown when the client's Veg toggle is on). */
+  /** Vegetarian dish (English). */
   dishVeg: string;
+  /** Regular dish in Chinese (optional). */
+  dishZh: string;
+  /** Vegetarian dish in Chinese (optional). */
+  dishVegZh: string;
 };
 
 /**
@@ -84,12 +88,16 @@ export function buildWeeklyMenu(config?: BentoMenuConfig) {
         description: BENTO_MENU.lunch.description,
         dish: cfg?.lunch.regular ?? '',
         dishVeg: cfg?.lunch.veg ?? '',
+        dishZh: cfg?.lunch.regularZh ?? '',
+        dishVegZh: cfg?.lunch.vegZh ?? '',
       },
       dinner: {
         title: BENTO_MENU.dinner.title,
         description: BENTO_MENU.dinner.description,
         dish: cfg?.dinner.regular ?? '',
         dishVeg: cfg?.dinner.veg ?? '',
+        dishZh: cfg?.dinner.regularZh ?? '',
+        dishVegZh: cfg?.dinner.vegZh ?? '',
       },
     });
   }

@@ -69,10 +69,10 @@ export function PackageSelector({ packages, selected, onSelect }: Props) {
       {newcomer && (
         <div className={cls('newcomerPromoCard', selected === newcomer.code && 'selected')}>
           <div className="newcomerPromoInfo">
-            <span className="newcomerPromoEyebrow">🌱 New here?</span>
+            <span className="newcomerPromoEyebrow">🌱 Trial offer</span>
             <span className="newcomerPromoTitle">{newcomer.label}</span>
             <span className="newcomerPromoDesc">
-              First-time customers only · {newcomer.mealCredits} lunch meals · Lunch only
+              One-time only · {newcomer.mealCredits} lunch meals · Lunch only
             </span>
             <div className="newcomerPromoPrice">
               {formatRm(newcomer.fixedCheckoutCents ?? 3900)}

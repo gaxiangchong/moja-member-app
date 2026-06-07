@@ -23,8 +23,10 @@ export class BentoController {
   constructor(private readonly bento: BentoService) {}
 
   @Get('packages')
-  listPackages() {
-    return this.bento.listPackages(null);
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  listPackages(@CurrentUser() user: AuthUser) {
+    return this.bento.listPackages(user.customerId);
   }
 
   @Get('menu')

@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import {
+  BentoDeliveryStatus,
   BentoMealOption,
   BentoPackageCode,
   BentoSubscriptionStatus,
@@ -13,6 +14,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { BentoMenuService } from './bento-menu.service';
+import {
+  isPickupDateLocked,
+  pickupLockMessage,
+} from './bento-pickup-lock.util';
 import {
   quoteBentoCheckout,
   splitMealCredits,
@@ -49,7 +54,7 @@ const PACKAGE_SEED: Array<{
 }> = [
   {
     code: BentoPackageCode.NEWCOMER_3,
-    label: 'Newcomer promo — 3 lunches',
+    label: 'Trial pack — 3 lunches',
     durationDays: 14,
     mealCredits: 3,
     pricePerMealCents: 1300,
@@ -135,18 +140,33 @@ export class BentoService implements OnModuleInit {
   }
 
   async isNewcomerEligible(customerId: string): Promise<boolean> {
-    const prior = await this.prisma.bentoSubscription.count({
-      where: {
-        customerId,
-        status: {
-          in: [
-            BentoSubscriptionStatus.ACTIVE,
-            BentoSubscriptionStatus.COMPLETED,
-          ],
+    const [priorPurchases, priorTrial] = await Promise.all([
+      this.prisma.bentoSubscription.count({
+        where: {
+          customerId,
+          status: {
+            in: [
+              BentoSubscriptionStatus.ACTIVE,
+              BentoSubscriptionStatus.COMPLETED,
+            ],
+          },
         },
-      },
-    });
-    return prior === 0;
+      }),
+      this.prisma.bentoSubscription.count({
+        where: {
+          customerId,
+          package: { code: BentoPackageCode.NEWCOMER_3 },
+          status: {
+            in: [
+              BentoSubscriptionStatus.PENDING_PAYMENT,
+              BentoSubscriptionStatus.ACTIVE,
+              BentoSubscriptionStatus.COMPLETED,
+            ],
+          },
+        },
+      }),
+    ]);
+    return priorPurchases === 0 && priorTrial === 0;
   }
 
   async listPackages(customerId: string | null) {
@@ -230,7 +250,7 @@ export class BentoService implements OnModuleInit {
     dto: BentoQuoteDto,
   ): Promise<BentoQuoteResult & { package: ReturnType<typeof this.mapPackage> }> {
     const pkg = await this.resolvePackage(dto.packageCode);
-    this.validateCheckoutInput(customerId, pkg, dto);
+    await this.validateCheckoutInput(customerId, pkg, dto);
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -246,7 +266,7 @@ export class BentoService implements OnModuleInit {
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
     const pkg = await this.resolvePackage(dto.packageCode);
-    this.validateCheckoutInput(customerId, pkg, dto);
+    await this.validateCheckoutInput(customerId, pkg, dto);
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -313,12 +333,6 @@ export class BentoService implements OnModuleInit {
         message: 'Pay for your plan before scheduling pickup days.',
       });
     }
-    if (sub.deliveries.length > 0) {
-      throw new BadRequestException({
-        code: 'BENTO_ALREADY_SCHEDULED',
-        message: 'Pickup schedule is already set for this subscription.',
-      });
-    }
 
     const rows = this.validateScheduleSlots(
       sub.package,
@@ -328,22 +342,81 @@ export class BentoService implements OnModuleInit {
       dto.slots,
     );
 
-    const startDate = rows[0]!.deliveryDate;
-    const endDate = rows[rows.length - 1]!.deliveryDate;
+    this.assertLockedDeliveriesUnchanged(sub.deliveries, rows);
 
-    await this.prisma.bentoSubscription.update({
-      where: { id: subscriptionId },
-      data: {
-        startDate,
-        endDate,
-        deliveries: {
-          create: rows.map((r) => ({
-            deliveryDate: r.deliveryDate,
-            includesLunch: r.includesLunch,
-            includesDinner: r.includesDinner,
-          })),
+    const lockedScheduledIds = sub.deliveries
+      .filter(
+        (d) =>
+          d.status === BentoDeliveryStatus.SCHEDULED &&
+          isPickupDateLocked(formatDateOnly(d.deliveryDate)),
+      )
+      .map((d) => d.id);
+
+    const immutableDeliveries = sub.deliveries.filter(
+      (d) =>
+        d.status !== BentoDeliveryStatus.SCHEDULED ||
+        isPickupDateLocked(formatDateOnly(d.deliveryDate)),
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bentoDeliveryDay.deleteMany({
+        where: {
+          subscriptionId,
+          status: BentoDeliveryStatus.SCHEDULED,
+          ...(lockedScheduledIds.length > 0
+            ? { id: { notIn: lockedScheduledIds } }
+            : {}),
         },
-      },
+      });
+
+      const immutableByDate = new Map<
+        string,
+        { includesLunch: boolean; includesDinner: boolean }
+      >();
+      for (const delivery of immutableDeliveries) {
+        const iso = formatDateOnly(delivery.deliveryDate);
+        const existing = immutableByDate.get(iso) ?? {
+          includesLunch: false,
+          includesDinner: false,
+        };
+        existing.includesLunch ||= delivery.includesLunch;
+        existing.includesDinner ||= delivery.includesDinner;
+        immutableByDate.set(iso, existing);
+      }
+
+      for (const row of rows) {
+        const iso = formatDateOnly(row.deliveryDate);
+        const immutable = immutableByDate.get(iso);
+        if (
+          immutable &&
+          (!row.includesLunch || immutable.includesLunch) &&
+          (!row.includesDinner || immutable.includesDinner)
+        ) {
+          continue;
+        }
+
+        await tx.bentoDeliveryDay.create({
+          data: {
+            subscriptionId,
+            deliveryDate: row.deliveryDate,
+            includesLunch: row.includesLunch,
+            includesDinner: row.includesDinner,
+          },
+        });
+      }
+
+      const allDeliveries = await tx.bentoDeliveryDay.findMany({
+        where: { subscriptionId },
+        orderBy: { deliveryDate: 'asc' },
+      });
+
+      await tx.bentoSubscription.update({
+        where: { id: subscriptionId },
+        data: {
+          startDate: allDeliveries[0]?.deliveryDate ?? null,
+          endDate: allDeliveries[allDeliveries.length - 1]?.deliveryDate ?? null,
+        },
+      });
     });
 
     return this.getSubscription(customerId, subscriptionId);
@@ -389,19 +462,51 @@ export class BentoService implements OnModuleInit {
     return pkg;
   }
 
-  private validateCheckoutInput(
+  private assertLockedDeliveriesUnchanged(
+    deliveries: Array<{
+      deliveryDate: Date;
+      includesLunch: boolean;
+      includesDinner: boolean;
+      status: BentoDeliveryStatus;
+    }>,
+    rows: Array<{
+      deliveryDate: Date;
+      includesLunch: boolean;
+      includesDinner: boolean;
+    }>,
+  ): void {
+    for (const delivery of deliveries) {
+      if (delivery.status !== BentoDeliveryStatus.SCHEDULED) continue;
+      const iso = formatDateOnly(delivery.deliveryDate);
+      if (!isPickupDateLocked(iso)) continue;
+
+      const row = rows.find((r) => formatDateOnly(r.deliveryDate) === iso);
+      if (
+        !row ||
+        row.includesLunch !== delivery.includesLunch ||
+        row.includesDinner !== delivery.includesDinner
+      ) {
+        throw new BadRequestException({
+          code: 'BENTO_PICKUP_LOCKED',
+          message: pickupLockMessage(iso),
+        });
+      }
+    }
+  }
+
+  private async validateCheckoutInput(
     customerId: string,
     pkg: BentoPackage,
     dto: BentoQuoteDto,
-  ): void {
+  ): Promise<void> {
     if (pkg.code === BentoPackageCode.NEWCOMER_3) {
       if (dto.mealOption !== BentoMealOption.LUNCH) {
         throw new BadRequestException({
           code: 'BENTO_NEWCOMER_LUNCH_ONLY',
-          message: 'Newcomer promo is lunch-only. Add-ons (brown rice, drinks, vegetarian) are still available.',
+          message: 'Trial pack is lunch-only. Add-ons (brown rice, drinks, vegetarian) are still available.',
         });
       }
-      void this.assertNewcomerEligible(customerId);
+      await this.assertNewcomerEligible(customerId);
     }
   }
 
@@ -409,7 +514,7 @@ export class BentoService implements OnModuleInit {
     if (!(await this.isNewcomerEligible(customerId))) {
       throw new BadRequestException({
         code: 'BENTO_NEWCOMER_INELIGIBLE',
-        message: 'Newcomer promo is only for first-time bento purchases on this account.',
+        message: 'Trial pack is a one-time offer for first-time bento customers on this account.',
       });
     }
   }

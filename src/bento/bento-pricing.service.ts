@@ -129,7 +129,7 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
 
   if (packageCode === BentoPackageCode.NEWCOMER_3) {
     lines.push({
-      label: `Newcomer pack (${split.lunchCredits} lunches @ RM39)`,
+      label: `Trial pack (${split.lunchCredits} lunches @ RM39)`,
       amountCents: subtotalMealsCents,
     });
   } else if (mealOption === BentoMealOption.LUNCH) {

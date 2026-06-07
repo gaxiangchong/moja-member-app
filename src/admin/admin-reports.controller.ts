@@ -5,6 +5,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -90,7 +91,7 @@ export class AdminReportsController {
         'Content-Disposition',
         `attachment; filename="${filename}"`,
       );
-      return buffer;
+      return new StreamableFile(buffer);
     }
 
     return this.bentoOrdersReport.getCounts(from, to);

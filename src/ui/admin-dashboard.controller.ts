@@ -2524,7 +2524,7 @@ export class AdminDashboardController {
             </div>
             <div style="padding:12px 20px;max-width:1040px">
               <p class="field-hint" style="margin-top:0">
-                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. This is separate from the cake-sales shopping catalog &mdash; it has its own storage (<code>data/bento-menu.json</code>) and does not affect cake products. Leave a day's fields blank or tick <strong>Closed</strong> to hide that day. Sunday is closed by default.
+                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. This is separate from the cake-sales shopping catalog.
               </p>
               <div class="table-wrap">
                 <table class="data">
@@ -2555,7 +2555,7 @@ export class AdminDashboardController {
             </div>
             <div style="padding:12px 20px;max-width:1040px">
               <p class="field-hint" style="margin-top:0">
-                Count scheduled bento meal sets (lunch + dinner) per day and per week from customer pickup schedules. Excel file has <strong>Daily</strong> and <strong>Weekly</strong> sheets.
+                Count scheduled bento meal sets (lunch + dinner) per day and per week from customer pickup schedules. Excel file has <strong>Daily</strong>, <strong>Weekly</strong>, and <strong>Kitchen pack list</strong> sheets. The kitchen sheet includes each member's pickup ID (first email letter + last 4 phone digits) for labelling packs.
               </p>
               <div class="form-row-2" style="gap:12px;max-width:520px;margin-bottom:12px">
                 <div>
@@ -4592,23 +4592,36 @@ export class AdminDashboardController {
         var lunch = d.lunch || {};
         var dinner = d.dinner || {};
         var dis = d.closed ? ' disabled' : '';
-        function inp(field, val) {
-          return '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + (d.closed ? 'Closed' : 'Dish name') + '" />';
+        function stackedInp(field, val, zhVal, zhPlaceholder) {
+          return '<div style="display:flex;flex-direction:column;gap:4px">' +
+            '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + (d.closed ? 'Closed' : 'English') + '" />' +
+            '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
+            '</div>';
         }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
-          '<td>' + inp('lunch.veg', lunch.veg) + '</td>' +
-          '<td>' + inp('lunch.regular', lunch.regular) + '</td>' +
-          '<td>' + inp('dinner.veg', dinner.veg) + '</td>' +
-          '<td>' + inp('dinner.regular', dinner.regular) + '</td>' +
+          '<td>' + stackedInp('lunch.veg', lunch.veg, lunch.vegZh, '素食') + '</td>' +
+          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + '</td>' +
+          '<td>' + stackedInp('dinner.veg', dinner.veg, dinner.vegZh, '素食') + '</td>' +
+          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
     }
     async function loadBentoMenu() {
-      const cfg = await api('/admin/bento-menu');
-      lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
-      renderBentoMenu();
+      try {
+        const cfg = await api('/admin/bento-menu');
+        lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
+        renderBentoMenu();
+      } catch (e) {
+        var msg = e && e.message ? String(e.message) : String(e);
+        if (msg.indexOf('401') !== -1 || msg.indexOf('ADMIN_UNAUTHORIZED') !== -1) {
+          throw new Error(
+            'Authentication failed. Click Connect (top right), then use API key mode with the value from ADMIN_API_KEYS in your .env (local default: dev-admin-local), or sign in with admin email/password.',
+          );
+        }
+        throw e;
+      }
     }
     function collectBentoMenu() {
       var rows = Array.prototype.slice.call(document.querySelectorAll('#bentoMenuBody tr[data-weekday]'));
@@ -4623,8 +4636,18 @@ export class AdminDashboardController {
           return {
             weekday: tr.getAttribute('data-weekday'),
             closed: closed,
-            lunch: { regular: val('lunch.regular'), veg: val('lunch.veg') },
-            dinner: { regular: val('dinner.regular'), veg: val('dinner.veg') },
+            lunch: {
+              regular: val('lunch.regular'),
+              veg: val('lunch.veg'),
+              regularZh: val('lunch.regularZh'),
+              vegZh: val('lunch.vegZh'),
+            },
+            dinner: {
+              regular: val('dinner.regular'),
+              veg: val('dinner.veg'),
+              regularZh: val('dinner.regularZh'),
+              vegZh: val('dinner.vegZh'),
+            },
           };
         }),
       };

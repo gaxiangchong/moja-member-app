@@ -20,10 +20,14 @@ export const BENTO_WEEKDAY_CODES = [
 export type BentoWeekdayCode = (typeof BENTO_WEEKDAY_CODES)[number];
 
 export type BentoMealDishes = {
-  /** Regular / non-vegetarian dish name. */
+  /** Regular / non-vegetarian dish name (English). */
   regular: string;
-  /** Vegetarian dish name. */
+  /** Vegetarian dish name (English). */
   veg: string;
+  /** Regular dish name in Chinese (optional). */
+  regularZh: string;
+  /** Vegetarian dish name in Chinese (optional). */
+  vegZh: string;
 };
 
 export type BentoWeekdayMenu = {
@@ -37,7 +41,12 @@ export type BentoMenuConfig = {
   weekdays: BentoWeekdayMenu[];
 };
 
-const EMPTY_DISHES: BentoMealDishes = { regular: '', veg: '' };
+const EMPTY_DISHES: BentoMealDishes = {
+  regular: '',
+  veg: '',
+  regularZh: '',
+  vegZh: '',
+};
 
 /**
  * Default weekly menu. Mon–Sat have dishes; Sunday is closed. Seeded from the
@@ -49,32 +58,33 @@ const DEFAULT_CONFIG: BentoMenuConfig = {
     {
       weekday: 'Mon',
       closed: false,
-      lunch: { regular: 'Teriyaki chicken bento', veg: 'Honey soy tofu bento' },
-      dinner: { regular: 'Tom yum soup set', veg: 'Vegetable broth set' },
+      lunch: { ...EMPTY_DISHES, regular: 'Teriyaki chicken bento', veg: 'Honey soy tofu bento' },
+      dinner: { ...EMPTY_DISHES, regular: 'Tom yum soup set', veg: 'Vegetable broth set' },
     },
     {
       weekday: 'Tue',
       closed: false,
-      lunch: { regular: 'Sambal fish bento', veg: 'Vegetable curry bento' },
-      dinner: { regular: 'Miso salmon soup set', veg: 'Mushroom soup set' },
+      lunch: { ...EMPTY_DISHES, regular: 'Sambal fish bento', veg: 'Vegetable curry bento' },
+      dinner: { ...EMPTY_DISHES, regular: 'Miso salmon soup set', veg: 'Mushroom soup set' },
     },
     {
       weekday: 'Wed',
       closed: false,
-      lunch: { regular: 'Vegetable curry bento', veg: 'Vegetable curry bento' },
-      dinner: { regular: 'Vegetable broth set', veg: 'Vegetable broth set' },
+      lunch: { ...EMPTY_DISHES, regular: 'Vegetable curry bento', veg: 'Vegetable curry bento' },
+      dinner: { ...EMPTY_DISHES, regular: 'Vegetable broth set', veg: 'Vegetable broth set' },
     },
     {
       weekday: 'Thu',
       closed: false,
-      lunch: { regular: 'Beef rendang bento', veg: 'Mushroom masala bento' },
-      dinner: { regular: 'Chicken corn soup set', veg: 'Corn & tofu soup set' },
+      lunch: { ...EMPTY_DISHES, regular: 'Beef rendang bento', veg: 'Mushroom masala bento' },
+      dinner: { ...EMPTY_DISHES, regular: 'Chicken corn soup set', veg: 'Corn & tofu soup set' },
     },
     {
       weekday: 'Fri',
       closed: false,
-      lunch: { regular: 'Honey soy tofu bento', veg: 'Honey soy tofu bento' },
+      lunch: { ...EMPTY_DISHES, regular: 'Honey soy tofu bento', veg: 'Honey soy tofu bento' },
       dinner: {
+        ...EMPTY_DISHES,
         regular: 'Laksa-inspired soup set',
         veg: 'Laksa-inspired veg soup set',
       },
@@ -82,8 +92,8 @@ const DEFAULT_CONFIG: BentoMenuConfig = {
     {
       weekday: 'Sat',
       closed: false,
-      lunch: { regular: 'Grilled salmon bento', veg: 'Grilled tempeh bento' },
-      dinner: { regular: 'Mushroom soup set', veg: 'Mushroom soup set' },
+      lunch: { ...EMPTY_DISHES, regular: 'Grilled salmon bento', veg: 'Grilled tempeh bento' },
+      dinner: { ...EMPTY_DISHES, regular: 'Mushroom soup set', veg: 'Mushroom soup set' },
     },
     {
       weekday: 'Sun',
@@ -111,8 +121,8 @@ export class BentoMenuService {
       weekdays: DEFAULT_CONFIG.weekdays.map((d) => ({
         weekday: d.weekday,
         closed: d.closed,
-        lunch: { ...d.lunch },
-        dinner: { ...d.dinner },
+        lunch: { ...EMPTY_DISHES, ...d.lunch },
+        dinner: { ...EMPTY_DISHES, ...d.dinner },
       })),
     };
   }
@@ -124,6 +134,8 @@ export class BentoMenuService {
     return {
       regular: clean(obj.regular, fallback.regular),
       veg: clean(obj.veg, fallback.veg),
+      regularZh: clean(obj.regularZh, fallback.regularZh),
+      vegZh: clean(obj.vegZh, fallback.vegZh),
     };
   }
 

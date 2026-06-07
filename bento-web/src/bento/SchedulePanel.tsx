@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { scheduleBentoSubscription } from '../api';
+import { PickupReminderNotification } from './PickupReminderNotification';
 import type { DayMealSelection } from './MealSchedulePicker';
 import { MealSchedulePicker } from './MealSchedulePicker';
 import type { BentoSubscription } from './types';
@@ -24,6 +25,7 @@ export function SchedulePanel({ subscription, onScheduled }: Props) {
   const [selections, setSelections] = useState<DayMealSelection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   const lunchScheduled = useMemo(
     () => selections.filter((s) => s.includeLunch).length,
@@ -48,6 +50,7 @@ export function SchedulePanel({ subscription, onScheduled }: Props) {
       await scheduleBentoSubscription(subscription.id, {
         slots: buildSlotsFromSelections(selections),
       });
+      setConfirmed(true);
       onScheduled();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save schedule');
@@ -58,6 +61,15 @@ export function SchedulePanel({ subscription, onScheduled }: Props) {
 
   if (!sched) {
     return <p className="err">Scheduling is not available for this subscription.</p>;
+  }
+
+  if (confirmed) {
+    return (
+      <section className="section schedulePanel">
+        <h2>Pickup reminder</h2>
+        <PickupReminderNotification justConfirmed />
+      </section>
+    );
   }
 
   return (

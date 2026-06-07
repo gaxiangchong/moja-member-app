@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { fetchMyBentoSubscriptions } from '../api';
+import type { MemberProfile } from '../api';
 import type { BentoSubscription } from './types';
 import { CalendarScheduler } from './CalendarScheduler';
 
 const INACTIVE = ['CANCELLED', 'EXPIRED', 'TERMINATED', 'DELETED', 'INACTIVE'];
 
-export function ScheduleTab() {
+type Props = {
+  profile: MemberProfile | null;
+};
+
+export function ScheduleTab({ profile }: Props) {
   const [subs, setSubs] = useState<BentoSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,5 +40,11 @@ export function ScheduleTab() {
   }
 
   // All active subscriptions go into one unified calendar
-  return <CalendarScheduler subscriptions={active} onScheduled={load} />;
+  return (
+    <CalendarScheduler
+      subscriptions={active}
+      onScheduled={load}
+      kitchenPickupId={profile?.kitchenPickupId ?? null}
+    />
+  );
 }
