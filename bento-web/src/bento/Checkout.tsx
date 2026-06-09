@@ -162,7 +162,8 @@ export function Checkout({ draft, onSuccess }: Props) {
 
           {quote.totalSavingsCents > 0 && (
             <p className="savings">
-              You save {formatRm(quote.totalSavingsCents * sets)} vs the 7-meal plan.
+              You save {formatRm(quote.totalSavingsCents * sets)} vs the{' '}
+              {quote.savingsBaselineLabel || '1 meal'} plan.
             </p>
           )}
 

@@ -1083,7 +1083,7 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
-            <button type="button" class="nav-btn nav-sub" data-view="settings-bento-menu">Bento weekly menu</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-bento-menu">Bento menu &amp; pricing</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-shop-layout">Shop layout</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
@@ -2610,6 +2610,38 @@ export class AdminDashboardController {
 
           <div class="sheet" style="margin-top:16px">
             <div class="sheet-head">
+              <h2>Bento package pricing</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshBentoPackagesBtn">Refresh</button>
+                <button type="button" class="btn-primary" id="bentoPackagesSaveBtn">Save pricing</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1100px">
+              <p class="field-hint" style="margin-top:0">
+                Prices shown in the Bento client app at checkout. Amounts are in <strong>RM</strong> (stored as cents in the database). The trial pack can use a <strong>fixed checkout</strong> total instead of per-meal pricing. Inactive packages are hidden from customers.
+              </p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Label</th>
+                      <th>Meals</th>
+                      <th>Valid (days)</th>
+                      <th>Price / meal (RM)</th>
+                      <th>Fixed checkout (RM)</th>
+                      <th style="text-align:center">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoPackagesBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoPackagesSaveResult"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
               <h2>Bento weekly menu</h2>
               <div class="sheet-actions">
                 <button type="button" class="btn-outline" id="refreshBentoMenuBtn">Refresh</button>
@@ -3120,7 +3152,7 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
-      'settings-bento-menu': 'Settings · Bento weekly menu',
+      'settings-bento-menu': 'Settings · Bento menu & pricing',
       'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
@@ -4717,6 +4749,92 @@ export class AdminDashboardController {
     }
 
     var lastBentoMenu = [];
+    var lastBentoPackages = [];
+    function bpAttr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+    function bpRmToCents(raw) {
+      var s = String(raw == null ? '' : raw).trim().replace(',', '.');
+      if (!s) return null;
+      var n = parseFloat(s);
+      if (!Number.isFinite(n) || n < 0) return null;
+      return Math.round(n * 100);
+    }
+    function bpCentsToRmInput(cents) {
+      if (cents == null || cents === '') return '';
+      var n = Number(cents);
+      if (!Number.isFinite(n)) return '';
+      return (n / 100).toFixed(2);
+    }
+    function renderBentoPackages() {
+      var body = document.getElementById('bentoPackagesBody');
+      if (!body) return;
+      body.innerHTML = (lastBentoPackages || []).map(function (p) {
+        var fixedHint = p.code === 'NEWCOMER_3'
+          ? ' placeholder="39.00"'
+          : ' placeholder="—"';
+        return '<tr data-package-code="' + bpAttr(p.code) + '">' +
+          '<td><code style="font-size:11px">' + bpAttr(p.code) + '</code></td>' +
+          '<td><input type="text" class="bp-label" value="' + bpAttr(p.label) + '" style="width:100%;min-width:160px" /></td>' +
+          '<td>' + fmt(p.mealCredits) + '</td>' +
+          '<td>' + fmt(p.durationDays) + '</td>' +
+          '<td><input type="text" class="bp-price" inputmode="decimal" value="' + bpAttr(bpCentsToRmInput(p.pricePerMealCents)) + '" style="width:96px" /></td>' +
+          '<td><input type="text" class="bp-fixed" inputmode="decimal" value="' + bpAttr(bpCentsToRmInput(p.fixedCheckoutCents)) + '"' + fixedHint + ' style="width:96px" /></td>' +
+          '<td style="text-align:center"><input type="checkbox" class="bp-active"' + (p.isActive ? ' checked' : '') + ' /></td>' +
+          '</tr>';
+      }).join('') || '<tr><td colspan="7">No packages</td></tr>';
+    }
+    async function loadBentoPackages() {
+      var data = await api('/admin/bento-packages');
+      lastBentoPackages = (data && Array.isArray(data.packages)) ? data.packages : [];
+      renderBentoPackages();
+    }
+    function collectBentoPackages() {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('#bentoPackagesBody tr[data-package-code]'));
+      return rows.map(function (tr) {
+        var code = tr.getAttribute('data-package-code');
+        var labelEl = tr.querySelector('.bp-label');
+        var priceEl = tr.querySelector('.bp-price');
+        var fixedEl = tr.querySelector('.bp-fixed');
+        var activeEl = tr.querySelector('.bp-active');
+        var priceCents = bpRmToCents(priceEl ? priceEl.value : '');
+        var fixedRaw = fixedEl ? String(fixedEl.value || '').trim() : '';
+        var fixedCents = fixedRaw ? bpRmToCents(fixedRaw) : null;
+        return {
+          code: code,
+          label: labelEl ? labelEl.value.trim() : '',
+          pricePerMealCents: priceCents,
+          fixedCheckoutCents: fixedRaw ? fixedCents : null,
+          isActive: activeEl ? activeEl.checked : true,
+        };
+      });
+    }
+    async function saveBentoPackages() {
+      var out = document.getElementById('bentoPackagesSaveResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var items = collectBentoPackages();
+        for (var i = 0; i < items.length; i += 1) {
+          var it = items[i];
+          if (!it.label) throw new Error('Label is required for ' + it.code + '.');
+          if (!it.pricePerMealCents || it.pricePerMealCents < 100) {
+            throw new Error('Enter a valid price per meal (≥ RM1.00) for ' + it.code + '.');
+          }
+          if (it.fixedCheckoutCents != null && it.fixedCheckoutCents < 100) {
+            throw new Error('Fixed checkout for ' + it.code + ' must be ≥ RM1.00 or left empty.');
+          }
+        }
+        var saved = await apiPut('/admin/bento-packages', { packages: items });
+        lastBentoPackages = (saved && Array.isArray(saved.packages)) ? saved.packages : [];
+        renderBentoPackages();
+        if (out) out.textContent = 'Saved. Live in the Bento app on next packages load.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
     function bmAttr(s) {
       return String(s == null ? '' : s)
         .replace(/&/g, '&amp;')
@@ -4752,6 +4870,7 @@ export class AdminDashboardController {
         lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
         renderBentoMenu();
         await loadBentoSettings();
+        await loadBentoPackages();
       } catch (e) {
         var msg = e && e.message ? String(e.message) : String(e);
         if (msg.indexOf('401') !== -1 || msg.indexOf('ADMIN_UNAUTHORIZED') !== -1) {
@@ -6221,6 +6340,18 @@ export class AdminDashboardController {
     if (bentoSettingsSaveBtn) {
       bentoSettingsSaveBtn.addEventListener('click', function () {
         saveBentoSettings();
+      });
+    }
+    var bentoPackagesSaveBtn = document.getElementById('bentoPackagesSaveBtn');
+    if (bentoPackagesSaveBtn) {
+      bentoPackagesSaveBtn.addEventListener('click', function () {
+        saveBentoPackages();
+      });
+    }
+    var refreshBentoPackagesBtn = document.getElementById('refreshBentoPackagesBtn');
+    if (refreshBentoPackagesBtn) {
+      refreshBentoPackagesBtn.addEventListener('click', function () {
+        loadBentoPackages().catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
     var bentoMenuBody = document.getElementById('bentoMenuBody');

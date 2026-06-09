@@ -4,9 +4,9 @@ import {
   BentoRiceType,
 } from '@prisma/client';
 import {
-  BENTO_SAVINGS_BASELINE_CENTS,
   NEWCOMER_FIXED_BASE_CENTS,
   quoteBentoCheckout,
+  resolveSavingsBaseline,
   splitMealCredits,
 } from './bento-pricing.service';
 
@@ -119,7 +119,8 @@ describe('quoteBentoCheckout', () => {
     expect(q.savingsPerMealCents).toBe(0);
   });
 
-  it('shows savings vs RM18 baseline on longer plans', () => {
+  it('shows savings vs 1-meal baseline on longer plans', () => {
+    const baseline = 1800;
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_30,
       mealCredits: 30,
@@ -128,9 +129,35 @@ describe('quoteBentoCheckout', () => {
       mealOption: BentoMealOption.LUNCH,
       riceType: BentoRiceType.WHITE,
       includeDrinkAddon: false,
+      savingsBaselineCents: baseline,
+      savingsBaselineLabel: '1 meal',
     });
-    expect(q.savingsPerMealCents).toBe(BENTO_SAVINGS_BASELINE_CENTS - 1300);
+    expect(q.savingsPerMealCents).toBe(baseline - 1300);
     expect(q.totalSavingsCents).toBe(500 * 30);
+    expect(q.savingsBaselineLabel).toBe('1 meal');
+  });
+
+  it('resolves savings baseline from ONE_TIME package only', () => {
+    const baseline = resolveSavingsBaseline([
+      {
+        code: BentoPackageCode.ONE_TIME,
+        label: '1 meal',
+        pricePerMealCents: 1800,
+      },
+      {
+        code: BentoPackageCode.DAYS_7,
+        label: '10 meals',
+        pricePerMealCents: 1600,
+      },
+      {
+        code: BentoPackageCode.DAYS_30,
+        label: '30 meals',
+        pricePerMealCents: 1300,
+      },
+    ]);
+    expect(baseline.pricePerMealCents).toBe(1800);
+    expect(baseline.label).toBe('1 meal');
+    expect(baseline.packageCode).toBe(BentoPackageCode.ONE_TIME);
   });
 
   it('skips soup surcharge and drink add-ons when drinksAndSoupEnabled is false', () => {

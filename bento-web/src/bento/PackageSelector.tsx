@@ -1,8 +1,9 @@
-import type { BentoPackage } from './types';
-import { SAVINGS_BASELINE_CENTS, formatPlanDuration, formatRm } from './types';
+import type { BentoPackage, BentoSavingsBaseline } from './types';
+import { formatPlanDuration, formatRm } from './types';
 
 type Props = {
   packages: BentoPackage[];
+  savingsBaseline: BentoSavingsBaseline | null;
   selected: string | null;
   onSelect: (code: BentoPackage['code']) => void;
 };
@@ -16,18 +17,18 @@ const FEATURES: { key: FeatureKey; label: string }[] = [
   { key: 'savings',  label: 'Total saving' },
 ];
 
-function cellValue(pkg: BentoPackage, key: FeatureKey) {
-  const savingsPerMeal = Math.max(0, SAVINGS_BASELINE_CENTS - pkg.pricePerMealCents);
-  const totalSavings = savingsPerMeal * pkg.mealCredits;
+function cellValue(
+  pkg: BentoPackage,
+  key: FeatureKey,
+  baselineCents: number,
+) {
   switch (key) {
     case 'price':
       return (
         <>
-          {SAVINGS_BASELINE_CENTS > pkg.pricePerMealCents && (
-            <span className="pkgTblWas">
-              was <s>{formatRm(SAVINGS_BASELINE_CENTS)}</s>
-            </span>
-          )}
+          <span className="pkgTblWas">
+            was <s>{formatRm(baselineCents)}</s>
+          </span>
           <strong>{formatRm(pkg.pricePerMealCents)}</strong>
           <span className="pkgTblSub">/ meal</span>
         </>
@@ -36,7 +37,8 @@ function cellValue(pkg: BentoPackage, key: FeatureKey) {
       return <strong>{pkg.mealCredits}</strong>;
     case 'duration':
       return <strong>{formatPlanDuration(pkg.durationDays)}</strong>;
-    case 'savings':
+    case 'savings': {
+      const totalSavings = pkg.totalSavingsCents ?? 0;
       return totalSavings > 0
         ? (
           <span className="pkgTblSaveBadge">
@@ -45,6 +47,7 @@ function cellValue(pkg: BentoPackage, key: FeatureKey) {
           </span>
         )
         : <span className="pkgTblNone">—</span>;
+    }
   }
 }
 
@@ -52,7 +55,8 @@ function cls(...parts: (string | boolean | undefined)[]) {
   return parts.filter(Boolean).join(' ');
 }
 
-export function PackageSelector({ packages, selected, onSelect }: Props) {
+export function PackageSelector({ packages, savingsBaseline, selected, onSelect }: Props) {
+  const baselineCents = savingsBaseline?.pricePerMealCents ?? 1800;
   const newcomer = packages.find((p) => p.isNewcomer);
   const regular = packages.filter((p) => !p.isNewcomer);
 
@@ -116,7 +120,7 @@ export function PackageSelector({ packages, selected, onSelect }: Props) {
                       key={pkg.code}
                       className={cls('pkgTblCell', selected === pkg.code && 'selected')}
                     >
-                      {cellValue(pkg, f.key)}
+                      {cellValue(pkg, f.key, baselineCents)}
                     </td>
                   ))}
                 </tr>

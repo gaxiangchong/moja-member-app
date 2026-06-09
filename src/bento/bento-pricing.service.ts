@@ -4,8 +4,53 @@ import {
   BentoRiceType,
 } from '@prisma/client';
 
-/** 7-day plan per-meal price — baseline for savings display (RM18). */
+/** Fallback when no comparable packages exist in the catalog. */
 export const BENTO_SAVINGS_BASELINE_CENTS = 1800;
+
+export type SavingsBaseline = {
+  pricePerMealCents: number;
+  label: string;
+  packageCode: BentoPackageCode;
+};
+
+export function resolveSavingsBaseline(
+  packages: Array<{
+    code: BentoPackageCode;
+    label: string;
+    pricePerMealCents: number;
+    isActive?: boolean;
+  }>,
+): SavingsBaseline {
+  const oneTime = packages.find((p) => p.code === BentoPackageCode.ONE_TIME);
+  if (oneTime) {
+    return {
+      pricePerMealCents: oneTime.pricePerMealCents,
+      label: oneTime.label,
+      packageCode: BentoPackageCode.ONE_TIME,
+    };
+  }
+  return {
+    pricePerMealCents: BENTO_SAVINGS_BASELINE_CENTS,
+    label: '1 meal',
+    packageCode: BentoPackageCode.ONE_TIME,
+  };
+}
+
+export function computePackageListSavings(
+  packageCode: BentoPackageCode,
+  pricePerMealCents: number,
+  mealCredits: number,
+  baselineCents: number,
+): { savingsPerMealCents: number; totalSavingsCents: number } {
+  if (packageCode === BentoPackageCode.NEWCOMER_3) {
+    return { savingsPerMealCents: 0, totalSavingsCents: 0 };
+  }
+  const savingsPerMealCents = Math.max(0, baselineCents - pricePerMealCents);
+  return {
+    savingsPerMealCents,
+    totalSavingsCents: savingsPerMealCents * mealCredits,
+  };
+}
 
 /** +RM1 per dinner meal (soup included). */
 export const BENTO_DINNER_PREMIUM_CENTS = 100;
@@ -34,6 +79,9 @@ export type BentoQuoteInput = {
   includeDrinkAddon: boolean;
   /** When false, soup surcharges and drink add-ons are not offered. */
   drinksAndSoupEnabled?: boolean;
+  /** Highest per-meal rate among active plans — used for savings display. */
+  savingsBaselineCents?: number;
+  savingsBaselineLabel?: string;
 };
 
 export type MealCreditSplit = {
@@ -54,6 +102,8 @@ export type BentoQuoteResult = {
   lunchCredits: number;
   dinnerCredits: number;
   mealCredits: number;
+  savingsBaselineCents: number;
+  savingsBaselineLabel: string;
 };
 
 export function splitMealCredits(
@@ -83,6 +133,8 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
     riceType,
     includeDrinkAddon,
     drinksAndSoupEnabled = true,
+    savingsBaselineCents = BENTO_SAVINGS_BASELINE_CENTS,
+    savingsBaselineLabel = '',
   } = input;
 
   const effectiveFreePerks =
@@ -129,7 +181,7 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
   const savingsPerMealCents =
     packageCode === BentoPackageCode.NEWCOMER_3
       ? 0
-      : Math.max(0, BENTO_SAVINGS_BASELINE_CENTS - pricePerMealCents);
+      : Math.max(0, savingsBaselineCents - pricePerMealCents);
   const totalSavingsCents = savingsPerMealCents * totalMealSlots;
 
   const lines: BentoQuoteLine[] = [];
@@ -194,6 +246,8 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
     lunchCredits: split.lunchCredits,
     dinnerCredits: split.dinnerCredits,
     mealCredits,
+    savingsBaselineCents,
+    savingsBaselineLabel,
   };
 }
 

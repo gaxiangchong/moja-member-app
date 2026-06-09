@@ -5,6 +5,7 @@ import type {
   BentoPackageCode,
   BentoQuote,
   BentoRiceType,
+  BentoSavingsBaseline,
   BentoSubscription,
 } from './bento/types';
 
@@ -228,16 +229,19 @@ async function authFetch<T = unknown>(path: string, init?: RequestInit): Promise
 export async function fetchBentoPackages(): Promise<{
   packages: BentoPackage[];
   newcomerEligible: boolean;
+  savingsBaseline: BentoSavingsBaseline | null;
   features: { drinksAndSoupEnabled: boolean };
 }> {
   const data = (await authFetch('/bento/packages')) as {
     packages: BentoPackage[];
     newcomerEligible: boolean;
+    savingsBaseline?: BentoSavingsBaseline | null;
     features?: { drinksAndSoupEnabled?: boolean };
   };
   return {
     packages: data.packages ?? [],
     newcomerEligible: Boolean(data.newcomerEligible),
+    savingsBaseline: data.savingsBaseline ?? null,
     features: {
       drinksAndSoupEnabled: data.features?.drinksAndSoupEnabled !== false,
     },

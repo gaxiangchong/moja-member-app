@@ -12,7 +12,13 @@ import {
   updateMe,
   type MemberProfile,
 } from './api';
-import type { BentoSubscription } from './bento/types';
+import type {
+  BentoPackage,
+  BentoPackageCode,
+  BentoSavingsBaseline,
+  BentoSubscription,
+  OrderDraft,
+} from './bento/types';
 import { formatRm } from './bento/types';
 import { Checkout } from './bento/Checkout';
 import { MealOptionPicker } from './bento/MealOptionPicker';
@@ -23,7 +29,6 @@ import { PackageSelector } from './bento/PackageSelector';
 import { ScheduleTab } from './bento/ScheduleTab';
 import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
 import { useVisualViewportHeight } from './lib/useVisualViewportHeight';
-import type { BentoPackage, BentoPackageCode, OrderDraft } from './bento/types';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
 
@@ -261,6 +266,7 @@ export default function App() {
   const [orderStep, setOrderStep] = useState<'configure' | 'checkout'>('configure');
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [packages, setPackages] = useState<BentoPackage[]>([]);
+  const [savingsBaseline, setSavingsBaseline] = useState<BentoSavingsBaseline | null>(null);
   const [drinksAndSoupEnabled, setDrinksAndSoupEnabled] = useState(true);
   const [paymentBanner, setPaymentBanner] = useState<'success' | 'paid_schedule' | 'failed' | null>(null);
 
@@ -289,6 +295,7 @@ export default function App() {
     setAuthed(true);
     const pkgRes = await fetchBentoPackages();
     setPackages(pkgRes.packages.filter((p) => p.code !== 'DAYS_60' && p.code !== 'ONE_TIME'));
+    setSavingsBaseline(pkgRes.savingsBaseline);
     setDrinksAndSoupEnabled(pkgRes.features.drinksAndSoupEnabled);
     if (!pkgRes.features.drinksAndSoupEnabled) {
       setDraft((d) => ({ ...d, includeDrinkAddon: false }));
@@ -364,6 +371,7 @@ export default function App() {
             <OrderHero profile={profile} selectedPackage={selectedPkg} />
             <PackageSelector
               packages={packages}
+              savingsBaseline={savingsBaseline}
               selected={draft.packageCode}
               onSelect={selectPackage}
             />

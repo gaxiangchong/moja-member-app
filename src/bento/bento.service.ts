@@ -29,6 +29,8 @@ import {
 import {
   quoteBentoCheckout,
   splitMealCredits,
+  resolveSavingsBaseline,
+  computePackageListSavings,
   type BentoQuoteResult,
 } from './bento-pricing.service';
 import { BENTO_MENU } from './bento-menu.constants';
@@ -124,19 +126,13 @@ export class BentoService implements OnModuleInit {
 
   async seedPackages(): Promise<void> {
     for (const pkg of PACKAGE_SEED) {
-      await this.prisma.bentoPackage.upsert({
+      const existing = await this.prisma.bentoPackage.findUnique({
         where: { code: pkg.code },
-        create: {
+      });
+      if (existing) continue;
+      await this.prisma.bentoPackage.create({
+        data: {
           code: pkg.code,
-          label: pkg.label,
-          durationDays: pkg.durationDays,
-          mealCredits: pkg.mealCredits,
-          pricePerMealCents: pkg.pricePerMealCents,
-          fixedCheckoutCents: pkg.fixedCheckoutCents ?? null,
-          includeFreeSoupAndDrinks: pkg.includeFreeSoupAndDrinks ?? false,
-          isActive: pkg.isActive ?? true,
-        },
-        update: {
           label: pkg.label,
           durationDays: pkg.durationDays,
           mealCredits: pkg.mealCredits,
@@ -184,6 +180,7 @@ export class BentoService implements OnModuleInit {
       where: { isActive: true },
       orderBy: { mealCredits: 'asc' },
     });
+    const baseline = await this.loadSavingsBaseline();
     const newcomerEligible =
       customerId != null ? await this.isNewcomerEligible(customerId) : false;
     const packages = rows
@@ -191,7 +188,7 @@ export class BentoService implements OnModuleInit {
         (p) =>
           p.code !== BentoPackageCode.NEWCOMER_3 || newcomerEligible,
       )
-      .map((p) => this.mapPackage(p))
+      .map((p) => this.mapPackage(p, baseline))
       .sort((a, b) => {
         if (a.isNewcomer) return -1;
         if (b.isNewcomer) return 1;
@@ -201,6 +198,12 @@ export class BentoService implements OnModuleInit {
     return {
       newcomerEligible,
       packages,
+      savingsBaseline: {
+        pricePerMealCents: baseline.pricePerMealCents,
+        pricePerMealRm: baseline.pricePerMealCents / 100,
+        label: baseline.label,
+        packageCode: baseline.packageCode,
+      },
       features: {
         drinksAndSoupEnabled: this.bentoFeatures.drinksAndSoupEnabled(),
       },
@@ -448,6 +451,7 @@ export class BentoService implements OnModuleInit {
     await this.validateCheckoutInput(customerId, pkg, dto);
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
     const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
+    const baseline = await this.loadSavingsBaseline();
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -458,6 +462,8 @@ export class BentoService implements OnModuleInit {
       riceType: dto.riceType,
       includeDrinkAddon,
       drinksAndSoupEnabled,
+      savingsBaselineCents: baseline.pricePerMealCents,
+      savingsBaselineLabel: baseline.label,
     });
     const sets = Math.min(10, Math.max(1, dto.sets ?? 1));
     const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
@@ -465,7 +471,7 @@ export class BentoService implements OnModuleInit {
       pkg.durationDays,
       requiredPacks,
     );
-    return { ...quote, package: this.mapPackage(pkg), purchaseAvailability };
+    return { ...quote, package: this.mapPackage(pkg, baseline), purchaseAvailability };
   }
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
@@ -473,6 +479,7 @@ export class BentoService implements OnModuleInit {
     await this.validateCheckoutInput(customerId, pkg, dto);
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
     const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
+    const baseline = await this.loadSavingsBaseline();
     const quote = quoteBentoCheckout({
       packageCode: pkg.code,
       mealCredits: pkg.mealCredits,
@@ -483,6 +490,8 @@ export class BentoService implements OnModuleInit {
       riceType: dto.riceType,
       includeDrinkAddon,
       drinksAndSoupEnabled,
+      savingsBaselineCents: baseline.pricePerMealCents,
+      savingsBaselineLabel: baseline.label,
     });
     const sets = Math.min(10, Math.max(1, dto.sets ?? 1));
     const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
@@ -900,11 +909,40 @@ export class BentoService implements OnModuleInit {
     return deliveries.reduce((sum, d) => sum + packsInDeliveryRow(d), 0);
   }
 
-  private mapPackage(p: BentoPackage) {
-    const split = splitMealCredits(p.mealCredits, BentoMealOption.BOTH);
+  private async loadSavingsBaseline() {
+    const oneTime = await this.prisma.bentoPackage.findUnique({
+      where: { code: BentoPackageCode.ONE_TIME },
+      select: {
+        code: true,
+        label: true,
+        pricePerMealCents: true,
+      },
+    });
+    if (oneTime) {
+      return {
+        pricePerMealCents: oneTime.pricePerMealCents,
+        label: oneTime.label,
+        packageCode: oneTime.code,
+      };
+    }
+    return resolveSavingsBaseline([]);
+  }
+
+  private mapPackage(
+    p: BentoPackage,
+    baseline?: ReturnType<typeof resolveSavingsBaseline>,
+  ) {
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
     const includeFreeSoupAndDrinks =
       drinksAndSoupEnabled && p.includeFreeSoupAndDrinks;
+    const savings = baseline
+      ? computePackageListSavings(
+          p.code,
+          p.pricePerMealCents,
+          p.mealCredits,
+          baseline.pricePerMealCents,
+        )
+      : { savingsPerMealCents: 0, totalSavingsCents: 0 };
     return {
       id: p.id,
       code: p.code,
@@ -920,6 +958,8 @@ export class BentoService implements OnModuleInit {
       perksLabel: includeFreeSoupAndDrinks
         ? 'Free soup + free drinks included'
         : null,
+      savingsPerMealCents: savings.savingsPerMealCents,
+      totalSavingsCents: savings.totalSavingsCents,
     };
   }
 

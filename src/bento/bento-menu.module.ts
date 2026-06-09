@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BentoMenuService } from './bento-menu.service';
 import { BentoOrdersReportService } from './bento-orders-report.service';
+import { BentoPackagesService } from './bento-packages.service';
 import { BentoSettingsService } from './bento-settings.service';
 import { BentoFeaturesService } from './bento-features.service';
 
@@ -12,7 +13,7 @@ import { BentoFeaturesService } from './bento-features.service';
  */
 @Module({
   imports: [PrismaModule],
-  providers: [BentoMenuService, BentoOrdersReportService, BentoSettingsService, BentoFeaturesService],
-  exports: [BentoMenuService, BentoOrdersReportService, BentoSettingsService, BentoFeaturesService],
+  providers: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService],
+  exports: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService],
 })
 export class BentoMenuModule {}

@@ -54,8 +54,10 @@ import {
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
+import { BentoPackagesService } from '../bento/bento-packages.service';
 import { BentoSettingsService } from '../bento/bento-settings.service';
 import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
+import { UpdateBentoPackagesDto } from './dto/update-bento-packages.dto';
 import { UpdateBentoSettingsDto } from './dto/update-bento-settings.dto';
 
 @Controller('admin')
@@ -67,6 +69,7 @@ export class AdminController {
     private readonly shopCatalog: ShopCatalogService,
     private readonly homeAds: HomeAdsService,
     private readonly bentoMenu: BentoMenuService,
+    private readonly bentoPackages: BentoPackagesService,
     private readonly bentoSettings: BentoSettingsService,
   ) {}
 
@@ -422,6 +425,18 @@ export class AdminController {
       effectiveDailyCapacityPacks: effective,
       envOverride: effective !== saved.dailyCapacityPacks,
     };
+  }
+
+  @Get('bento-packages')
+  @RequirePermissions(P.VOUCHER_READ)
+  getBentoPackages() {
+    return this.bentoPackages.listForAdmin();
+  }
+
+  @Put('bento-packages')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateBentoPackages(@Body() dto: UpdateBentoPackagesDto) {
+    return this.bentoPackages.updatePricing(dto.packages);
   }
 
   @Get('shop-catalog/popular')

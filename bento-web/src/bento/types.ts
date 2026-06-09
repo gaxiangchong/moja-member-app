@@ -22,6 +22,15 @@ export type BentoPackage = {
   newcomerLunchOnly?: boolean;
   includeFreeSoupAndDrinks?: boolean;
   perksLabel?: string | null;
+  savingsPerMealCents?: number;
+  totalSavingsCents?: number;
+};
+
+export type BentoSavingsBaseline = {
+  pricePerMealCents: number;
+  pricePerMealRm: number;
+  label: string;
+  packageCode: BentoPackageCode;
 };
 
 export type PurchaseCapacityInfo = {
@@ -49,6 +58,8 @@ export type BentoQuote = {
   lunchCredits: number;
   dinnerCredits: number;
   mealCredits: number;
+  savingsBaselineCents: number;
+  savingsBaselineLabel: string;
   package: BentoPackage;
   purchaseAvailability?: PurchaseCapacityInfo;
 };
@@ -99,8 +110,6 @@ export type OrderDraft = {
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
 };
-
-export const SAVINGS_BASELINE_CENTS = 1800;
 
 export function formatRm(cents: number): string {
   return `RM ${(cents / 100).toFixed(2)}`;
