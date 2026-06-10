@@ -20,6 +20,11 @@ export class CartHandoffLineDto {
   @MaxLength(120)
   productId!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  variantId?: string | null;
+
   @IsString()
   @MaxLength(200)
   name!: string;

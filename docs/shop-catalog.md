@@ -4,11 +4,11 @@ Product data for **mojamaison.com** and the member shop is owned by this app.
 
 ## Edit here (one place)
 
-| File | Purpose |
-|------|---------|
-| `data/shop-catalog.products.json` | All products, prices, variants, images paths |
-| `data/shop-catalog.layout.json` | Shop sections + homepage featured product ids |
-| `data/home-popular.json` | Member app home “popular” strip (max 5 ids) |
+| File                              | Purpose                                       |
+| --------------------------------- | --------------------------------------------- |
+| `data/shop-catalog.products.json` | All products, prices, variants, images paths  |
+| `data/shop-catalog.layout.json`   | Shop sections + homepage featured product ids |
+| `data/home-popular.json`          | Member app home “popular” strip (max 5 ids)   |
 
 `config/shop-catalog.*.json` are **seed copies** for new environments. After editing `data/`, you may mirror to `config/` for git backup.
 
@@ -21,6 +21,11 @@ Product images are **not** stored here — only paths like `/images/products/foo
 - `POST /shop/cart-handoff` — checkout handoff from storefront
 
 Default local URL: `http://127.0.0.1:3000` (set `PORT` in `.env` if different).
+
+Cart handoff requests should send the selected `productId`, `variantId` or
+`variantLabel`, and quantity. The member API reprices every line from the
+catalog before signing the handoff token; client-supplied names and prices are
+accepted only for backwards compatibility and are not trusted for checkout.
 
 ## One-time import from legacy moja-sites JSON
 
