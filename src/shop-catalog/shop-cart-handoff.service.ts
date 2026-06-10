@@ -1,16 +1,21 @@
 import {
   BadRequestException,
   Injectable,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import type {
+  ShopCatalogProduct,
+  ShopCatalogProductVariant,
+} from './shop-catalog.service';
+import { ShopCatalogService } from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
+  variantId?: string | null;
   name: string;
   qty: number;
   unitPriceCents: number;
@@ -38,6 +43,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly shopCatalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -81,17 +87,93 @@ export class ShopCartHandoffService {
     return 'http://localhost:5193';
   }
 
-  private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
+  private failLine(code: string, message: string): never {
+    throw new BadRequestException({ code, message });
+  }
+
+  private resolveVariant(
+    product: ShopCatalogProduct,
+    raw: Partial<CartHandoffLine>,
+  ): ShopCatalogProductVariant | null {
+    const variants = product.variants ?? [];
+    const requestedId = String(raw.variantId ?? '').trim();
+    const requestedLabel = String(raw.variantLabel ?? '').trim();
+
+    if (variants.length === 0) {
+      if (requestedId || requestedLabel) {
+        this.failLine(
+          'CART_HANDOFF_INVALID_VARIANT',
+          'This product does not have the requested variant',
+        );
+      }
+      return null;
+    }
+
+    let variant = requestedId
+      ? variants.find((v) => v.id === requestedId)
+      : undefined;
+
+    if (!variant && requestedLabel) {
+      const normalizedLabel = requestedLabel.toLowerCase();
+      variant = variants.find(
+        (v) =>
+          String(v.label ?? '')
+            .trim()
+            .toLowerCase() === normalizedLabel,
+      );
+    }
+
+    if (!variant && !requestedId && !requestedLabel && variants.length === 1) {
+      variant = variants[0];
+    }
+
+    if (!variant) {
+      this.failLine(
+        'CART_HANDOFF_INVALID_VARIANT',
+        'Choose a valid product variant before checkout',
+      );
+    }
+
+    if (variant.available === false) {
+      this.failLine(
+        'CART_HANDOFF_UNAVAILABLE_VARIANT',
+        'The selected product variant is not available',
+      );
+    }
+
+    return variant;
+  }
+
+  private canonicalPriceCents(
+    product: ShopCatalogProduct,
+    variant: ShopCatalogProductVariant | null,
+  ): number {
+    const raw = variant ? variant.priceCents : product.basePriceCents;
+    const price = Math.floor(Number(raw));
+    if (!Number.isFinite(price) || price < 0) {
+      this.failLine(
+        'CART_HANDOFF_INVALID_CATALOG_PRICE',
+        'Catalog price is not valid for checkout',
+      );
+    }
+    return price;
+  }
+
+  private normalizeLines(
+    inputLines: Array<Partial<CartHandoffLine>>,
+  ): CartHandoffLine[] {
     const lines: CartHandoffLine[] = [];
-    for (const raw of dto.lines) {
-      const productId = raw.productId.trim();
-      const name = raw.name.trim();
-      const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+    const productsById = new Map(
+      this.shopCatalog.listPublicProducts().map((p) => [p.id, p]),
+    );
+
+    for (const raw of inputLines) {
+      const productId = String(raw.productId ?? '').trim();
+      const qty = Math.floor(Number(raw.qty));
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs productId',
         });
       }
       if (qty < 1 || qty > 99) {
@@ -100,19 +182,24 @@ export class ShopCartHandoffService {
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
-        throw new BadRequestException({
-          code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
-        });
+      const product = productsById.get(productId);
+      if (!product || product.isActive === false || product.soldOut) {
+        this.failLine(
+          'CART_HANDOFF_UNAVAILABLE_PRODUCT',
+          'One or more cart products are no longer available',
+        );
       }
+
+      const variant = this.resolveVariant(product, raw);
+      const unitPriceCents = this.canonicalPriceCents(product, variant);
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        variantId: variant?.id ?? null,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? null,
+        imageUrl: product.imageUrl?.trim() || product.images?.[0]?.src || null,
       });
     }
     return lines;
@@ -138,15 +225,7 @@ export class ShopCartHandoffService {
   }
 
   async createHandoff(dto: CreateCartHandoffDto) {
-    const shopBase = this.config.get<string>('SHOP_WEB_BASE_URL')?.trim();
-    if (!shopBase) {
-      throw new ServiceUnavailableException({
-        code: 'CART_HANDOFF_MISCONFIGURED',
-        message: 'SHOP_WEB_BASE_URL is not set on the member API.',
-      });
-    }
-
-    const lines = this.normalizeLines(dto);
+    const lines = this.normalizeLines(dto.lines);
     const fulfillment = this.normalizeFulfillment(dto.fulfillment);
     const ttlSec = this.ttlSec();
     const issuer = this.handoffIssuer();
@@ -214,13 +293,10 @@ export class ShopCartHandoffService {
       });
     }
 
-    const lines = payload.lines.filter(
-      (l) =>
-        l &&
-        typeof l.productId === 'string' &&
-        typeof l.name === 'string' &&
-        Number.isFinite(l.qty) &&
-        Number.isFinite(l.unitPriceCents),
+    const lines = this.normalizeLines(
+      payload.lines.filter(
+        (l) => l && typeof l.productId === 'string' && Number.isFinite(l.qty),
+      ),
     );
     if (lines.length === 0) {
       throw new BadRequestException({
@@ -248,16 +324,9 @@ export class ShopCartHandoffService {
         : null;
 
     return {
-      lines: lines.map((l) => ({
-        productId: String(l.productId).trim(),
-        name: String(l.name).trim(),
-        qty: Math.max(1, Math.min(99, Math.floor(l.qty))),
-        unitPriceCents: Math.max(0, Math.floor(l.unitPriceCents)),
-        variantLabel: l.variantLabel ? String(l.variantLabel).trim() : null,
-        imageUrl: l.imageUrl ? String(l.imageUrl).trim() : null,
-      })),
+      lines,
       subtotalCents: lines.reduce(
-        (sum, l) => sum + Math.floor(l.unitPriceCents) * Math.floor(l.qty),
+        (sum, l) => sum + l.unitPriceCents * l.qty,
         0,
       ),
       fulfillment,
