@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -179,16 +179,11 @@ export class CustomersService {
     customerId: string,
     dto: { amountCents: number; channel: 'online' | 'cashier' },
   ) {
-    const entry = await this.wallet.appendTransaction({
-      customerId,
-      type: 'TOPUP',
-      amountCents: dto.amountCents,
-      reason: `customer_topup_${dto.channel}`,
-      createdByType: 'customer',
-      createdBy: customerId,
-      metadata: { channel: dto.channel },
+    void customerId;
+    void dto;
+    throw new ForbiddenException({
+      code: 'WALLET_TOPUP_REQUIRES_VERIFIED_PAYMENT',
+      message: 'Wallet top-ups must be created by a verified payment or cashier flow.',
     });
-    const summary = await this.wallet.getSummary(customerId);
-    return { entry, summary };
   }
 }
