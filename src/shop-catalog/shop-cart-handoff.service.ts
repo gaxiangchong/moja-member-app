@@ -8,6 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import {
+  ShopCatalogService,
+  type ShopCatalogProduct,
+  type ShopCatalogProductVariant,
+} from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
@@ -38,6 +43,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly catalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -82,16 +88,18 @@ export class ShopCartHandoffService {
   }
 
   private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
+    const productsById = new Map(
+      this.catalog.listPublicProducts().map((p) => [p.id, p]),
+    );
     const lines: CartHandoffLine[] = [];
     for (const raw of dto.lines) {
       const productId = raw.productId.trim();
-      const name = raw.name.trim();
       const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+      const variantLabel = raw.variantLabel?.trim() || null;
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs productId',
         });
       }
       if (qty < 1 || qty > 99) {
@@ -100,22 +108,63 @@ export class ShopCartHandoffService {
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
+
+      const { product, variant } = this.resolveCatalogLine(
+        productsById,
+        productId,
+        variantLabel,
+      );
+      const unitPriceCents = Math.max(
+        0,
+        Math.floor(variant?.priceCents ?? product.basePriceCents),
+      );
+      if (unitPriceCents <= 0) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
+          message: 'Catalog item is missing a valid price',
         });
       }
+
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? variantLabel,
+        imageUrl: product.imageUrl || null,
       });
     }
     return lines;
+  }
+
+  private resolveCatalogLine(
+    productsById: Map<string, ShopCatalogProduct>,
+    productId: string,
+    variantLabel: string | null,
+  ): {
+    product: ShopCatalogProduct;
+    variant: ShopCatalogProductVariant | null;
+  } {
+    const product = productsById.get(productId);
+    if (!product || product.soldOut) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_PRODUCT_UNAVAILABLE',
+        message: 'Cart contains a product that is no longer available',
+      });
+    }
+
+    if (!variantLabel) return { product, variant: null };
+
+    const variant = product.variants?.find(
+      (v) => v.label.trim().toLowerCase() === variantLabel.toLowerCase(),
+    );
+    if (!variant || variant.available === false) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_VARIANT_UNAVAILABLE',
+        message: 'Cart contains a variant that is no longer available',
+      });
+    }
+    return { product, variant };
   }
 
   private normalizeFulfillment(
