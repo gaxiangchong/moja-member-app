@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  NotImplementedException,
+} from '@nestjs/common';
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -179,16 +183,12 @@ export class CustomersService {
     customerId: string,
     dto: { amountCents: number; channel: 'online' | 'cashier' },
   ) {
-    const entry = await this.wallet.appendTransaction({
-      customerId,
-      type: 'TOPUP',
-      amountCents: dto.amountCents,
-      reason: `customer_topup_${dto.channel}`,
-      createdByType: 'customer',
-      createdBy: customerId,
-      metadata: { channel: dto.channel },
+    void customerId;
+    void dto;
+    throw new NotImplementedException({
+      code: 'WALLET_TOPUP_PAYMENT_REQUIRED',
+      message:
+        'Wallet top-ups must be credited only after payment verification.',
     });
-    const summary = await this.wallet.getSummary(customerId);
-    return { entry, summary };
   }
 }

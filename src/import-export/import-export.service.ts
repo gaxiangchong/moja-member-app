@@ -59,6 +59,27 @@ function assertExportKindAllowed(
   }
 }
 
+function assertImportKindAllowed(
+  auth: AdminAuthState,
+  kind: ImportBatchKind,
+): void {
+  const required: Record<ImportBatchKind, string[]> = {
+    CUSTOMER_MASTER: [P.CUSTOMER_WRITE_PROFILE, P.CUSTOMER_WRITE_IDENTITY],
+    WALLET_ADJUSTMENT: [P.WALLET_ADJUST],
+    LOYALTY_ADJUSTMENT: [P.LOYALTY_ADJUST],
+    VOUCHER_ASSIGNMENT: [P.VOUCHER_ASSIGN],
+    TAGS: [P.CUSTOMER_WRITE_PROFILE],
+  };
+  for (const p of required[kind]) {
+    if (!hasPermission(auth.permissions, p)) {
+      throw new ForbiddenException({
+        code: 'IMPORT_KIND_FORBIDDEN',
+        message: `Import ${kind} requires permission: ${p}`,
+      });
+    }
+  }
+}
+
 function normalizeHeader(h: string): string {
   return String(h ?? '')
     .trim()
@@ -287,6 +308,7 @@ export class ImportExportService implements OnModuleInit {
     if (!batch.fileStoragePath) {
       throw new BadRequestException({ code: 'IMPORT_FILE_MISSING', message: 'Original file not stored' });
     }
+    assertImportKindAllowed(auth, batch.kind);
     const buf = await fs.readFile(batch.fileStoragePath);
     const rows = await this.parseUpload(buf, batch.fileName);
     const { errors } = this.validateImport(batch.kind, rows);
