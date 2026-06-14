@@ -662,6 +662,7 @@ export class CustomersService {
    */
   async finalizeShopOrderAfterPayment(orderId: string): Promise<void> {
     const pointsPerRm = this.loyaltyPointsPerCurrencyUnit();
+    let finalized = false;
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
@@ -675,6 +676,7 @@ export class CustomersService {
       if (order.status !== 'pending_payment') {
         return;
       }
+      finalized = true;
       await tx.customerOrder.update({
         where: { id: orderId },
         data: { status: 'placed' },
@@ -713,6 +715,67 @@ export class CustomersService {
       }
 
       await this.maybeRewardReferrerOnFirstOrder(tx, order.customerId, order.id);
+    });
+    if (finalized) {
+      this.pushShopOrderToSalesplay(orderId);
+    }
+  }
+
+  /** Fire-and-forget SalesPlay online_orders push after a shop order is paid. */
+  private pushShopOrderToSalesplay(orderId: string): void {
+    void (async () => {
+      const order = await this.prisma.customerOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          lines: true,
+          customer: {
+            select: {
+              displayName: true,
+              phoneE164: true,
+              email: true,
+            },
+          },
+        },
+      });
+      if (!order) return;
+      if (order.salesplaySyncedAt || order.salesplaySystemUniqueId) return;
+
+      const result = await this.salesplay.pushOnlineOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        totalCents: order.totalCents,
+        placedAt: order.placedAt,
+        fulfillmentSummaryLines: fulfillmentSummaryLinesFromJson(
+          order.fulfillmentSummary,
+        ),
+        lines: order.lines.map((line) => ({
+          productId: line.productId,
+          name: line.name,
+          variantLabel: line.variantLabel,
+          unitPriceCents: line.unitPriceCents,
+          qty: line.qty,
+        })),
+        customer: {
+          displayName: order.customer.displayName,
+          phoneE164: order.customer.phoneE164,
+          email: order.customer.email,
+        },
+      });
+      if (!result) return;
+
+      await this.prisma.customerOrder.update({
+        where: { id: orderId },
+        data: {
+          salesplaySystemUniqueId: result.systemUniqueId,
+          salesplaySyncedAt: new Date(),
+        },
+      });
+    })().catch((err) => {
+      this.logger.error(
+        `SalesPlay online order push failed for ${orderId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     });
   }
 

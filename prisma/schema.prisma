@@ -526,6 +526,9 @@ model CustomerOrder {
   fulfillmentSummary Json?     @map("fulfillment_summary")
   placedAt           DateTime  @default(now()) @map("placed_at")
   completedAt        DateTime? @map("completed_at")
+  /// SalesPlay online_orders API system_unique_id after a successful push.
+  salesplaySystemUniqueId String?   @map("salesplay_system_unique_id")
+  salesplaySyncedAt       DateTime? @map("salesplay_synced_at")
 
   lines CustomerOrderLine[]
 
