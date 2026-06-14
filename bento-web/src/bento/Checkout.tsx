@@ -29,6 +29,8 @@ export function Checkout({ draft, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [groupBuy, setGroupBuy] = useState(false);
   const [qty, setQty] = useState(MIN_QTY);
+  const [showTakeawayDisclaimer, setShowTakeawayDisclaimer] = useState(false);
+  const [takeawayAgreed, setTakeawayAgreed] = useState(false);
 
   const isTrialPack = draft.packageCode === 'NEWCOMER_3';
   const sets = isTrialPack ? 1 : groupBuy ? qty : 1;
@@ -137,6 +139,17 @@ export function Checkout({ draft, onSuccess }: Props) {
       ? `${quote.dinnerCredits * sets} ${t('common.dinner').toLowerCase()}`
       : '';
   const setsPart = sets > 1 ? ` (${sets} ${t('common.sets')})` : '';
+
+  const openTakeawayDisclaimer = () => {
+    setTakeawayAgreed(false);
+    setShowTakeawayDisclaimer(true);
+  };
+
+  const confirmTakeawayAndPay = () => {
+    if (!takeawayAgreed) return;
+    setShowTakeawayDisclaimer(false);
+    void handlePay();
+  };
 
   return (
     <section className="section checkout">
@@ -263,7 +276,7 @@ export function Checkout({ draft, onSuccess }: Props) {
         type="button"
         className={`btnPrimary${paymentsDemoMode ? ' btnDemo' : ''}`}
         disabled={!canCheckout || loading}
-        onClick={() => void handlePay()}
+        onClick={openTakeawayDisclaimer}
         style={{ marginTop: 14 }}
       >
         {loading
@@ -274,6 +287,47 @@ export function Checkout({ draft, onSuccess }: Props) {
             ? t('checkout.continueDemo')
             : t('checkout.pay', { amount: formatRm(grandTotal) })}
       </button>
+
+      {showTakeawayDisclaimer && (
+        <div className="modalOverlay" role="presentation" onClick={() => setShowTakeawayDisclaimer(false)}>
+          <div
+            className="modalContent checkoutDisclaimerModal"
+            role="alertdialog"
+            aria-labelledby="takeawayDisclaimerTitle"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="takeawayDisclaimerTitle">{t('checkout.takeawayTitle')}</h3>
+            <p className="checkoutDisclaimerBody">{t('checkout.takeawayBody')}</p>
+            <label className="checkoutDisclaimerAgree">
+              <input
+                type="checkbox"
+                checked={takeawayAgreed}
+                onChange={(e) => setTakeawayAgreed(e.target.checked)}
+              />
+              <span>{t('checkout.takeawayAgree')}</span>
+            </label>
+            <div className="checkoutDisclaimerActions">
+              <button
+                type="button"
+                className="btnSecondary"
+                onClick={() => setShowTakeawayDisclaimer(false)}
+              >
+                {t('checkout.takeawayCancel')}
+              </button>
+              <button
+                type="button"
+                className="btnPrimary"
+                disabled={!takeawayAgreed || loading}
+                onClick={confirmTakeawayAndPay}
+              >
+                {paymentsDemoMode
+                  ? t('checkout.continueDemo')
+                  : t('checkout.takeawayConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

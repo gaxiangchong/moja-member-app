@@ -150,8 +150,7 @@ export function isProfileIncomplete(p: MemberProfile): boolean {
     !p.displayName?.trim() ||
     !p.email?.trim() ||
     !p.birthday?.trim() ||
-    !p.gender?.trim() ||
-    !p.address?.trim()
+    !p.gender?.trim()
   );
 }
 

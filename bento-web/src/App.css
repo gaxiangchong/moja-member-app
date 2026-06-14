@@ -822,6 +822,94 @@
   margin: 4px 0;
 }
 
+.checkoutDisclaimerModal h3 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  color: #3d2b1f;
+}
+
+.checkoutDisclaimerBody {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #57534e;
+}
+
+.checkoutDisclaimerAgree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #3d2b1f;
+  cursor: pointer;
+}
+
+.checkoutDisclaimerAgree input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.checkoutDisclaimerActions {
+  display: flex;
+  gap: 10px;
+}
+
+.checkoutDisclaimerActions .btnPrimary,
+.checkoutDisclaimerActions .btnSecondary {
+  margin-top: 0;
+  flex: 1;
+}
+
+/* ---- Account language & actions ---- */
+.accountLangSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.accountLangLabel {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #3d2b1f;
+}
+
+.accountLangToggle.menuLangToggle {
+  flex-shrink: 0;
+}
+
+.accountSaveBtn {
+  background: #fff;
+  color: #b91c1c;
+  border: 2px solid #b91c1c;
+  box-shadow: none;
+}
+
+.accountSaveBtn:hover:not(:disabled) {
+  background: #fef2f2;
+  box-shadow: none;
+  transform: none;
+}
+
+.accountLogoutBtn {
+  border: none;
+  background: #b91c1c;
+  color: #fff;
+  margin-top: 24px;
+}
+
+.accountLogoutBtn:hover {
+  background: #991b1b;
+  border-color: transparent;
+}
+
 /* ---- Account form ---- */
 .accountForm label {
   display: block;

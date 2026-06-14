@@ -143,7 +143,7 @@ function ContactUs() {
       <p className="caption">{t('account.contactCaption')}</p>
       <div className="contactOptions">
         <a
-          href="https://wa.me/601XXXXXXXX"
+          href="https://wa.me/601139331134"
           className="contactBtn contactWhatsapp"
           target="_blank"
           rel="noreferrer"
@@ -151,7 +151,7 @@ function ContactUs() {
           <span>💬</span> {t('common.whatsapp')}
         </a>
         <a
-          href="mailto:hello@moja.my"
+          href="mailto:admin@mojamaison.com"
           className="contactBtn contactEmail"
         >
           <span>✉️</span> {t('common.emailUs')}
@@ -235,27 +235,29 @@ function AccountTab({
           <option value="">{t('common.selectOption')}</option>
           <option value="Male">{t('common.male')}</option>
           <option value="Female">{t('common.female')}</option>
-          <option value="Other">{t('common.other')}</option>
         </select>
-        <label htmlFor="address">{t('common.address')}</label>
+        <label htmlFor="address">{t('common.address')} ({t('common.optional')})</label>
         <textarea
           id="address"
           rows={3}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder={t('account.addressPlaceholder')}
-          required
         />
         {msg && <p className="hint">{msg}</p>}
-        <button type="submit" className="btnPrimary" disabled={saving}>
+        <div className="accountLangSection">
+          <span className="accountLangLabel">{t('account.language')}</span>
+          <LangToggle className="accountLangToggle" />
+        </div>
+        <button type="submit" className="btnPrimary accountSaveBtn" disabled={saving}>
           {saving ? t('common.saving') : t('account.saveProfile')}
         </button>
       </form>
-      <button type="button" className="btnSecondary" onClick={onLogout}>
-        {t('common.logout')}
-      </button>
       <PurchaseHistory onViewAll={() => setShowHistoryPage(true)} />
       <ContactUs />
+      <button type="button" className="btnSecondary accountLogoutBtn" onClick={onLogout}>
+        {t('common.logout')}
+      </button>
     </section>
   );
 }
@@ -352,9 +354,6 @@ export default function App() {
 
   return (
     <div className="app appShell">
-      <div className="appLangBar">
-        <LangToggle />
-      </div>
       <main className="shell">
         {paymentBanner === 'paid_schedule' && (
           <div className="paymentBanner success">
