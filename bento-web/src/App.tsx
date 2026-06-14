@@ -144,7 +144,7 @@ function ContactUs() {
       <p className="caption">Need help or have a question? We&apos;re happy to assist.</p>
       <div className="contactOptions">
         <a
-          href="https://wa.me/601XXXXXXXX"
+          href="https://wa.me/601139331134"
           className="contactBtn contactWhatsapp"
           target="_blank"
           rel="noreferrer"
@@ -152,7 +152,7 @@ function ContactUs() {
           <span>💬</span> WhatsApp us
         </a>
         <a
-          href="mailto:hello@moja.my"
+          href="mailto:admin@mojamaison.com"
           className="contactBtn contactEmail"
         >
           <span>✉️</span> Email us
