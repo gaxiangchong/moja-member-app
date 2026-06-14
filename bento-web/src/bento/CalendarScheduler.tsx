@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchScheduleCapacity, scheduleBentoSubscription } from '../api';
-import { isPickupDateLocked, PICKUP_LOCK_POLICY } from '../lib/pickupLock';
+import { isPickupDateLocked } from '../lib/pickupLock';
+import { useI18n } from '../lib/i18n/context';
 import {
   addDaysUtc,
   earliestSchedulableDateIso,
@@ -67,26 +68,6 @@ function getMonthGrid(year: number, month: number): (string | null)[] {
   return cells;
 }
 
-function monthLabel(y: number, m: number) {
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-MY', {
-    month: 'long', year: 'numeric', timeZone: 'UTC',
-  });
-}
-
-function shortDate(iso: string) {
-  const d = parseDateOnly(iso);
-  const D = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${D[d.getUTCDay()]} ${d.getUTCDate()} ${M[d.getUTCMonth()]}`;
-}
-
-function fullDate(iso: string) {
-  const d = parseDateOnly(iso);
-  const D = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${D[d.getUTCDay()]}, ${d.getUTCDate()} ${M[d.getUTCMonth()]}`;
-}
-
 function isPast(iso: string): boolean {
   return parseDateOnly(iso) < todayUtc();
 }
@@ -136,6 +117,7 @@ function mergeDeliveries(subs: BentoSubscription[]): DaySelection[] {
 // ── component ──────────────────────────────────────────────────────────────
 
 export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId }: Props) {
+  const { t, shortDate, fullDate, monthLabel, calendarDayHeaders } = useI18n();
   const N = subscriptions.length; // total sets
 
   // ── Aggregate across all subscriptions ──────────────────────────────────
@@ -282,14 +264,14 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   };
 
   const dayStatusLabel = (iso: string): string | null => {
-    if (isSunday(iso)) return 'Closed';
-    if (isPast(iso)) return 'Past';
-    if (!windowSet.has(iso)) return 'Outside plan';
-    if (!isDateSchedulable(iso)) return 'Too soon';
-    if (isPickupDateLocked(iso)) return 'Confirmed';
+    if (isSunday(iso)) return t('schedule.status.closed');
+    if (isPast(iso)) return t('schedule.status.past');
+    if (!windowSet.has(iso)) return t('schedule.status.outside');
+    if (!isDateSchedulable(iso)) return t('schedule.status.tooSoon');
+    if (isPickupDateLocked(iso)) return t('schedule.status.confirmed');
     const row = getRow(iso);
     if (capacityByDate.get(iso)?.isFull && row.lunchQty === 0 && row.dinnerQty === 0) {
-      return 'Full';
+      return t('schedule.status.full');
     }
     return null;
   };
@@ -404,7 +386,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
       onScheduled();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save');
+      setError(err instanceof Error ? err.message : t('schedule.errorSave'));
       return false;
     } finally {
       setLoading(false);
@@ -494,17 +476,17 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
       <section className="section">
         <h2 style={{ margin: '0 0 4px' }}>
           {canShowNotification
-            ? 'Pickup reminder'
+            ? t('schedule.pickupReminder')
             : isEditingSchedule
-              ? 'Change pickup days'
-              : 'Schedule'}
+              ? t('schedule.changePickup')
+              : t('schedule.title')}
         </h2>
         {(isEditingSchedule || showScheduler) && (
-          <p className="caption calLockPolicy">{PICKUP_LOCK_POLICY}</p>
+          <p className="caption calLockPolicy">{t('schedule.lockPolicy')}</p>
         )}
         {isEditingSchedule && (
           <p className="caption" style={{ marginBottom: 12 }}>
-            Update your pickup days below, then tap Confirm to save.
+            {t('schedule.editHint')}
           </p>
         )}
         {!isEditingSchedule && showScheduler && anyNeedsSchedule && (
@@ -514,12 +496,12 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
         )}
         {!isEditingSchedule && showScheduler && anyUnscheduled && (
           <p className="caption" style={{ marginBottom: 12 }}>
-            Schedule all purchased meals before continuing to your pickup reminder.
+            {t('schedule.assignFirst')}
           </p>
         )}
         {N > 1 && showScheduler && (
           <p className="caption" style={{ marginBottom: 12 }}>
-            {N} active plans · up to {N} sets per day
+            {t('schedule.multiPlan', { count: N, max: N })}
           </p>
         )}
 
@@ -535,7 +517,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
           <div className="pickupUpcomingSummary">
             {pickupSummaries.length > 0 && (
               <>
-                <p className="pickupUpcomingTitle">Your upcoming pickups</p>
+                <p className="pickupUpcomingTitle">{t('schedule.upcomingTitle')}</p>
                 <ul className="pickupUpcomingList">
                   {pickupSummaries.map((summary) => (
                     <li key={summary.date}>
@@ -555,7 +537,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 setShowScheduler(true);
               }}
             >
-              Change pickup days
+              {t('schedule.changePickup')}
             </button>
           </div>
         )}
@@ -568,13 +550,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             <div className="calCreditBlock">
               <span className="calCreditIcon">🌞</span>
               <div className="calCreditDetail">
-                <span className="calCreditLabel">Lunch · {totalLunch} credits</span>
+                <span className="calCreditLabel">{t('schedule.creditLabel', { meal: t('common.lunch'), count: totalLunch })}</span>
                 <span className="calCreditNumbers">
-                  {lunchConsumed  > 0 && <span className="calCreditUsed">{lunchConsumed} used</span>}
-                  {lunchUpcoming  > 0 && <span className="calCreditUpcoming">{lunchUpcoming} upcoming</span>}
-                  {lunchUnscheduled  > 0 && <span className="calCreditWarn">{lunchUnscheduled} unused ⚠️</span>}
-                  {lunchUnscheduled <= 0 && lunchUpcoming > 0 && <span className="calCreditDone">all scheduled ✓</span>}
-                  {lunchConsumed === 0 && lunchUpcoming === 0 && <span className="calCreditUpcoming">ready to schedule</span>}
+                  {lunchConsumed  > 0 && <span className="calCreditUsed">{t('schedule.used', { count: lunchConsumed })}</span>}
+                  {lunchUpcoming  > 0 && <span className="calCreditUpcoming">{t('schedule.upcoming', { count: lunchUpcoming })}</span>}
+                  {lunchUnscheduled  > 0 && <span className="calCreditWarn">{t('schedule.unused', { count: lunchUnscheduled })}</span>}
+                  {lunchUnscheduled <= 0 && lunchUpcoming > 0 && <span className="calCreditDone">{t('schedule.allScheduled')}</span>}
+                  {lunchConsumed === 0 && lunchUpcoming === 0 && <span className="calCreditUpcoming">{t('schedule.ready')}</span>}
                 </span>
               </div>
             </div>
@@ -583,13 +565,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             <div className="calCreditBlock">
               <span className="calCreditIcon">🌙</span>
               <div className="calCreditDetail">
-                <span className="calCreditLabel">Dinner · {totalDinner} credits</span>
+                <span className="calCreditLabel">{t('schedule.creditLabel', { meal: t('common.dinner'), count: totalDinner })}</span>
                 <span className="calCreditNumbers">
-                  {dinnerConsumed  > 0 && <span className="calCreditUsed">{dinnerConsumed} used</span>}
-                  {dinnerUpcoming  > 0 && <span className="calCreditUpcoming">{dinnerUpcoming} upcoming</span>}
-                  {dinnerUnscheduled  > 0 && <span className="calCreditWarn">{dinnerUnscheduled} unused ⚠️</span>}
-                  {dinnerUnscheduled <= 0 && dinnerUpcoming > 0 && <span className="calCreditDone">all scheduled ✓</span>}
-                  {dinnerConsumed === 0 && dinnerUpcoming === 0 && <span className="calCreditUpcoming">ready to schedule</span>}
+                  {dinnerConsumed  > 0 && <span className="calCreditUsed">{t('schedule.used', { count: dinnerConsumed })}</span>}
+                  {dinnerUpcoming  > 0 && <span className="calCreditUpcoming">{t('schedule.upcoming', { count: dinnerUpcoming })}</span>}
+                  {dinnerUnscheduled  > 0 && <span className="calCreditWarn">{t('schedule.unused', { count: dinnerUnscheduled })}</span>}
+                  {dinnerUnscheduled <= 0 && dinnerUpcoming > 0 && <span className="calCreditDone">{t('schedule.allScheduled')}</span>}
+                  {dinnerConsumed === 0 && dinnerUpcoming === 0 && <span className="calCreditUpcoming">{t('schedule.ready')}</span>}
                 </span>
               </div>
             </div>
@@ -598,11 +580,11 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
         {anyUnscheduled && (
           <div className="calUnschedWarn">
-            You have unused meal credits — {viewMode === 'calendar' ? 'tap days below' : 'use the list below'} to assign them.
+            {t(viewMode === 'calendar' ? 'schedule.unusedWarnCalendar' : 'schedule.unusedWarnList')}
           </div>
         )}
 
-        <div className="calViewToggle" role="tablist" aria-label="Schedule view">
+        <div className="calViewToggle" role="tablist" aria-label={t('schedule.viewAria')}>
           <button
             type="button"
             role="tab"
@@ -610,7 +592,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             className={`calViewBtn${viewMode === 'calendar' ? ' active' : ''}`}
             onClick={() => { setViewMode('calendar'); setRangeStart(null); }}
           >
-            Calendar
+            {t('common.calendar')}
           </button>
           <button
             type="button"
@@ -619,7 +601,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             className={`calViewBtn${viewMode === 'list' ? ' active' : ''}`}
             onClick={() => { setViewMode('list'); setRangeStart(null); setSheetTarget(null); }}
           >
-            List
+            {t('common.list')}
           </button>
         </div>
 
@@ -628,15 +610,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
         {/* Tap hint / range in-progress */}
         {rangeStart ? (
           <div className="calRangeHint">
-            <span>📅 {shortDate(rangeStart)} — now tap the end date</span>
+            <span>{t('schedule.rangeHint', { start: shortDate(rangeStart) })}</span>
             <button type="button" className="calRangeCancel" onClick={() => setRangeStart(null)}>✕</button>
           </div>
         ) : (
           <p className="calTip">
-            Tap once to start a range · tap same day again to edit just that day
-            {dailyCapacityPacks != null && (
-              <> · grey days are fully booked ({dailyCapacityPacks} packs/day)</>
-            )}
+            {t('schedule.tipCalendar')}
+            {dailyCapacityPacks != null && t('schedule.tipCapacity', { count: dailyCapacityPacks })}
           </p>
         )}
 
@@ -648,7 +628,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
         </div>
 
         <div className="calDayHeaders">
-          {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
+          {calendarDayHeaders().map(d => (
             <span key={d} className="calDayHeader">{d}</span>
           ))}
         </div>
@@ -691,10 +671,10 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 className={`calCell ${stateClass}`}
                 disabled={!interactive}
                 onClick={() => handleDayTap(iso)}
-                title={atCapacity ? 'Fully booked' : undefined}
+                title={atCapacity ? t('schedule.fullyBooked') : undefined}
               >
                 <span className="calDayNum">{dayNum}</span>
-                {atCapacity && <span className="calFullTag">Full</span>}
+                {atCapacity && <span className="calFullTag">{t('common.full')}</span>}
                 {hasSel && !isStart && (
                   <span className="calDot">
                     {totalQty > 1 ? `×${totalQty}` : '●'}
@@ -707,7 +687,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
           </>
         ) : (
           <>
-            <p className="calTip">Pick lunch and dinner sets for each day — easier if you prefer a checklist over the calendar.</p>
+            <p className="calTip">{t('schedule.tipList')}</p>
             <ul className="calListView">
               {listDates.map((iso) => {
                 const row = getRow(iso);
@@ -727,12 +707,12 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                   maxTotal - row.lunchQty,
                 );
 
-                if (!interactive && !hasSel && status !== 'Full') return null;
+                if (!interactive && !hasSel && status !== t('schedule.status.full')) return null;
 
                 return (
                   <li
                     key={iso}
-                    className={`calListRow${!interactive ? ' calListRowOff' : ''}${hasSel ? ' calListRowSelected' : ''}${status === 'Full' ? ' calListRowFull' : ''}`}
+                    className={`calListRow${!interactive ? ' calListRowOff' : ''}${hasSel ? ' calListRowSelected' : ''}${status === t('schedule.status.full') ? ' calListRowFull' : ''}`}
                   >
                     <div className="calListDate">
                       <strong>{shortDate(iso)}</strong>
@@ -742,7 +722,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                     <div className="calListMeals">
                       {allowLunch && (
                         <div className="calListMeal">
-                          <span className="calListMealLabel">🌞 Lunch</span>
+                          <span className="calListMealLabel">🌞 {t('common.lunch')}</span>
                           {interactive ? (
                             <div className="calSheetQtyControl">
                               <button
@@ -766,7 +746,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                       )}
                       {allowDinner && (
                         <div className="calListMeal">
-                          <span className="calListMealLabel">🌙 Dinner</span>
+                          <span className="calListMealLabel">🌙 {t('common.dinner')}</span>
                           {interactive ? (
                             <div className="calSheetQtyControl">
                               <button
@@ -808,10 +788,10 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
               onClick={() => void handleConfirm()}
             >
               {loading
-                ? 'Saving…'
+                ? t('schedule.saving')
                 : changedSinceSave
-                  ? 'Save changes'
-                  : `Confirm ${confirmDayCount} day${confirmDayCount === 1 ? '' : 's'}`}
+                  ? t('schedule.saveChanges')
+                  : t(confirmDayCount === 1 ? 'schedule.confirmDays' : 'schedule.confirmDaysPlural', { count: confirmDayCount })}
             </button>
           )}
           {isEditingSchedule && (
@@ -821,7 +801,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
               disabled={loading}
               onClick={cancelEditing}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           )}
           {!isEditingSchedule && hasFutureSelections && (
@@ -831,7 +811,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
               disabled={loading}
               onClick={clearAll}
             >
-              Clear all
+              {t('schedule.clearAll')}
             </button>
           )}
         </div>
@@ -843,18 +823,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
         <>
           <div className="calOverlay" onClick={() => setShowIncompleteWarning(false)} />
           <div className="scheduleWarningDialog" role="alertdialog" aria-labelledby="scheduleWarningTitle">
-            <h3 id="scheduleWarningTitle">Meals still unscheduled</h3>
+            <h3 id="scheduleWarningTitle">{t('schedule.warningTitle')}</h3>
             <p>
-              You still have{' '}
-              <strong>{incompleteSummary.join(' and ')}</strong>{' '}
-              to assign. Please schedule every purchased meal before viewing your pickup reminder.
+              {t('schedule.warningBody', { summary: incompleteSummary.join(' and ') })}
             </p>
             <button
               type="button"
               className="btnPrimary"
               onClick={() => setShowIncompleteWarning(false)}
             >
-              Continue scheduling
+              {t('schedule.continueScheduling')}
             </button>
           </div>
         </>
@@ -874,13 +852,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 <p className="calSheetDate" style={{ margin: 0 }}>
                   {shortDate(sheetTarget.from)} → {shortDate(sheetTarget.to)}
                 </p>
-                <span className="calSheetRangeBadge">{sheetTarget.dates.length} days</span>
+                <span className="calSheetRangeBadge">{t('schedule.daysBadge', { count: sheetTarget.dates.length })}</span>
               </div>
             )}
 
             {N > 1 && (
               <p className="caption" style={{ textAlign: 'center', marginBottom: 14, marginTop: -6 }}>
-                Max {N} sets per day
+                {t('schedule.maxSets', { count: N })}
               </p>
             )}
 
@@ -896,11 +874,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                     <div className="calSheetMealInfo">
                       <span className="calSheetMealEmoji">🌞</span>
                       <div>
-                        <span className="calSheetMealName">Lunch</span>
+                        <span className="calSheetMealName">{t('common.lunch')}</span>
                         <span className="calSheetMealSub">
                           {qty > 0
-                            ? `${qty} set${qty > 1 ? 's' : ''} · ${Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + (sheetTarget.kind === 'single' ? qty : 0))} left`
-                            : `${Math.max(0, totalLunch - lunchConsumed - lunchUpcoming)} credits left`}
+                            ? t(qty > 1 ? 'schedule.setsLeftPlural' : 'schedule.setsLeft', {
+                                qty,
+                                left: Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + (sheetTarget.kind === 'single' ? qty : 0)),
+                              })
+                            : t('schedule.creditsLeft', {
+                                count: Math.max(0, totalLunch - lunchConsumed - lunchUpcoming),
+                              })}
                         </span>
                       </div>
                     </div>
@@ -933,11 +916,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                     <div className="calSheetMealInfo">
                       <span className="calSheetMealEmoji">🌙</span>
                       <div>
-                        <span className="calSheetMealName">Dinner</span>
+                        <span className="calSheetMealName">{t('common.dinner')}</span>
                         <span className="calSheetMealSub">
                           {qty > 0
-                            ? `${qty} set${qty > 1 ? 's' : ''} · ${Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + (sheetTarget.kind === 'single' ? qty : 0))} left`
-                            : `${Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming)} credits left`}
+                            ? t(qty > 1 ? 'schedule.setsLeftPlural' : 'schedule.setsLeft', {
+                                qty,
+                                left: Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + (sheetTarget.kind === 'single' ? qty : 0)),
+                              })
+                            : t('schedule.creditsLeft', {
+                                count: Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming),
+                              })}
                         </span>
                       </div>
                     </div>
@@ -967,7 +955,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
               onClick={() => setSheetTarget(null)}
               style={{ marginTop: 16 }}
             >
-              Done
+              {t('common.done')}
             </button>
           </div>
         </>

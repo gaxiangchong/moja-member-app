@@ -1,4 +1,5 @@
 import type { BentoMealOption, BentoPackageCode } from './types';
+import { useI18n } from '../lib/i18n/context';
 
 type Props = {
   value: BentoMealOption;
@@ -15,17 +16,32 @@ export function MealOptionPicker({
   drinksAndSoupEnabled = true,
   onChange,
 }: Props) {
+  const { t } = useI18n();
   const newcomerOnly = packageCode === 'NEWCOMER_3';
   const lunchOn = value === 'LUNCH' || value === 'BOTH';
   const dinnerOn = value === 'DINNER' || value === 'BOTH';
+  const bothSelected = lunchOn && dinnerOn;
+  const lunchCount = Math.floor(mealCredits / 2);
+  const dinnerCount = mealCredits - lunchCount;
+
+  const dinnerSub = bothSelected
+    ? [
+        t('rhythm.mealsCount', { count: dinnerCount }),
+        !newcomerOnly && drinksAndSoupEnabled ? t('rhythm.dinnerSurcharge') : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : !newcomerOnly && drinksAndSoupEnabled && dinnerOn
+      ? t('rhythm.dinnerSurcharge')
+      : null;
 
   const toggle = (meal: 'LUNCH' | 'DINNER') => {
     if (newcomerOnly) return;
     if (meal === 'LUNCH') {
-      if (lunchOn && !dinnerOn) return; // last one selected, prevent
+      if (lunchOn && !dinnerOn) return;
       onChange(lunchOn ? 'DINNER' : 'BOTH');
     } else {
-      if (dinnerOn && !lunchOn) return; // last one selected, prevent
+      if (dinnerOn && !lunchOn) return;
       onChange(dinnerOn ? 'LUNCH' : 'BOTH');
     }
   };
@@ -34,14 +50,14 @@ export function MealOptionPicker({
     <section className="section">
       <div className="sectionHeader">
         <div>
-          <h2>Choose your meal rhythm</h2>
-          <p className="caption">Pick one or both — your credits split across selected meals.</p>
+          <h2>{t('rhythm.title')}</h2>
+          <p className="caption">{t('rhythm.caption')}</p>
         </div>
       </div>
 
       {newcomerOnly && (
         <p className="caption" style={{ marginBottom: 10, color: '#15803d' }}>
-          Trial pack includes lunch only.
+          {t('rhythm.trialOnly')}
         </p>
       )}
 
@@ -57,8 +73,10 @@ export function MealOptionPicker({
         >
           <span className="mealToggleCheckmark">✓</span>
           <span className="mealToggleEmoji">🌞</span>
-          <span className="mealToggleTitle">Lunch</span>
-          <span className="mealToggleSub">{mealCredits} meals</span>
+          <span className="mealToggleTitle">{t('common.lunch')}</span>
+          {bothSelected && (
+            <span className="mealToggleSub">{t('rhythm.mealsCount', { count: lunchCount })}</span>
+          )}
         </button>
 
         <button
@@ -73,20 +91,11 @@ export function MealOptionPicker({
         >
           <span className="mealToggleCheckmark">✓</span>
           <span className="mealToggleEmoji">🌙</span>
-          <span className="mealToggleTitle">Dinner</span>
-          <span className="mealToggleSub">
-            {mealCredits} meals
-            {!newcomerOnly && drinksAndSoupEnabled && <> · +RM1/meal</>}
-          </span>
-          {newcomerOnly && <span className="mealToggleTag">Unavailable</span>}
+          <span className="mealToggleTitle">{t('common.dinner')}</span>
+          {dinnerSub && <span className="mealToggleSub">{dinnerSub}</span>}
+          {newcomerOnly && <span className="mealToggleTag">{t('rhythm.unavailable')}</span>}
         </button>
       </div>
-
-      {lunchOn && dinnerOn && (
-        <p className="caption" style={{ marginTop: 10 }}>
-          Credits split evenly: {Math.floor(mealCredits / 2)} lunches + {mealCredits - Math.floor(mealCredits / 2)} dinners.
-        </p>
-      )}
     </section>
   );
 }

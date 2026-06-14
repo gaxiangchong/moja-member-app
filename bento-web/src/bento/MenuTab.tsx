@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
+import { useI18n } from '../lib/i18n/context';
+import { isTodayIso } from '../lib/dateUtils';
 
 type Props = {
   onOrderNow: () => void;
 };
-
-type Lang = 'en' | 'zh';
 
 const WEEKDAY_ZH: Record<string, string> = {
   Mon: '星期一', Tue: '星期二', Wed: '星期三', Thu: '星期四',
@@ -14,46 +14,11 @@ const WEEKDAY_ZH: Record<string, string> = {
   Thursday: '星期四', Friday: '星期五', Saturday: '星期六', Sunday: '星期日',
 };
 
-const T = {
-  en: {
-    title: "This week's menu",
-    badge: '🍱 Weekly',
-    regular: '🍗 Regular',
-    veg: '🌱 Vegetarian',
-    vegCaption: 'Showing vegetarian options for this week.',
-    closed: 'Closed',
-    lunch: 'Lunch',
-    dinner: 'Dinner',
-    loading: 'Loading menu…',
-    empty: 'Menu not available yet — check back soon.',
-    browsePkg: 'Browse packages →',
-    ctaPrompt: 'Like what you see?',
-    ctaBtn: 'Order a plan →',
-  },
-  zh: {
-    title: '本周菜单',
-    badge: '🍱 本周',
-    regular: '🍗 荤菜',
-    veg: '🌱 素菜',
-    vegCaption: '显示本周素食选项。',
-    closed: '休息',
-    lunch: '午餐',
-    dinner: '晚餐',
-    loading: '菜单加载中…',
-    empty: '本周菜单暂未公布，请稍候再来。',
-    browsePkg: '浏览套餐 →',
-    ctaPrompt: '喜欢今周菜单？',
-    ctaBtn: '立即订餐 →',
-  },
-} as const;
-
 export function MenuTab({ onOrderNow }: Props) {
+  const { lang, t } = useI18n();
   const [data, setData] = useState<WeeklyMenuPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [showVeg, setShowVeg] = useState(false);
-  const [lang, setLang] = useState<Lang>('en');
-
-  const t = T[lang];
 
   useEffect(() => {
     void fetchWeeklyOptInStatus()
@@ -62,18 +27,17 @@ export function MenuTab({ onOrderNow }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="caption" style={{ padding: '20px 16px' }}>{t.loading}</p>;
+  if (loading) {
+    return <p className="caption" style={{ padding: '20px 16px' }}>{t('menu.loading')}</p>;
+  }
 
   if (!data) {
     return (
       <section className="section">
-        <div className="menuLangRow">
-          <LangToggle lang={lang} onChange={setLang} />
-        </div>
-        <h2>{t.title} 🍱</h2>
-        <p className="caption">{t.empty}</p>
+        <h2>{t('menu.title')} 🍱</h2>
+        <p className="caption">{t('menu.empty')}</p>
         <button type="button" className="btnPrimary" onClick={onOrderNow} style={{ marginTop: 16 }}>
-          {t.browsePkg}
+          {t('menu.browsePkg')}
         </button>
       </section>
     );
@@ -84,36 +48,34 @@ export function MenuTab({ onOrderNow }: Props) {
       <section className="section">
         <div className="sectionHeader">
           <div>
-            <h2>{t.title}</h2>
+            <h2>{t('menu.title')}</h2>
             <p className="caption">{data.menu.weekStart} — {data.menu.weekEnd}</p>
           </div>
           <div className="menuHeaderRight">
-            <LangToggle lang={lang} onChange={setLang} />
-            <span className="sectionBadge">{t.badge}</span>
+            <span className="sectionBadge">{t('menu.badge')}</span>
           </div>
         </div>
 
-        {/* Regular / Vegetarian toggle */}
         <div className="menuDietSwitch">
           <button
             type="button"
             className={`menuDietBtn${!showVeg ? ' active' : ''}`}
             onClick={() => setShowVeg(false)}
           >
-            {t.regular}
+            {t('menu.regular')}
           </button>
           <button
             type="button"
             className={`menuDietBtn${showVeg ? ' active' : ''}`}
             onClick={() => setShowVeg(true)}
           >
-            {t.veg}
+            {t('menu.veg')}
           </button>
         </div>
 
         {showVeg && (
           <p className="caption" style={{ marginBottom: 12, color: '#15803d' }}>
-            {t.vegCaption}
+            {t('menu.vegCaption')}
           </p>
         )}
 
@@ -121,6 +83,7 @@ export function MenuTab({ onOrderNow }: Props) {
           {data.menu.days.map((day) => {
             const dayLabel = lang === 'zh' ? (WEEKDAY_ZH[day.weekday] ?? day.weekday) : day.weekday;
             const isClosed = day.closed ?? day.isSunday;
+            const isToday = isTodayIso(day.date);
             const dishFor = (meal: {
               dish: string;
               dishVeg: string;
@@ -138,26 +101,27 @@ export function MenuTab({ onOrderNow }: Props) {
             return (
               <li
                 key={day.date}
-                className={`wkMenuDay${isClosed ? ' wkMenuDayClosed' : ''}${showVeg ? ' veg' : ''}`}
+                className={`wkMenuDay${isClosed ? ' wkMenuDayClosed' : ''}${isToday ? ' wkMenuDayToday' : ''}${showVeg ? ' veg' : ''}`}
               >
                 <div className="wkMenuDayHead">
                   <strong>{dayLabel}</strong>
                   <span className="wkMenuDayDate">{day.date.slice(5).replace('-', '/')}</span>
-                  {isClosed && <span className="wkMenuDayTag">{t.closed}</span>}
+                  {isToday && <span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
+                  {isClosed && <span className="wkMenuDayTag">{t('common.closed')}</span>}
                 </div>
                 {!isClosed && (
                   <div className="wkMenuMeals">
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌞</span>
                       <div className="wkMenuMealContent">
-                        <strong className="wkMenuMealLabel">{t.lunch}</strong>
+                        <strong className="wkMenuMealLabel">{t('common.lunch')}</strong>
                         <span className="wkMenuMealText">{dishFor(day.lunch)}</span>
                       </div>
                     </div>
                     <div className="wkMenuMeal">
                       <span className="wkMenuMealIcon">🌙</span>
                       <div className="wkMenuMealContent">
-                        <strong className="wkMenuMealLabel">{t.dinner}</strong>
+                        <strong className="wkMenuMealLabel">{t('common.dinner')}</strong>
                         <span className="wkMenuMealText">{dishFor(day.dinner)}</span>
                       </div>
                     </div>
@@ -170,32 +134,11 @@ export function MenuTab({ onOrderNow }: Props) {
       </section>
 
       <div className="menuOrderCta">
-        <p className="menuOrderCtaText">{t.ctaPrompt}</p>
+        <p className="menuOrderCtaText">{t('menu.ctaPrompt')}</p>
         <button type="button" className="btnPrimary" onClick={onOrderNow}>
-          {t.ctaBtn}
+          {t('menu.ctaBtn')}
         </button>
       </div>
     </>
-  );
-}
-
-function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
-  return (
-    <div className="menuLangToggle">
-      <button
-        type="button"
-        className={`menuLangBtn${lang === 'en' ? ' active' : ''}`}
-        onClick={() => onChange('en')}
-      >
-        EN
-      </button>
-      <button
-        type="button"
-        className={`menuLangBtn${lang === 'zh' ? ' active' : ''}`}
-        onClick={() => onChange('zh')}
-      >
-        中文
-      </button>
-    </div>
   );
 }

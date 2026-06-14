@@ -29,29 +29,23 @@ import { PackageSelector } from './bento/PackageSelector';
 import { ScheduleTab } from './bento/ScheduleTab';
 import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
 import { useVisualViewportHeight } from './lib/useVisualViewportHeight';
+import { LangToggle, useI18n } from './lib/i18n/context';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
 
-function dietLabel(v: string) {
-  return v === 'VEG' ? 'Vegetarian' : 'Regular';
-}
-
-function statusLabel(s: string) {
-  return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function PurchaseItem({ sub }: { sub: BentoSubscription }) {
+  const { t, packageLabel, dietLabel, statusLabel } = useI18n();
   return (
     <li className="purchaseItem">
       <div className="purchaseItemTop">
-        <span className="purchaseItemName">{sub.package.label}</span>
+        <span className="purchaseItemName">{packageLabel(sub.package.code, sub.package.label)}</span>
         <span className={`statusPill status-${sub.status}`}>{statusLabel(sub.status)}</span>
       </div>
       <p className="purchaseItemMeta">
-        {formatRm(sub.totalCents)} · {sub.mealCreditsTotal} meal{sub.mealCreditsTotal > 1 ? 's' : ''}
-        {sub.mealOption !== 'DINNER' && ` · Lunch: ${dietLabel(sub.lunchVariant)}`}
-        {sub.mealOption !== 'LUNCH' && ` · Dinner: ${dietLabel(sub.dinnerVariant)}`}
-        {sub.riceType === 'BROWN' && ' · Brown rice'}
+        {formatRm(sub.totalCents)} · {sub.mealCreditsTotal} {t('common.mealPlural')}
+        {sub.mealOption !== 'DINNER' && t('account.lunchDiet', { diet: dietLabel(sub.lunchVariant) })}
+        {sub.mealOption !== 'LUNCH' && t('account.dinnerDiet', { diet: dietLabel(sub.dinnerVariant) })}
+        {sub.riceType === 'BROWN' && t('account.brownRiceTag')}
       </p>
       {sub.startDate && (
         <p className="purchaseItemDate">
@@ -60,7 +54,9 @@ function PurchaseItem({ sub }: { sub: BentoSubscription }) {
       )}
       {sub.deliveries.length > 0 && (
         <p className="purchaseItemDate">
-          {sub.deliveries.length} pickup day{sub.deliveries.length > 1 ? 's' : ''} scheduled
+          {t(sub.deliveries.length === 1 ? 'account.pickupDays' : 'account.pickupDaysPlural', {
+            count: sub.deliveries.length,
+          })}
         </p>
       )}
     </li>
@@ -68,6 +64,7 @@ function PurchaseItem({ sub }: { sub: BentoSubscription }) {
 }
 
 function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
+  const { t } = useI18n();
   const [subs, setSubs] = useState<BentoSubscription[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,9 +80,9 @@ function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
 
   return (
     <div className="purchaseHistorySection">
-      <h3 className="purchaseHistoryTitle">Purchase history</h3>
-      {loading && <p className="caption">Loading…</p>}
-      {!loading && subs.length === 0 && <p className="caption">No purchases yet.</p>}
+      <h3 className="purchaseHistoryTitle">{t('account.purchaseHistory')}</h3>
+      {loading && <p className="caption">{t('common.loading')}</p>}
+      {!loading && subs.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
       {!loading && subs.length > 0 && (
         <>
           <ul className="purchaseList">
@@ -98,7 +95,7 @@ function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
               onClick={onViewAll}
               style={{ marginTop: 12, fontSize: '0.85rem' }}
             >
-              View all {subs.length} orders →
+              {t('account.viewAllOrders', { count: subs.length })}
             </button>
           )}
         </>
@@ -108,6 +105,7 @@ function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
 }
 
 function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n();
   const [subs, setSubs] = useState<BentoSubscription[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -121,12 +119,12 @@ function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
   return (
     <>
       <div className="checkoutPageNav">
-        <button type="button" className="backBtn" onClick={onBack}>← Back</button>
-        <span className="checkoutPageTitle">All orders</span>
+        <button type="button" className="backBtn" onClick={onBack}>{t('common.back')}</button>
+        <span className="checkoutPageTitle">{t('account.allOrders')}</span>
       </div>
       <section className="section">
-        {loading && <p className="caption">Loading…</p>}
-        {!loading && subs.length === 0 && <p className="caption">No purchases yet.</p>}
+        {loading && <p className="caption">{t('common.loading')}</p>}
+        {!loading && subs.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
         {!loading && subs.length > 0 && (
           <ul className="purchaseList">
             {subs.map((sub) => <PurchaseItem key={sub.id} sub={sub} />)}
@@ -138,10 +136,11 @@ function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
 }
 
 function ContactUs() {
+  const { t } = useI18n();
   return (
     <div className="contactUsSection">
-      <h3 className="contactUsTitle">Contact us</h3>
-      <p className="caption">Need help or have a question? We&apos;re happy to assist.</p>
+      <h3 className="contactUsTitle">{t('account.contactTitle')}</h3>
+      <p className="caption">{t('account.contactCaption')}</p>
       <div className="contactOptions">
         <a
           href="https://wa.me/601XXXXXXXX"
@@ -149,13 +148,13 @@ function ContactUs() {
           target="_blank"
           rel="noreferrer"
         >
-          <span>💬</span> WhatsApp us
+          <span>💬</span> {t('common.whatsapp')}
         </a>
         <a
           href="mailto:hello@moja.my"
           className="contactBtn contactEmail"
         >
-          <span>✉️</span> Email us
+          <span>✉️</span> {t('common.emailUs')}
         </a>
       </div>
     </div>
@@ -171,6 +170,7 @@ function AccountTab({
   onProfileUpdated: (p: MemberProfile) => void;
   onLogout: () => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(profile.displayName ?? '');
   const [email, setEmail] = useState(profile.email ?? '');
   const [birthday, setBirthday] = useState(profile.birthday?.slice(0, 10) ?? '');
@@ -199,9 +199,9 @@ function AccountTab({
         address: address || undefined,
       });
       onProfileUpdated(updated);
-      setMsg('Profile saved.');
+      setMsg(t('account.saved'));
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Save failed');
+      setMsg(err instanceof Error ? err.message : t('account.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -210,9 +210,9 @@ function AccountTab({
   return (
     <section className="section accountForm">
       <h2>
-        Account
+        {t('account.title')}
         {incomplete && (
-          <span className="accountIncompleteMark" title="Profile incomplete" aria-hidden>
+          <span className="accountIncompleteMark" title={t('nav.profileIncomplete')} aria-hidden>
             !
           </span>
         )}
@@ -220,39 +220,39 @@ function AccountTab({
       <p className="caption">{profile.phoneE164}</p>
       {incomplete && (
         <p className="profileIncompleteCue" role="status">
-          Please complete your profile — name, email, birthday, sex, and work/home address are required.
+          {t('account.incompleteCue')}
         </p>
       )}
       <form onSubmit={(e) => void save(e)}>
-        <label htmlFor="name">Name</label>
+        <label htmlFor="name">{t('common.name')}</label>
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <label htmlFor="email">Email</label>
+        <label htmlFor="email">{t('common.email')}</label>
         <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <label htmlFor="birthday">Birthday</label>
+        <label htmlFor="birthday">{t('common.birthday')}</label>
         <input id="birthday" type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} required />
-        <label htmlFor="gender">Sex</label>
+        <label htmlFor="gender">{t('common.sex')}</label>
         <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} required>
-          <option value="">Select…</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-          <option value="Other">Other</option>
+          <option value="">{t('common.selectOption')}</option>
+          <option value="Male">{t('common.male')}</option>
+          <option value="Female">{t('common.female')}</option>
+          <option value="Other">{t('common.other')}</option>
         </select>
-        <label htmlFor="address">Address</label>
+        <label htmlFor="address">{t('common.address')}</label>
         <textarea
           id="address"
           rows={3}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
-          placeholder="Office / home address"
+          placeholder={t('account.addressPlaceholder')}
           required
         />
         {msg && <p className="hint">{msg}</p>}
         <button type="submit" className="btnPrimary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save profile'}
+          {saving ? t('common.saving') : t('account.saveProfile')}
         </button>
       </form>
       <button type="button" className="btnSecondary" onClick={onLogout}>
-        Logout
+        {t('common.logout')}
       </button>
       <PurchaseHistory onViewAll={() => setShowHistoryPage(true)} />
       <ContactUs />
@@ -261,6 +261,7 @@ function AccountTab({
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState<Tab>('menu');
   const [orderStep, setOrderStep] = useState<'configure' | 'checkout'>('configure');
@@ -351,11 +352,14 @@ export default function App() {
 
   return (
     <div className="app appShell">
+      <div className="appLangBar">
+        <LangToggle />
+      </div>
       <main className="shell">
         {paymentBanner === 'paid_schedule' && (
           <div className="paymentBanner success">
-            <p className="paymentBannerTitle">Payment received</p>
-            <p className="paymentBannerLead">Head to Schedule below to pick your pickup days.</p>
+            <p className="paymentBannerTitle">{t('payment.received')}</p>
+            <p className="paymentBannerLead">{t('payment.scheduleLead')}</p>
             <CapacityUrgencyNotice variant="banner" />
           </div>
         )}
@@ -403,7 +407,7 @@ export default function App() {
                   style={{ marginTop: 8, marginBottom: 8 }}
                   onClick={() => setOrderStep('checkout')}
                 >
-                  Review order →
+                  {t('checkout.reviewBtn')}
                 </button>
               </>
             )}
@@ -418,9 +422,9 @@ export default function App() {
                 className="backBtn"
                 onClick={() => setOrderStep('configure')}
               >
-                ← Back
+                {t('common.back')}
               </button>
-              <span className="checkoutPageTitle">Review order</span>
+              <span className="checkoutPageTitle">{t('checkout.reviewOrder')}</span>
             </div>
             <Checkout
               draft={draft}
@@ -459,7 +463,7 @@ export default function App() {
             onClick={() => setTab('menu')}
           >
             <span className="tabIcon">🍽️</span>
-            Menu
+            {t('nav.menu')}
           </button>
           <button
             type="button"
@@ -467,7 +471,7 @@ export default function App() {
             onClick={() => { setTab('package'); setOrderStep('configure'); }}
           >
             <span className="tabIcon">🍱</span>
-            Package
+            {t('nav.package')}
           </button>
           <button
             type="button"
@@ -475,7 +479,7 @@ export default function App() {
             onClick={() => setTab('schedule')}
           >
             <span className="tabIcon">📅</span>
-            Schedule
+            {t('nav.schedule')}
           </button>
           <button
             type="button"
@@ -483,9 +487,9 @@ export default function App() {
             onClick={() => setTab('account')}
           >
             <span className="tabIcon">👤</span>
-            Account
+            {t('nav.account')}
             {profileIncomplete && (
-              <span className="tabAlertBadge" aria-label="Profile incomplete">!</span>
+              <span className="tabAlertBadge" aria-label={t('nav.profileIncomplete')}>!</span>
             )}
           </button>
         </div>

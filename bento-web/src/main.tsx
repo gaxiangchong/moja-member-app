@@ -3,11 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { validateClientEnv } from './env';
+import { LangProvider } from './lib/i18n/context';
 
 validateClientEnv();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <LangProvider>
+      <App />
+    </LangProvider>
   </StrictMode>,
 );

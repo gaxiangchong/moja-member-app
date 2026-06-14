@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { fetchScheduleCapacity } from '../api';
 import { addDaysUtc, earliestSchedulableDateIso, formatDateOnly, parseDateOnly } from '../lib/dateUtils';
+import { useI18n } from '../lib/i18n/context';
 
 type Props = {
-  /** Tighter copy when nested inside the payment success banner. */
   variant?: 'banner' | 'inline';
 };
 
 const DEFAULT_CAPACITY = 50;
 
 export function CapacityUrgencyNotice({ variant = 'inline' }: Props) {
+  const { t } = useI18n();
   const [dailyCapacityPacks, setDailyCapacityPacks] = useState(DEFAULT_CAPACITY);
 
   useEffect(() => {
@@ -35,9 +36,7 @@ export function CapacityUrgencyNotice({ variant = 'inline' }: Props) {
 
   return (
     <p className={className}>
-      Our daily kitchen capacity is <strong>{dailyCapacityPacks} packs</strong>. Please reserve your
-      pickup days <strong>as soon as possible</strong> — once a day is full, you may not be able to
-      schedule meals for that date.
+      {t('capacity.urgency', { count: dailyCapacityPacks })}
     </p>
   );
 }

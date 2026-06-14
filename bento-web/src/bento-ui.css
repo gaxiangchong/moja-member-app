@@ -547,6 +547,39 @@ button {
   text-transform: uppercase;
 }
 
+.pkgTblMealTier {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  text-align: center;
+}
+
+.pkgTblMealTier--value {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.pkgTblMealTier--good {
+  background: linear-gradient(135deg, #ffedd5, #fed7aa);
+  color: #c2410c;
+  box-shadow: 0 1px 4px rgba(194, 65, 12, 0.12);
+}
+
+.pkgTblMealTier--super {
+  background: linear-gradient(135deg, #fde68a, #fbbf24);
+  color: #92400e;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.28);
+}
+
 /* Body cells */
 .pkgTblRow:nth-child(odd) .pkgTblCell   { background: #f6f3ef; }
 .pkgTblRow:nth-child(even) .pkgTblCell  { background: #f0ece7; }
@@ -2568,6 +2601,23 @@ button {
   line-height: 1.3;
 }
 
+/* ---- App language bar ---- */
+.appLangBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: linear-gradient(180deg, var(--bg) 70%, transparent);
+}
+
+.authLangRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 /* ---- Weekly menu tab ---- */
 .wkMenuList {
   list-style: none;
@@ -2583,6 +2633,20 @@ button {
   border-radius: 14px;
   background: #faf8f5;
   border: 1px solid var(--border);
+}
+
+.wkMenuDayToday {
+  background: linear-gradient(145deg, #fff7ed, #ffedd5);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.12);
+}
+
+.wkMenuDayToday .wkMenuDayHead strong {
+  color: var(--primary);
+}
+
+.wkMenuDayTodayTag {
+  color: var(--primary) !important;
 }
 
 .wkMenuDayClosed {

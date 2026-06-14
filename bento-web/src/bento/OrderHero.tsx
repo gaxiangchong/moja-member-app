@@ -1,6 +1,6 @@
 import type { MemberProfile } from '../api';
 import type { BentoPackage } from './types';
-import { formatPlanDuration } from './types';
+import { useI18n } from '../lib/i18n/context';
 
 type Props = {
   profile: MemberProfile | null;
@@ -8,20 +8,23 @@ type Props = {
 };
 
 export function OrderHero({ profile, selectedPackage }: Props) {
+  const { t, packageLabel, formatPlanDuration } = useI18n();
   const firstName = profile?.displayName?.split(' ')[0];
 
   return (
     <section className="heroCard">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <span className="heroTag">Step 1 of 3 &nbsp;·&nbsp; Choose plan</span>
+          <span className="heroTag">{t('hero.step')}</span>
           <h1 style={{ marginTop: 4 }}>
-            {firstName ? `Hey ${firstName}! 👋` : 'Order Meals 🍽️'}
+            {firstName ? t('hero.greeting', { name: firstName }) : t('hero.title')}
           </h1>
           <p className="heroSubtitle">
             {selectedPackage
-              ? `Great choice — ${selectedPackage.label} selected. Continue below to set your meal preferences.`
-              : 'Pick a meal plan below. Fresh, chef-prepared meals on your schedule, starting this week.'}
+              ? t('hero.selectedSub', {
+                  label: packageLabel(selectedPackage.code, selectedPackage.label),
+                })
+              : t('hero.defaultSub')}
           </p>
         </div>
         {!selectedPackage && (
@@ -32,21 +35,21 @@ export function OrderHero({ profile, selectedPackage }: Props) {
       {selectedPackage ? (
         <div className="heroStats">
           <div className="heroStat">
-            <span className="heroStatLabel">Plan</span>
-            <strong>{selectedPackage.label}</strong>
+            <span className="heroStatLabel">{t('hero.statPlan')}</span>
+            <strong>{packageLabel(selectedPackage.code, selectedPackage.label)}</strong>
           </div>
           <div className="heroStat">
-            <span className="heroStatLabel">Meals</span>
+            <span className="heroStatLabel">{t('hero.statMeals')}</span>
             <strong>{selectedPackage.mealCredits}</strong>
           </div>
           <div className="heroStat">
-            <span className="heroStatLabel">Valid for</span>
+            <span className="heroStatLabel">{t('hero.statValid')}</span>
             <strong>{formatPlanDuration(selectedPackage.durationDays)}</strong>
           </div>
         </div>
       ) : (
         <div className="heroHint">
-          <p>Pick a meal plan first, then set your rhythm and preferences before checkout.</p>
+          <p>{t('hero.hint')}</p>
         </div>
       )}
     </section>

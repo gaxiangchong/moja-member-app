@@ -1064,6 +1064,24 @@
   background: #f5f2ef !important;
 }
 
+.weeklyDayToday {
+  background: linear-gradient(145deg, #fff7ed, #ffedd5) !important;
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.12);
+}
+
+.weeklyDayToday .weeklyDayHead strong {
+  color: #c2410c;
+}
+
+.weeklyDayTodayTag {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #c2410c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .weeklyDayHead {
   display: flex;
   align-items: center;

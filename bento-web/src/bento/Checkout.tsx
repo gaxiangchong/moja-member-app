@@ -9,6 +9,7 @@ import {
 import type { OrderDraft } from './types';
 import { formatRm } from './types';
 import { PurchaseCapacityNotice } from './PurchaseCapacityNotice';
+import { useI18n } from '../lib/i18n/context';
 
 type Props = {
   draft: OrderDraft;
@@ -19,6 +20,7 @@ const MIN_QTY = 2;
 const MAX_QTY = 10;
 
 export function Checkout({ draft, onSuccess }: Props) {
+  const { t } = useI18n();
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof quoteBentoSubscription>> | null>(null);
   const [paymentsDemoMode, setPaymentsDemoMode] = useState(false);
   const [channels, setChannels] = useState<Array<{ code: string; label: string }>>([]);
@@ -74,9 +76,11 @@ export function Checkout({ draft, onSuccess }: Props) {
       sets,
     })
       .then((q) => { if (!cancelled) { setQuote(q); setError(null); } })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Quote failed'); });
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : t('checkout.errorQuote'));
+      });
     return () => { cancelled = true; };
-  }, [draft, sets]);
+  }, [draft, sets, t]);
 
   const handlePay = async () => {
     if (!draft.packageCode || !quote) return;
@@ -104,7 +108,6 @@ export function Checkout({ draft, onSuccess }: Props) {
         return;
       }
 
-      // Real payment: create all subscriptions, redirect to first payment URL
       let firstRedirectUrl: string | null = null;
       for (let i = 0; i < sets; i++) {
         const result = await checkoutBentoSubscription(payload);
@@ -116,7 +119,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       }
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Checkout failed');
+      setError(err instanceof Error ? err.message : t('checkout.errorCheckout'));
     } finally {
       setLoading(false);
     }
@@ -125,19 +128,29 @@ export function Checkout({ draft, onSuccess }: Props) {
   const perSetTotal = quote?.totalCents ?? 0;
   const grandTotal = perSetTotal * sets;
 
+  const lunchPart =
+    quote && quote.lunchCredits > 0
+      ? `${quote.lunchCredits * sets} ${t('common.lunch').toLowerCase()}`
+      : '';
+  const dinnerPart =
+    quote && quote.dinnerCredits > 0
+      ? `${quote.dinnerCredits * sets} ${t('common.dinner').toLowerCase()}`
+      : '';
+  const setsPart = sets > 1 ? ` (${sets} ${t('common.sets')})` : '';
+
   return (
     <section className="section checkout">
       <div className="checkoutTop">
         <div>
-          <h2>Review your order</h2>
-          <p className="caption">Confirm details then pay to lock in your plan.</p>
+          <h2>{t('checkout.reviewTitle')}</h2>
+          <p className="caption">{t('checkout.reviewCaption')}</p>
         </div>
         {quote && (
           <div className="checkoutTotalValue">{formatRm(grandTotal)}</div>
         )}
       </div>
 
-      {!quote && draft.packageCode && <p className="caption">Calculating total…</p>}
+      {!quote && draft.packageCode && <p className="caption">{t('checkout.calculating')}</p>}
 
       {quote?.purchaseAvailability && !quote.purchaseAvailability.canPurchase && (
         <PurchaseCapacityNotice availability={quote.purchaseAvailability} />
@@ -154,7 +167,7 @@ export function Checkout({ draft, onSuccess }: Props) {
             ))}
             {sets > 1 && (
               <li className="quoteSetsRow">
-                <span>× {sets} sets</span>
+                <span>{t('checkout.setsRow', { count: sets })}</span>
                 <span>{formatRm(grandTotal)}</span>
               </li>
             )}
@@ -162,17 +175,18 @@ export function Checkout({ draft, onSuccess }: Props) {
 
           {quote.totalSavingsCents > 0 && (
             <p className="savings">
-              You save {formatRm(quote.totalSavingsCents * sets)} vs the{' '}
-              {quote.savingsBaselineLabel || '1 meal'} plan.
+              {t('checkout.youSave', {
+                amount: formatRm(quote.totalSavingsCents * sets),
+                baseline: quote.savingsBaselineLabel || t('package.label.ONE_TIME'),
+              })}
             </p>
           )}
 
-          <p className="caption" style={{ marginTop: 6 }}>
-            {quote.lunchCredits > 0 && `${quote.lunchCredits * sets} lunch${quote.lunchCredits * sets > 1 ? 'es' : ''}`}
-            {quote.lunchCredits > 0 && quote.dinnerCredits > 0 ? ' · ' : ''}
-            {quote.dinnerCredits > 0 && `${quote.dinnerCredits * sets} dinner${quote.dinnerCredits * sets > 1 ? 's' : ''}`}
-            {sets > 1 ? ` (${sets} sets)` : ''}
-          </p>
+          {(lunchPart || dinnerPart) && (
+            <p className="caption" style={{ marginTop: 6 }}>
+              {[lunchPart, dinnerPart].filter(Boolean).join(' · ')}{setsPart}
+            </p>
+          )}
 
           {!isTrialPack && (
             <div className="groupBuySection">
@@ -190,14 +204,14 @@ export function Checkout({ draft, onSuccess }: Props) {
                   <span className="groupBuyToggleThumb" />
                 </span>
                 <div>
-                  <span className="groupBuyToggleText">Group buy</span>
-                  <span className="groupBuyToggleDesc">Order multiple sets at once</span>
+                  <span className="groupBuyToggleText">{t('checkout.groupBuy')}</span>
+                  <span className="groupBuyToggleDesc">{t('checkout.groupBuyDesc')}</span>
                 </div>
               </label>
 
               {groupBuy && (
                 <div className="groupBuyQtyRow">
-                  <span className="groupBuyQtyLabel">How many sets?</span>
+                  <span className="groupBuyQtyLabel">{t('checkout.howManySets')}</span>
                   <div className="groupBuyQtyControl">
                     <button
                       type="button"
@@ -223,7 +237,7 @@ export function Checkout({ draft, onSuccess }: Props) {
 
           {!paymentsDemoMode && channels.length > 0 && (
             <div className="paymentOptionSection">
-              <label className="fieldLabel" htmlFor="channel">Payment method</label>
+              <label className="fieldLabel" htmlFor="channel">{t('checkout.paymentMethod')}</label>
               <select
                 id="channel"
                 value={channelCode}
@@ -240,7 +254,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       )}
 
       {paymentsDemoMode && quote?.purchaseAvailability?.canPurchase !== false && (
-        <p className="demoBanner">Demo mode — payment is bypassed for this preview.</p>
+        <p className="demoBanner">{t('checkout.demoBanner')}</p>
       )}
 
       {error && <p className="err">{error}</p>}
@@ -253,10 +267,12 @@ export function Checkout({ draft, onSuccess }: Props) {
         style={{ marginTop: 14 }}
       >
         {loading
-          ? `Processing${sets > 1 ? ` (${sets} sets)` : ''}…`
+          ? t('checkout.processing', {
+              sets: sets > 1 ? t('checkout.processingSets', { count: sets }) : '',
+            })
           : paymentsDemoMode
-            ? 'Continue without payment'
-            : `Pay ${formatRm(grandTotal)}`}
+            ? t('checkout.continueDemo')
+            : t('checkout.pay', { amount: formatRm(grandTotal) })}
       </button>
     </section>
   );

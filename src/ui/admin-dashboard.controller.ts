@@ -2231,11 +2231,18 @@ export class AdminDashboardController {
                 <input type="date" id="saTo" />
               </div>
               <div class="sa-toolbar-group">
+                <label for="saCategory">Category</label>
+                <select id="saCategory" aria-label="Sales category">
+                  <option value="cake" selected>Cake (shop)</option>
+                  <option value="bento">Bento (meal plans)</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
                 <label for="saBucket">Bucket</label>
                 <select id="saBucket" aria-label="Time bucket">
                   <option value="day">Days</option>
                   <option value="week">Weeks</option>
-                  <option value="month">Months</option>
+                  <option value="month" selected>Months</option>
                 </select>
               </div>
               <div class="sa-toolbar-group">
@@ -2255,26 +2262,26 @@ export class AdminDashboardController {
 
             <div class="sa-kpi-strip" id="saKpiStrip">
               <button type="button" class="sa-kpi-card is-active" data-sa-metric="gmv" id="saCardGmv">
-                <div class="sa-kpi-card-title">GMV (completed)</div>
+                <div class="sa-kpi-card-title" id="saKpiGmvTitle">GMV (paid)</div>
                 <div class="sa-kpi-card-value" id="saValGmv">—</div>
                 <div class="sa-kpi-card-delta" id="saDeltaGmv">—</div>
               </button>
               <button type="button" class="sa-kpi-card" data-sa-metric="orders" id="saCardOrders">
-                <div class="sa-kpi-card-title">Completed orders</div>
+                <div class="sa-kpi-card-title" id="saKpiOrdersTitle">Paid transactions</div>
                 <div class="sa-kpi-card-value" id="saValOrders">—</div>
                 <div class="sa-kpi-card-delta" id="saDeltaOrders">—</div>
               </button>
               <button type="button" class="sa-kpi-card" data-sa-metric="aov" id="saCardAov">
-                <div class="sa-kpi-card-title">Avg order value</div>
+                <div class="sa-kpi-card-title" id="saKpiAovTitle">Avg transaction</div>
                 <div class="sa-kpi-card-value" id="saValAov">—</div>
                 <div class="sa-kpi-card-delta" id="saDeltaAov">—</div>
               </button>
-              <button type="button" class="sa-kpi-card" data-sa-metric="wallet" id="saCardWallet">
+              <button type="button" class="sa-kpi-card sa-kpi-cake-only" data-sa-metric="wallet" id="saCardWallet">
                 <div class="sa-kpi-card-title">Wallet spend</div>
                 <div class="sa-kpi-card-value" id="saValWallet">—</div>
                 <div class="sa-kpi-card-delta" id="saDeltaWallet">—</div>
               </button>
-              <button type="button" class="sa-kpi-card" data-sa-metric="points" id="saCardPts">
+              <button type="button" class="sa-kpi-card sa-kpi-cake-only" data-sa-metric="points" id="saCardPts">
                 <div class="sa-kpi-card-title">Points redeemed</div>
                 <div class="sa-kpi-card-value" id="saValPts">—</div>
                 <div class="sa-kpi-card-delta" id="saDeltaPts">—</div>
@@ -2282,10 +2289,11 @@ export class AdminDashboardController {
             </div>
 
             <p class="sa-substats" id="saSubstats">
-              <strong>Scope:</strong> completed orders use <code>COALESCE(completed_at, placed_at)</code> (UTC). Wallet &amp; loyalty totals are ledger activity in the same date window. <strong>Open orders (placed in range):</strong> <span id="saOpen">—</span>
+              <strong>Scope:</strong> <span id="saScopeText">Cake — paid shop orders by <code>placed_at</code> (UTC). Includes placed and completed; excludes unpaid/cancelled.</span>
+              <span id="saSubstatsCake"> · <strong>Open orders (placed in range):</strong> <span id="saOpen">—</span>
               · <strong>Points issued:</strong> <span id="saPtsIn">—</span>
               · <strong>Wallet top-up:</strong> <span id="saWalTop">—</span>
-              · <strong>Vouchers issued / redeemed:</strong> <span id="saVIss">—</span> / <span id="saVRed">—</span>
+              · <strong>Vouchers issued / redeemed:</strong> <span id="saVIss">—</span> / <span id="saVRed">—</span></span>
             </p>
 
             <div class="sa-chart-card">
@@ -2309,10 +2317,10 @@ export class AdminDashboardController {
                 <div class="sa-panel-body"><div class="sa-panel-body-inner" id="saBestSeller">Apply filters to load data.</div></div>
               </div>
               <div class="sa-panel">
-                <div class="sa-panel-head">Top products (quantity)</div>
+                <div class="sa-panel-head" id="saTopPanelHead">Top products (quantity)</div>
                 <div class="table-wrap">
                   <table class="data">
-                    <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr></thead>
+                    <thead id="saTopHead"><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr></thead>
                     <tbody id="saTopBody"></tbody>
                   </table>
                 </div>
@@ -2332,7 +2340,7 @@ export class AdminDashboardController {
               </div>
             </div>
 
-            <div class="sa-export-block sa-panel" style="margin-top:20px">
+            <div class="sa-export-block sa-panel" id="saDailySalesPanel" style="margin-top:20px">
               <div class="sa-export-head">
                 <h3>Daily sales by item (completed orders)</h3>
                 <span class="muted-hint" style="width:auto;margin:0;font-size:12px">UTC business day · close books when reconciled</span>
@@ -3215,14 +3223,53 @@ export class AdminDashboardController {
       toEnd.setUTCDate(toEnd.getUTCDate() + 1);
       const toIso = toEnd.toISOString();
       const bucket = document.getElementById('saBucket').value;
+      const category = document.getElementById('saCategory').value || 'cake';
       return (
         'from=' +
         encodeURIComponent(fromIso) +
         '&to=' +
         encodeURIComponent(toIso) +
         '&bucket=' +
-        encodeURIComponent(bucket)
+        encodeURIComponent(bucket) +
+        '&category=' +
+        encodeURIComponent(category)
       );
+    }
+
+    function saCategoryLabel(cat) {
+      return cat === 'bento' ? 'Bento (meal plans)' : 'Cake (shop)';
+    }
+
+    function applySalesCategoryUi(category) {
+      const isCake = category !== 'bento';
+      document.querySelectorAll('.sa-kpi-cake-only').forEach(function (el) {
+        el.style.display = isCake ? '' : 'none';
+      });
+      const cakeSub = document.getElementById('saSubstatsCake');
+      if (cakeSub) cakeSub.style.display = isCake ? '' : 'none';
+      const scope = document.getElementById('saScopeText');
+      if (scope) {
+        scope.textContent = isCake
+          ? 'Cake — paid shop orders by placed_at (UTC). Includes placed and completed; excludes unpaid/cancelled.'
+          : 'Bento — successful subscription payments by payment_intents.updated_at (UTC). Counts paid plans regardless of meals scheduled or consumed.';
+      }
+      const daily = document.getElementById('saDailySalesPanel');
+      if (daily) daily.style.display = isCake ? '' : 'none';
+      const topHead = document.getElementById('saTopHead');
+      if (topHead) {
+        topHead.innerHTML = isCake
+          ? '<tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr>'
+          : '<tr><th>Package</th><th>Code</th><th>Sales</th><th>Revenue</th><th>Payments</th></tr>';
+      }
+      const topPanel = document.getElementById('saTopPanelHead');
+      if (topPanel) {
+        topPanel.textContent = isCake ? 'Top products (quantity)' : 'Top packages (sales)';
+      }
+      const bestHead = document.querySelector('#reports-sales .sa-split .sa-panel:first-child .sa-panel-head');
+      if (bestHead) bestHead.textContent = isCake ? 'Best seller' : 'Best-selling package';
+      if (!isCake && (saChartMetric === 'wallet' || saChartMetric === 'points')) {
+        saChartMetric = 'gmv';
+      }
     }
 
     function saSetKpiActive(metric) {
@@ -3299,7 +3346,7 @@ export class AdminDashboardController {
 
       if (!arr.length) {
         wrap.innerHTML =
-          '<p class="muted-hint" style="margin:0;padding:48px 16px;text-align:center">No completed orders in this range.</p>';
+          '<p class="muted-hint" style="margin:0;padding:48px 16px;text-align:center">No paid transactions in this range.</p>';
         return;
       }
 
@@ -3442,6 +3489,8 @@ export class AdminDashboardController {
       try {
         const data = await api('/admin/reports/sales-analytics?' + q);
         lastSalesAnalytics = data;
+        const cat = (data.meta && data.meta.category) || 'cake';
+        applySalesCategoryUi(cat);
         const sum = data.summary || {};
         const noCmp = '—';
         document.getElementById('saValGmv').textContent = moneyFromCents(sum.totalGmvCents);
@@ -3477,27 +3526,44 @@ export class AdminDashboardController {
             '</td></tr>'
           );
         });
-        tb.innerHTML = rows.join('') || '<tr><td colspan="5">No products</td></tr>';
+        tb.innerHTML =
+          rows.join('') ||
+          '<tr><td colspan="5">' +
+            (cat === 'bento' ? 'No package sales' : 'No products') +
+            '</td></tr>';
         const best = document.getElementById('saBestSeller');
         if (data.bestSeller) {
           const b = data.bestSeller;
+          const qtyLabel = cat === 'bento' ? 'Sales' : 'Qty sold';
+          const ordLabel = cat === 'bento' ? 'Payments' : 'Orders';
           best.innerHTML =
             '<strong>' +
             fmt(b.name) +
             '</strong> <span class="muted-hint">(' +
             fmt(b.productId) +
-            ')</span><br/>Qty sold: ' +
+            ')</span><br/>' +
+            qtyLabel +
+            ': ' +
             fmt(b.qtySold) +
             ' · Revenue: ' +
             moneyFromCents(b.revenueCents) +
-            ' · Orders: ' +
+            ' · ' +
+            ordLabel +
+            ': ' +
             fmt(b.orders);
         } else {
-          best.innerHTML = '<span class="muted-hint">No completed order lines in this range.</span>';
+          best.innerHTML =
+            '<span class="muted-hint">' +
+            (cat === 'bento'
+              ? 'No successful bento payments in this range.'
+              : 'No paid order lines in this range.') +
+            '</span>';
         }
         if (hint) {
           hint.textContent =
             'Loaded · ' +
+            saCategoryLabel(cat) +
+            ' · ' +
             fmt(data.meta?.bucket) +
             ' bucket · window ' +
             fmt(data.meta?.from) +
@@ -6166,6 +6232,13 @@ export class AdminDashboardController {
         statusPanel.textContent = e.message || String(e);
       });
     });
+    const saCatEl = document.getElementById('saCategory');
+    if (saCatEl) {
+      saCatEl.addEventListener('change', function () {
+        applySalesCategoryUi(saCatEl.value || 'cake');
+      });
+      applySalesCategoryUi(saCatEl.value || 'cake');
+    }
     saBind('saPreset7', () => {
       const t = new Date();
       const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));

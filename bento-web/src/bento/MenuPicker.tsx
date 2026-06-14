@@ -1,4 +1,5 @@
 import type { BentoDietVariant, BentoMealOption, BentoRiceType } from './types';
+import { useI18n } from '../lib/i18n/context';
 
 type Props = {
   mealOption: BentoMealOption;
@@ -27,6 +28,7 @@ export function MenuPicker({
   onRiceTypeChange,
   onDrinkAddonChange,
 }: Props) {
+  const { t } = useI18n();
   const showLunch = mealOption === 'LUNCH' || mealOption === 'BOTH';
   const showDinner = mealOption === 'DINNER' || mealOption === 'BOTH';
 
@@ -34,11 +36,9 @@ export function MenuPicker({
     <section className="section">
       <div className="sectionHeader">
         <div>
-          <h2>Customize your menu</h2>
+          <h2>{t('customize.title')}</h2>
           <p className="caption">
-            {drinksAndSoupEnabled
-              ? 'Select your preferred meal type, rice, and drink options before checkout.'
-              : 'Select your preferred meal type and rice before checkout.'}
+            {drinksAndSoupEnabled ? t('customize.captionFull') : t('customize.captionBasic')}
           </p>
         </div>
       </div>
@@ -46,8 +46,8 @@ export function MenuPicker({
       {showLunch && (
         <div className="menuSection">
           <div className="menuSectionHeader">
-            <h3>Lunch</h3>
-            <p className="caption">Choose the lunch style you want for all lunch days.</p>
+            <h3>{t('common.lunch')}</h3>
+            <p className="caption">{t('customize.lunchCaption')}</p>
           </div>
           <div className="variantGrid">
             <button
@@ -55,16 +55,16 @@ export function MenuPicker({
               className={`variantCard${lunchVariant === 'NONVEG' ? ' active' : ''}`}
               onClick={() => onLunchVariantChange('NONVEG')}
             >
-              <span className="variantTitle">Regular</span>
-              <span className="variantLabel">Protein-rich and hearty.</span>
+              <span className="variantTitle">{t('common.regular')}</span>
+              <span className="variantLabel">{t('customize.regularLunch')}</span>
             </button>
             <button
               type="button"
               className={`variantCard${lunchVariant === 'VEG' ? ' active' : ''}`}
               onClick={() => onLunchVariantChange('VEG')}
             >
-              <span className="variantTitle">Vegetarian</span>
-              <span className="variantLabel">Light and balanced.</span>
+              <span className="variantTitle">{t('common.vegetarian')}</span>
+              <span className="variantLabel">{t('customize.vegLunch')}</span>
             </button>
           </div>
         </div>
@@ -73,11 +73,11 @@ export function MenuPicker({
       {showDinner && (
         <div className="menuSection">
           <div className="menuSectionHeader">
-            <h3>Dinner</h3>
+            <h3>{t('common.dinner')}</h3>
             <p className="caption">
               {drinksAndSoupEnabled && includeFreeSoupAndDrinks
-                ? 'Soup is included with your plan.'
-                : 'Choose your dinner style for all dinner days.'}
+                ? t('customize.dinnerSoupIncluded')
+                : t('customize.dinnerCaption')}
             </p>
           </div>
           <div className="variantGrid">
@@ -86,16 +86,16 @@ export function MenuPicker({
               className={`variantCard${dinnerVariant === 'NONVEG' ? ' active' : ''}`}
               onClick={() => onDinnerVariantChange('NONVEG')}
             >
-              <span className="variantTitle">Regular</span>
-              <span className="variantLabel">Hearty evening meal.</span>
+              <span className="variantTitle">{t('common.regular')}</span>
+              <span className="variantLabel">{t('customize.regularDinner')}</span>
             </button>
             <button
               type="button"
               className={`variantCard${dinnerVariant === 'VEG' ? ' active' : ''}`}
               onClick={() => onDinnerVariantChange('VEG')}
             >
-              <span className="variantTitle">Vegetarian</span>
-              <span className="variantLabel">Garden-fresh dinner.</span>
+              <span className="variantTitle">{t('common.vegetarian')}</span>
+              <span className="variantLabel">{t('customize.vegDinner')}</span>
             </button>
           </div>
         </div>
@@ -103,7 +103,7 @@ export function MenuPicker({
 
       <div className="menuSection">
         <div className="menuSectionHeader">
-          <h3>Rice</h3>
+          <h3>{t('customize.rice')}</h3>
         </div>
         <div className="variantGrid">
           <button
@@ -111,16 +111,16 @@ export function MenuPicker({
             className={`variantCard${riceType === 'WHITE' ? ' active' : ''}`}
             onClick={() => onRiceTypeChange('WHITE')}
           >
-            <span className="variantTitle">White rice</span>
-            <span className="variantLabel">Classic and familiar.</span>
+            <span className="variantTitle">{t('common.whiteRice')}</span>
+            <span className="variantLabel">{t('customize.whiteRiceDesc')}</span>
           </button>
           <button
             type="button"
             className={`variantCard${riceType === 'BROWN' ? ' active' : ''}`}
             onClick={() => onRiceTypeChange('BROWN')}
           >
-            <span className="variantTitle">Brown rice</span>
-            <span className="variantLabel">Nutty texture +RM2/meal</span>
+            <span className="variantTitle">{t('common.brownRice')}</span>
+            <span className="variantLabel">{t('customize.brownRiceDesc')}</span>
           </button>
         </div>
       </div>
@@ -128,10 +128,10 @@ export function MenuPicker({
       {drinksAndSoupEnabled && (
         <div className="menuSection">
           <div className="menuSectionHeader">
-            <h3>Drinks</h3>
+            <h3>{t('customize.drinks')}</h3>
           </div>
           {includeFreeSoupAndDrinks ? (
-            <p className="caption">Drinks are included in this plan, so no extra selection is needed.</p>
+            <p className="caption">{t('customize.drinksIncluded')}</p>
           ) : (
             <label className="checkRow">
               <input
@@ -139,7 +139,7 @@ export function MenuPicker({
                 checked={includeDrinkAddon}
                 onChange={(e) => onDrinkAddonChange(e.target.checked)}
               />
-              Drink add-on <small>(+RM4/meal)</small>
+              {t('customize.drinkAddon')} <small>{t('customize.drinkAddonPrice')}</small>
             </label>
           )}
         </div>

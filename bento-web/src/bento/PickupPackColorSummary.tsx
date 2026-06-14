@@ -1,12 +1,6 @@
 import type { PackCategory, PickupDayPackSummary } from './pickupPackSummary';
 import { countForCategory } from './pickupPackSummary';
-
-const CATEGORY_LABEL: Record<PackCategory, string> = {
-  regular: 'Regular',
-  vegetarian: 'Vegetarian',
-  regularBrown: 'Regular · brown rice',
-  vegetarianBrown: 'Vegetarian · brown rice',
-};
+import { useI18n } from '../lib/i18n/context';
 
 type DotProps = { color: 'orange' | 'green' | 'brown' | 'blue' };
 
@@ -21,7 +15,9 @@ type RowProps = {
 };
 
 function PackCategoryRow({ category, count, inline = false }: RowProps) {
+  const { t } = useI18n();
   if (count <= 0) return null;
+  const labelKey = `pickup.pack.${category}` as const;
   return (
     <div className={`packColorRow${inline ? ' inline' : ''}`}>
       <span className="packColorDots">
@@ -42,7 +38,7 @@ function PackCategoryRow({ category, count, inline = false }: RowProps) {
       </span>
       {!inline && (
         <span className="packColorMeta">
-          <span className="packColorLabel">{CATEGORY_LABEL[category]}</span>
+          <span className="packColorLabel">{t(labelKey)}</span>
           <span className="packColorCount">× {count}</span>
         </span>
       )}
@@ -65,6 +61,7 @@ function PackColorRows({
   summary: PickupDayPackSummary;
   inline?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {PACK_CATEGORIES.map((category) => (
@@ -82,7 +79,7 @@ function PackColorRows({
           </span>
           {!inline && (
             <span className="packColorMeta">
-              <span className="packColorLabel">Drink add-on</span>
+              <span className="packColorLabel">{t('pickup.pack.drinkAddon')}</span>
               <span className="packColorCount">× {summary.withDrink}</span>
             </span>
           )}
@@ -99,14 +96,16 @@ type SummaryProps = {
 };
 
 export function PickupPackColorSummary({ summary, compact = false }: SummaryProps) {
+  const { t } = useI18n();
   const hasAny = PACK_CATEGORIES.some((c) => countForCategory(summary, c) > 0);
   if (!hasAny && summary.withDrink <= 0) return null;
 
   return (
     <div className={`pickupPackColorSummary${compact ? ' compact' : ''}`}>
       <p className="pickupPackTotal">
-        <strong>{summary.totalPacks}</strong>
-        {' '}pack{summary.totalPacks === 1 ? '' : 's'} to collect
+        {t(summary.totalPacks === 1 ? 'pickup.packsCollect' : 'pickup.packsCollectPlural', {
+          count: summary.totalPacks,
+        })}
       </p>
       <div className="packColorRows">
         <PackColorRows summary={summary} />
@@ -116,13 +115,16 @@ export function PickupPackColorSummary({ summary, compact = false }: SummaryProp
 }
 
 export function PickupPackColorBesideId({ summary }: { summary: PickupDayPackSummary }) {
+  const { t } = useI18n();
   const hasAny = PACK_CATEGORIES.some((c) => countForCategory(summary, c) > 0);
   if (!hasAny && summary.withDrink <= 0) return null;
 
   return (
     <div className="pickupIdColorCodes">
       <span className="pickupIdPackTotal">
-        {summary.totalPacks} pack{summary.totalPacks === 1 ? '' : 's'}
+        {t(summary.totalPacks === 1 ? 'pickup.packCount' : 'pickup.packCountPlural', {
+          count: summary.totalPacks,
+        })}
       </span>
       <div className="packColorRows inline">
         <PackColorRows summary={summary} inline />

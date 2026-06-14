@@ -1610,35 +1610,51 @@ export class AdminService {
       });
     }
 
-    const bucket = query.bucket ?? 'day';
+    const bucket = query.bucket ?? 'month';
+    const category = query.category ?? 'cake';
+
+    if (category === 'bento') {
+      return this.getBentoSalesAnalytics(from, to, bucket, now);
+    }
+    return this.getCakeSalesAnalytics(from, to, bucket, now);
+  }
+
+  private async getCakeSalesAnalytics(
+    from: Date,
+    to: Date,
+    bucket: 'day' | 'week' | 'month',
+    now: Date,
+  ): Promise<SalesAnalyticsResult> {
+    const trunc = bucket;
+    const paidStatusFilter = Prisma.sql`o.status NOT IN ('pending_payment', 'cancelled')`;
 
     const bucketSeries = () => {
-      if (bucket === 'week') {
+      if (trunc === 'week') {
         return this.prisma.$queryRaw<
           { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
         >`
-          SELECT date_trunc('week', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+          SELECT date_trunc('week', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
                  COUNT(*)::bigint AS order_count,
                  SUM(o.total_cents)::bigint AS gmv_cents
           FROM customer_orders o
-          WHERE o.status = 'completed'
-            AND COALESCE(o.completed_at, o.placed_at) >= ${from}
-            AND COALESCE(o.completed_at, o.placed_at) < ${to}
+          WHERE ${paidStatusFilter}
+            AND o.placed_at >= ${from}
+            AND o.placed_at < ${to}
           GROUP BY 1
           ORDER BY 1 ASC
         `;
       }
-      if (bucket === 'month') {
+      if (trunc === 'month') {
         return this.prisma.$queryRaw<
           { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
         >`
-          SELECT date_trunc('month', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+          SELECT date_trunc('month', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
                  COUNT(*)::bigint AS order_count,
                  SUM(o.total_cents)::bigint AS gmv_cents
           FROM customer_orders o
-          WHERE o.status = 'completed'
-            AND COALESCE(o.completed_at, o.placed_at) >= ${from}
-            AND COALESCE(o.completed_at, o.placed_at) < ${to}
+          WHERE ${paidStatusFilter}
+            AND o.placed_at >= ${from}
+            AND o.placed_at < ${to}
           GROUP BY 1
           ORDER BY 1 ASC
         `;
@@ -1646,13 +1662,13 @@ export class AdminService {
       return this.prisma.$queryRaw<
         { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
       >`
-        SELECT date_trunc('day', (COALESCE(o.completed_at, o.placed_at) AT TIME ZONE 'UTC')) AS period_start,
+        SELECT date_trunc('day', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
                COUNT(*)::bigint AS order_count,
                SUM(o.total_cents)::bigint AS gmv_cents
         FROM customer_orders o
-        WHERE o.status = 'completed'
-          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
-          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
         GROUP BY 1
         ORDER BY 1 ASC
       `;
@@ -1661,7 +1677,7 @@ export class AdminService {
     const [
       seriesRows,
       topProducts,
-      completedRow,
+      paidRow,
       openPlaced,
       loyaltyNeg,
       loyaltyPos,
@@ -1687,9 +1703,9 @@ export class AdminService {
                COUNT(DISTINCT o.id)::bigint AS order_count
         FROM customer_order_lines l
         INNER JOIN customer_orders o ON o.id = l.order_id
-        WHERE o.status = 'completed'
-          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
-          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
         GROUP BY l.product_id
         ORDER BY qty_sold DESC
         LIMIT 25
@@ -1698,13 +1714,13 @@ export class AdminService {
         SELECT COUNT(*)::bigint AS cnt,
                COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
         FROM customer_orders o
-        WHERE o.status = 'completed'
-          AND COALESCE(o.completed_at, o.placed_at) >= ${from}
-          AND COALESCE(o.completed_at, o.placed_at) < ${to}
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
       `,
       this.prisma.customerOrder.count({
         where: {
-          status: { not: 'completed' },
+          status: { notIn: ['pending_payment', 'cancelled', 'completed'] },
           placedAt: { gte: from, lt: to },
         },
       }),
@@ -1749,21 +1765,182 @@ export class AdminService {
       }),
     ]);
 
-    const completedCount = Number(completedRow[0]?.cnt ?? 0n);
-    const totalGmv = Number(completedRow[0]?.gmv ?? 0n);
-    const pointsRedeemedPeriod = Math.abs(loyaltyNeg._sum.deltaPoints ?? 0);
-    const pointsIssuedPeriod = loyaltyPos._sum.deltaPoints ?? 0;
-    const walletSpendSum = walletSpend._sum.amountCents ?? 0;
-    const walletSpendCents = Math.abs(walletSpendSum);
-    const walletTopUpPeriod = walletTopUp._sum.amountCents ?? 0;
+    const paidCount = Number(paidRow[0]?.cnt ?? 0n);
+    const totalGmv = Number(paidRow[0]?.gmv ?? 0n);
 
-    const series = seriesRows.map((r) => ({
+    return this.buildSalesAnalyticsResult({
+      from,
+      to,
+      bucket,
+      category: 'cake',
+      now,
+      seriesRows,
+      topProducts,
+      paidCount,
+      totalGmv,
+      openPlaced,
+      loyaltyNeg: loyaltyNeg._sum.deltaPoints ?? 0,
+      loyaltyPos: loyaltyPos._sum.deltaPoints ?? 0,
+      walletSpend: walletSpend._sum.amountCents ?? 0,
+      walletTopUp: walletTopUp._sum.amountCents ?? 0,
+      vouchersRedeemed,
+      vouchersIssued,
+    });
+  }
+
+  private async getBentoSalesAnalytics(
+    from: Date,
+    to: Date,
+    bucket: 'day' | 'week' | 'month',
+    now: Date,
+  ): Promise<SalesAnalyticsResult> {
+    const trunc = bucket;
+
+    const bucketSeries = () => {
+      if (trunc === 'week') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('week', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(pi.amount_cents)::bigint AS gmv_cents
+          FROM payment_intents pi
+          WHERE pi.purpose = 'bento_subscription'
+            AND pi.status = 'SUCCEEDED'
+            AND pi.updated_at >= ${from}
+            AND pi.updated_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      if (trunc === 'month') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('month', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(pi.amount_cents)::bigint AS gmv_cents
+          FROM payment_intents pi
+          WHERE pi.purpose = 'bento_subscription'
+            AND pi.status = 'SUCCEEDED'
+            AND pi.updated_at >= ${from}
+            AND pi.updated_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      return this.prisma.$queryRaw<
+        { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+      >`
+        SELECT date_trunc('day', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS order_count,
+               SUM(pi.amount_cents)::bigint AS gmv_cents
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `;
+    };
+
+    const [seriesRows, topProducts, paidRow] = await Promise.all([
+      bucketSeries(),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          revenue_cents: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT bp.code AS product_id,
+               MAX(bp.label) AS name,
+               COUNT(*)::bigint AS qty_sold,
+               SUM(pi.amount_cents)::bigint AS revenue_cents,
+               COUNT(DISTINCT pi.id)::bigint AS order_count
+        FROM payment_intents pi
+        INNER JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
+        INNER JOIN bento_packages bp ON bp.id = bs.package_id
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+        GROUP BY bp.code
+        ORDER BY qty_sold DESC
+        LIMIT 25
+      `,
+      this.prisma.$queryRaw<{ cnt: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+      `,
+    ]);
+
+    const paidCount = Number(paidRow[0]?.cnt ?? 0n);
+    const totalGmv = Number(paidRow[0]?.gmv ?? 0n);
+
+    return this.buildSalesAnalyticsResult({
+      from,
+      to,
+      bucket,
+      category: 'bento',
+      now,
+      seriesRows,
+      topProducts,
+      paidCount,
+      totalGmv,
+      openPlaced: 0,
+      loyaltyNeg: 0,
+      loyaltyPos: 0,
+      walletSpend: 0,
+      walletTopUp: 0,
+      vouchersRedeemed: 0,
+      vouchersIssued: 0,
+    });
+  }
+
+  private buildSalesAnalyticsResult(params: {
+    from: Date;
+    to: Date;
+    bucket: 'day' | 'week' | 'month';
+    category: 'cake' | 'bento';
+    now: Date;
+    seriesRows: { period_start: Date; order_count: bigint; gmv_cents: bigint }[];
+    topProducts: {
+      product_id: string;
+      name: string;
+      qty_sold: bigint;
+      revenue_cents: bigint;
+      order_count: bigint;
+    }[];
+    paidCount: number;
+    totalGmv: number;
+    openPlaced: number;
+    loyaltyNeg: number;
+    loyaltyPos: number;
+    walletSpend: number;
+    walletTopUp: number;
+    vouchersRedeemed: number;
+    vouchersIssued: number;
+  }): SalesAnalyticsResult {
+    const pointsRedeemedPeriod = Math.abs(params.loyaltyNeg);
+    const pointsIssuedPeriod = params.loyaltyPos;
+    const walletSpendCents = Math.abs(params.walletSpend);
+
+    const series = params.seriesRows.map((r) => ({
       periodStart: r.period_start.toISOString(),
       orderCount: Number(r.order_count),
       gmvCents: Number(r.gmv_cents),
     }));
 
-    const top = topProducts.map((p) => ({
+    const top = params.topProducts.map((p) => ({
       productId: p.product_id,
       name: p.name,
       qtySold: Number(p.qty_sold),
@@ -1771,30 +1948,31 @@ export class AdminService {
       orders: Number(p.order_count),
     }));
 
-    const bestSeller = top[0] ?? null;
-
     return {
       meta: {
-        from: from.toISOString(),
-        to: to.toISOString(),
-        bucket,
-        generatedAt: now.toISOString(),
+        from: params.from.toISOString(),
+        to: params.to.toISOString(),
+        bucket: params.bucket,
+        category: params.category,
+        generatedAt: params.now.toISOString(),
       },
       series,
       topProducts: top,
-      bestSeller,
+      bestSeller: top[0] ?? null,
       summary: {
-        completedOrders: completedCount,
-        totalGmvCents: totalGmv,
+        completedOrders: params.paidCount,
+        totalGmvCents: params.totalGmv,
         averageOrderValueCents:
-          completedCount > 0 ? Math.round(totalGmv / completedCount) : 0,
-        openOrdersPlacedInRange: openPlaced,
+          params.paidCount > 0
+            ? Math.round(params.totalGmv / params.paidCount)
+            : 0,
+        openOrdersPlacedInRange: params.openPlaced,
         loyaltyPointsIssuedInRange: pointsIssuedPeriod,
         loyaltyPointsRedeemedInRange: pointsRedeemedPeriod,
         storedWalletSpendCentsInRange: walletSpendCents,
-        storedWalletTopUpCentsInRange: walletTopUpPeriod,
-        vouchersIssuedInRange: vouchersIssued,
-        vouchersRedeemedInRange: vouchersRedeemed,
+        storedWalletTopUpCentsInRange: params.walletTopUp,
+        vouchersIssuedInRange: params.vouchersIssued,
+        vouchersRedeemedInRange: params.vouchersRedeemed,
       },
     };
   }
@@ -1810,6 +1988,7 @@ export class AdminService {
     lines.push(['meta', 'from', payload.meta.from].map(esc).join(','));
     lines.push(['meta', 'to', payload.meta.to].map(esc).join(','));
     lines.push(['meta', 'bucket', payload.meta.bucket].map(esc).join(','));
+    lines.push(['meta', 'category', payload.meta.category].map(esc).join(','));
     lines.push(
       ['meta', 'generatedAt', payload.meta.generatedAt].map(esc).join(','),
     );

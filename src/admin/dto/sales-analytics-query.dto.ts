@@ -1,10 +1,13 @@
 import { IsDateString, IsIn, IsOptional } from 'class-validator';
 
+export type SalesAnalyticsCategory = 'cake' | 'bento';
+
 export interface SalesAnalyticsResult {
   meta: {
     from: string;
     to: string;
     bucket: 'day' | 'week' | 'month';
+    category: SalesAnalyticsCategory;
     generatedAt: string;
   };
   series: Array<{
@@ -56,4 +59,9 @@ export class SalesAnalyticsQueryDto {
   @IsOptional()
   @IsIn(['json', 'csv'])
   format?: 'json' | 'csv';
+
+  /** Cake = shop catalogue orders; Bento = successful bento subscription payments. */
+  @IsOptional()
+  @IsIn(['cake', 'bento'])
+  category?: SalesAnalyticsCategory;
 }

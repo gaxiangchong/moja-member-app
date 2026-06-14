@@ -1,8 +1,9 @@
 import type { PurchaseCapacityInfo } from './types';
+import { useI18n } from '../lib/i18n/context';
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string): string {
   const d = new Date(`${iso}T12:00:00Z`);
-  return d.toLocaleDateString('en-MY', {
+  return d.toLocaleDateString(locale, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -16,15 +17,16 @@ type Props = {
 };
 
 export function PurchaseCapacityNotice({ availability }: Props) {
+  const { lang, t } = useI18n();
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-MY';
+
   if (availability.canPurchase) return null;
 
   if (availability.ordersPaused) {
     return (
       <div className="purchaseCapacityBlock purchaseCapacityBlockPaused" role="alert">
-        <p className="purchaseCapacityTitle">New orders temporarily paused</p>
-        <p className="purchaseCapacityBody">
-          We are not accepting new meal plans at the moment. Please check back later.
-        </p>
+        <p className="purchaseCapacityTitle">{t('capacity.pausedTitle')}</p>
+        <p className="purchaseCapacityBody">{t('capacity.pausedBody')}</p>
       </div>
     );
   }
@@ -34,26 +36,30 @@ export function PurchaseCapacityNotice({ availability }: Props) {
 
   return (
     <div className="purchaseCapacityBlock" role="alert">
-      <p className="purchaseCapacityTitle">Not enough pickup slots available</p>
+      <p className="purchaseCapacityTitle">{t('capacity.slotsTitle')}</p>
       <p className="purchaseCapacityBody">
-        This plan needs <strong>{requiredPacks} meal slots</strong>, but only{' '}
-        <strong>{availablePacksInWindow}</strong> are free across the next{' '}
-        <strong>{windowDays} days</strong> (our daily limit is{' '}
-        {availability.dailyCapacityPacks} packs per day).
+        {t('capacity.slotsBody', {
+          required: requiredPacks,
+          available: availablePacksInWindow,
+          days: windowDays,
+          daily: availability.dailyCapacityPacks,
+        })}
       </p>
       {nextAvailableDate ? (
         <p className="purchaseCapacityAction">
-          Please come back from{' '}
-          <strong>{formatDate(nextAvailableDate)}</strong>
-          {daysUntilAvailable != null && daysUntilAvailable > 0
-            ? ` — about ${daysUntilAvailable} day${daysUntilAvailable === 1 ? '' : 's'} from now`
-            : ''}
-          . We will reopen checkout once enough dates have capacity for your meals.
+          {t('capacity.returnFrom', {
+            date: formatDate(nextAvailableDate, locale),
+            wait:
+              daysUntilAvailable != null && daysUntilAvailable > 0
+                ? t(
+                    daysUntilAvailable === 1 ? 'capacity.waitDays' : 'capacity.waitDaysPlural',
+                    { count: daysUntilAvailable },
+                  )
+                : '',
+          })}
         </p>
       ) : (
-        <p className="purchaseCapacityAction">
-          Please try again later when more pickup dates have opened up.
-        </p>
+        <p className="purchaseCapacityAction">{t('capacity.tryLater')}</p>
       )}
     </div>
   );

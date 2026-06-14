@@ -64,6 +64,10 @@ export function weekdayLabel(iso: string): string {
   return names[parseDateOnly(iso).getUTCDay()] ?? '';
 }
 
+export function isTodayIso(iso: string): boolean {
+  return iso === formatDateOnly(todayUtc());
+}
+
 export function schedulableWindowDates(
   earliestIso: string,
   windowEndIso: string,

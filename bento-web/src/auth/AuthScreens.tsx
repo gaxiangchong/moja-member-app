@@ -9,6 +9,7 @@ import {
   verifyOtp,
 } from '../api';
 import { OtpBoxes } from '../components/OtpBoxes';
+import { LangToggle, useI18n } from '../lib/i18n/context';
 
 type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin';
 type OtpFlowPurpose = 'register' | 'recovery';
@@ -17,22 +18,8 @@ type Props = {
   onAuthenticated: () => void;
 };
 
-function applyOtpHint(
-  res: { channel?: string; _devCode?: string },
-  setHint: (h: string | null) => void,
-) {
-  if (res.channel === 'email') {
-    setHint('Check your email inbox for the verification code.');
-  } else if (res.channel === 'mock' && res._devCode) {
-    setHint(`Test mode: your OTP is ${res._devCode}`);
-  } else if (res._devCode) {
-    setHint(`Dev mode: your code is ${res._devCode}`);
-  } else {
-    setHint('If you did not receive a code, check your email or try again.');
-  }
-}
-
 export function AuthScreens({ onAuthenticated }: Props) {
+  const { t } = useI18n();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -47,6 +34,21 @@ export function AuthScreens({ onAuthenticated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+
+  const applyOtpHint = useCallback(
+    (res: { channel?: string; _devCode?: string }, setHintFn: (h: string | null) => void) => {
+      if (res.channel === 'email') {
+        setHintFn(t('auth.otpEmailHint'));
+      } else if (res.channel === 'mock' && res._devCode) {
+        setHintFn(t('auth.otpMockHint', { code: res._devCode }));
+      } else if (res._devCode) {
+        setHintFn(t('auth.otpDevHint', { code: res._devCode }));
+      } else {
+        setHintFn(t('auth.otpFallback'));
+      }
+    },
+    [t],
+  );
 
   const finishAuth = useCallback(
     (token: string) => {
@@ -76,7 +78,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
       setStep('email');
       setCode('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('auth.errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -92,7 +94,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
       setCode('');
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('auth.errorGeneric'));
       return false;
     } finally {
       setLoading(false);
@@ -122,7 +124,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
       const { accessToken } = await loginWithPin(phone, pin);
       finishAuth(accessToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('auth.errorLogin'));
       setLoginPin('');
     } finally {
       setLoading(false);
@@ -141,7 +143,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
       setSetPinPhase('first');
       setStep('setPin');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed');
+      setError(err instanceof Error ? err.message : t('auth.errorVerify'));
     } finally {
       setLoading(false);
     }
@@ -149,7 +151,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
 
   const submitSetPin = async (a: string, b: string) => {
     if (a !== b) {
-      setError('PIN entries do not match.');
+      setError(t('auth.pinMismatch'));
       setNewPinConfirm('');
       return;
     }
@@ -159,7 +161,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
       const { accessToken } = await setInitialPin(setupToken, a, b);
       finishAuth(accessToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save PIN');
+      setError(err instanceof Error ? err.message : t('auth.errorSavePin'));
     } finally {
       setLoading(false);
     }
@@ -169,26 +171,27 @@ export function AuthScreens({ onAuthenticated }: Props) {
     <main className="authMain">
       <div className="authOverlay" />
       <div className="authCard">
+        <div className="authLangRow">
+          <LangToggle />
+        </div>
         <div className="authBrand">
           <img src="/logo.png" alt="" className="authBrandLogo" />
           <div>
-            <span className="authBrandName">Moja Bento</span>
-            <span className="authBrandTagline">Fresh meal everyday</span>
+            <span className="authBrandName">{t('auth.brandName')}</span>
+            <span className="authBrandTagline">{t('auth.brandTagline')}</span>
           </div>
         </div>
 
         {step === 'phone' && (
           <>
-            <h1>Welcome to Moja Bento</h1>
-            <p className="authSub">
-              Sign in with your Moja account to enjoy fresh, chef-prepared meals on your schedule.
-            </p>
+            <h1>{t('auth.welcomeTitle')}</h1>
+            <p className="authSub">{t('auth.welcomeSub')}</p>
             <form onSubmit={handlePhoneContinue}>
-              <label htmlFor="phone">Phone number</label>
+              <label htmlFor="phone">{t('auth.phoneLabel')}</label>
               <input
                 id="phone"
                 type="tel"
-                placeholder="+60 12 345 6789"
+                placeholder={t('auth.phonePlaceholder')}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 required
@@ -196,11 +199,9 @@ export function AuthScreens({ onAuthenticated }: Props) {
               />
               {error && <p className="err">{error}</p>}
               <button type="submit" className="btnPrimary" disabled={loading}>
-                {loading ? 'Checking…' : 'Continue'}
+                {loading ? t('common.checking') : t('common.continue')}
               </button>
-              <p className="authTrust">
-                New sign-ins use a one-time code sent to your email. Kindly check your junk folder if you don't see it.
-              </p>
+              <p className="authTrust">{t('auth.trust')}</p>
             </form>
           </>
         )}
@@ -208,10 +209,10 @@ export function AuthScreens({ onAuthenticated }: Props) {
         {step === 'pin' && (
           <>
             <button type="button" className="linkBtn" onClick={() => setStep('phone')}>
-              ← Back
+              {t('common.back')}
             </button>
-            <h1>Enter your PIN</h1>
-            <p className="authSub">6-digit PIN for {phone}</p>
+            <h1>{t('auth.enterPin')}</h1>
+            <p className="authSub">{t('auth.pinFor', { phone })}</p>
             <OtpBoxes
               value={loginPin}
               onChange={(next) => {
@@ -221,7 +222,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
               masked
               autoFocus
               disabled={loading}
-              ariaLabel="6-digit PIN"
+              ariaLabel={t('auth.pinAria')}
             />
             {error && <p className="err">{error}</p>}
             <button
@@ -230,10 +231,10 @@ export function AuthScreens({ onAuthenticated }: Props) {
               onClick={handleForgotPin}
               disabled={loading}
             >
-              Forgot PIN? Use email OTP
+              {t('auth.forgotPin')}
             </button>
             <p className="caption" style={{ marginTop: 8 }}>
-              Use your registered email to verify and set a new PIN.
+              {t('auth.forgotPinHint')}
             </p>
           </>
         )}
@@ -249,22 +250,22 @@ export function AuthScreens({ onAuthenticated }: Props) {
                 setHint(null);
               }}
             >
-              ← Back
+              {t('common.back')}
             </button>
-            <h1>Verify with email</h1>
+            <h1>{t('auth.verifyEmail')}</h1>
             <p className="authSub">
-              Enter the email for <strong>{phone}</strong> to receive a 6-digit verification code.
+              {t('auth.verifyEmailSub', { phone })}
             </p>
             {maskedEmailHint && (
-              <p className="hint">Registered email hint: {maskedEmailHint}</p>
+              <p className="hint">{t('auth.emailHint', { hint: maskedEmailHint })}</p>
             )}
             <form onSubmit={handleEmailContinue}>
-              <label htmlFor="email-otp">Email address</label>
+              <label htmlFor="email-otp">{t('auth.emailLabel')}</label>
               <input
                 id="email-otp"
                 type="email"
                 autoComplete="email"
-                placeholder="you@email.com"
+                placeholder={t('auth.emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -272,7 +273,7 @@ export function AuthScreens({ onAuthenticated }: Props) {
               />
               {error && <p className="err">{error}</p>}
               <button type="submit" className="btnPrimary" disabled={loading || !email.trim()}>
-                {loading ? 'Sending…' : 'Send verification code'}
+                {loading ? t('common.sending') : t('auth.sendCode')}
               </button>
             </form>
           </>
@@ -281,11 +282,11 @@ export function AuthScreens({ onAuthenticated }: Props) {
         {step === 'code' && (
           <>
             <button type="button" className="linkBtn" onClick={() => setStep('email')}>
-              ← Back
+              {t('common.back')}
             </button>
-            <h1>Verification code</h1>
+            <h1>{t('auth.verificationCode')}</h1>
             <p className="authSub">
-              Enter the 6-digit code sent to <strong>{email.trim() || 'your email'}</strong>.
+              {t('auth.codeSub', { email: email.trim() || t('common.email') })}
             </p>
             {hint && <p className="hint">{hint}</p>}
             <OtpBoxes
@@ -304,14 +305,14 @@ export function AuthScreens({ onAuthenticated }: Props) {
               disabled={loading}
               onClick={() => void sendVerificationCode()}
             >
-              Resend code
+              {t('auth.resendCode')}
             </button>
           </>
         )}
 
         {step === 'setPin' && (
           <>
-            <h1>{setPinPhase === 'first' ? 'Create your PIN' : 'Confirm your PIN'}</h1>
+            <h1>{setPinPhase === 'first' ? t('auth.createPin') : t('auth.confirmPin')}</h1>
             <OtpBoxes
               key={setPinPhase}
               value={setPinPhase === 'first' ? newPin : newPinConfirm}

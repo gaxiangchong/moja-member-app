@@ -7,8 +7,10 @@ import {
 } from './pickupLocation';
 import { PickupPackColorBesideId } from './PickupPackColorSummary';
 import type { PickupDayPackSummary } from './pickupPackSummary';
+import { useI18n } from '../lib/i18n/context';
 
 function PickupQrBlock({ pickupId }: { pickupId: string }) {
+  const { t } = useI18n();
   const payload = `BENTO:${pickupId}`;
   const [src, setSrc] = useState<string | null>(null);
 
@@ -35,17 +37,15 @@ function PickupQrBlock({ pickupId }: { pickupId: string }) {
       {src ? (
         <img
           src={src}
-          alt={`Pickup QR for ${pickupId}`}
+          alt={t('pickup.qrAlt', { id: pickupId })}
           width={168}
           height={168}
           className="pickupReminderQrImg"
         />
       ) : (
-        <p className="pickupReminderQrLoading">Generating QR…</p>
+        <p className="pickupReminderQrLoading">{t('pickup.qrLoading')}</p>
       )}
-      <p className="pickupReminderQrHint">
-        Staff can scan this QR at the counter to collect your meals.
-      </p>
+      <p className="pickupReminderQrHint">{t('pickup.qrHint')}</p>
     </div>
   );
 }
@@ -61,6 +61,7 @@ export function PickupReminderNotification({
   pickupId,
   nextPickup,
 }: Props) {
+  const { t } = useI18n();
   const showIdBlock = Boolean(pickupId) || (nextPickup && nextPickup.totalPacks > 0);
 
   return (
@@ -74,24 +75,22 @@ export function PickupReminderNotification({
       </div>
       <div className="pickupReminderBody">
         <p className="pickupReminderTitle">
-          {justConfirmed ? 'Schedule confirmed — pick up at Moja Maison' : 'Pick up at Moja Maison'}
+          {justConfirmed ? t('pickup.confirmedTitle') : t('pickup.title')}
         </p>
         <p className="pickupReminderText">
-          {justConfirmed
-            ? 'Your pickup days are saved. Please collect your meals at our store on your scheduled dates.'
-            : 'Please collect your meals at our store on your scheduled pickup dates.'}
+          {justConfirmed ? t('pickup.confirmedText') : t('pickup.text')}
         </p>
 
         <div className="pickupReminderAddress">
           <div className="pickupReminderAddressHead">
-            <span className="pickupReminderAddressLabel">Pickup address</span>
+            <span className="pickupReminderAddressLabel">{t('pickup.addressLabel')}</span>
             <a
               href={PICKUP_GOOGLE_MAPS_URL}
               className="pickupMapLink"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Open pickup address in Google Maps"
-              title="Open in Google Maps"
+              aria-label={t('pickup.mapAria')}
+              title={t('pickup.mapTitle')}
             >
               <svg className="pickupMapIcon" viewBox="0 0 24 24" aria-hidden focusable="false">
                 <path
@@ -107,7 +106,7 @@ export function PickupReminderNotification({
 
         {showIdBlock && (
           <div className="pickupReminderIdBlock">
-            <span className="pickupReminderAddressLabel">Your pickup ID</span>
+            <span className="pickupReminderAddressLabel">{t('pickup.idLabel')}</span>
             <div className="pickupReminderIdRow">
               {pickupId && <strong className="pickupReminderId">{pickupId}</strong>}
               {nextPickup && nextPickup.totalPacks > 0 && (
@@ -115,9 +114,7 @@ export function PickupReminderNotification({
               )}
             </div>
             {pickupId ? <PickupQrBlock pickupId={pickupId} /> : null}
-            <span className="pickupReminderIdHint">
-              Show this ID or QR and the colour dots to Moja staff when collecting your meals.
-            </span>
+            <span className="pickupReminderIdHint">{t('pickup.idHint')}</span>
           </div>
         )}
       </div>
