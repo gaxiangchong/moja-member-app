@@ -54,7 +54,10 @@ type WeeklyMenuMeal = {
  * back to empty dish names only when a weekday is missing; callers pass the
  * config from `BentoMenuService.getConfig()` which always returns all 7 days.
  */
-export function buildWeeklyMenu(config?: BentoMenuConfig) {
+export function buildWeeklyMenu(
+  config?: BentoMenuConfig,
+  minScheduleLeadDays = 2,
+) {
   const weekStart = weekStartMondayIso();
   const start = parseDateOnly(weekStart);
   const days: Array<{
@@ -77,7 +80,7 @@ export function buildWeeklyMenu(config?: BentoMenuConfig) {
     const code = (WEEKDAY_NAMES[wd] ?? '') as BentoWeekdayCode;
     const cfg = byDay.get(code);
     const isSunday = wd === 0;
-    const closed = cfg?.closed ?? isSunday;
+    const closed = cfg?.closed ?? false;
     days.push({
       date: iso,
       weekday: WEEKDAY_NAMES[wd] ?? '',
@@ -105,7 +108,7 @@ export function buildWeeklyMenu(config?: BentoMenuConfig) {
   return {
     weekStart,
     weekEnd: formatDateOnly(addDaysUtc(start, 6)),
-    minScheduleLeadDays: 2,
+    minScheduleLeadDays,
     days,
   };
 }

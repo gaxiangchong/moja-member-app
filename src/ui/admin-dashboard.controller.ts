@@ -2604,6 +2604,21 @@ export class AdminDashboardController {
               </p>
               <label for="bentoDailyCapacity">Daily capacity (packs)</label>
               <input type="number" id="bentoDailyCapacity" min="1" max="10000" step="1" value="50" style="max-width:160px" />
+              <label for="bentoEarliestPickupDate" style="margin-top:14px">Earliest pickup date (service launch)</label>
+              <input type="date" id="bentoEarliestPickupDate" style="max-width:200px" />
+              <p class="field-hint" style="margin-top:4px">
+                Optional. Members cannot schedule pickups before this date (combined with lead days below). Leave empty for no launch date.
+              </p>
+              <label for="bentoMinScheduleLeadDays" style="margin-top:14px">Min schedule lead (days)</label>
+              <input type="number" id="bentoMinScheduleLeadDays" min="0" max="30" step="1" value="2" style="max-width:120px" />
+              <p class="field-hint" style="margin-top:4px">
+                Pickup must be at least this many days after today (e.g. 2 = day after tomorrow at earliest).
+              </p>
+              <label for="bentoClosedDates" style="margin-top:14px">Extra closed dates</label>
+              <textarea id="bentoClosedDates" rows="3" placeholder="2026-12-25&#10;2026-01-01" style="max-width:320px;font-family:inherit"></textarea>
+              <p class="field-hint" style="margin-top:4px">
+                One-off closures (public holidays). One <code>YYYY-MM-DD</code> per line.
+              </p>
               <label class="field-hint" style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
                 <input type="checkbox" id="bentoBlockNewOrders" />
                 Pause all new meal plan orders (manual override)
@@ -2658,7 +2673,7 @@ export class AdminDashboardController {
             </div>
             <div style="padding:12px 20px;max-width:1040px">
               <p class="field-hint" style="margin-top:0">
-                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. This is separate from the cake-sales shopping catalog.
+                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. Tick <strong>Closed</strong> to block scheduling on that weekday (e.g. Sunday). This is separate from the cake-sales shopping catalog.
               </p>
               <div class="table-wrap">
                 <table class="data">
@@ -4979,6 +4994,9 @@ export class AdminDashboardController {
     async function loadBentoSettings() {
       var capEl = document.getElementById('bentoDailyCapacity');
       var blockEl = document.getElementById('bentoBlockNewOrders');
+      var launchEl = document.getElementById('bentoEarliestPickupDate');
+      var leadEl = document.getElementById('bentoMinScheduleLeadDays');
+      var closedEl = document.getElementById('bentoClosedDates');
       var envHint = document.getElementById('bentoSettingsEnvHint');
       if (!capEl) return;
       try {
@@ -4988,6 +5006,15 @@ export class AdminDashboardController {
         }
         if (blockEl) {
           blockEl.checked = Boolean(cfg && cfg.blockNewOrders);
+        }
+        if (launchEl) {
+          launchEl.value = (cfg && cfg.earliestPickupDate) ? String(cfg.earliestPickupDate) : '';
+        }
+        if (leadEl && cfg && typeof cfg.minScheduleLeadDays === 'number') {
+          leadEl.value = String(cfg.minScheduleLeadDays);
+        }
+        if (closedEl && cfg && Array.isArray(cfg.closedDates)) {
+          closedEl.value = cfg.closedDates.join('\\n');
         }
         if (envHint) {
           if (cfg && cfg.envOverride) {
@@ -5006,17 +5033,32 @@ export class AdminDashboardController {
       var out = document.getElementById('bentoSettingsSaveResult');
       var capEl = document.getElementById('bentoDailyCapacity');
       var blockEl = document.getElementById('bentoBlockNewOrders');
+      var launchEl = document.getElementById('bentoEarliestPickupDate');
+      var leadEl = document.getElementById('bentoMinScheduleLeadDays');
+      var closedEl = document.getElementById('bentoClosedDates');
       if (!capEl) return;
       if (out) out.textContent = 'Saving…';
       try {
         var n = parseInt(String(capEl.value), 10);
         if (!n || n < 1) throw new Error('Enter a capacity of at least 1 pack.');
+        var leadDays = leadEl ? parseInt(String(leadEl.value), 10) : 2;
+        if (!Number.isFinite(leadDays) || leadDays < 0) leadDays = 2;
+        var closedDates = [];
+        if (closedEl && closedEl.value) {
+          closedDates = closedEl.value.split(/\\r?\\n/).map(function (line) {
+            return line.trim();
+          }).filter(Boolean);
+        }
         var saved = await apiPut('/admin/bento-settings', {
           dailyCapacityPacks: n,
           blockNewOrders: blockEl ? blockEl.checked : false,
+          earliestPickupDate: launchEl && launchEl.value.trim() ? launchEl.value.trim() : null,
+          minScheduleLeadDays: leadDays,
+          closedDates: closedDates,
         });
         if (out) out.textContent = 'Saved. Daily limit is ' + (saved.effectiveDailyCapacityPacks || n) + ' packs.' +
-          (saved.blockNewOrders ? ' New orders are paused.' : '');
+          (saved.blockNewOrders ? ' New orders are paused.' : '') +
+          (saved.earliestPickupDate ? ' Earliest pickup: ' + saved.earliestPickupDate + '.' : '');
         await loadBentoSettings();
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
@@ -5029,7 +5071,7 @@ export class AdminDashboardController {
         var saved = await apiPut('/admin/bento-menu', collectBentoMenu());
         lastBentoMenu = (saved && Array.isArray(saved.weekdays)) ? saved.weekdays : [];
         renderBentoMenu();
-        if (out) out.textContent = 'Saved. Live in the Bento app weekly menu.';
+        if (out) out.textContent = 'Saved. Live in the Bento app menu and schedule calendar.';
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }

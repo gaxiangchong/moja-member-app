@@ -18,9 +18,10 @@ export function MealOptionPicker({
 }: Props) {
   const { t } = useI18n();
   const newcomerOnly = packageCode === 'NEWCOMER_3';
+  const singleMealOnly = packageCode === 'ONE_TIME';
   const lunchOn = value === 'LUNCH' || value === 'BOTH';
   const dinnerOn = value === 'DINNER' || value === 'BOTH';
-  const bothSelected = lunchOn && dinnerOn;
+  const bothSelected = lunchOn && dinnerOn && !singleMealOnly;
   const lunchCount = Math.floor(mealCredits / 2);
   const dinnerCount = mealCredits - lunchCount;
 
@@ -37,6 +38,10 @@ export function MealOptionPicker({
 
   const toggle = (meal: 'LUNCH' | 'DINNER') => {
     if (newcomerOnly) return;
+    if (singleMealOnly) {
+      onChange(meal);
+      return;
+    }
     if (meal === 'LUNCH') {
       if (lunchOn && !dinnerOn) return;
       onChange(lunchOn ? 'DINNER' : 'BOTH');
@@ -58,6 +63,12 @@ export function MealOptionPicker({
       {newcomerOnly && (
         <p className="caption" style={{ marginBottom: 10, color: '#15803d' }}>
           {t('rhythm.trialOnly')}
+        </p>
+      )}
+
+      {singleMealOnly && (
+        <p className="caption" style={{ marginBottom: 10, color: '#9a3412' }}>
+          {t('rhythm.singleOnly')}
         </p>
       )}
 

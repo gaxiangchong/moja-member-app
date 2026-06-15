@@ -5,7 +5,7 @@ import {
 } from '@prisma/client';
 
 /** Fallback when no comparable packages exist in the catalog. */
-export const BENTO_SAVINGS_BASELINE_CENTS = 1800;
+export const BENTO_SAVINGS_BASELINE_CENTS = 1790;
 
 export type SavingsBaseline = {
   pricePerMealCents: number;

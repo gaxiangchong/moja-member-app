@@ -1,5 +1,13 @@
-import { BENTO_MIN_SCHEDULE_LEAD_DAYS } from './bento-schedule.constants';
+import type { BentoScheduleRulesInput } from './bento-schedule-rules.util';
+import { isSchedulablePickupDate } from './bento-schedule-rules.util';
 import { addDaysUtc, formatDateOnly } from './bento-weekly.util';
+
+function isSchedulablePickupDay(
+  d: Date,
+  rules: BentoScheduleRulesInput,
+): boolean {
+  return isSchedulablePickupDate(d, rules);
+}
 
 export type PurchaseCapacityEvaluation = {
   canPurchase: boolean;
@@ -14,28 +22,17 @@ export type PurchaseCapacityEvaluation = {
   ordersPaused: boolean;
 };
 
-function earliestSchedulableDate(ref = new Date()): Date {
-  const today = new Date(
-    Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate()),
-  );
-  return addDaysUtc(today, BENTO_MIN_SCHEDULE_LEAD_DAYS);
-}
-
-function isSchedulablePickupDay(d: Date, minSchedulable: Date): boolean {
-  return d.getUTCDay() !== 0 && d >= minSchedulable;
-}
-
-/** Sum remaining pack slots on Mon–Sat days within a calendar window. */
+/** Sum remaining pack slots on schedulable days within a calendar window. */
 export function sumRemainingInWindow(
   windowStart: Date,
   durationDays: number,
   remainingByDate: Map<string, number>,
-  minSchedulable: Date,
+  rules: BentoScheduleRulesInput,
 ): number {
   let sum = 0;
   for (let i = 0; i < durationDays; i++) {
     const d = addDaysUtc(windowStart, i);
-    if (!isSchedulablePickupDay(d, minSchedulable)) continue;
+    if (!isSchedulablePickupDay(d, rules)) continue;
     sum += remainingByDate.get(formatDateOnly(d)) ?? 0;
   }
   return sum;
@@ -50,6 +47,7 @@ export function evaluatePurchaseCapacity(input: {
   requiredPacks: number;
   dailyCapacityPacks: number;
   remainingByDate: Map<string, number>;
+  scheduleRules: BentoScheduleRulesInput;
   ordersPaused?: boolean;
   maxSearchDays?: number;
   ref?: Date;
@@ -59,19 +57,20 @@ export function evaluatePurchaseCapacity(input: {
     requiredPacks,
     dailyCapacityPacks,
     remainingByDate,
+    scheduleRules,
     ordersPaused = false,
     maxSearchDays = 180,
     ref = new Date(),
   } = input;
 
-  const minSchedulable = earliestSchedulableDate(ref);
+  const minSchedulable = scheduleRules.minSchedulableDate;
   const defaultStart = minSchedulable;
   const defaultEnd = addDaysUtc(defaultStart, durationDays - 1);
   const availableNow = sumRemainingInWindow(
     defaultStart,
     durationDays,
     remainingByDate,
-    minSchedulable,
+    scheduleRules,
   );
 
   if (ordersPaused) {
@@ -98,7 +97,7 @@ export function evaluatePurchaseCapacity(input: {
       windowStart,
       durationDays,
       remainingByDate,
-      minSchedulable,
+      scheduleRules,
     );
     if (available >= requiredPacks) {
       nextAvailableDate = formatDateOnly(windowStart);

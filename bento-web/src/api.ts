@@ -364,11 +364,24 @@ export async function setWeeklyOptIn(optedIn: boolean) {
   });
 }
 
+export type ScheduleRules = {
+  minScheduleLeadDays: number;
+  earliestPickupDate: string | null;
+  earliestSchedulableDate: string;
+  closedWeekdays: number[];
+  closedDates: string[];
+};
+
+export async function fetchScheduleRules(): Promise<ScheduleRules> {
+  return authFetch<ScheduleRules>('/bento/schedule-rules');
+}
+
 export async function fetchScheduleCapacity(
   from: string,
   to: string,
 ): Promise<{
   dailyCapacityPacks: number;
+  rules: ScheduleRules;
   days: Array<{
     date: string;
     scheduledPacks: number;

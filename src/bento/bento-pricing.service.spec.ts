@@ -21,17 +21,17 @@ describe('splitMealCredits', () => {
 });
 
 describe('quoteBentoCheckout', () => {
-  it('computes ONE_TIME lunch white rice at RM18', () => {
+  it('computes ONE_TIME lunch white rice at RM17.90', () => {
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.ONE_TIME,
       mealCredits: 1,
-      pricePerMealCents: 1800,
+      pricePerMealCents: 1790,
       fixedCheckoutCents: null,
       mealOption: BentoMealOption.LUNCH,
       riceType: BentoRiceType.WHITE,
       includeDrinkAddon: false,
     });
-    expect(q.totalCents).toBe(1800);
+    expect(q.totalCents).toBe(1790);
     expect(q.lunchCredits).toBe(1);
     expect(q.dinnerCredits).toBe(0);
   });
@@ -120,7 +120,7 @@ describe('quoteBentoCheckout', () => {
   });
 
   it('shows savings vs 1-meal baseline on longer plans', () => {
-    const baseline = 1800;
+    const baseline = 1790;
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_30,
       mealCredits: 30,
@@ -133,7 +133,7 @@ describe('quoteBentoCheckout', () => {
       savingsBaselineLabel: '1 meal',
     });
     expect(q.savingsPerMealCents).toBe(baseline - 1300);
-    expect(q.totalSavingsCents).toBe(500 * 30);
+    expect(q.totalSavingsCents).toBe(490 * 30);
     expect(q.savingsBaselineLabel).toBe('1 meal');
   });
 
@@ -142,7 +142,7 @@ describe('quoteBentoCheckout', () => {
       {
         code: BentoPackageCode.ONE_TIME,
         label: '1 meal',
-        pricePerMealCents: 1800,
+        pricePerMealCents: 1790,
       },
       {
         code: BentoPackageCode.DAYS_7,
@@ -155,7 +155,7 @@ describe('quoteBentoCheckout', () => {
         pricePerMealCents: 1300,
       },
     ]);
-    expect(baseline.pricePerMealCents).toBe(1800);
+    expect(baseline.pricePerMealCents).toBe(1790);
     expect(baseline.label).toBe('1 meal');
     expect(baseline.packageCode).toBe(BentoPackageCode.ONE_TIME);
   });

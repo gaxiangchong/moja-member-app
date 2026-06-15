@@ -50,6 +50,13 @@ export class BentoController {
     return this.bento.getScheduleCapacity(from, to);
   }
 
+  @Get('schedule-rules')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  getScheduleRules() {
+    return this.bento.getScheduleRules();
+  }
+
   @Get('weekly-opt-in')
   @UseGuards(JwtAuthGuard, ThrottlerGuard)
   @Throttle({ default: { limit: 60, ttl: 60_000 } })

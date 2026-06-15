@@ -4,6 +4,7 @@ import { useI18n } from '../lib/i18n/context';
 
 type Props = {
   packages: BentoPackage[];
+  singleMeal: BentoPackage | null;
   savingsBaseline: BentoSavingsBaseline | null;
   selected: string | null;
   onSelect: (code: BentoPackage['code']) => void;
@@ -15,11 +16,11 @@ function cls(...parts: (string | boolean | undefined)[]) {
   return parts.filter(Boolean).join(' ');
 }
 
-export function PackageSelector({ packages, savingsBaseline, selected, onSelect }: Props) {
+export function PackageSelector({ packages, singleMeal, savingsBaseline, selected, onSelect }: Props) {
   const { t, packageLabel, mealTierLabel, formatPlanDuration } = useI18n();
-  const baselineCents = savingsBaseline?.pricePerMealCents ?? 1800;
+  const baselineCents = savingsBaseline?.pricePerMealCents ?? 1790;
   const newcomer = packages.find((p) => p.isNewcomer);
-  const regular = packages.filter((p) => !p.isNewcomer);
+  const regular = packages.filter((p) => !p.isNewcomer && p.code !== 'ONE_TIME');
 
   const features: { key: FeatureKey; label: string }[] = [
     { key: 'price', label: t('package.rowPrice') },
@@ -67,7 +68,41 @@ export function PackageSelector({ packages, savingsBaseline, selected, onSelect 
   };
 
   return (
-    <section className="section">
+    <>
+      {singleMeal && (
+        <section className="section">
+          <div className="sectionHeader">
+            <div>
+              <h2>{t('package.singleTitle')}</h2>
+              <p className="caption">{t('package.singleCaption')}</p>
+            </div>
+          </div>
+
+          <div className={cls('singleMealCard', selected === singleMeal.code && 'selected')}>
+            <div className="singleMealInfo">
+              <span className="singleMealTitle">
+                {packageLabel(singleMeal.code, singleMeal.label)}
+              </span>
+              <span className="singleMealDesc">
+                {t('package.singleDesc', { days: formatPlanDuration(singleMeal.durationDays) })}
+              </span>
+              <div className="singleMealPrice">
+                {formatRm(singleMeal.pricePerMealCents)}
+                <span className="singleMealSub"> {t('package.fixedPrice')}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={cls('singleMealBtn', selected === singleMeal.code && 'selected')}
+              onClick={() => onSelect(singleMeal.code)}
+            >
+              {selected === singleMeal.code ? t('common.selected') : t('common.select')}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="section">
       <div className="sectionHeader">
         <div>
           <h2>{t('package.title')}</h2>
@@ -153,6 +188,7 @@ export function PackageSelector({ packages, savingsBaseline, selected, onSelect 
           </table>
         </div>
       )}
-    </section>
+      </section>
+    </>
   );
 }

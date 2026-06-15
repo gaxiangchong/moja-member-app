@@ -8,11 +8,19 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { normalizeClosedDates, normalizeIsoDateOnly } from './bento-schedule-rules.util';
+
 export type BentoSettings = {
   /** Max lunch + dinner packs that can be scheduled per calendar day (all customers). */
   dailyCapacityPacks: number;
   /** When true, block all new bento purchases regardless of capacity math. */
   blockNewOrders?: boolean;
+  /** Service launch — no pickups before this calendar date (YYYY-MM-DD). */
+  earliestPickupDate?: string | null;
+  /** Days after today before the first pickup may be scheduled. */
+  minScheduleLeadDays?: number;
+  /** Extra closed dates (public holidays, etc.) — YYYY-MM-DD. */
+  closedDates?: string[];
 };
 
 export const DEFAULT_BENTO_DAILY_CAPACITY_PACKS = 50;
@@ -20,6 +28,9 @@ export const DEFAULT_BENTO_DAILY_CAPACITY_PACKS = 50;
 const DEFAULT_SETTINGS: BentoSettings = {
   dailyCapacityPacks: DEFAULT_BENTO_DAILY_CAPACITY_PACKS,
   blockNewOrders: false,
+  earliestPickupDate: null,
+  minScheduleLeadDays: 2,
+  closedDates: [],
 };
 
 @Injectable()
@@ -41,7 +52,20 @@ export class BentoSettingsService {
       typeof raw.blockNewOrders === 'boolean'
         ? raw.blockNewOrders
         : DEFAULT_SETTINGS.blockNewOrders ?? false;
-    return { dailyCapacityPacks, blockNewOrders };
+    const earliestPickupDate = normalizeIsoDateOnly(raw.earliestPickupDate);
+    const leadRaw = Number(raw.minScheduleLeadDays);
+    const minScheduleLeadDays =
+      Number.isFinite(leadRaw) && leadRaw >= 0
+        ? Math.min(Math.floor(leadRaw), 30)
+        : DEFAULT_SETTINGS.minScheduleLeadDays ?? 2;
+    const closedDates = normalizeClosedDates(raw.closedDates);
+    return {
+      dailyCapacityPacks,
+      blockNewOrders,
+      earliestPickupDate,
+      minScheduleLeadDays,
+      closedDates,
+    };
   }
 
   getSettings(): BentoSettings {

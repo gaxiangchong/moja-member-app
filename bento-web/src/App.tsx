@@ -292,6 +292,11 @@ export default function App() {
     [packages, draft.packageCode],
   );
 
+  const singleMealPackage = useMemo(
+    () => packages.find((p) => p.code === 'ONE_TIME') ?? null,
+    [packages],
+  );
+
   const profileIncomplete = useMemo(
     () => (profile ? isProfileIncomplete(profile) : false),
     [profile],
@@ -309,7 +314,7 @@ export default function App() {
     setProfile(me);
     setAuthed(true);
     const pkgRes = await fetchBentoPackages();
-    setPackages(pkgRes.packages.filter((p) => p.code !== 'DAYS_60' && p.code !== 'ONE_TIME'));
+    setPackages(pkgRes.packages.filter((p) => p.code !== 'DAYS_60'));
     setSavingsBaseline(pkgRes.savingsBaseline);
     setDrinksAndSoupEnabled(pkgRes.features.drinksAndSoupEnabled);
     if (!pkgRes.features.drinksAndSoupEnabled) {
@@ -426,7 +431,12 @@ export default function App() {
     setDraft((d) => ({
       ...d,
       packageCode: code,
-      mealOption: pkg.newcomerLunchOnly ? 'LUNCH' : d.mealOption,
+      mealOption:
+        pkg.newcomerLunchOnly || pkg.code === 'ONE_TIME'
+          ? 'LUNCH'
+          : d.mealOption === 'BOTH' && pkg.mealCredits === 1
+            ? 'LUNCH'
+            : d.mealOption,
     }));
   };
 
@@ -466,6 +476,7 @@ export default function App() {
             <OrderHero profile={profile} selectedPackage={selectedPkg} />
             <PackageSelector
               packages={packages}
+              singleMeal={singleMealPackage}
               savingsBaseline={savingsBaseline}
               selected={draft.packageCode}
               onSelect={selectPackage}

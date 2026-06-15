@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchScheduleCapacity, scheduleBentoSubscription } from '../api';
+import { fetchScheduleCapacity, fetchScheduleRules, scheduleBentoSubscription } from '../api';
 import { isPickupDateLocked } from '../lib/pickupLock';
 import { useI18n } from '../lib/i18n/context';
 import {
   addDaysUtc,
-  earliestSchedulableDateIso,
   formatDateOnly,
-  isDateSchedulable,
-  isSunday,
   parseDateOnly,
   schedulableWindowDates,
   todayUtc,
@@ -16,6 +13,11 @@ import { PickupReminderNotification } from './PickupReminderNotification';
 import { PickupPackColorSummary } from './PickupPackColorSummary';
 import { CapacityUrgencyNotice } from './CapacityUrgencyNotice';
 import { buildUpcomingPickupSummaries } from './pickupPackSummary';
+import {
+  DEFAULT_SCHEDULE_RULES,
+  makeScheduleHelpers,
+  type ScheduleHelpers,
+} from './scheduleRules';
 import {
   allCreditsScheduled,
   unscheduledCreditSummary,
@@ -82,10 +84,15 @@ function allDatesInRange(startIso: string, endIso: string): string[] {
 
 /** Auto-fill eligible days with qty = min(maxQty, remaining credits). */
 function buildAutoFill(
-  windowDates: string[], allowLunch: boolean, allowDinner: boolean,
-  totalLunch: number, totalDinner: number, maxQtyPerDay: number,
+  windowDates: string[],
+  allowLunch: boolean,
+  allowDinner: boolean,
+  totalLunch: number,
+  totalDinner: number,
+  maxQtyPerDay: number,
+  isSchedulable: (iso: string) => boolean,
 ): DaySelection[] {
-  const eligible = windowDates.filter(d => !isSunday(d) && isDateSchedulable(d));
+  const eligible = windowDates.filter((d) => isSchedulable(d));
   const result: DaySelection[] = [];
   let lL = totalLunch; let dL = totalDinner;
   for (const date of eligible) {
@@ -120,6 +127,27 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const { t, shortDate, fullDate, monthLabel, calendarDayHeaders } = useI18n();
   const N = subscriptions.length; // total sets
 
+  const [scheduleHelpers, setScheduleHelpers] = useState<ScheduleHelpers>(() =>
+    makeScheduleHelpers(DEFAULT_SCHEDULE_RULES),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchScheduleRules()
+      .then((rules) => {
+        if (!cancelled) setScheduleHelpers(makeScheduleHelpers(rules));
+      })
+      .catch(() => {
+        /* keep defaults */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isDateSchedulable = scheduleHelpers.isDateSchedulable;
+  const isDateClosed = scheduleHelpers.isDateClosed;
+
   // ── Aggregate across all subscriptions ──────────────────────────────────
   const totalLunch  = subscriptions.reduce((s, sub) => s + sub.lunchCredits, 0);
   const totalDinner = subscriptions.reduce((s, sub) => s + sub.dinnerCredits, 0);
@@ -131,7 +159,11 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   );
 
   const combinedWindow = useMemo(() => {
-    const earlyDates = subscriptions.map(s => s.scheduling?.earliestDate ?? earliestSchedulableDateIso());
+    const fallbackEarliest =
+      scheduleHelpers.earliestSchedulableDateIso ?? formatDateOnly(todayUtc());
+    const earlyDates = subscriptions.map(
+      (s) => s.scheduling?.earliestDate ?? fallbackEarliest,
+    );
     const endDates   = subscriptions.map(s =>
       s.scheduling?.windowEndDate ?? s.endDate ?? formatDateOnly(addDaysUtc(todayUtc(), 30)),
     );
@@ -139,7 +171,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
       earliestDate:  [...earlyDates].sort()[0]!,
       windowEndDate: [...endDates].sort().reverse()[0]!,
     };
-  }, [subscriptions]);
+  }, [subscriptions, scheduleHelpers.earliestSchedulableDateIso]);
 
   const windowDates = useMemo(
     () => schedulableWindowDates(combinedWindow.earliestDate, combinedWindow.windowEndDate),
@@ -161,7 +193,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const [selections, setSelections] = useState<DaySelection[]>(() => {
     const merged = mergeDeliveries(subscriptions);
     if (merged.length > 0) return merged;
-    return buildAutoFill(windowDates, allowLunch, allowDinner, totalLunch, totalDinner, N);
+    return buildAutoFill(windowDates, allowLunch, allowDinner, totalLunch, totalDinner, N, isDateSchedulable);
   });
 
   const [rangeStart, setRangeStart]   = useState<string | null>(null);
@@ -255,7 +287,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   );
 
   const isDayInteractive = (iso: string): boolean => {
-    if (!windowSet.has(iso) || isSunday(iso) || isPast(iso) || isPickupDateLocked(iso) || !isDateSchedulable(iso)) {
+    if (!windowSet.has(iso) || isDateClosed(iso) || isPast(iso) || isPickupDateLocked(iso) || !isDateSchedulable(iso)) {
       return false;
     }
     const row = getRow(iso);
@@ -264,7 +296,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   };
 
   const dayStatusLabel = (iso: string): string | null => {
-    if (isSunday(iso)) return t('schedule.status.closed');
+    if (isDateClosed(iso)) return t('schedule.status.closed');
     if (isPast(iso)) return t('schedule.status.past');
     if (!windowSet.has(iso)) return t('schedule.status.outside');
     if (!isDateSchedulable(iso)) return t('schedule.status.tooSoon');
@@ -639,7 +671,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
             if (!iso) return <span key={`p${idx}`} className="calCell calPad" />;
             const inDisplay   = displaySet.has(iso);
             const inWindow    = windowSet.has(iso);
-            const sun         = isSunday(iso);
+            const closed      = isDateClosed(iso);
             const past        = isPast(iso);
             const locked      = !past && isPickupDateLocked(iso);
             const row         = getRow(iso);
@@ -652,7 +684,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
             let stateClass = 'calOutside';
             if (inDisplay || inWindow) {
-              if (sun)                             stateClass = 'calSunday';
+              if (closed)                        stateClass = 'calSunday';
               else if (past && hasSel)             stateClass = 'calConsumed';
               else if (past)                       stateClass = 'calPastEmpty';
               else if (isStart)                    stateClass = 'calRangeStart';

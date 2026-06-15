@@ -1,4 +1,14 @@
-import { IsInt, Max, Min, IsBoolean, IsOptional } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateBentoSettingsDto {
   @IsInt()
@@ -9,4 +19,23 @@ export class UpdateBentoSettingsDto {
   @IsOptional()
   @IsBoolean()
   blockNewOrders?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && v !== '')
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'earliestPickupDate must be YYYY-MM-DD',
+  })
+  earliestPickupDate?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  minScheduleLeadDays?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  closedDates?: string[];
 }

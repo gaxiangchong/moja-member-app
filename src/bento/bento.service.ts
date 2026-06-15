@@ -23,9 +23,12 @@ import {
   type PurchaseCapacityEvaluation,
 } from './bento-purchase-capacity.util';
 import {
-  isPickupDateLocked,
-  pickupLockMessage,
-} from './bento-pickup-lock.util';
+  buildScheduleRulesInput,
+  buildScheduleRulesPayload,
+  schedulablePickupReason,
+  type BentoScheduleRulesPayload,
+} from './bento-schedule-rules.util';
+import { resolveMinScheduleLeadDays } from './bento-schedule-rules.util';
 import {
   quoteBentoCheckout,
   splitMealCredits,
@@ -34,7 +37,10 @@ import {
   type BentoQuoteResult,
 } from './bento-pricing.service';
 import { BENTO_MENU } from './bento-menu.constants';
-import { BENTO_MIN_SCHEDULE_LEAD_DAYS } from './bento-schedule.constants';
+import {
+  isPickupDateLocked,
+  pickupLockMessage,
+} from './bento-pickup-lock.util';
 import {
   addDaysUtc,
   buildWeeklyMenu,
@@ -75,8 +81,7 @@ const PACKAGE_SEED: Array<{
     label: '1 meal',
     durationDays: 7,
     mealCredits: 1,
-    pricePerMealCents: 1800,
-    isActive: false,
+    pricePerMealCents: 1790,
   },
   {
     code: BentoPackageCode.DAYS_7,
@@ -225,11 +230,23 @@ export class BentoService implements OnModuleInit {
   }
 
   getWeeklyMenu() {
-    return buildWeeklyMenu(this.bentoMenu.getConfig());
+    const menu = this.bentoMenu.getConfig();
+    const settings = this.bentoSettings.getSettings();
+    return {
+      ...buildWeeklyMenu(menu, resolveMinScheduleLeadDays(settings)),
+      scheduleRules: buildScheduleRulesPayload(settings, menu),
+    };
+  }
+
+  getScheduleRules(): BentoScheduleRulesPayload {
+    const settings = this.bentoSettings.getSettings();
+    const menu = this.bentoMenu.getConfig();
+    return buildScheduleRulesPayload(settings, menu);
   }
 
   async getScheduleCapacity(fromIso?: string, toIso?: string) {
-    const from = fromIso ? parseDateOnly(fromIso) : earliestSchedulableDate();
+    const rules = this.scheduleRulesInput();
+    const from = fromIso ? parseDateOnly(fromIso) : rules.minSchedulableDate;
     const to = toIso ? parseDateOnly(toIso) : addDaysUtc(from, 120);
     if (to < from) {
       throw new BadRequestException({
@@ -287,7 +304,22 @@ export class BentoService implements OnModuleInit {
       cur = addDaysUtc(cur, 1);
     }
 
-    return { dailyCapacityPacks: capacity, days };
+    return {
+      dailyCapacityPacks: capacity,
+      rules: buildScheduleRulesPayload(
+        this.bentoSettings.getSettings(),
+        this.bentoMenu.getConfig(),
+      ),
+      days,
+    };
+  }
+
+  private scheduleRulesInput(ref = new Date()) {
+    return buildScheduleRulesInput(
+      this.bentoSettings.getSettings(),
+      this.bentoMenu.getConfig(),
+      ref,
+    );
   }
 
   async evaluatePurchaseCapacityForPackage(
@@ -296,7 +328,8 @@ export class BentoService implements OnModuleInit {
   ): Promise<PurchaseCapacityEvaluation> {
     const dailyCapacityPacks = this.bentoSettings.getDailyCapacityPacks();
     const ordersPaused = this.bentoSettings.getBlockNewOrders();
-    const minStart = earliestSchedulableDate();
+    const scheduleRules = this.scheduleRulesInput();
+    const minStart = scheduleRules.minSchedulableDate;
     const searchEnd = addDaysUtc(minStart, durationDays + 180);
     const scheduledByDate = await this.loadScheduledPacksByDate(
       minStart,
@@ -313,6 +346,7 @@ export class BentoService implements OnModuleInit {
       requiredPacks,
       dailyCapacityPacks,
       remainingByDate,
+      scheduleRules,
       ordersPaused,
     });
   }
@@ -412,8 +446,13 @@ export class BentoService implements OnModuleInit {
       optedIn: row?.optedIn ?? null,
       /** Show weekly menu only after purchase, when scheduling is pending. */
       showPrompt: row == null && awaitingSchedule != null,
-      menu: buildWeeklyMenu(this.bentoMenu.getConfig()),
-      minScheduleLeadDays: BENTO_MIN_SCHEDULE_LEAD_DAYS,
+      menu: buildWeeklyMenu(
+        this.bentoMenu.getConfig(),
+        resolveMinScheduleLeadDays(this.bentoSettings.getSettings()),
+      ),
+      minScheduleLeadDays: resolveMinScheduleLeadDays(
+        this.bentoSettings.getSettings(),
+      ),
       pendingSubscriptionId: awaitingSchedule?.id ?? null,
     };
   }
@@ -752,7 +791,8 @@ export class BentoService implements OnModuleInit {
     includesLunch: boolean;
     includesDinner: boolean;
   }> {
-    const earliest = earliestSchedulableDate();
+    const rules = this.scheduleRulesInput();
+    const earliest = rules.minSchedulableDate;
     const windowEnd = addDaysUtc(earliest, pkg.durationDays - 1);
 
     const byDate = new Map<
@@ -768,7 +808,7 @@ export class BentoService implements OnModuleInit {
       if (d < earliest) {
         throw new BadRequestException({
           code: 'BENTO_SCHEDULE_TOO_SOON',
-          message: `Pickup must be at least ${BENTO_MIN_SCHEDULE_LEAD_DAYS} days in advance (${formatDateOnly(earliest)} or later).`,
+          message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
         });
       }
       if (d > windowEnd) {
@@ -777,10 +817,23 @@ export class BentoService implements OnModuleInit {
           message: `Pickup date ${slot.date} is outside your scheduling window.`,
         });
       }
-      if (d.getUTCDay() === 0) {
+      const blockReason = schedulablePickupReason(d, rules);
+      if (blockReason === 'weekday_closed') {
         throw new BadRequestException({
-          code: 'BENTO_SUNDAY_NOT_ALLOWED',
-          message: 'Sunday pickups are not available.',
+          code: 'BENTO_WEEKDAY_CLOSED',
+          message: `${slot.date} is not available for pickup.`,
+        });
+      }
+      if (blockReason === 'date_closed') {
+        throw new BadRequestException({
+          code: 'BENTO_DATE_CLOSED',
+          message: `${slot.date} is closed for pickup.`,
+        });
+      }
+      if (blockReason === 'too_soon') {
+        throw new BadRequestException({
+          code: 'BENTO_SCHEDULE_TOO_SOON',
+          message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
         });
       }
 
@@ -992,7 +1045,8 @@ export class BentoService implements OnModuleInit {
     const needsSchedule =
       s.status === BentoSubscriptionStatus.ACTIVE && s.deliveries.length === 0;
 
-    const earliest = earliestSchedulableDate();
+    const rules = this.scheduleRulesInput();
+    const earliest = rules.minSchedulableDate;
     const windowEnd = addDaysUtc(earliest, s.package.durationDays - 1);
     const mealOpt = s.mealOption as BentoMealOption;
 
@@ -1013,9 +1067,13 @@ export class BentoService implements OnModuleInit {
       status: s.status,
       needsSchedule,
       scheduling: {
-        minLeadDays: BENTO_MIN_SCHEDULE_LEAD_DAYS,
+        minLeadDays: resolveMinScheduleLeadDays(this.bentoSettings.getSettings()),
         earliestDate: formatDateOnly(earliest),
         windowEndDate: formatDateOnly(windowEnd),
+        scheduleRules: buildScheduleRulesPayload(
+          this.bentoSettings.getSettings(),
+          this.bentoMenu.getConfig(),
+        ),
         allowLunch: mealOpt !== BentoMealOption.DINNER,
         allowDinner: mealOpt !== BentoMealOption.LUNCH,
         lunchScheduled: s.deliveries.filter((d) => d.includesLunch).length,
@@ -1043,11 +1101,4 @@ function parseDateOnly(iso: string): Date {
       message: `Invalid date: ${iso}`,
     });
   }
-}
-
-function earliestSchedulableDate(ref = new Date()): Date {
-  const today = new Date(
-    Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate()),
-  );
-  return addDaysUtc(today, BENTO_MIN_SCHEDULE_LEAD_DAYS);
 }
