@@ -126,9 +126,11 @@ export const translations: Record<Lang, Dict> = {
     'package.title': 'Choose your meal plan',
     'package.caption':
       'All prices fixed at checkout — schedule your meals within the valid period after payment.',
-    'package.singleTitle': 'Single meal',
-    'package.singleCaption': 'Try one lunch or dinner — no commitment to a larger plan.',
-    'package.singleDesc': '1 lunch or dinner · Valid for {days}',
+    'package.singleEyebrow': 'Flexible option',
+    'package.singleTitle': 'Not ready for a plan?',
+    'package.singleCaption':
+      'Skip the bundle — order a single lunch or dinner. Same chef-made quality, zero long-term commitment.',
+    'package.singleDesc': 'One meal · Pick your day within {days}',
     'package.trialEyebrow': '🌱 Trial offer',
     'package.trialDesc': 'One-time only · {count} lunch meals · Lunch only',
     'package.fixedPrice': 'fixed price',
@@ -481,9 +483,10 @@ export const translations: Record<Lang, Dict> = {
 
     'package.title': '选择套餐',
     'package.caption': '结账价格固定 — 付款后在有效期内安排取餐。',
-    'package.singleTitle': '单份餐',
-    'package.singleCaption': '先试一份午餐或晚餐，无需购买大套餐。',
-    'package.singleDesc': '1 份午餐或晚餐 · 有效期 {days}',
+    'package.singleEyebrow': '灵活选择',
+    'package.singleTitle': '还不想买套餐？',
+    'package.singleCaption': '不必一次买多份 — 单点一份午餐或晚餐，同样主厨现做，无需长期承诺。',
+    'package.singleDesc': '单份餐 · {days} 内安排取餐',
     'package.trialEyebrow': '🌱 试用优惠',
     'package.trialDesc': '仅限一次 · {count} 份午餐 · 仅午餐',
     'package.fixedPrice': '固定价格',

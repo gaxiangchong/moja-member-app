@@ -930,6 +930,10 @@ button {
 }
 
 /* ---- Single meal card ---- */
+.singleMealSection {
+  margin-top: 4px;
+}
+
 .singleMealCard {
   background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 100%);
   border: 2px solid #fdba74;
@@ -952,6 +956,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.singleMealEyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #c2410c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .singleMealTitle {

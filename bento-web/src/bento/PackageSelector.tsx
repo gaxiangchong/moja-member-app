@@ -69,39 +69,6 @@ export function PackageSelector({ packages, singleMeal, savingsBaseline, selecte
 
   return (
     <>
-      {singleMeal && (
-        <section className="section">
-          <div className="sectionHeader">
-            <div>
-              <h2>{t('package.singleTitle')}</h2>
-              <p className="caption">{t('package.singleCaption')}</p>
-            </div>
-          </div>
-
-          <div className={cls('singleMealCard', selected === singleMeal.code && 'selected')}>
-            <div className="singleMealInfo">
-              <span className="singleMealTitle">
-                {packageLabel(singleMeal.code, singleMeal.label)}
-              </span>
-              <span className="singleMealDesc">
-                {t('package.singleDesc', { days: formatPlanDuration(singleMeal.durationDays) })}
-              </span>
-              <div className="singleMealPrice">
-                {formatRm(singleMeal.pricePerMealCents)}
-                <span className="singleMealSub"> {t('package.fixedPrice')}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              className={cls('singleMealBtn', selected === singleMeal.code && 'selected')}
-              onClick={() => onSelect(singleMeal.code)}
-            >
-              {selected === singleMeal.code ? t('common.selected') : t('common.select')}
-            </button>
-          </div>
-        </section>
-      )}
-
       <section className="section">
       <div className="sectionHeader">
         <div>
@@ -189,6 +156,40 @@ export function PackageSelector({ packages, singleMeal, savingsBaseline, selecte
         </div>
       )}
       </section>
+
+      {singleMeal && (
+        <section className="section singleMealSection">
+          <div className="sectionHeader">
+            <div>
+              <h2>{t('package.singleTitle')}</h2>
+              <p className="caption">{t('package.singleCaption')}</p>
+            </div>
+          </div>
+
+          <div className={cls('singleMealCard', selected === singleMeal.code && 'selected')}>
+            <div className="singleMealInfo">
+              <span className="singleMealEyebrow">{t('package.singleEyebrow')}</span>
+              <span className="singleMealTitle">
+                {packageLabel(singleMeal.code, singleMeal.label)}
+              </span>
+              <span className="singleMealDesc">
+                {t('package.singleDesc', { days: formatPlanDuration(singleMeal.durationDays) })}
+              </span>
+              <div className="singleMealPrice">
+                {formatRm(singleMeal.pricePerMealCents)}
+                <span className="singleMealSub"> {t('package.fixedPrice')}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={cls('singleMealBtn', selected === singleMeal.code && 'selected')}
+              onClick={() => onSelect(singleMeal.code)}
+            >
+              {selected === singleMeal.code ? t('common.selected') : t('common.select')}
+            </button>
+          </div>
+        </section>
+      )}
     </>
   );
 }
