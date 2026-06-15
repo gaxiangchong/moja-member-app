@@ -382,6 +382,18 @@ export class SegmentationService {
     return raw as SegmentFiltersDto;
   }
 
+  private validateCampaignPayload(dto: CampaignRunDto): void {
+    if (dto.action !== 'points_bonus') return;
+
+    const deltaPoints = Number(dto.payload.deltaPoints);
+    if (!Number.isInteger(deltaPoints) || deltaPoints <= 0) {
+      throw new BadRequestException({
+        code: 'CAMPAIGN_POINTS_BONUS_INVALID',
+        message: 'deltaPoints must be a positive integer',
+      });
+    }
+  }
+
   async runCampaign(dto: CampaignRunDto, adminHint: string) {
     let filters: SegmentFiltersDto;
     let audienceId: string | null = null;
@@ -397,6 +409,8 @@ export class SegmentationService {
         message: 'Provide audienceId or filters',
       });
     }
+
+    this.validateCampaignPayload(dto);
 
     const matched = await this.countSegment(filters);
     const run = await this.prisma.campaignRun.create({
@@ -518,8 +532,8 @@ export class SegmentationService {
     if (action === 'points_bonus') {
       const deltaPoints = Number(payload.deltaPoints);
       const reason = String(payload.reason ?? 'campaign_points_bonus');
-      if (!Number.isInteger(deltaPoints) || deltaPoints === 0) {
-        throw new Error('deltaPoints must be non-zero integer');
+      if (!Number.isInteger(deltaPoints) || deltaPoints <= 0) {
+        throw new Error('deltaPoints must be positive integer');
       }
       await this.loyalty.appendLedgerEntry({
         customerId,

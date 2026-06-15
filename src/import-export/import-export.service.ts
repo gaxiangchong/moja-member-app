@@ -805,11 +805,15 @@ export class ImportExportService implements OnModuleInit {
     });
   }
 
-  async getExportJobFile(jobId: string): Promise<{ path: string; fileName: string }> {
+  async getExportJobFile(
+    jobId: string,
+    auth: AdminAuthState,
+  ): Promise<{ path: string; fileName: string }> {
     const job = await this.prisma.exportJob.findUnique({ where: { id: jobId } });
     if (!job || job.status !== 'COMPLETED' || !job.storagePath || !job.fileName) {
       throw new NotFoundException({ code: 'EXPORT_NOT_READY', message: 'Export not available' });
     }
+    assertExportKindAllowed(auth, job.kind);
     return { path: job.storagePath, fileName: job.fileName };
   }
 }
