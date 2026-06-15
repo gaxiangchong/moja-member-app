@@ -10,6 +10,7 @@ import type { OrderDraft } from './types';
 import { formatRm } from './types';
 import { PurchaseCapacityNotice } from './PurchaseCapacityNotice';
 import { useI18n } from '../lib/i18n/context';
+import { savePendingBentoPayment } from '../payments/pendingPayment';
 
 type Props = {
   draft: OrderDraft;
@@ -111,11 +112,23 @@ export function Checkout({ draft, onSuccess }: Props) {
       }
 
       let firstRedirectUrl: string | null = null;
+      let firstReferenceId: string | null = null;
+      let firstSubscriptionId: string | null = null;
       for (let i = 0; i < sets; i++) {
         const result = await checkoutBentoSubscription(payload);
-        if (i === 0 && result.redirectUrl) firstRedirectUrl = result.redirectUrl;
+        if (i === 0) {
+          if (result.redirectUrl) firstRedirectUrl = result.redirectUrl;
+          if (result.referenceId) firstReferenceId = result.referenceId;
+          firstSubscriptionId = result.subscriptionId;
+        }
       }
       if (firstRedirectUrl) {
+        if (firstReferenceId) {
+          savePendingBentoPayment({
+            referenceId: firstReferenceId,
+            subscriptionId: firstSubscriptionId,
+          });
+        }
         window.location.href = firstRedirectUrl;
         return;
       }

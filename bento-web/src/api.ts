@@ -283,9 +283,38 @@ export async function checkoutBentoSubscription(body: {
   }) as Promise<{
     demoMode?: boolean;
     subscriptionId: string;
+    referenceId?: string;
     redirectUrl?: string | null;
     totalCents?: number;
   }>;
+}
+
+export type PaymentIntentStatus = {
+  referenceId: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN';
+  purpose: string;
+  channelCode: string;
+  currency: string;
+  amountCents: number;
+  updatedAt: string;
+};
+
+/** Poll when TNG / ShopeePay does not redirect back to the app after payment. */
+export async function fetchPaymentIntentStatus(
+  referenceId: string,
+): Promise<PaymentIntentStatus> {
+  const data = await authFetch<PaymentIntentStatus & { message?: string }>(
+    `/payments/intent/${encodeURIComponent(referenceId)}`,
+  );
+  return {
+    referenceId: data.referenceId ?? referenceId,
+    status: (data.status ?? 'UNKNOWN') as PaymentIntentStatus['status'],
+    purpose: data.purpose ?? '',
+    channelCode: data.channelCode ?? '',
+    currency: data.currency ?? '',
+    amountCents: typeof data.amountCents === 'number' ? data.amountCents : 0,
+    updatedAt: data.updatedAt ?? new Date().toISOString(),
+  };
 }
 
 export type WeeklyMenuMeal = {

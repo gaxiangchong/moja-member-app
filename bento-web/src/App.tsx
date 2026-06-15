@@ -7,6 +7,7 @@ import {
   fetchBentoPackages,
   fetchMe,
   fetchMyBentoSubscriptions,
+  fetchPaymentIntentStatus,
   getToken,
   isProfileIncomplete,
   updateMe,
@@ -30,6 +31,10 @@ import { ScheduleTab } from './bento/ScheduleTab';
 import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
 import { useVisualViewportHeight } from './lib/useVisualViewportHeight';
 import { LangToggle, useI18n } from './lib/i18n/context';
+import {
+  clearPendingBentoPayment,
+  readPendingBentoPayment,
+} from './payments/pendingPayment';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
 
@@ -292,6 +297,13 @@ export default function App() {
     [profile],
   );
 
+  const handlePaymentSuccess = useCallback(() => {
+    clearPendingBentoPayment();
+    setPaymentBanner('paid_schedule');
+    setTab('schedule');
+    setOrderStep('configure');
+  }, []);
+
   const loadMember = useCallback(async () => {
     const me = await fetchMe();
     setProfile(me);
@@ -319,8 +331,11 @@ export default function App() {
       const u = new URL(window.location.href);
       const pay = u.searchParams.get('bentoPayment');
       if (pay === 'success') {
-        setPaymentBanner('paid_schedule');
-        setTab('schedule');
+        handlePaymentSuccess();
+      } else if (pay === 'failed') {
+        clearPendingBentoPayment();
+        setPaymentBanner('failed');
+        setOrderStep('configure');
       }
       if (pay) {
         u.searchParams.delete('bentoPayment');
@@ -330,7 +345,78 @@ export default function App() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [handlePaymentSuccess]);
+
+  // E-wallets (TNG, ShopeePay) often don't redirect back after payment — poll instead.
+  useEffect(() => {
+    if (!authed) return;
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let pollingStartedAt = 0;
+    const POLL_INTERVAL_MS = 3000;
+    const POLL_MAX_MS = 5 * 60 * 1000;
+
+    const stop = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const tick = async () => {
+      const pending = readPendingBentoPayment();
+      if (!pending) {
+        stop();
+        return;
+      }
+      if (Date.now() - pollingStartedAt > POLL_MAX_MS) {
+        stop();
+        return;
+      }
+      try {
+        const res = await fetchPaymentIntentStatus(pending.referenceId);
+        if (cancelled) return;
+        if (res.status === 'SUCCEEDED') {
+          handlePaymentSuccess();
+          stop();
+        } else if (res.status === 'FAILED') {
+          clearPendingBentoPayment();
+          setPaymentBanner('failed');
+          setOrderStep('configure');
+          stop();
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    };
+
+    const start = () => {
+      if (intervalId !== null) return;
+      if (!readPendingBentoPayment()) return;
+      pollingStartedAt = Date.now();
+      void tick();
+      intervalId = window.setInterval(() => {
+        void tick();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') start();
+    };
+    const onFocus = () => start();
+
+    start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [authed, handlePaymentSuccess]);
 
   useVisualViewportHeight(authed);
 
@@ -360,6 +446,12 @@ export default function App() {
             <p className="paymentBannerTitle">{t('payment.received')}</p>
             <p className="paymentBannerLead">{t('payment.scheduleLead')}</p>
             <CapacityUrgencyNotice variant="banner" />
+          </div>
+        )}
+        {paymentBanner === 'failed' && (
+          <div className="paymentBanner failed">
+            <p className="paymentBannerTitle">{t('payment.failed')}</p>
+            <p className="paymentBannerLead">{t('payment.failedLead')}</p>
           </div>
         )}
 
@@ -427,11 +519,7 @@ export default function App() {
             </div>
             <Checkout
               draft={draft}
-              onSuccess={() => {
-                setPaymentBanner('paid_schedule');
-                setTab('schedule');
-                setOrderStep('configure');
-              }}
+              onSuccess={handlePaymentSuccess}
             />
           </div>
         )}

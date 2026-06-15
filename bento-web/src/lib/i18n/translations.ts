@@ -212,6 +212,8 @@ export const translations: Record<Lang, Dict> = {
 
     'payment.received': 'Payment received',
     'payment.scheduleLead': 'Head to Schedule below to pick your pickup days.',
+    'payment.failed': 'Payment not completed',
+    'payment.failedLead': 'Your payment was not completed. You can try again from Package.',
 
     'capacity.pausedTitle': 'New orders temporarily paused',
     'capacity.pausedBody':
@@ -557,6 +559,8 @@ export const translations: Record<Lang, Dict> = {
 
     'payment.received': '已收到付款',
     'payment.scheduleLead': '请前往下方「日程」选择取餐日期。',
+    'payment.failed': '付款未完成',
+    'payment.failedLead': '付款未成功，请从「套餐」重新尝试。',
 
     'capacity.pausedTitle': '新订单暂时暂停',
     'capacity.pausedBody': '目前暂不接受新套餐订单，请稍后再试。',
