@@ -207,7 +207,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.pay': 'Pay {amount}',
     'checkout.takeawayTitle': 'Takeaway only',
     'checkout.takeawayBody':
-      'By proceeding, you agree that your bento subscription meals are takeaway orders only. If you choose to dine in at Moja Maison instead, those meals are not covered by your subscription and will be charged at the standard price of RM17.90 per meal.',
+      'Moja Bento is designed as a convenient takeaway meal subscription. All subscription meals are for self-pickup only and are not valid for dine-in at Moja Maison. If you prefer to enjoy your meal in our café, a separate dine-in order at the regular menu price will apply.',
     'checkout.takeawayAgree':
       'I understand and agree that my subscription covers takeaway bento only.',
     'checkout.takeawayConfirm': 'Agree and pay',
@@ -560,7 +560,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.pay': '付款 {amount}',
     'checkout.takeawayTitle': '仅限外带',
     'checkout.takeawayBody':
-      '继续付款即表示您同意订阅便当均为外带订单。若选择在 Moja Maison 堂食，该餐不纳入订阅套餐，将按原价 RM17.90/份收费。',
+      'Moja Bento 为自取外带订阅服务，所有订阅餐点仅供外带领取，不包含堂食。如您希望在 Moja Maison 店内享用餐点，请以门市价格另行点购。',
     'checkout.takeawayAgree': '我已了解并同意订阅仅涵盖外带便当。',
     'checkout.takeawayConfirm': '同意并付款',
     'checkout.takeawayCancel': '取消',
