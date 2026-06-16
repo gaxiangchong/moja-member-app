@@ -85,12 +85,13 @@ OTP_MOCK_FIXED_CODE=123456
 ```
 
 Notes:
+
 - If `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are present, OTP is sent to WhatsApp.
 - In production, if WhatsApp is not configured, OTP request returns `OTP_DELIVERY_NOT_CONFIGURED` (503).
-- In development without WhatsApp config, API returns `_devCode` for testing.
+- In development without WhatsApp config, set `OTP_DELIVERY_MODE=mock` to return `_devCode` for testing.
 - `OTP_DELIVERY_MODE=mock` always returns `_devCode` and does not call WhatsApp.
 - `OTP_DELIVERY_MODE=whatsapp` enforces WhatsApp config and fails fast if not configured.
-- `OTP_DELIVERY_MODE=auto` uses WhatsApp when available, otherwise falls back to dev/mock response.
+- `OTP_DELIVERY_MODE=auto` uses WhatsApp when available and otherwise fails closed with `OTP_DELIVERY_NOT_CONFIGURED`.
 
 ### 1.1) Local PostgreSQL (recommended for dev)
 
@@ -112,6 +113,7 @@ If migration succeeds, your local DB is ready.
 ### 2) Meta WhatsApp Cloud API prerequisites
 
 In Meta Developer console:
+
 - Create/select an app with WhatsApp product enabled.
 - Get a permanent `WHATSAPP_ACCESS_TOKEN`.
 - Copy your `WHATSAPP_PHONE_NUMBER_ID`.
@@ -121,6 +123,7 @@ In Meta Developer console:
 ### 3) Template vs plain text behavior
 
 The service supports two modes:
+
 - **Template mode**: set `WHATSAPP_OTP_TEMPLATE_NAME`. The OTP code is injected as body parameter `{{1}}`.
 - **Text mode**: if template name is empty, service sends plain text message.
 
@@ -157,8 +160,8 @@ This section describes the target architecture for the F&B member **admin / back
 
 ### Design principles
 
-1. **Wallet credit and loyalty points are separate**  
-   - **Stored wallet credit** (money-like, cents): balance + lifetime aggregates on `stored_wallets`, **append-only** ledger on `stored_wallet_ledger_entries` (`WalletTxnType`: top-up, spend, refund, manual adjustment, promotional bonus, reversal).  
+1. **Wallet credit and loyalty points are separate**
+   - **Stored wallet credit** (money-like, cents): balance + lifetime aggregates on `stored_wallets`, **append-only** ledger on `stored_wallet_ledger_entries` (`WalletTxnType`: top-up, spend, refund, manual adjustment, promotional bonus, reversal).
    - **Loyalty points**: balance cache on `loyalty_wallets`, ledger on `loyalty_ledger_entries`. No mixing of cents and points in one ledger.
 
 2. **Ledger-first money and points**  
@@ -228,37 +231,37 @@ flowchart TB
 
 **Target:** replace or supplement API keys with **admin JWT** (or SSO) and a permission matrix, for example:
 
-| Permission | Examples |
-|------------|----------|
-| `customers.read` | List/search profile, audit read |
-| `customers.write` | Edit profile, tags, status |
-| `customers.phone_change` | Change phone (higher risk) |
+| Permission                                        | Examples                                 |
+| ------------------------------------------------- | ---------------------------------------- |
+| `customers.read`                                  | List/search profile, audit read          |
+| `customers.write`                                 | Edit profile, tags, status               |
+| `customers.phone_change`                          | Change phone (higher risk)               |
 | `wallet.read` / `wallet.adjust` / `wallet.freeze` | View ledger, manual credit/debit, freeze |
-| `loyalty.read` / `loyalty.adjust` | Ledger view, manual points |
-| `vouchers.define` / `vouchers.assign` | Definitions vs issue to member |
-| `segments.manage` / `campaigns.run` | Saved audiences vs execute campaigns |
-| `import.export` | Upload, commit import, run export |
-| `master.manage` | Tiers, stores, rules |
-| `reports.view` | Dashboards and exports |
+| `loyalty.read` / `loyalty.adjust`                 | Ledger view, manual points               |
+| `vouchers.define` / `vouchers.assign`             | Definitions vs issue to member           |
+| `segments.manage` / `campaigns.run`               | Saved audiences vs execute campaigns     |
+| `import.export`                                   | Upload, commit import, run export        |
+| `master.manage`                                   | Tiers, stores, rules                     |
+| `reports.view`                                    | Dashboards and exports                   |
 
 Implement as Nest **guards** + decorators checking claims; map roles (e.g. `support`, `marketing`, `finance`, `superadmin`) to permission sets.
 
 ### Module map (API surface)
 
-| Area | Responsibility | Main routes (prefix `admin` unless noted) |
-|------|------------------|-------------------------------------------|
-| **CRM** | Search, profile, tags, audit trail | `GET/PATCH /admin/customers…`, `GET …/audit-logs` |
-| **Wallet** | Credit separate from points, freeze, reversal | `GET …/wallet`, `POST …/wallet/adjustments`, `POST …/wallet/reverse/:txn`, freeze/unfreeze |
-| **Loyalty** | Points ledger and adjustments | `POST …/loyalty/adjustments`, `GET /admin/loyalty-ledger` |
-| **Vouchers** | Definitions + issue (single/campaign/import) | `GET/POST /admin/voucher-definitions`, assignments via campaign/import |
-| **Segmentation & campaigns** | Filters, saved audiences, bulk actions | `/admin/segments/*`, `POST …/campaigns/run` |
-| **Import / export** | CSV/XLSX, preview, commit, jobs | `/admin/import/*`, `/admin/export/*` |
-| **Master data** | Tiers, stores, channels, rules | `/admin/master/*`, `POST …/seed` |
-| **Reporting** | KPIs and activity feeds | `GET /admin/overview`, ledger endpoints, export jobs |
+| Area                         | Responsibility                                | Main routes (prefix `admin` unless noted)                                                  |
+| ---------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **CRM**                      | Search, profile, tags, audit trail            | `GET/PATCH /admin/customers…`, `GET …/audit-logs`                                          |
+| **Wallet**                   | Credit separate from points, freeze, reversal | `GET …/wallet`, `POST …/wallet/adjustments`, `POST …/wallet/reverse/:txn`, freeze/unfreeze |
+| **Loyalty**                  | Points ledger and adjustments                 | `POST …/loyalty/adjustments`, `GET /admin/loyalty-ledger`                                  |
+| **Vouchers**                 | Definitions + issue (single/campaign/import)  | `GET/POST /admin/voucher-definitions`, assignments via campaign/import                     |
+| **Segmentation & campaigns** | Filters, saved audiences, bulk actions        | `/admin/segments/*`, `POST …/campaigns/run`                                                |
+| **Import / export**          | CSV/XLSX, preview, commit, jobs               | `/admin/import/*`, `/admin/export/*`                                                       |
+| **Master data**              | Tiers, stores, channels, rules                | `/admin/master/*`, `POST …/seed`                                                           |
+| **Reporting**                | KPIs and activity feeds                       | `GET /admin/overview`, ledger endpoints, export jobs                                       |
 
 ### Reporting dashboards
 
-- **Operational:** member counts, signups, points issued/redeemed, wallet top-ups (from wallet ledger), voucher statuses, recent registrations / voucher / wallet activity (`/admin/overview`).  
+- **Operational:** member counts, signups, points issued/redeemed, wallet top-ups (from wallet ledger), voucher statuses, recent registrations / voucher / wallet activity (`/admin/overview`).
 - **Deep-dive:** filtered exports and segment counts; future: scheduled reports, reconciliation (wallet sum vs ledger), campaign funnel.
 
 ### Campaign delivery (future)
