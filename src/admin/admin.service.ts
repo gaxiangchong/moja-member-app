@@ -37,6 +37,8 @@ import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
+import { stringify } from 'csv-stringify/sync';
+import { ReportingSettingsService } from './reporting-settings.service';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
@@ -248,7 +250,19 @@ export class AdminService {
     private readonly wallet: WalletService,
     private readonly config: ConfigService,
     private readonly phoneNormalizer: PhoneNormalizerService,
+    private readonly reportingSettings: ReportingSettingsService,
   ) {}
+
+  /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
+  private salesFloor(): Date | null {
+    return this.reportingSettings.getSalesStartDate();
+  }
+
+  /** Raise a range's lower bound to the sales cutoff when one is configured. */
+  private clampFrom(from: Date): Date {
+    const floor = this.salesFloor();
+    return floor && floor.getTime() > from.getTime() ? floor : from;
+  }
 
   private buildCustomerWhere(
     q: AdminListCustomersQueryDto,
@@ -368,6 +382,90 @@ export class AdminService {
       pageSize: take,
       total,
     };
+  }
+
+  /**
+   * Export all customers matching the same filters/sort as {@link listCustomers}
+   * (no pagination, capped) as a CSV string for download.
+   */
+  async exportCustomersCsv(query: AdminListCustomersQueryDto): Promise<string> {
+    const where = this.buildCustomerWhere(query);
+    const dir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: dir };
+    switch (query.sortBy) {
+      case 'lastLoginAt':
+        orderBy = { lastLoginAt: dir };
+        break;
+      case 'points':
+        orderBy = { wallet: { pointsCached: dir } };
+        break;
+      case 'spent':
+        orderBy = { storedWallet: { lifetimeSpentCents: dir } };
+        break;
+      case 'name':
+        orderBy = { displayName: dir };
+        break;
+      case 'referrals':
+        orderBy = { referredMembers: { _count: dir } };
+        break;
+      default:
+        orderBy = { createdAt: dir };
+    }
+
+    const items = await this.prisma.customer.findMany({
+      where,
+      orderBy,
+      take: 50_000,
+      include: {
+        wallet: { select: { pointsCached: true } },
+        storedWallet: { select: { lifetimeSpentCents: true } },
+        _count: { select: { referredMembers: true } },
+      },
+    });
+
+    const iso = (d: Date | null | undefined) => (d ? d.toISOString() : '');
+    const records = items.map((c) => ({
+      phone: c.phoneE164,
+      name: c.displayName ?? '',
+      email: c.email ?? '',
+      status: c.status,
+      member_tier: c.memberTier,
+      signup_source: c.signupSource,
+      marketing_consent: c.marketingConsent ? 'yes' : 'no',
+      points_balance: c.wallet?.pointsCached ?? 0,
+      lifetime_spent_rm: ((c.storedWallet?.lifetimeSpentCents ?? 0) / 100).toFixed(
+        2,
+      ),
+      referrals_made: c._count.referredMembers,
+      tags: (c.tags ?? []).join('; '),
+      birthday: c.birthday ? c.birthday.toISOString().slice(0, 10) : '',
+      gender: c.gender ?? '',
+      preferred_store: c.preferredStore ?? '',
+      created_at: iso(c.createdAt),
+      last_login_at: iso(c.lastLoginAt),
+    }));
+
+    return stringify(records, {
+      header: true,
+      columns: [
+        'phone',
+        'name',
+        'email',
+        'status',
+        'member_tier',
+        'signup_source',
+        'marketing_consent',
+        'points_balance',
+        'lifetime_spent_rm',
+        'referrals_made',
+        'tags',
+        'birthday',
+        'gender',
+        'preferred_store',
+        'created_at',
+        'last_login_at',
+      ],
+    });
   }
 
   async listCustomerOrders(customerId: string, limit = 40) {
@@ -790,6 +888,12 @@ export class AdminService {
     const monthNumber = now.getMonth() + 1;
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Sales reporting cutoff: never count commerce dated before salesStartDate.
+    const salesFloor = this.reportingSettings.getSalesStartDate();
+    const commerceStart =
+      salesFloor && salesFloor.getTime() > thirtyDaysAgo.getTime()
+        ? salesFloor
+        : thirtyDaysAgo;
 
     const [
       members,
@@ -867,10 +971,10 @@ export class AdminService {
         AND EXTRACT(MONTH FROM birthday::date) = ${monthNumber}
       `,
       this.prisma.customerOrder.count({
-        where: { placedAt: { gte: thirtyDaysAgo } },
+        where: { placedAt: { gte: commerceStart } },
       }),
       this.prisma.customerOrder.aggregate({
-        where: { placedAt: { gte: thirtyDaysAgo } },
+        where: { placedAt: { gte: commerceStart } },
         _sum: { totalCents: true },
       }),
     ]);
@@ -1382,25 +1486,33 @@ export class AdminService {
     const utcYearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
     const utcYearEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
 
-    const topSpenderSql = (from: Date, to: Date) => this.prisma.$queryRaw<
-      {
-        customer_id: string;
-        phone_e164: string;
-        display_name: string | null;
-        spent_cents: bigint;
-      }[]
-    >`
-      SELECT o.customer_id AS customer_id,
-             MAX(c.phone_e164) AS phone_e164,
-             MAX(c.display_name) AS display_name,
-             SUM(o.total_cents)::bigint AS spent_cents
-      FROM customer_orders o
-      INNER JOIN customers c ON c.id = o.customer_id
-      WHERE o.placed_at >= ${from} AND o.placed_at < ${to}
-      GROUP BY o.customer_id
-      ORDER BY spent_cents DESC
-      LIMIT 10
-    `;
+    // Sales reporting cutoff: exclude spend dated before salesStartDate.
+    const salesFloor = this.salesFloor();
+    const topSpenderFloor = salesFloor
+      ? Prisma.sql`WHERE o.placed_at >= ${salesFloor}`
+      : Prisma.empty;
+    const topSpenderSql = (from: Date, to: Date) => {
+      const f = this.clampFrom(from);
+      return this.prisma.$queryRaw<
+        {
+          customer_id: string;
+          phone_e164: string;
+          display_name: string | null;
+          spent_cents: bigint;
+        }[]
+      >`
+        SELECT o.customer_id AS customer_id,
+               MAX(c.phone_e164) AS phone_e164,
+               MAX(c.display_name) AS display_name,
+               SUM(o.total_cents)::bigint AS spent_cents
+        FROM customer_orders o
+        INNER JOIN customers c ON c.id = o.customer_id
+        WHERE o.placed_at >= ${f} AND o.placed_at < ${to}
+        GROUP BY o.customer_id
+        ORDER BY spent_cents DESC
+        LIMIT 10
+      `;
+    };
 
     const [
       overview,
@@ -1474,6 +1586,7 @@ export class AdminService {
                SUM(o.total_cents)::bigint AS spent_cents
         FROM customer_orders o
         INNER JOIN customers c ON c.id = o.customer_id
+        ${topSpenderFloor}
         GROUP BY o.customer_id
         ORDER BY spent_cents DESC
         LIMIT 10
@@ -1507,7 +1620,7 @@ export class AdminService {
                COUNT(DISTINCT o.id)::bigint AS order_count
         FROM customer_order_lines l
         INNER JOIN customer_orders o ON o.id = l.order_id
-        WHERE o.placed_at >= ${monthAgo}
+        WHERE o.placed_at >= ${this.clampFrom(monthAgo)}
         GROUP BY l.product_id
         ORDER BY qty_sold DESC
         LIMIT 10
@@ -1615,10 +1728,35 @@ export class AdminService {
     const bucket = query.bucket ?? 'month';
     const category = query.category ?? 'cake';
 
-    if (category === 'bento') {
-      return this.getBentoSalesAnalytics(from, to, bucket, now);
+    // Apply the configured sales reporting cutoff: nothing dated before
+    // salesStartDate counts toward GMV. If the whole window is before the
+    // cutoff, return a zeroed result instead of querying.
+    const flooredFrom = this.clampFrom(from);
+    if (flooredFrom.getTime() >= to.getTime()) {
+      return this.buildSalesAnalyticsResult({
+        from: flooredFrom,
+        to,
+        bucket,
+        category,
+        now,
+        seriesRows: [],
+        topProducts: [],
+        paidCount: 0,
+        totalGmv: 0,
+        openPlaced: 0,
+        loyaltyNeg: 0,
+        loyaltyPos: 0,
+        walletSpend: 0,
+        walletTopUp: 0,
+        vouchersRedeemed: 0,
+        vouchersIssued: 0,
+      });
     }
-    return this.getCakeSalesAnalytics(from, to, bucket, now);
+
+    if (category === 'bento') {
+      return this.getBentoSalesAnalytics(flooredFrom, to, bucket, now);
+    }
+    return this.getCakeSalesAnalytics(flooredFrom, to, bucket, now);
   }
 
   private async getCakeSalesAnalytics(
@@ -1940,6 +2078,13 @@ export class AdminService {
     // splice into the date_trunc unit literal via Prisma.raw.
     const truncUnit = Prisma.raw(`'${bucket}'`);
     const bentoPaid = Prisma.sql`pi.purpose = 'bento_subscription' AND pi.status = 'SUCCEEDED'`;
+    // Sales reporting cutoff: exclude payments before salesStartDate from the
+    // money figures. Member-count queries keep their real (uncut) values.
+    const floor = this.salesFloor();
+    const paidFloor = floor
+      ? Prisma.sql`AND pi.updated_at >= ${floor}`
+      : Prisma.empty;
+    const rangeFrom = this.clampFrom(from);
 
     const [
       totalMembers,
@@ -1960,7 +2105,7 @@ export class AdminService {
                COUNT(*)::bigint AS payments,
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
         FROM payment_intents pi
-        WHERE ${bentoPaid}
+        WHERE ${bentoPaid} ${paidFloor}
       `,
       this.prisma.$queryRaw<
         { members: bigint; payments: bigint; gmv: bigint }[]
@@ -1970,7 +2115,7 @@ export class AdminService {
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
         FROM payment_intents pi
         WHERE ${bentoPaid}
-          AND pi.updated_at >= ${from}
+          AND pi.updated_at >= ${rangeFrom}
           AND pi.updated_at < ${to}
       `,
       this.prisma.$queryRaw<{ period_start: Date; cnt: bigint }[]>`
@@ -1990,7 +2135,7 @@ export class AdminService {
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
         FROM payment_intents pi
         WHERE ${bentoPaid}
-          AND pi.updated_at >= ${from}
+          AND pi.updated_at >= ${rangeFrom}
           AND pi.updated_at < ${to}
         GROUP BY 1
         ORDER BY 1 ASC
@@ -2074,6 +2219,11 @@ export class AdminService {
     const rangeFilter = hasRange
       ? Prisma.sql`AND pi.updated_at >= ${from} AND pi.updated_at < ${to}`
       : Prisma.empty;
+    // Hide test-phase transactions dated before the sales reporting cutoff.
+    const floor = this.salesFloor();
+    const floorFilter = floor
+      ? Prisma.sql`AND pi.updated_at >= ${floor}`
+      : Prisma.empty;
 
     const rows = await this.prisma.$queryRaw<
       {
@@ -2104,6 +2254,7 @@ export class AdminService {
       WHERE pi.purpose = 'bento_subscription'
         AND pi.status = 'SUCCEEDED'
         ${rangeFilter}
+        ${floorFilter}
       ORDER BY pi.updated_at DESC
       LIMIT 100
     `;
@@ -2375,6 +2526,10 @@ export class AdminService {
     const day = new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
     const next = new Date(day);
     next.setUTCDate(next.getUTCDate() + 1);
+    // Apply the sales reporting cutoff: a day fully before salesStartDate yields
+    // an empty (>= start AND < next) window and therefore zeroed totals.
+    const floor = this.salesFloor();
+    const start = floor && floor.getTime() > day.getTime() ? floor : day;
 
     const closed = await this.prisma.dailySalesClose.findUnique({
       where: { businessDate: day },
@@ -2395,7 +2550,7 @@ export class AdminService {
       FROM customer_order_lines l
       INNER JOIN customer_orders o ON o.id = l.order_id
       WHERE o.status = 'completed'
-        AND COALESCE(o.completed_at, o.placed_at) >= ${day}
+        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
         AND COALESCE(o.completed_at, o.placed_at) < ${next}
       GROUP BY l.product_id
       ORDER BY qty_sold DESC
@@ -2408,7 +2563,7 @@ export class AdminService {
              COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
       FROM customer_orders o
       WHERE o.status = 'completed'
-        AND COALESCE(o.completed_at, o.placed_at) >= ${day}
+        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
         AND COALESCE(o.completed_at, o.placed_at) < ${next}
     `;
 

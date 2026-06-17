@@ -57,6 +57,8 @@ import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
 import { BentoPackagesService } from '../bento/bento-packages.service';
 import { BentoSettingsService } from '../bento/bento-settings.service';
+import { ReportingSettingsService } from './reporting-settings.service';
+import { UpdateReportingSettingsDto } from './dto/update-reporting-settings.dto';
 import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
 import { UpdateBentoPackagesDto } from './dto/update-bento-packages.dto';
 import { UpdateBentoSettingsDto } from './dto/update-bento-settings.dto';
@@ -72,6 +74,7 @@ export class AdminController {
     private readonly bentoMenu: BentoMenuService,
     private readonly bentoPackages: BentoPackagesService,
     private readonly bentoSettings: BentoSettingsService,
+    private readonly reportingSettings: ReportingSettingsService,
   ) {}
 
   @Get('commerce/orders')
@@ -84,6 +87,17 @@ export class AdminController {
   @RequirePermissions(P.CUSTOMER_READ)
   listCustomers(@Query() query: AdminListCustomersQueryDto) {
     return this.admin.listCustomers(query);
+  }
+
+  // Declared before 'customers/:id' so the literal path wins over the param route.
+  @Get('customers/export')
+  @RequirePermissions(P.CUSTOMER_EXPORT)
+  async exportCustomers(@Query() query: AdminListCustomersQueryDto) {
+    const csv = await this.admin.exportCustomersCsv(query);
+    return new StreamableFile(Buffer.from(csv, 'utf8'), {
+      type: 'text/csv; charset=utf-8',
+      disposition: 'attachment; filename="customers.csv"',
+    });
   }
 
   @Get('customers/:id/audit-logs')
@@ -427,6 +441,22 @@ export class AdminController {
   )
   importBentoMenu(@UploadedFile() file: Express.Multer.File) {
     return this.bentoMenu.parseUploadToConfig(file);
+  }
+
+  // --- Sales reporting cutoff (System config) ---
+
+  @Get('reporting-settings')
+  @RequirePermissions(P.REPORT_VIEW)
+  getReportingSettings() {
+    return this.reportingSettings.getSettings();
+  }
+
+  @Put('reporting-settings')
+  @RequirePermissions(P.MASTER_MANAGE)
+  updateReportingSettings(@Body() dto: UpdateReportingSettingsDto) {
+    return this.reportingSettings.setSettings({
+      salesStartDate: dto.salesStartDate ?? null,
+    });
   }
 
   @Get('bento-settings')

@@ -954,10 +954,6 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               Activity feed
             </button>
-            <button type="button" class="nav-btn nav-sub" data-view="dashboard-employees">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Employee management
-            </button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="customers" open>
@@ -970,10 +966,6 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="customer-orders">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
               Customer orders
-            </button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-sales">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>
-              Sales &amp; transactions
             </button>
             <button type="button" class="nav-btn nav-sub" data-view="customers-segments">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><circle cx="12" cy="12" r="1"/></svg>
@@ -1107,8 +1099,9 @@ export class AdminDashboardController {
           </div>
         </details>
         <details class="nav-group" data-menu-group="reports" open>
-          <summary>Reports</summary>
+          <summary>Sales &amp; reports</summary>
           <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="reports-sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>Sales &amp; transactions</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>Customer reports</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-vouchers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>Voucher reports</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-loyalty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Loyalty reports</button>
@@ -1121,6 +1114,7 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="settings-shop-layout">Shop layout</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
+            <button type="button" class="nav-btn nav-sub" data-view="dashboard-employees">Employees &amp; payroll</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
           </div>
         </details>
@@ -1428,6 +1422,7 @@ export class AdminDashboardController {
             <div class="sheet-head">
               <h2>Customer list</h2>
               <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="exportCustomersBtn">Export CSV</button>
                 <button type="button" class="btn-outline" id="refreshCustomersBtn">Refresh list</button>
               </div>
             </div>
@@ -2454,6 +2449,27 @@ export class AdminDashboardController {
 
         <section id="settings-system" class="tab-panel hidden">
           <div class="sheet">
+            <div class="sheet-head">
+              <h2>Sales reporting start date</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="reportingClearBtn">Clear</button>
+                <button type="button" class="btn-primary" id="reportingSaveBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:560px">
+              <p class="field-hint" style="margin-top:0">
+                Charges dated <strong>before</strong> this date are hidden from all sales reports — Sales &amp; transactions (cake and bento), Bento overview, daily commerce, and dashboard GMV. Set it to your <strong>launch date</strong> to exclude test-phase charges and reset the displayed sales to 0. Leave it empty to show full history.
+              </p>
+              <div style="padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:13px;color:#065f46;margin-bottom:12px">
+                <strong>Non-destructive.</strong> This only filters what reports show — no payment records are deleted. Clearing the date brings every charge back.
+              </div>
+              <label for="reportingStartDate">Start date (UTC)</label>
+              <input type="date" id="reportingStartDate" style="max-width:200px" />
+              <p class="field-hint" id="reportingSaveResult" style="margin-top:10px"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
             <div class="sheet-head"><h2>System config</h2></div>
             <div class="coming-soon">
               System configuration (feature flags and sensitive runtime settings) should be read-only by default, with explicit privileged edit mode and full audit logging for each change.
@@ -3363,7 +3379,7 @@ export class AdminDashboardController {
     const viewTitles = {
       'dashboard-overview': 'Dashboard · Overview',
       'dashboard-activity': 'Dashboard · Activity feed',
-      'dashboard-employees': 'Dashboard · Employee management',
+      'dashboard-employees': 'Settings · Employees & payroll',
       'customers-list': 'Customers · List',
       'customer-orders': 'Customers · Customer orders',
       'customers-segments': 'Customers · Tags / segments',
@@ -3386,10 +3402,10 @@ export class AdminDashboardController {
       'data-export': 'Data Tools · Export data',
       'data-templates': 'Data Tools · Template downloads',
       'data-import-history': 'Data Tools · Import history',
-      'reports-customers': 'Reports · Customer reports',
-      'reports-sales': 'Customers · Sales & transactions',
-      'reports-vouchers': 'Reports · Voucher reports',
-      'reports-loyalty': 'Reports · Loyalty reports',
+      'reports-customers': 'Sales & reports · Customer reports',
+      'reports-sales': 'Sales & reports · Sales & transactions',
+      'reports-vouchers': 'Sales & reports · Voucher reports',
+      'reports-loyalty': 'Sales & reports · Loyalty reports',
       'settings-roles': 'Settings · Roles & permissions',
       'settings-master-data': 'Settings · Master data',
       'settings-notifications': 'Settings · Notification templates',
@@ -5524,6 +5540,48 @@ export class AdminDashboardController {
       }
     }
 
+    async function exportCustomersCsv() {
+      var sortByEl = document.getElementById('customerSortBy');
+      var sortDirEl = document.getElementById('customerSortDir');
+      var sortBy = sortByEl ? sortByEl.value : customerSortBy;
+      var sortDir = sortDirEl ? sortDirEl.value : customerSortDir;
+      await apiDownload(
+        '/admin/customers/export?sortBy=' + encodeURIComponent(sortBy) + '&sortDir=' + encodeURIComponent(sortDir),
+        'customers.csv',
+      );
+    }
+
+    async function loadReportingSettings() {
+      var inp = document.getElementById('reportingStartDate');
+      var out = document.getElementById('reportingSaveResult');
+      if (!inp) return;
+      try {
+        var cfg = await api('/admin/reporting-settings');
+        inp.value = (cfg && cfg.salesStartDate) ? cfg.salesStartDate : '';
+        if (out) out.textContent = inp.value
+          ? ('Charges before ' + inp.value + ' are hidden from all sales reports.')
+          : 'No cutoff set — full sales history is shown.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function saveReportingSettings(clear) {
+      var inp = document.getElementById('reportingStartDate');
+      var out = document.getElementById('reportingSaveResult');
+      if (!inp) return;
+      var val = clear ? null : (inp.value ? inp.value : null);
+      if (out) out.textContent = 'Saving…';
+      try {
+        var saved = await apiPut('/admin/reporting-settings', { salesStartDate: val });
+        inp.value = (saved && saved.salesStartDate) ? saved.salesStartDate : '';
+        if (out) out.textContent = inp.value
+          ? ('Saved. Charges before ' + inp.value + ' are now hidden from all sales reports.')
+          : 'Saved. Cutoff cleared — full sales history is shown.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
     async function loadShopCatalog() {
       const data = await api('/admin/shop-catalog/products');
       lastShopCatalogProducts = data || [];
@@ -6582,6 +6640,24 @@ export class AdminDashboardController {
       }
     });
     document.getElementById('refreshCustomersBtn').addEventListener('click', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    var exportCustomersBtn = document.getElementById('exportCustomersBtn');
+    if (exportCustomersBtn) {
+      exportCustomersBtn.addEventListener('click', function () {
+        exportCustomersCsv().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var reportingSaveBtn = document.getElementById('reportingSaveBtn');
+    if (reportingSaveBtn) {
+      reportingSaveBtn.addEventListener('click', function () {
+        saveReportingSettings(false).catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var reportingClearBtn = document.getElementById('reportingClearBtn');
+    if (reportingClearBtn) {
+      reportingClearBtn.addEventListener('click', function () {
+        saveReportingSettings(true).catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
     const customerSortByEl = document.getElementById('customerSortBy');
     const customerSortDirEl = document.getElementById('customerSortDir');
     if (customerSortByEl) {
@@ -8152,6 +8228,11 @@ export class AdminDashboardController {
           if (view === 'bento-orders' && isConnected) {
             bentoOrdersInitDates();
             previewBentoOrders().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'settings-system' && isConnected) {
+            loadReportingSettings().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }
