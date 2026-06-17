@@ -49,6 +49,8 @@ import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dt
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import type {
+  BentoMemberFunnelResult,
+  BentoTransactionRow,
   SalesAnalyticsQueryDto,
   SalesAnalyticsResult,
 } from './dto/sales-analytics-query.dto';
@@ -1904,6 +1906,221 @@ export class AdminService {
       vouchersRedeemed: 0,
       vouchersIssued: 0,
     });
+  }
+
+  /**
+   * Marketing funnel for the Bento member app: how many members registered vs
+   * how many actually paid for a bento plan. "Registered" = every customer
+   * (the Bento app shares the main member login, so there is no separate bento
+   * signup source). "Paid" reuses the same SUCCEEDED bento_subscription payment
+   * predicate as {@link getBentoSalesAnalytics} so the numbers stay consistent.
+   */
+  async getBentoMemberFunnel(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<BentoMemberFunnelResult> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from and to must be valid ISO dates',
+      });
+    }
+    if (from.getTime() >= to.getTime()) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from must be before to',
+      });
+    }
+    const bucket = query.bucket ?? 'month';
+    // bucket is validated to one of day/week/month by the DTO, so it is safe to
+    // splice into the date_trunc unit literal via Prisma.raw.
+    const truncUnit = Prisma.raw(`'${bucket}'`);
+    const bentoPaid = Prisma.sql`pi.purpose = 'bento_subscription' AND pi.status = 'SUCCEEDED'`;
+
+    const [
+      totalMembers,
+      newMembers,
+      paidRow,
+      rangeRow,
+      regSeries,
+      paySeries,
+    ] = await Promise.all([
+      this.prisma.customer.count(),
+      this.prisma.customer.count({
+        where: { createdAt: { gte: from, lt: to } },
+      }),
+      this.prisma.$queryRaw<
+        { members: bigint; payments: bigint; gmv: bigint }[]
+      >`
+        SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
+               COUNT(*)::bigint AS payments,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid}
+      `,
+      this.prisma.$queryRaw<
+        { members: bigint; payments: bigint; gmv: bigint }[]
+      >`
+        SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
+               COUNT(*)::bigint AS payments,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid}
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+      `,
+      this.prisma.$queryRaw<{ period_start: Date; cnt: bigint }[]>`
+        SELECT date_trunc(${truncUnit}, (c.created_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS cnt
+        FROM customers c
+        WHERE c.created_at >= ${from}
+          AND c.created_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      this.prisma.$queryRaw<
+        { period_start: Date; cnt: bigint; gmv: bigint }[]
+      >`
+        SELECT date_trunc(${truncUnit}, (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid}
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+    ]);
+
+    const paidMembers = Number(paidRow[0]?.members ?? 0n);
+    const payingTransactions = Number(paidRow[0]?.payments ?? 0n);
+    const totalGmvCents = Number(paidRow[0]?.gmv ?? 0n);
+
+    // Merge the two per-bucket series on period_start.
+    const byPeriod = new Map<
+      string,
+      { registrations: number; payments: number; gmvCents: number }
+    >();
+    for (const r of regSeries) {
+      const key = r.period_start.toISOString();
+      const e = byPeriod.get(key) ?? {
+        registrations: 0,
+        payments: 0,
+        gmvCents: 0,
+      };
+      e.registrations = Number(r.cnt);
+      byPeriod.set(key, e);
+    }
+    for (const r of paySeries) {
+      const key = r.period_start.toISOString();
+      const e = byPeriod.get(key) ?? {
+        registrations: 0,
+        payments: 0,
+        gmvCents: 0,
+      };
+      e.payments = Number(r.cnt);
+      e.gmvCents = Number(r.gmv);
+      byPeriod.set(key, e);
+    }
+    const series = Array.from(byPeriod.entries())
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([periodStart, v]) => ({ periodStart, ...v }));
+
+    return {
+      meta: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        bucket,
+        generatedAt: now.toISOString(),
+      },
+      totals: {
+        totalMembers,
+        paidMembers,
+        payingTransactions,
+        totalGmvCents,
+        conversionRate: totalMembers > 0 ? paidMembers / totalMembers : 0,
+      },
+      inRange: {
+        newMembers,
+        newPaidMembers: Number(rangeRow[0]?.members ?? 0n),
+        payments: Number(rangeRow[0]?.payments ?? 0n),
+        gmvCents: Number(rangeRow[0]?.gmv ?? 0n),
+      },
+      series,
+    };
+  }
+
+  /**
+   * Bento-only transaction ledger: recent successful bento payments joined to
+   * the member and the package they bought. Ordered newest-first.
+   */
+  async listBentoTransactions(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<{ transactions: BentoTransactionRow[] }> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    const hasRange =
+      !Number.isNaN(from.getTime()) &&
+      !Number.isNaN(to.getTime()) &&
+      from.getTime() < to.getTime();
+    const rangeFilter = hasRange
+      ? Prisma.sql`AND pi.updated_at >= ${from} AND pi.updated_at < ${to}`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        payment_intent_id: string;
+        paid_at: Date;
+        customer_id: string | null;
+        display_name: string | null;
+        phone_e164: string | null;
+        package_code: string | null;
+        package_label: string | null;
+        meal_option: string | null;
+        amount_cents: bigint;
+      }[]
+    >`
+      SELECT pi.id AS payment_intent_id,
+             pi.updated_at AS paid_at,
+             c.id AS customer_id,
+             c.display_name AS display_name,
+             c.phone_e164 AS phone_e164,
+             bp.code AS package_code,
+             bp.label AS package_label,
+             bs.meal_option AS meal_option,
+             pi.amount_cents AS amount_cents
+      FROM payment_intents pi
+      LEFT JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
+      LEFT JOIN bento_packages bp ON bp.id = bs.package_id
+      LEFT JOIN customers c ON c.id = pi.customer_id
+      WHERE pi.purpose = 'bento_subscription'
+        AND pi.status = 'SUCCEEDED'
+        ${rangeFilter}
+      ORDER BY pi.updated_at DESC
+      LIMIT 100
+    `;
+
+    return {
+      transactions: rows.map((r) => ({
+        paymentIntentId: r.payment_intent_id,
+        paidAt: r.paid_at.toISOString(),
+        customerId: r.customer_id,
+        customerName: r.display_name,
+        customerPhone: r.phone_e164,
+        packageCode: r.package_code,
+        packageLabel: r.package_label,
+        mealOption: r.meal_option,
+        amountCents: Number(r.amount_cents),
+      })),
+    };
   }
 
   private buildSalesAnalyticsResult(params: {

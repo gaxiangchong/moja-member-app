@@ -11,6 +11,7 @@ import {
   Post,
   Put,
   Query,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -401,6 +402,31 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateBentoMenu(@Body() dto: UpdateBentoMenuDto) {
     return this.bentoMenu.setConfig(dto);
+  }
+
+  /** Download an .xlsx template pre-filled with the current weekly menu. */
+  @Get('bento-menu/template')
+  @RequirePermissions(P.VOUCHER_READ)
+  async downloadBentoMenuTemplate() {
+    const buffer = await this.bentoMenu.buildTemplateBuffer();
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="bento-weekly-menu-template.xlsx"',
+    });
+  }
+
+  /**
+   * Parse an uploaded .xlsx/.csv menu file and return the normalized config for
+   * review. Does not persist — the admin saves via PUT /admin/bento-menu after
+   * checking the loaded values.
+   */
+  @Post('bento-menu/import')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  importBentoMenu(@UploadedFile() file: Express.Multer.File) {
+    return this.bentoMenu.parseUploadToConfig(file);
   }
 
   @Get('bento-settings')

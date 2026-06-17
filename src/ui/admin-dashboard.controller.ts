@@ -6,6 +6,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
   menuGroups: {
     dashboard: { showGroup: false, showSubmenu: true },
     customers: { showGroup: true, showSubmenu: true },
+    bento: { showGroup: true, showSubmenu: true },
     wallet: { showGroup: false, showSubmenu: true },
     loyalty: { showGroup: true, showSubmenu: true },
     vouchers: { showGroup: false, showSubmenu: true },
@@ -21,9 +22,14 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'dashboard-employees': true,
     'customers-list': true,
     'customer-orders': true,
+    'bento-overview': true,
+    'bento-sales': true,
+    'bento-menu': true,
+    'bento-pricing': true,
+    'bento-operations': true,
+    'bento-orders': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
-    'settings-bento-menu': true,
     'settings-shop-layout': true,
     'settings-popular-items': true,
     'settings-home-ads': true,
@@ -979,6 +985,35 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
+        <details class="nav-group" data-menu-group="bento" open>
+          <summary>Bento (meal plans)</summary>
+          <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="bento-overview">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8a6 6 0 0 1-6 6H3"/><circle cx="7" cy="17" r="1"/></svg>
+              Overview &amp; members
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-sales">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>
+              Sales &amp; transactions
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 4v6"/></svg>
+              Weekly menu
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-pricing">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Packages &amp; pricing
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-operations">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Capacity &amp; schedule
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-orders">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Kitchen orders export
+            </button>
+          </div>
+        </details>
         <details class="nav-group" data-menu-group="wallet" open>
           <summary>Wallet</summary>
           <div class="nav-items">
@@ -1083,7 +1118,6 @@ export class AdminDashboardController {
           <summary>Settings</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="settings-shopping-catalog">Shopping catalog</button>
-            <button type="button" class="nav-btn nav-sub" data-view="settings-bento-menu">Bento menu &amp; pricing</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-shop-layout">Shop layout</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-popular-items">Popular items</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
@@ -2590,7 +2624,174 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="settings-bento-menu" class="tab-panel hidden">
+        <section id="bento-overview" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="boPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="boPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="boPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="boFrom">From (UTC)</label>
+                <input type="date" id="boFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="boTo">To (UTC, inclusive)</label>
+                <input type="date" id="boTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="boBucket">Bucket</label>
+                <select id="boBucket" aria-label="Time bucket">
+                  <option value="day">Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month" selected>Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="boRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <p class="field-hint" style="margin:0 0 12px" id="boScopeText">
+              Marketing funnel for the Bento member app — every registered member vs how many actually paid for a meal plan. Totals are all-time; the date range below drives the "new in range" figures and the registrations-vs-payments chart.
+            </p>
+
+            <div class="sa-kpi-strip" id="boKpiStrip">
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Registered members</div>
+                <div class="sa-kpi-card-value" id="boValMembers">—</div>
+                <div class="sa-kpi-card-delta"><span id="boNewMembers">—</span> new in range</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Paid members</div>
+                <div class="sa-kpi-card-value" id="boValPaid">—</div>
+                <div class="sa-kpi-card-delta"><span id="boNewPaid">—</span> first paid in range</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Conversion rate</div>
+                <div class="sa-kpi-card-value" id="boValConv">—</div>
+                <div class="sa-kpi-card-delta">paid ÷ registered</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Bento revenue (paid)</div>
+                <div class="sa-kpi-card-value" id="boValGmv">—</div>
+                <div class="sa-kpi-card-delta"><span id="boPayTxns">—</span> payments total</div>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Registered vs paid</h2>
+              </div>
+              <div style="padding:16px 20px">
+                <div id="boFunnelBar" style="max-width:680px"></div>
+                <p class="field-hint" id="boFunnelHint" style="margin-top:10px">Apply a date range to load the funnel.</p>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Registrations vs payments by period</h2>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr><th>Period</th><th>New registrations</th><th>Bento payments</th><th>Revenue (RM)</th></tr>
+                  </thead>
+                  <tbody id="boSeriesBody">
+                    <tr><td colspan="4" class="muted-hint">Apply a date range to load.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="bento-sales" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="bsPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="bsPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="bsPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsFrom">From (UTC)</label>
+                <input type="date" id="bsFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsTo">To (UTC, inclusive)</label>
+                <input type="date" id="bsTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsBucket">Bucket</label>
+                <select id="bsBucket" aria-label="Time bucket">
+                  <option value="day">Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month" selected>Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="bsRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <p class="field-hint" style="margin:0 0 12px">
+              Bento-only sales — successful subscription payments by payment date (UTC). Fully separate from cake-shop sales.
+            </p>
+
+            <div class="sa-kpi-strip">
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Bento revenue (paid)</div>
+                <div class="sa-kpi-card-value" id="bsValGmv">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Paid plans</div>
+                <div class="sa-kpi-card-value" id="bsValOrders">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Avg plan value</div>
+                <div class="sa-kpi-card-value" id="bsValAov">—</div>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head"><h2>Sales by period</h2></div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Period</th><th>Payments</th><th>Revenue (RM)</th></tr></thead>
+                  <tbody id="bsSeriesBody"><tr><td colspan="3" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head"><h2>Top packages (sales)</h2></div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Package</th><th>Code</th><th>Sales</th><th>Revenue (RM)</th><th>Payments</th></tr></thead>
+                  <tbody id="bsTopBody"><tr><td colspan="5" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Recent transactions</h2>
+                <div class="sheet-actions"><span class="field-hint" id="bsTxnHint"></span></div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Amount (RM)</th></tr></thead>
+                  <tbody id="bsTxnBody"><tr><td colspan="6" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="bento-operations" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
               <h2>Bento operations</h2>
@@ -2630,8 +2831,10 @@ export class AdminDashboardController {
               <p class="field-hint" id="bentoSettingsEnvHint" style="display:none;color:#b45309"></p>
             </div>
           </div>
+        </section>
 
-          <div class="sheet" style="margin-top:16px">
+        <section id="bento-pricing" class="tab-panel hidden">
+          <div class="sheet">
             <div class="sheet-head">
               <h2>Bento package pricing</h2>
               <div class="sheet-actions">
@@ -2662,11 +2865,16 @@ export class AdminDashboardController {
               <p class="field-hint" id="bentoPackagesSaveResult"></p>
             </div>
           </div>
+        </section>
 
-          <div class="sheet" style="margin-top:16px">
+        <section id="bento-menu" class="tab-panel hidden">
+          <div class="sheet">
             <div class="sheet-head">
               <h2>Bento weekly menu</h2>
               <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="bentoMenuTemplateBtn">Download template</button>
+                <button type="button" class="btn-outline" id="bentoMenuImportBtn">Import file</button>
+                <input type="file" id="bentoMenuImportFile" accept=".xlsx,.csv" style="display:none" />
                 <button type="button" class="btn-outline" id="refreshBentoMenuBtn">Refresh</button>
                 <button type="button" class="btn-primary" id="bentoMenuSaveBtn">Save menu</button>
               </div>
@@ -2675,6 +2883,10 @@ export class AdminDashboardController {
               <p class="field-hint" style="margin-top:0">
                 These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. Tick <strong>Closed</strong> to block scheduling on that weekday (e.g. Sunday). This is separate from the cake-sales shopping catalog.
               </p>
+              <p class="field-hint" style="margin-top:0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px">
+                <strong>Bulk edit:</strong> click <strong>Download template</strong> to get an Excel file pre-filled with the current menu, edit it, then <strong>Import file</strong> (.xlsx or .csv) to load it back in. Imported values appear in the table below for review — click <strong>Save menu</strong> to publish.
+              </p>
+              <p class="field-hint" id="bentoMenuImportResult" style="margin-top:0"></p>
               <div class="table-wrap">
                 <table class="data">
                   <thead>
@@ -2693,8 +2905,10 @@ export class AdminDashboardController {
               <p class="field-hint" id="bentoMenuSaveResult"></p>
             </div>
           </div>
+        </section>
 
-          <div class="sheet" style="margin-top:16px">
+        <section id="bento-orders" class="tab-panel hidden">
+          <div class="sheet">
             <div class="sheet-head">
               <h2>Bento meal orders export</h2>
               <div class="sheet-actions">
@@ -3060,13 +3274,14 @@ export class AdminDashboardController {
     const views = [
       'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
       'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
+      'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
       'vouchers-rewards-hub',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-bento-menu', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
+      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -3133,7 +3348,12 @@ export class AdminDashboardController {
       'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
-      'settings-bento-menu': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 4v6"/><path d="M14 14h3"/>',
+      'bento-overview': '<path d="M3 3v18h18"/><path d="M18.7 8a6 6 0 0 1-6 6H3"/><circle cx="7" cy="17" r="1"/>',
+      'bento-sales': '<path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/>',
+      'bento-menu': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 4v6"/>',
+      'bento-pricing': iconLoyalty,
+      'bento-operations': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+      'bento-orders': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
       'settings-shop-layout': '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
       'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
@@ -3175,7 +3395,12 @@ export class AdminDashboardController {
       'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
-      'settings-bento-menu': 'Settings · Bento menu & pricing',
+      'bento-overview': 'Bento · Overview & members',
+      'bento-sales': 'Bento · Sales & transactions',
+      'bento-menu': 'Bento · Weekly menu',
+      'bento-pricing': 'Bento · Packages & pricing',
+      'bento-operations': 'Bento · Capacity & schedule',
+      'bento-orders': 'Bento · Kitchen orders export',
       'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
@@ -5135,6 +5360,170 @@ export class AdminDashboardController {
       }
     }
 
+    // --- Bento overview (member funnel) + dedicated sales views ---
+    function bentoIsoDateUtc(d) {
+      return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+    }
+    function bentoRangeInit(prefix) {
+      var fromEl = document.getElementById(prefix + 'From');
+      var toEl = document.getElementById(prefix + 'To');
+      if (!fromEl || !toEl || (fromEl.value && toEl.value)) return;
+      var t = new Date();
+      var end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      var start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 29);
+      fromEl.value = bentoIsoDateUtc(start);
+      toEl.value = bentoIsoDateUtc(end);
+    }
+    function bentoRangePreset(prefix, kind) {
+      var fromEl = document.getElementById(prefix + 'From');
+      var toEl = document.getElementById(prefix + 'To');
+      if (!fromEl || !toEl) return;
+      var t = new Date();
+      var end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      var start;
+      if (kind === 'mtd') {
+        start = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
+      } else {
+        start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - (kind - 1));
+      }
+      fromEl.value = bentoIsoDateUtc(start);
+      toEl.value = bentoIsoDateUtc(end);
+    }
+    function bentoRangeQuery(prefix) {
+      var fromEl = document.getElementById(prefix + 'From');
+      var toEl = document.getElementById(prefix + 'To');
+      var bucketEl = document.getElementById(prefix + 'Bucket');
+      if (!fromEl || !toEl || !fromEl.value || !toEl.value) return null;
+      var fromIso = fromEl.value + 'T00:00:00.000Z';
+      var toEnd = new Date(toEl.value + 'T00:00:00.000Z');
+      toEnd.setUTCDate(toEnd.getUTCDate() + 1);
+      var bucket = bucketEl ? bucketEl.value : 'month';
+      return 'from=' + encodeURIComponent(fromIso) + '&to=' + encodeURIComponent(toEnd.toISOString()) + '&bucket=' + encodeURIComponent(bucket);
+    }
+    function bentoFmtPeriod(iso) {
+      return iso ? String(iso).slice(0, 10) : '-';
+    }
+    function bentoFmtDateTime(iso) {
+      if (!iso) return '-';
+      var s = String(iso);
+      return s.slice(0, 10) + ' ' + s.slice(11, 16);
+    }
+    function bentoFunnelRow(label, value, pctWidth, color) {
+      var w = Math.max(0, Math.min(100, pctWidth));
+      return '<div style="margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>' + label + '</span><strong>' + Number(value || 0).toLocaleString() + '</strong></div>' +
+        '<div style="background:#e5e9f0;border-radius:6px;height:22px;overflow:hidden"><div style="width:' + w + '%;height:100%;background:' + color + ';transition:width .3s"></div></div>' +
+        '</div>';
+    }
+    async function loadBentoOverview() {
+      bentoRangeInit('bo');
+      var q = bentoRangeQuery('bo');
+      var hint = document.getElementById('boFunnelHint');
+      if (!q) { if (hint) hint.textContent = 'Set from and to dates, then Apply.'; return; }
+      if (hint) hint.textContent = 'Loading…';
+      try {
+        var data = await api('/admin/reports/bento/overview?' + q);
+        var t = data.totals || {};
+        var r = data.inRange || {};
+        var total = Number(t.totalMembers) || 0;
+        var paid = Number(t.paidMembers) || 0;
+        document.getElementById('boValMembers').textContent = Number(total).toLocaleString();
+        document.getElementById('boValPaid').textContent = Number(paid).toLocaleString();
+        document.getElementById('boValConv').textContent = ((t.conversionRate || 0) * 100).toFixed(1) + '%';
+        document.getElementById('boValGmv').textContent = 'RM ' + moneyFromCents(t.totalGmvCents);
+        document.getElementById('boNewMembers').textContent = fmt(r.newMembers);
+        document.getElementById('boNewPaid').textContent = fmt(r.newPaidMembers);
+        document.getElementById('boPayTxns').textContent = fmt(t.payingTransactions);
+        var bar = document.getElementById('boFunnelBar');
+        if (bar) {
+          bar.innerHTML =
+            bentoFunnelRow('Registered members', total, 100, '#3b82f6') +
+            bentoFunnelRow('Paid members', paid, total > 0 ? (paid / total) * 100 : 0, '#059669');
+        }
+        var sb = document.getElementById('boSeriesBody');
+        var rows = (data.series || []).map(function (s) {
+          return '<tr><td>' + bentoFmtPeriod(s.periodStart) + '</td><td>' + fmt(s.registrations) + '</td><td>' + fmt(s.payments) + '</td><td>' + moneyFromCents(s.gmvCents) + '</td></tr>';
+        });
+        if (sb) sb.innerHTML = rows.join('') || '<tr><td colspan="4" class="muted-hint">No activity in this range.</td></tr>';
+        if (hint) hint.textContent = paid.toLocaleString() + ' of ' + total.toLocaleString() + ' members paid (' + ((t.conversionRate || 0) * 100).toFixed(1) + '% conversion).';
+        statusPanel.textContent = 'Bento overview updated.';
+      } catch (e) {
+        if (hint) hint.textContent = e.message || String(e);
+        statusPanel.textContent = e.message || String(e);
+      }
+    }
+    async function loadBentoSales() {
+      bentoRangeInit('bs');
+      var q = bentoRangeQuery('bs');
+      var hint = document.getElementById('bsTxnHint');
+      if (!q) { if (hint) hint.textContent = 'Set from and to dates, then Apply.'; return; }
+      if (hint) hint.textContent = 'Loading…';
+      try {
+        var data = await api('/admin/reports/sales-analytics?category=bento&' + q);
+        var sum = data.summary || {};
+        document.getElementById('bsValGmv').textContent = 'RM ' + moneyFromCents(sum.totalGmvCents);
+        document.getElementById('bsValOrders').textContent = fmt(sum.completedOrders);
+        document.getElementById('bsValAov').textContent = 'RM ' + moneyFromCents(sum.averageOrderValueCents);
+        var sb = document.getElementById('bsSeriesBody');
+        var srows = (data.series || []).map(function (s) {
+          return '<tr><td>' + bentoFmtPeriod(s.periodStart) + '</td><td>' + fmt(s.orderCount) + '</td><td>' + moneyFromCents(s.gmvCents) + '</td></tr>';
+        });
+        if (sb) sb.innerHTML = srows.join('') || '<tr><td colspan="3" class="muted-hint">No bento sales in this range.</td></tr>';
+        var tb = document.getElementById('bsTopBody');
+        var trows = (data.topProducts || []).map(function (p) {
+          return '<tr><td>' + bpAttr(p.name) + '</td><td><code style="font-size:11px">' + fmt(p.productId) + '</code></td><td>' + fmt(p.qtySold) + '</td><td>' + moneyFromCents(p.revenueCents) + '</td><td>' + fmt(p.orders) + '</td></tr>';
+        });
+        if (tb) tb.innerHTML = trows.join('') || '<tr><td colspan="5" class="muted-hint">No package sales in this range.</td></tr>';
+        var txn = await api('/admin/reports/bento/transactions?' + q);
+        var list = (txn && Array.isArray(txn.transactions)) ? txn.transactions : [];
+        var xb = document.getElementById('bsTxnBody');
+        var xrows = list.map(function (x) {
+          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
+        });
+        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="6" class="muted-hint">No transactions in this range.</td></tr>';
+        if (hint) hint.textContent = list.length + ' shown (latest 100)';
+        statusPanel.textContent = 'Bento sales updated.';
+      } catch (e) {
+        if (hint) hint.textContent = e.message || String(e);
+        statusPanel.textContent = e.message || String(e);
+      }
+    }
+
+    async function downloadBentoMenuTemplate() {
+      var out = document.getElementById('bentoMenuImportResult');
+      if (out) out.textContent = 'Preparing template…';
+      try {
+        await apiDownload('/admin/bento-menu/template', 'bento-weekly-menu-template.xlsx');
+        if (out) out.textContent = 'Template downloaded. Edit it, then use Import file.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function importBentoMenuFile(file) {
+      var out = document.getElementById('bentoMenuImportResult');
+      if (!file) return;
+      if (out) out.textContent = 'Reading ' + (file.name || 'file') + '…';
+      try {
+        var headers = { ...getAuthHeaders() };
+        delete headers['Content-Type'];
+        var fd = new FormData();
+        fd.append('file', file);
+        var res = await fetch('/admin/bento-menu/import', { method: 'POST', headers, body: fd });
+        if (!res.ok) {
+          var txt = await res.text();
+          throw new Error('Import failed (' + res.status + '): ' + txt);
+        }
+        var data = await res.json();
+        lastBentoMenu = (data && Array.isArray(data.weekdays)) ? data.weekdays : [];
+        renderBentoMenu();
+        if (out) out.textContent = 'Loaded ' + lastBentoMenu.length + ' day(s) from ' + (file.name || 'file') + '. Review the table above, then click Save menu to publish.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
     async function loadShopCatalog() {
       const data = await api('/admin/shop-catalog/products');
       lastShopCatalogProducts = data || [];
@@ -6451,6 +6840,24 @@ export class AdminDashboardController {
         saveBentoMenu();
       });
     }
+    var bentoMenuTemplateBtn = document.getElementById('bentoMenuTemplateBtn');
+    if (bentoMenuTemplateBtn) {
+      bentoMenuTemplateBtn.addEventListener('click', function () {
+        downloadBentoMenuTemplate().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var bentoMenuImportBtn = document.getElementById('bentoMenuImportBtn');
+    var bentoMenuImportFile = document.getElementById('bentoMenuImportFile');
+    if (bentoMenuImportBtn && bentoMenuImportFile) {
+      bentoMenuImportBtn.addEventListener('click', function () {
+        bentoMenuImportFile.value = '';
+        bentoMenuImportFile.click();
+      });
+      bentoMenuImportFile.addEventListener('change', function () {
+        var file = bentoMenuImportFile.files && bentoMenuImportFile.files[0];
+        if (file) importBentoMenuFile(file).catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
     var bentoSettingsSaveBtn = document.getElementById('bentoSettingsSaveBtn');
     if (bentoSettingsSaveBtn) {
       bentoSettingsSaveBtn.addEventListener('click', function () {
@@ -6496,6 +6903,26 @@ export class AdminDashboardController {
         exportBentoOrdersExcel().catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
+    function wireBentoRange(prefix, loader) {
+      var refreshBtn = document.getElementById(prefix + 'RefreshBtn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', function () {
+          loader().catch(function (e) { statusPanel.textContent = e.message; });
+        });
+      }
+      var presets = [['Preset7', 7], ['Preset30', 30], ['PresetMtd', 'mtd']];
+      presets.forEach(function (p) {
+        var el = document.getElementById(prefix + p[0]);
+        if (el) {
+          el.addEventListener('click', function () {
+            bentoRangePreset(prefix, p[1]);
+            loader().catch(function (e) { statusPanel.textContent = e.message; });
+          });
+        }
+      });
+    }
+    wireBentoRange('bo', loadBentoOverview);
+    wireBentoRange('bs', loadBentoSales);
     var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
     if (scSitesCatalogSaveBtn) {
       scSitesCatalogSaveBtn.addEventListener('click', function () {
@@ -7702,9 +8129,29 @@ export class AdminDashboardController {
               statusPanel.textContent = err.message || String(err);
             });
           }
-          if (view === 'settings-bento-menu' && isConnected) {
-            bentoOrdersInitDates();
+          if (view === 'bento-overview' && isConnected) {
+            loadBentoOverview().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'bento-sales' && isConnected) {
+            loadBentoSales().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (
+            (view === 'bento-menu' ||
+              view === 'bento-pricing' ||
+              view === 'bento-operations') &&
+            isConnected
+          ) {
             loadBentoMenu().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'bento-orders' && isConnected) {
+            bentoOrdersInitDates();
+            previewBentoOrders().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

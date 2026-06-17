@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import ExcelJS from 'exceljs';
+import { parse as parseCsv } from 'csv-parse/sync';
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +20,24 @@ export const BENTO_WEEKDAY_CODES = [
   'Sun',
 ] as const;
 export type BentoWeekdayCode = (typeof BENTO_WEEKDAY_CODES)[number];
+
+/**
+ * Column order for the downloadable weekly-menu spreadsheet/CSV template. The
+ * importer maps strictly by this position, so the header row is optional on
+ * upload as long as columns stay in this order.
+ */
+export const BENTO_MENU_TEMPLATE_HEADERS = [
+  'Day',
+  'Closed (yes/no)',
+  'Lunch Regular (EN)',
+  'Lunch Regular (中文)',
+  'Lunch Vegetarian (EN)',
+  'Lunch Vegetarian (中文)',
+  'Dinner Regular (EN)',
+  'Dinner Regular (中文)',
+  'Dinner Vegetarian (EN)',
+  'Dinner Vegetarian (中文)',
+] as const;
 
 export type BentoMealDishes = {
   /** Regular / non-vegetarian dish name (English). */
@@ -180,5 +200,169 @@ export class BentoMenuService {
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
     return next;
+  }
+
+  // --- Spreadsheet template download + import (review-then-save flow) ---
+
+  /** Build an .xlsx template pre-filled with the current menu for the admin to
+   * edit and re-upload. One row per weekday (Mon–Sun). */
+  async buildTemplateBuffer(): Promise<Buffer> {
+    const config = this.getConfig();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Moja Admin';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Bento Weekly Menu');
+    ws.addRow([...BENTO_MENU_TEMPLATE_HEADERS]);
+    for (const d of config.weekdays) {
+      ws.addRow([
+        d.weekday,
+        d.closed ? 'yes' : 'no',
+        d.lunch.regular,
+        d.lunch.regularZh,
+        d.lunch.veg,
+        d.lunch.vegZh,
+        d.dinner.regular,
+        d.dinner.regularZh,
+        d.dinner.veg,
+        d.dinner.vegZh,
+      ]);
+    }
+    ws.getRow(1).font = { bold: true };
+    ws.columns = BENTO_MENU_TEMPLATE_HEADERS.map((_, i) => ({
+      width: i === 0 ? 8 : i === 1 ? 16 : 26,
+    }));
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
+  }
+
+  /**
+   * Parse an uploaded .xlsx or .csv file into a normalized menu config. Does
+   * NOT persist — the caller (admin UI) loads the result into the editor so the
+   * admin can review before saving via the existing PUT /admin/bento-menu.
+   */
+  async parseUploadToConfig(
+    file?: Express.Multer.File,
+  ): Promise<BentoMenuConfig> {
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMPORT_EMPTY',
+        message: 'No file uploaded. Choose a .xlsx or .csv file.',
+      });
+    }
+    const isCsv =
+      (file.originalname || '').toLowerCase().endsWith('.csv') ||
+      file.mimetype === 'text/csv';
+    let rows: string[][];
+    try {
+      rows = await this.readRows(file.buffer, isCsv);
+    } catch {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMPORT_UNREADABLE',
+        message:
+          'Could not read the file. Upload the unmodified .xlsx/.csv template.',
+      });
+    }
+
+    const dataRows = this.stripHeaderRow(rows);
+    const weekdays: BentoWeekdayMenu[] = [];
+    for (const r of dataRows) {
+      const code = this.normalizeWeekday(r[0] ?? '');
+      if (!code) continue;
+      weekdays.push({
+        weekday: code,
+        closed: this.parseClosedCell(r[1] ?? ''),
+        lunch: {
+          regular: (r[2] ?? '').trim(),
+          regularZh: (r[3] ?? '').trim(),
+          veg: (r[4] ?? '').trim(),
+          vegZh: (r[5] ?? '').trim(),
+        },
+        dinner: {
+          regular: (r[6] ?? '').trim(),
+          regularZh: (r[7] ?? '').trim(),
+          veg: (r[8] ?? '').trim(),
+          vegZh: (r[9] ?? '').trim(),
+        },
+      });
+    }
+    if (weekdays.length === 0) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMPORT_NO_ROWS',
+        message:
+          'No valid weekday rows found. Keep the Day column (Mon–Sun) from the template.',
+      });
+    }
+    return this.normalize({ weekdays });
+  }
+
+  private async readRows(buffer: Buffer, isCsv: boolean): Promise<string[][]> {
+    if (isCsv) {
+      const parsed = parseCsv(buffer.toString('utf8'), {
+        skip_empty_lines: true,
+        relax_column_count: true,
+        bom: true,
+      }) as unknown[][];
+      return parsed.map((r) => r.map((c) => this.cellToString(c)));
+    }
+    const wb = new ExcelJS.Workbook();
+    // Multer buffer is a Uint8Array-backed Buffer; exceljs typings are strict.
+    // @ts-expect-error Buffer/Uint8Array mismatch between @types/node and exceljs
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+    if (!ws) return [];
+    const out: string[][] = [];
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const vals: string[] = [];
+      for (let c = 1; c <= BENTO_MENU_TEMPLATE_HEADERS.length; c += 1) {
+        vals.push(this.cellToString(row.getCell(c).value));
+      }
+      out.push(vals);
+    });
+    return out;
+  }
+
+  private cellToString(v: unknown): string {
+    if (v == null) return '';
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
+    if (v instanceof Date) return v.toISOString();
+    const obj = v as {
+      text?: unknown;
+      result?: unknown;
+      richText?: Array<{ text?: string }>;
+    };
+    if (typeof obj.text === 'string') return obj.text.trim();
+    if (Array.isArray(obj.richText)) {
+      return obj.richText.map((t) => t.text || '').join('').trim();
+    }
+    if (obj.result != null) return String(obj.result).trim();
+    return '';
+  }
+
+  private stripHeaderRow(rows: string[][]): string[][] {
+    if (rows.length === 0) return rows;
+    const first = (rows[0][0] ?? '').trim().toLowerCase();
+    return first === 'day' || first === 'weekday' ? rows.slice(1) : rows;
+  }
+
+  private normalizeWeekday(raw: string): BentoWeekdayCode | null {
+    const s = (raw || '').trim().toLowerCase();
+    if (!s) return null;
+    const map: Record<string, BentoWeekdayCode> = {
+      mon: 'Mon',
+      tue: 'Tue',
+      wed: 'Wed',
+      thu: 'Thu',
+      fri: 'Fri',
+      sat: 'Sat',
+      sun: 'Sun',
+    };
+    return map[s.slice(0, 3)] ?? null;
+  }
+
+  private parseClosedCell(raw: string): boolean {
+    return ['yes', 'y', 'true', '1', 'closed', 'x'].includes(
+      (raw || '').trim().toLowerCase(),
+    );
   }
 }

@@ -53,6 +53,18 @@ export class AdminReportsController {
     return payload;
   }
 
+  @Get('bento/overview')
+  @RequirePermissions(P.REPORT_VIEW)
+  bentoOverview(@Query() query: SalesAnalyticsQueryDto) {
+    return this.admin.getBentoMemberFunnel(query);
+  }
+
+  @Get('bento/transactions')
+  @RequirePermissions(P.REPORT_VIEW)
+  bentoTransactions(@Query() query: SalesAnalyticsQueryDto) {
+    return this.admin.listBentoTransactions(query);
+  }
+
   @Get('daily-commerce')
   @RequirePermissions(P.REPORT_VIEW)
   getDailyCommerce(@Query() query: AdminDailyCommerceDateDto) {

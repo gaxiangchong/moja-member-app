@@ -43,6 +43,54 @@ export interface SalesAnalyticsResult {
   };
 }
 
+export interface BentoMemberFunnelResult {
+  meta: {
+    from: string;
+    to: string;
+    bucket: 'day' | 'week' | 'month';
+    generatedAt: string;
+  };
+  /** All-time totals (the full marketing funnel). */
+  totals: {
+    /** Every registered member (the Bento app shares the main member login). */
+    totalMembers: number;
+    /** Distinct members with at least one successful bento payment. */
+    paidMembers: number;
+    /** Total successful bento payments (repeat buyers counted each time). */
+    payingTransactions: number;
+    /** Lifetime successful bento revenue, in cents. */
+    totalGmvCents: number;
+    /** paidMembers / totalMembers, 0..1. */
+    conversionRate: number;
+  };
+  /** Deltas scoped to the selected from/to window. */
+  inRange: {
+    newMembers: number;
+    newPaidMembers: number;
+    payments: number;
+    gmvCents: number;
+  };
+  /** Registrations vs payments per bucket, for the funnel chart. */
+  series: Array<{
+    periodStart: string;
+    registrations: number;
+    payments: number;
+    gmvCents: number;
+  }>;
+}
+
+export interface BentoTransactionRow {
+  paymentIntentId: string;
+  paidAt: string;
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  packageCode: string | null;
+  packageLabel: string | null;
+  mealOption: string | null;
+  amountCents: number;
+}
+
 export class SalesAnalyticsQueryDto {
   @IsOptional()
   @IsDateString()
