@@ -76,6 +76,8 @@ export const translations: Record<Lang, Dict> = {
     'auth.phonePlaceholder': '+60 12 345 6789',
     'auth.trust':
       'New sign-ins use a one-time code sent to your email. Kindly check your junk folder if you don\'t see it.',
+    'auth.supportPrompt': 'Trouble logging in or signing up?',
+    'auth.supportCta': 'Chat with us on WhatsApp',
     'auth.enterPin': 'Enter your PIN',
     'auth.pinFor': '6-digit PIN for {phone}',
     'auth.pinAria': '6-digit PIN',
@@ -436,6 +438,8 @@ export const translations: Record<Lang, Dict> = {
     'auth.phoneLabel': '手机号码',
     'auth.phonePlaceholder': '+60 12 345 6789',
     'auth.trust': '新用户将通过电邮收到一次性验证码。如未收到，请检查垃圾邮件文件夹。',
+    'auth.supportPrompt': '登录或注册遇到问题？',
+    'auth.supportCta': '通过 WhatsApp 联系我们',
     'auth.enterPin': '输入 PIN 码',
     'auth.pinFor': '{phone} 的 6 位 PIN 码',
     'auth.pinAria': '6 位 PIN 码',

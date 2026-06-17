@@ -748,6 +748,11 @@ export class PaymentsService {
       where: { id: subscriptionId },
       include: { package: true },
     });
+    // Same receipt as a real payment, so the demo flow exercises email too.
+    void this.receiptEmail.sendBentoSubscriptionReceipt({
+      subscriptionId,
+      paymentIntentId: refreshed.paymentIntentId,
+    });
     return {
       subscription: {
         id: refreshed.id,
@@ -905,6 +910,12 @@ export class PaymentsService {
           status: 'SUCCEEDED',
           metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
         },
+      });
+      // Fire-and-forget: a transient email failure must not roll back a
+      // successful payment, and the webhook should still ack 200 quickly.
+      void this.receiptEmail.sendBentoSubscriptionReceipt({
+        subscriptionId,
+        paymentIntentId: intent.id,
       });
     } catch (err) {
       this.logger.error(

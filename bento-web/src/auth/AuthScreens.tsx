@@ -332,6 +332,18 @@ export function AuthScreens({ onAuthenticated }: Props) {
             {error && <p className="err">{error}</p>}
           </>
         )}
+
+        <div className="authSupport">
+          <span className="authSupportPrompt">{t('auth.supportPrompt')}</span>
+          <a
+            className="authSupportLink"
+            href="https://wa.me/60109531593?text=Hi%2C%20I%20need%20help%20logging%20in%20to%20Moja%20Bento"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span aria-hidden="true">💬</span> {t('auth.supportCta')}
+          </a>
+        </div>
       </div>
     </main>
   );

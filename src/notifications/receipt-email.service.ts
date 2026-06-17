@@ -12,6 +12,11 @@ interface SendWalletTopUpReceiptInput {
   paymentIntentId: string;
 }
 
+interface SendBentoSubscriptionReceiptInput {
+  subscriptionId: string;
+  paymentIntentId?: string | null;
+}
+
 /**
  * Sends transactional receipts after a payment is captured.
  *
@@ -267,6 +272,162 @@ export class ReceiptEmailService {
     }
   }
 
+  async sendBentoSubscriptionReceipt(
+    input: SendBentoSubscriptionReceiptInput,
+  ): Promise<void> {
+    try {
+      if (!this.email.isConfigured()) {
+        this.logger.warn(
+          `Skipping bento receipt for subscription ${input.subscriptionId}: email transport not configured.`,
+        );
+        return;
+      }
+
+      const sub = await this.prisma.bentoSubscription.findUnique({
+        where: { id: input.subscriptionId },
+        include: { package: true, customer: true },
+      });
+      if (!sub) {
+        this.logger.warn(
+          `Skipping bento receipt: subscription ${input.subscriptionId} not found.`,
+        );
+        return;
+      }
+
+      const recipient = sub.customer.email?.trim();
+      if (!recipient) {
+        this.logger.warn(
+          `Skipping bento receipt: customer ${sub.customerId} has no email on file.`,
+        );
+        return;
+      }
+
+      const intent = input.paymentIntentId
+        ? await this.prisma.paymentIntent.findUnique({
+            where: { id: input.paymentIntentId },
+          })
+        : sub.paymentIntentId
+          ? await this.prisma.paymentIntent.findUnique({
+              where: { id: sub.paymentIntentId },
+            })
+          : null;
+
+      const currency = intent?.currency || 'MYR';
+      const channelLabel = this.formatChannelLabel(intent?.channelCode);
+      const reference = intent?.referenceId || sub.id;
+      const greetingName = sub.customer.displayName?.trim() || 'there';
+      const subject = `${this.email.getSubjectPrefix()} Bento meal plan confirmed`;
+      const totalStr = formatMoney(sub.totalCents, currency);
+      const paidAtStr = formatDateTime(intent?.updatedAt ?? sub.createdAt);
+
+      const mealOptionLabel =
+        sub.mealOption === 'BOTH'
+          ? 'Lunch + Dinner'
+          : sub.mealOption === 'LUNCH'
+            ? 'Lunch only'
+            : 'Dinner only';
+      const dietLabel = (v: string) => (v === 'VEG' ? 'Vegetarian' : 'Regular');
+      const riceLabel = sub.riceType === 'BROWN' ? 'Brown rice' : 'White rice';
+
+      // Build a compact list of plan detail rows (label/value pairs).
+      const details: Array<[string, string]> = [
+        ['Package', sub.package.label],
+        ['Meals included', `${sub.mealCreditsTotal} meals`],
+        ['Schedule', mealOptionLabel],
+      ];
+      if (sub.mealOption === 'LUNCH' || sub.mealOption === 'BOTH') {
+        details.push([
+          'Lunch',
+          `${sub.lunchCredits} meals · ${dietLabel(sub.lunchVariant)}`,
+        ]);
+      }
+      if (sub.mealOption === 'DINNER' || sub.mealOption === 'BOTH') {
+        details.push([
+          'Dinner',
+          `${sub.dinnerCredits} meals · ${dietLabel(sub.dinnerVariant)}`,
+        ]);
+      }
+      details.push(['Rice', riceLabel]);
+      if (sub.includeDrinkAddon) details.push(['Add-on', 'Drink included']);
+      if (sub.startDate && sub.endDate) {
+        details.push([
+          'Valid',
+          `${formatDate(sub.startDate)} – ${formatDate(sub.endDate)}`,
+        ]);
+      }
+
+      const detailRowsHtml = details
+        .map(
+          ([label, value]) => `
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;">${escapeHtml(label)}</td>
+              <td style="padding:6px 0;text-align:right;color:#111827;font-weight:600;">${escapeHtml(value)}</td>
+            </tr>`,
+        )
+        .join('');
+
+      const html = `
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f9fafb;font-family:Inter,Arial,sans-serif;color:#111827;">
+    <div style="max-width:560px;margin:0 auto;padding:24px;">
+      <div style="background:#ffffff;border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+        <h1 style="font-size:20px;margin:0 0 4px;">Your bento meal plan is confirmed 🍱</h1>
+        <p style="margin:0 0 16px;color:#6b7280;font-size:14px;">Thanks, ${escapeHtml(greetingName)} — we received your payment and your meal plan is now active.</p>
+
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;">
+          <div style="font-size:28px;font-weight:700;color:#111827;margin-bottom:8px;">${totalStr}</div>
+          <div><strong>Paid:</strong> ${escapeHtml(paidAtStr)}</div>
+          ${channelLabel ? `<div><strong>Paid with:</strong> ${escapeHtml(channelLabel)}</div>` : ''}
+          <div><strong>Reference:</strong> <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;">${escapeHtml(reference)}</span></div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tbody>
+            ${detailRowsHtml}
+          </tbody>
+        </table>
+
+        <p style="margin:24px 0 0;font-size:13px;color:#6b7280;">
+          Pick your pickup days and dishes anytime in the Moja Bento app. We'll have your meals ready for collection.
+        </p>
+      </div>
+
+      <p style="margin:16px 0 0;text-align:center;font-size:12px;color:#9ca3af;">
+        This is a transactional receipt — please keep it for your records.
+      </p>
+    </div>
+  </body>
+</html>`;
+
+      const text = [
+        `Your bento meal plan is confirmed`,
+        ``,
+        `Thanks, ${greetingName}. We received your payment and your meal plan is now active.`,
+        ``,
+        `Total paid: ${totalStr}`,
+        `Paid:       ${paidAtStr}`,
+        channelLabel ? `Paid with:  ${channelLabel}` : null,
+        `Reference:  ${reference}`,
+        ``,
+        `Plan details:`,
+        ...details.map(([label, value]) => `- ${label}: ${value}`),
+        ``,
+        `Pick your pickup days and dishes anytime in the Moja Bento app.`,
+      ]
+        .filter((line) => line !== null)
+        .join('\n');
+
+      await this.email.send({ to: recipient, subject, html, text });
+    } catch (err) {
+      this.logger.error(
+        `sendBentoSubscriptionReceipt failed for subscription ${input.subscriptionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   private formatChannelLabel(code: string | null | undefined): string | null {
     if (!code) return null;
     const upper = code.toUpperCase();
@@ -314,5 +475,16 @@ function formatDateTime(d: Date): string {
     }).format(d);
   } catch {
     return d.toISOString();
+  }
+}
+
+function formatDate(d: Date): string {
+  try {
+    return new Intl.DateTimeFormat('en-MY', {
+      dateStyle: 'medium',
+      timeZone: 'Asia/Kuala_Lumpur',
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
   }
 }
