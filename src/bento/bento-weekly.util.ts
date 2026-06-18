@@ -6,6 +6,13 @@ import type {
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/**
+ * Bento service launch date. The weekly menu never displays a week earlier than
+ * the week containing this date, so before launch the menu shows the launch
+ * week (22–28 Jun 2026) instead of the current calendar week.
+ */
+export const BENTO_SERVICE_START_ISO = '2026-06-22';
+
 /** Monday (UTC) of the week containing `ref`, as YYYY-MM-DD. */
 export function weekStartMondayIso(ref = new Date()): string {
   const d = new Date(
@@ -58,7 +65,13 @@ export function buildWeeklyMenu(
   config?: BentoMenuConfig,
   minScheduleLeadDays = 2,
 ) {
-  const weekStart = weekStartMondayIso();
+  // Never show a week earlier than the launch week.
+  const launchWeekStart = weekStartMondayIso(
+    parseDateOnly(BENTO_SERVICE_START_ISO),
+  );
+  const currentWeekStart = weekStartMondayIso();
+  const weekStart =
+    currentWeekStart < launchWeekStart ? launchWeekStart : currentWeekStart;
   const start = parseDateOnly(weekStart);
   const days: Array<{
     date: string;

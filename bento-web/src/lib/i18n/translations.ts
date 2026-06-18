@@ -20,6 +20,7 @@ export const translations: Record<Lang, Dict> = {
     'common.refresh': 'Refresh',
     'common.today': 'Today',
     'common.closed': 'Closed',
+    'common.close': 'Close',
     'common.lunch': 'Lunch',
     'common.dinner': 'Dinner',
     'common.meals': 'meals',
@@ -115,6 +116,13 @@ export const translations: Record<Lang, Dict> = {
     'menu.browsePkg': 'Browse packages →',
     'menu.ctaPrompt': 'Like what you see?',
     'menu.ctaBtn': 'Order a plan →',
+
+    'launch.badge': '🎉 Reserve Your Bento Today',
+    'launch.title': 'Bento pickup starts 22 June!',
+    'launch.body':
+      'Ordering is open now. Bento pickup begins on Monday, 22 June — order today to reserve your meals for the launch week.',
+    'launch.pickup': 'Pick up at Moja Maison Eco Botanic',
+    'launch.gotIt': 'Got it',
 
     'weeklyOptIn.title': "This week's menu",
     'weeklyOptIn.weekOf': 'Week of {start} — {end}',
@@ -384,6 +392,7 @@ export const translations: Record<Lang, Dict> = {
     'common.refresh': '刷新',
     'common.today': '今天',
     'common.closed': '休息',
+    'common.close': '关闭',
     'common.lunch': '午餐',
     'common.dinner': '晚餐',
     'common.meals': '份餐',
@@ -476,6 +485,13 @@ export const translations: Record<Lang, Dict> = {
     'menu.browsePkg': '浏览套餐 →',
     'menu.ctaPrompt': '喜欢今周菜单？',
     'menu.ctaBtn': '立即订餐 →',
+
+    'launch.badge': '🎉 现已开放订购',
+    'launch.title': '便当取餐 6 月 22 日开始！',
+    'launch.body':
+      '现已开放订购。便当取餐将于 6 月 22 日（星期一）开始 — 现在立即订购，预留下周的餐点。',
+    'launch.pickup': '于 Moja Maison Eco Botanic 取餐',
+    'launch.gotIt': '知道了',
 
     'weeklyOptIn.title': '本周菜单',
     'weeklyOptIn.weekOf': '周期 {start} — {end}',

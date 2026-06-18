@@ -8,7 +8,7 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
-import { ReportingSettingsService } from './reporting-settings.service';
+import { ReportingSettingsModule } from './reporting-settings.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { HomeAdsModule } from '../home-ads/home-ads.module';
 import { EmployeesModule } from '../employees/employees.module';
@@ -25,6 +25,7 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
     HomeAdsModule,
     EmployeesModule,
     BentoMenuModule,
+    ReportingSettingsModule,
   ],
   controllers: [
     AdminController,
@@ -32,6 +33,6 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
     AdminReportsController,
     AdminEmployeesController,
   ],
-  providers: [AdminService, ApprovalsService, ReportingSettingsService],
+  providers: [AdminService, ApprovalsService],
 })
 export class AdminModule {}

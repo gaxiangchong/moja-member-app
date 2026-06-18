@@ -71,4 +71,15 @@ export class ReportingSettingsService {
   getSalesStartDate(): Date | null {
     return parseIsoDateUtc(this.getSettings().salesStartDate);
   }
+
+  /**
+   * Prisma where-fragment that excludes records created before the sales start
+   * date — used to treat pre-launch test orders as invalid/hidden. Returns an
+   * empty object (no-op) when no cutoff is configured, so it is always safe to
+   * spread into an existing `where`.
+   */
+  createdAtCutoffWhere(): { createdAt?: { gte: Date } } {
+    const cutoff = this.getSalesStartDate();
+    return cutoff ? { createdAt: { gte: cutoff } } : {};
+  }
 }

@@ -615,6 +615,19 @@ export class AdminDashboardController {
     table.data th .sort-hint { opacity: 0.5; font-weight: 400; margin-left: 4px; }
     table.data td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
     table.data tbody tr:hover { background: #f8fafc; }
+    .bento-orders-summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 4px; }
+    .bento-stat { flex: 1 1 120px; min-width: 110px; background: var(--surface, #fff); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; }
+    .bento-stat-num { display: block; font-size: 22px; font-weight: 700; line-height: 1.1; }
+    .bento-stat-lbl { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .03em; }
+    .bento-stat-warn { background: #fef9c3; border-color: #fde68a; }
+    .bento-stat-warn .bento-stat-num { color: #854d0e; }
+    .bento-date-group { margin: 0 0 16px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .bento-date-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; }
+    .bento-date-group-title { font-weight: 700; font-size: 13px; }
+    .bento-date-group-counts { font-size: 12px; color: var(--text-muted); }
+    .bento-date-group .table-wrap { margin: 0; }
+    .bento-date-group table.data th { background: #fff; }
+    .bento-await-badge { display: inline-block; min-width: 20px; padding: 1px 8px; border-radius: 999px; background: #fef9c3; color: #854d0e; font-size: 12px; font-weight: 700; text-align: center; margin-left: 4px; }
     .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-block; }
     .pill.ok { background: #dcfce7; color: #166534; }
     .pill.warn { background: #fef9c3; color: #854d0e; }
@@ -2926,17 +2939,17 @@ export class AdminDashboardController {
         <section id="bento-orders" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
-              <h2>Bento meal orders export</h2>
+              <h2>Bento kitchen orders</h2>
               <div class="sheet-actions">
-                <button type="button" class="btn-outline" id="bentoOrdersPreviewBtn">Preview</button>
+                <button type="button" class="btn-outline" id="bentoOrdersPreviewBtn">Load orders</button>
                 <button type="button" class="btn-primary" id="bentoOrdersExportBtn">Export Excel</button>
               </div>
             </div>
-            <div style="padding:12px 20px;max-width:1040px">
+            <div style="padding:12px 20px;max-width:1100px">
               <p class="field-hint" style="margin-top:0">
-                Count scheduled bento meal sets (lunch + dinner) per day and per week from customer pickup schedules. Excel file has <strong>Daily</strong>, <strong>Weekly</strong>, and <strong>Kitchen pack list</strong> sheets. The kitchen sheet includes each member's pickup ID (first email letter + last 4 phone digits) for labelling packs.
+                See who ordered, their pickup day and meals, grouped by date for kitchen prep. The <strong>Awaiting scheduling</strong> panel lists members who paid but haven't booked a pickup yet — select them and copy WhatsApp links to remind them. Excel export adds <strong>Daily</strong>, <strong>Weekly</strong>, <strong>Kitchen pack list</strong> and <strong>Awaiting scheduling</strong> sheets.
               </p>
-              <div class="form-row-2" style="gap:12px;max-width:520px;margin-bottom:12px">
+              <div class="form-row-2" style="gap:12px;max-width:520px;margin-bottom:8px">
                 <div>
                   <label for="bentoOrdersFrom">From</label>
                   <input type="date" id="bentoOrdersFrom" />
@@ -2946,23 +2959,46 @@ export class AdminDashboardController {
                   <input type="date" id="bentoOrdersTo" />
                 </div>
               </div>
+              <p class="field-hint" id="bentoOrdersExportResult"></p>
+
+              <div id="bentoOrdersSummary" class="bento-orders-summary" style="display:none"></div>
+
+              <h3 style="margin:18px 0 6px">Scheduled pickups</h3>
+              <p class="field-hint" style="margin-top:0">Grouped by pickup date. Each row is one member's meal for that day.</p>
+              <div id="bentoOrdersScheduled">
+                <p class="muted-hint" style="padding:8px 0">Click <strong>Load orders</strong> to see scheduled pickups.</p>
+              </div>
+
+              <div class="bento-await-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:26px 0 6px">
+                <div>
+                  <h3 style="margin:0">Awaiting scheduling <span id="bentoAwaitCount" class="bento-await-badge">0</span></h3>
+                  <p class="field-hint" style="margin:2px 0 0">Paid members who haven't booked a pickup day. Select people to chase, then copy WhatsApp links or phone numbers.</p>
+                </div>
+                <div class="sheet-actions" style="flex-wrap:wrap">
+                  <button type="button" class="btn-outline" id="bentoAwaitCopyWa" disabled>Copy WhatsApp links</button>
+                  <button type="button" class="btn-outline" id="bentoAwaitCopyPhones" disabled>Copy phone numbers</button>
+                </div>
+              </div>
               <div class="table-wrap">
                 <table class="data">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Weekday</th>
-                      <th>Lunch sets</th>
-                      <th>Dinner sets</th>
-                      <th>Total</th>
+                      <th style="width:34px"><input type="checkbox" id="bentoAwaitSelectAll" aria-label="Select all awaiting members" /></th>
+                      <th>Customer</th>
+                      <th>Phone</th>
+                      <th>Pickup ID</th>
+                      <th>Package</th>
+                      <th>Meals</th>
+                      <th>Credits</th>
+                      <th>Purchased</th>
                     </tr>
                   </thead>
-                  <tbody id="bentoOrdersPreviewBody">
-                    <tr><td colspan="5" class="muted-hint">Click Preview to load counts for the date range.</td></tr>
+                  <tbody id="bentoAwaitBody">
+                    <tr><td colspan="8" class="muted-hint">Click Load orders to see who's awaiting scheduling.</td></tr>
                   </tbody>
                 </table>
               </div>
-              <p class="field-hint" id="bentoOrdersExportResult"></p>
+              <p class="field-hint" id="bentoAwaitCopyResult"></p>
             </div>
           </div>
         </section>
@@ -5342,24 +5378,162 @@ export class AdminDashboardController {
       if (extra) parts.push(extra);
       return parts.length ? '?' + parts.join('&') : '';
     }
+    function bentoEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function bentoWaDigits(phone) {
+      return String(phone || '').replace(/[^0-9]/g, '');
+    }
+    function bentoWaMessage(name) {
+      var who = (name && name !== '—') ? (' ' + name) : '';
+      return 'Hi' + who + ', this is Moja Maison. Thanks for your bento order! '
+        + 'We noticed you haven\\u2019t picked your pickup day(s) yet. '
+        + 'Please log in to the member app and schedule your meals so we can prepare them for you. Thank you!';
+    }
+    // Holds the latest awaiting-schedule list for selection + copy.
+    var bentoAwaitRows = [];
+
+    function renderBentoScheduled(kitchen, daily) {
+      var host = document.getElementById('bentoOrdersScheduled');
+      if (!host) return;
+      var list = Array.isArray(kitchen) ? kitchen : [];
+      if (!list.length) {
+        host.innerHTML = '<p class="muted-hint" style="padding:8px 0">No scheduled pickups in this range.</p>';
+        return;
+      }
+      // Group rows by date (kitchen array is already ordered by date).
+      var groups = [];
+      var byDate = {};
+      list.forEach(function (r) {
+        if (!byDate[r.date]) {
+          byDate[r.date] = { date: r.date, weekday: r.weekday, rows: [] };
+          groups.push(byDate[r.date]);
+        }
+        byDate[r.date].rows.push(r);
+      });
+      var dailyByDate = {};
+      (Array.isArray(daily) ? daily : []).forEach(function (d) { dailyByDate[d.date] = d; });
+
+      host.innerHTML = groups.map(function (g) {
+        var d = dailyByDate[g.date] || {};
+        var counts = 'Lunch ' + (d.lunchSets || 0) + ' · Dinner ' + (d.dinnerSets || 0) + ' · Total ' + (d.totalSets || g.rows.length);
+        var rowsHtml = g.rows.map(function (r) {
+          var dietCls = r.diet === 'Vegetarian' ? ' style="color:#15803d;font-weight:600"' : '';
+          return '<tr>'
+            + '<td><strong>' + bentoEsc(r.customerName) + '</strong></td>'
+            + '<td>' + bentoEsc(r.phoneE164) + '</td>'
+            + '<td>' + bentoEsc(r.pickupId) + '</td>'
+            + '<td>' + bentoEsc(r.meal) + '</td>'
+            + '<td' + dietCls + '>' + bentoEsc(r.diet) + '</td>'
+            + '<td>' + bentoEsc(r.riceType) + '</td>'
+            + '<td>' + bentoEsc(r.packageLabel) + '</td>'
+            + '</tr>';
+        }).join('');
+        return '<div class="bento-date-group">'
+          + '<div class="bento-date-group-head"><span class="bento-date-group-title">' + bentoEsc(g.weekday) + ' · ' + bentoEsc(g.date) + '</span>'
+          + '<span class="bento-date-group-counts">' + counts + '</span></div>'
+          + '<div class="table-wrap"><table class="data"><thead><tr>'
+          + '<th>Customer</th><th>Phone</th><th>Pickup ID</th><th>Meal</th><th>Diet</th><th>Rice</th><th>Package</th>'
+          + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div></div>';
+      }).join('');
+    }
+
+    function bentoAwaitSelectedRows() {
+      var boxes = document.querySelectorAll('#bentoAwaitBody input.bento-await-cb:checked');
+      var out = [];
+      boxes.forEach(function (b) {
+        var i = parseInt(b.getAttribute('data-i'), 10);
+        if (!isNaN(i) && bentoAwaitRows[i]) out.push(bentoAwaitRows[i]);
+      });
+      return out;
+    }
+    function bentoAwaitSyncButtons() {
+      var n = bentoAwaitSelectedRows().length;
+      var wa = document.getElementById('bentoAwaitCopyWa');
+      var ph = document.getElementById('bentoAwaitCopyPhones');
+      if (wa) wa.disabled = n === 0;
+      if (ph) ph.disabled = n === 0;
+    }
+    function renderBentoAwaiting(rows) {
+      bentoAwaitRows = Array.isArray(rows) ? rows : [];
+      var body = document.getElementById('bentoAwaitBody');
+      var count = document.getElementById('bentoAwaitCount');
+      var selAll = document.getElementById('bentoAwaitSelectAll');
+      if (count) count.textContent = String(bentoAwaitRows.length);
+      if (selAll) selAll.checked = false;
+      if (!body) return;
+      if (!bentoAwaitRows.length) {
+        body.innerHTML = '<tr><td colspan="8" class="muted-hint">🎉 Everyone with an active plan has scheduled their pickup.</td></tr>';
+        bentoAwaitSyncButtons();
+        return;
+      }
+      body.innerHTML = bentoAwaitRows.map(function (r, i) {
+        return '<tr>'
+          + '<td><input type="checkbox" class="bento-await-cb" data-i="' + i + '" aria-label="Select ' + bentoEsc(r.customerName) + '" /></td>'
+          + '<td><strong>' + bentoEsc(r.customerName) + '</strong></td>'
+          + '<td>' + bentoEsc(r.phoneE164) + '</td>'
+          + '<td>' + bentoEsc(r.pickupId) + '</td>'
+          + '<td>' + bentoEsc(r.packageLabel) + '</td>'
+          + '<td>' + bentoEsc(r.mealOption) + '</td>'
+          + '<td>' + bentoEsc(r.mealCredits) + '</td>'
+          + '<td>' + bentoEsc(r.purchasedAt) + '</td>'
+          + '</tr>';
+      }).join('');
+      bentoAwaitSyncButtons();
+    }
+    function bentoCopyText(text, okMsg) {
+      var out = document.getElementById('bentoAwaitCopyResult');
+      function done(ok) { if (out) out.textContent = ok ? okMsg : ('Copy failed. Text:\\n' + text); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }).catch(function () { done(false); });
+      } else {
+        done(false);
+      }
+    }
+    function bentoCopyWaLinks() {
+      var rows = bentoAwaitSelectedRows();
+      if (!rows.length) return;
+      var lines = rows.map(function (r) {
+        var link = 'https://wa.me/' + bentoWaDigits(r.phoneE164) + '?text=' + encodeURIComponent(bentoWaMessage(r.customerName));
+        return r.customerName + ' (' + r.phoneE164 + '): ' + link;
+      });
+      bentoCopyText(lines.join('\\n'), 'Copied ' + rows.length + ' WhatsApp link(s) to clipboard.');
+    }
+    function bentoCopyPhones() {
+      var rows = bentoAwaitSelectedRows();
+      if (!rows.length) return;
+      var nums = rows.map(function (r) { return r.phoneE164; });
+      bentoCopyText(nums.join('\\n'), 'Copied ' + rows.length + ' phone number(s) to clipboard.');
+    }
+
     async function previewBentoOrders() {
       var out = document.getElementById('bentoOrdersExportResult');
-      var body = document.getElementById('bentoOrdersPreviewBody');
+      var summary = document.getElementById('bentoOrdersSummary');
       if (out) out.textContent = 'Loading…';
       try {
         bentoOrdersInitDates();
         var data = await api('/admin/reports/bento-meal-orders' + bentoOrdersQueryString());
-        var rows = (data && Array.isArray(data.daily)) ? data.daily : [];
-        if (body) {
-          body.innerHTML = rows.length
-            ? rows.map(function (r) {
-              return '<tr><td>' + fmt(r.date) + '</td><td>' + fmt(r.weekday) + '</td><td>' + fmt(r.lunchSets) + '</td><td>' + fmt(r.dinnerSets) + '</td><td><strong>' + fmt(r.totalSets) + '</strong></td></tr>';
-            }).join('')
-            : '<tr><td colspan="5">No scheduled meals in this range.</td></tr>';
+        var daily = (data && Array.isArray(data.daily)) ? data.daily : [];
+        var kitchen = (data && Array.isArray(data.kitchen)) ? data.kitchen : [];
+        var awaiting = (data && Array.isArray(data.awaitingSchedule)) ? data.awaitingSchedule : [];
+        var totalSets = daily.reduce(function (a, d) { return a + (d.totalSets || 0); }, 0);
+        var totalLunch = daily.reduce(function (a, d) { return a + (d.lunchSets || 0); }, 0);
+        var totalDinner = daily.reduce(function (a, d) { return a + (d.dinnerSets || 0); }, 0);
+        var pickupDays = daily.filter(function (d) { return (d.totalSets || 0) > 0; }).length;
+        if (summary) {
+          summary.style.display = '';
+          summary.innerHTML = ''
+            + '<div class="bento-stat"><span class="bento-stat-num">' + totalSets + '</span><span class="bento-stat-lbl">Total sets</span></div>'
+            + '<div class="bento-stat"><span class="bento-stat-num">' + totalLunch + '</span><span class="bento-stat-lbl">Lunch</span></div>'
+            + '<div class="bento-stat"><span class="bento-stat-num">' + totalDinner + '</span><span class="bento-stat-lbl">Dinner</span></div>'
+            + '<div class="bento-stat"><span class="bento-stat-num">' + pickupDays + '</span><span class="bento-stat-lbl">Pickup days</span></div>'
+            + '<div class="bento-stat bento-stat-warn"><span class="bento-stat-num">' + awaiting.length + '</span><span class="bento-stat-lbl">Awaiting schedule</span></div>';
         }
-        if (out) out.textContent = rows.length
-          ? ('Showing ' + rows.length + ' day(s) · ' + (data.from || '') + ' to ' + (data.to || ''))
-          : 'No scheduled meals in this range.';
+        renderBentoScheduled(kitchen, daily);
+        renderBentoAwaiting(awaiting);
+        if (out) out.textContent = 'Loaded · ' + (data.from || '') + ' to ' + (data.to || '');
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -6979,6 +7153,32 @@ export class AdminDashboardController {
         exportBentoOrdersExcel().catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
+    var bentoAwaitBodyEl = document.getElementById('bentoAwaitBody');
+    if (bentoAwaitBodyEl) {
+      bentoAwaitBodyEl.addEventListener('change', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('bento-await-cb')) {
+          var selAll = document.getElementById('bentoAwaitSelectAll');
+          if (selAll) {
+            var all = document.querySelectorAll('#bentoAwaitBody input.bento-await-cb');
+            var checked = document.querySelectorAll('#bentoAwaitBody input.bento-await-cb:checked');
+            selAll.checked = all.length > 0 && all.length === checked.length;
+          }
+          bentoAwaitSyncButtons();
+        }
+      });
+    }
+    var bentoAwaitSelectAllEl = document.getElementById('bentoAwaitSelectAll');
+    if (bentoAwaitSelectAllEl) {
+      bentoAwaitSelectAllEl.addEventListener('change', function () {
+        var on = bentoAwaitSelectAllEl.checked;
+        document.querySelectorAll('#bentoAwaitBody input.bento-await-cb').forEach(function (b) { b.checked = on; });
+        bentoAwaitSyncButtons();
+      });
+    }
+    var bentoAwaitCopyWaEl = document.getElementById('bentoAwaitCopyWa');
+    if (bentoAwaitCopyWaEl) bentoAwaitCopyWaEl.addEventListener('click', bentoCopyWaLinks);
+    var bentoAwaitCopyPhonesEl = document.getElementById('bentoAwaitCopyPhones');
+    if (bentoAwaitCopyPhonesEl) bentoAwaitCopyPhonesEl.addEventListener('click', bentoCopyPhones);
     function wireBentoRange(prefix, loader) {
       var refreshBtn = document.getElementById(prefix + 'RefreshBtn');
       if (refreshBtn) {

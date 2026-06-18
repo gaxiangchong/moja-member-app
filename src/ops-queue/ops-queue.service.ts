@@ -14,6 +14,7 @@ import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { parseDateOnly } from '../bento/bento-weekly.util';
 import { parseKitchenPickupCodeInput } from '../customers/kitchen-pickup-code.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReportingSettingsService } from '../admin/reporting-settings.service';
 
 function fulfillmentLines(raw: Prisma.JsonValue | null): string[] {
   if (raw == null) return [];
@@ -70,7 +71,10 @@ function emptyBentoPackSummary(): BentoPackSummary {
 
 @Injectable()
 export class OpsQueueService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reportingSettings: ReportingSettingsService,
+  ) {}
 
   async listOrders() {
     const [pending, history] = await Promise.all([
@@ -255,6 +259,8 @@ export class OpsQueueService {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: {
@@ -355,6 +361,8 @@ export class OpsQueueService {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: { id: true },
@@ -364,7 +372,11 @@ export class OpsQueueService {
       const anyToday = await this.prisma.bentoDeliveryDay.count({
         where: {
           deliveryDate: deliveryDateValue,
-          subscription: { customerId: customer.id },
+          subscription: {
+            customerId: customer.id,
+            // Exclude pre-launch test orders (sales reporting start date).
+            ...this.reportingSettings.createdAtCutoffWhere(),
+          },
         },
       });
       if (anyToday === 0) {

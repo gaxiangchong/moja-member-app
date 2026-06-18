@@ -16,6 +16,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { BentoMenuService } from './bento-menu.service';
 import { BentoSettingsService } from './bento-settings.service';
 import { BentoFeaturesService } from './bento-features.service';
+import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import { packsInDeliveryRow } from './bento-capacity.util';
 import {
   buildRemainingByDate,
@@ -123,6 +124,7 @@ export class BentoService implements OnModuleInit {
     private readonly bentoMenu: BentoMenuService,
     private readonly bentoSettings: BentoSettingsService,
     private readonly bentoFeatures: BentoFeaturesService,
+    private readonly reportingSettings: ReportingSettingsService,
   ) {}
 
   async onModuleInit() {
@@ -267,6 +269,8 @@ export class BentoService implements OnModuleInit {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: {
@@ -366,6 +370,8 @@ export class BentoService implements OnModuleInit {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: {
@@ -438,6 +444,8 @@ export class BentoService implements OnModuleInit {
         customerId,
         status: BentoSubscriptionStatus.ACTIVE,
         deliveries: { none: {} },
+        // Ignore pre-launch test orders (sales reporting start date).
+        ...this.reportingSettings.createdAtCutoffWhere(),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -685,7 +693,11 @@ export class BentoService implements OnModuleInit {
 
   async listMySubscriptions(customerId: string) {
     const rows = await this.prisma.bentoSubscription.findMany({
-      where: { customerId },
+      where: {
+        customerId,
+        // Hide pre-launch test orders (sales reporting start date).
+        ...this.reportingSettings.createdAtCutoffWhere(),
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         package: true,
@@ -955,6 +967,8 @@ export class BentoService implements OnModuleInit {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: { includesLunch: true, includesDinner: true },

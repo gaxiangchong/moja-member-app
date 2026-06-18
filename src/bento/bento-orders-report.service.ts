@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { BentoDeliveryStatus, BentoSubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import {
   addDaysUtc,
   formatDateOnly,
@@ -38,11 +39,29 @@ export type BentoKitchenPackRow = {
   riceType: string;
 };
 
+/**
+ * A member who has bought an active plan but has not scheduled any pickup days
+ * yet — the admin's "to chase" list for a WhatsApp reminder.
+ */
+export type BentoAwaitingScheduleRow = {
+  customerName: string;
+  email: string;
+  phoneE164: string;
+  pickupId: string;
+  packageLabel: string;
+  mealOption: string;
+  mealCredits: number;
+  purchasedAt: string;
+};
+
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 @Injectable()
 export class BentoOrdersReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reportingSettings: ReportingSettingsService,
+  ) {}
 
   /** Default export window: Monday this week through 8 weeks ahead. */
   defaultRange(): { from: string; to: string } {
@@ -51,17 +70,73 @@ export class BentoOrdersReportService {
     return { from, to };
   }
 
+  /**
+   * Active subscriptions that have no scheduled pickup days yet. Matches the
+   * member-app definition of "awaiting schedule" (ACTIVE + deliveries none).
+   */
+  async getAwaitingSchedule(): Promise<BentoAwaitingScheduleRow[]> {
+    const subs = await this.prisma.bentoSubscription.findMany({
+      where: {
+        status: BentoSubscriptionStatus.ACTIVE,
+        deliveries: { none: {} },
+        // Exclude pre-launch test orders (sales reporting start date).
+        ...this.reportingSettings.createdAtCutoffWhere(),
+      },
+      select: {
+        mealOption: true,
+        mealCreditsTotal: true,
+        createdAt: true,
+        customer: {
+          select: {
+            displayName: true,
+            email: true,
+            phoneE164: true,
+            kitchenPickupCode: true,
+          },
+        },
+        package: { select: { label: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const mealOptionLabel: Record<string, string> = {
+      LUNCH: 'Lunch',
+      DINNER: 'Dinner',
+      BOTH: 'Lunch + Dinner',
+    };
+
+    return subs.map((s) => ({
+      customerName: s.customer.displayName?.trim() || '—',
+      email: s.customer.email?.trim() || '—',
+      phoneE164: s.customer.phoneE164,
+      pickupId: s.customer.kitchenPickupCode?.trim() || '—',
+      packageLabel: s.package.label,
+      mealOption: mealOptionLabel[s.mealOption] ?? s.mealOption,
+      mealCredits: s.mealCreditsTotal,
+      purchasedAt: formatDateOnly(s.createdAt),
+    }));
+  }
+
   async getCounts(fromIso: string, toIso: string): Promise<{
     from: string;
     to: string;
     daily: BentoDailyOrderCount[];
     weekly: BentoWeeklyOrderCount[];
     kitchen: BentoKitchenPackRow[];
+    awaitingSchedule: BentoAwaitingScheduleRow[];
   }> {
     const from = parseDateOnly(fromIso);
     const to = parseDateOnly(toIso);
+    const awaitingSchedule = await this.getAwaitingSchedule();
     if (from > to) {
-      return { from: fromIso, to: toIso, daily: [], weekly: [], kitchen: [] };
+      return {
+        from: fromIso,
+        to: toIso,
+        daily: [],
+        weekly: [],
+        kitchen: [],
+        awaitingSchedule,
+      };
     }
 
     const rows = await this.prisma.bentoDeliveryDay.findMany({
@@ -77,6 +152,8 @@ export class BentoOrdersReportService {
               BentoSubscriptionStatus.COMPLETED,
             ],
           },
+          // Exclude pre-launch test orders (sales reporting start date).
+          ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
       select: {
@@ -195,7 +272,7 @@ export class BentoOrdersReportService {
         totalSets: counts.lunch + counts.dinner,
       }));
 
-    return { from: fromIso, to: toIso, daily, weekly, kitchen };
+    return { from: fromIso, to: toIso, daily, weekly, kitchen, awaitingSchedule };
   }
 
   async exportXlsx(
@@ -298,6 +375,41 @@ export class BentoOrdersReportService {
       { width: 12 },
       { width: 24 },
       { width: 12 },
+    ];
+
+    const awaitingSheet = wb.addWorksheet('Awaiting scheduling');
+    awaitingSheet.addRow([
+      'Customer name',
+      'Phone',
+      'Pickup ID',
+      'Package',
+      'Meals',
+      'Meal credits',
+      'Purchased on',
+      'Email',
+    ]);
+    for (const row of report.awaitingSchedule) {
+      awaitingSheet.addRow([
+        row.customerName,
+        row.phoneE164,
+        row.pickupId,
+        row.packageLabel,
+        row.mealOption,
+        row.mealCredits,
+        row.purchasedAt,
+        row.email,
+      ]);
+    }
+    awaitingSheet.getRow(1).font = { bold: true };
+    awaitingSheet.columns = [
+      { width: 22 },
+      { width: 16 },
+      { width: 12 },
+      { width: 24 },
+      { width: 16 },
+      { width: 13 },
+      { width: 14 },
+      { width: 28 },
     ];
 
     const buf = await wb.xlsx.writeBuffer();

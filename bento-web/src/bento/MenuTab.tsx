@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
 import { useI18n } from '../lib/i18n/context';
-import { isTodayIso } from '../lib/dateUtils';
+import { isTodayIso, parseDateOnly } from '../lib/dateUtils';
+import { LaunchAnnouncement } from './LaunchAnnouncement';
 
 type Props = {
   onOrderNow: () => void;
@@ -16,6 +17,13 @@ const WEEKDAY_ZH: Record<string, string> = {
 
 export function MenuTab({ onOrderNow }: Props) {
   const { lang, t } = useI18n();
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-MY';
+  const formatRangeDate = (iso: string) =>
+    parseDateOnly(iso).toLocaleDateString(locale, {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    });
   const [data, setData] = useState<WeeklyMenuPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [showVeg, setShowVeg] = useState(false);
@@ -33,23 +41,27 @@ export function MenuTab({ onOrderNow }: Props) {
 
   if (!data) {
     return (
-      <section className="section">
-        <h2>{t('menu.title')} 🍱</h2>
-        <p className="caption">{t('menu.empty')}</p>
-        <button type="button" className="btnPrimary" onClick={onOrderNow} style={{ marginTop: 16 }}>
-          {t('menu.browsePkg')}
-        </button>
-      </section>
+      <>
+        <LaunchAnnouncement />
+        <section className="section">
+          <h2>{t('menu.title')} 🍱</h2>
+          <p className="caption">{t('menu.empty')}</p>
+          <button type="button" className="btnPrimary" onClick={onOrderNow} style={{ marginTop: 16 }}>
+            {t('menu.browsePkg')}
+          </button>
+        </section>
+      </>
     );
   }
 
   return (
     <>
+      <LaunchAnnouncement />
       <section className="section">
         <div className="sectionHeader">
           <div>
             <h2>{t('menu.title')}</h2>
-            <p className="caption">{data.menu.weekStart} — {data.menu.weekEnd}</p>
+            <p className="caption">{formatRangeDate(data.menu.weekStart)} — {formatRangeDate(data.menu.weekEnd)}</p>
           </div>
           <div className="menuHeaderRight">
             <span className="sectionBadge">{t('menu.badge')}</span>
@@ -105,8 +117,7 @@ export function MenuTab({ onOrderNow }: Props) {
               >
                 <div className="wkMenuDayHead">
                   <strong>{dayLabel}</strong>
-                  <span className="wkMenuDayDate">{day.date.slice(5).replace('-', '/')}</span>
-                  {isToday && <span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
+                  {isToday &&<span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
                   {isClosed && <span className="wkMenuDayTag">{t('common.closed')}</span>}
                 </div>
                 {!isClosed && (
