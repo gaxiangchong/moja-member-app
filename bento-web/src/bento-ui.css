@@ -3220,3 +3220,21 @@ button {
 .launchAnnounceCta {
   margin-top: 2px;
 }
+
+.launchAnnounceDismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.launchAnnounceDismiss input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}

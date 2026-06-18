@@ -123,6 +123,7 @@ export const translations: Record<Lang, Dict> = {
       'Ordering is open now. Bento pickup begins on Monday, 22 June — order today to reserve your meals for the launch week.',
     'launch.pickup': 'Pick up at Moja Maison Eco Botanic',
     'launch.gotIt': 'Got it',
+    'launch.dontShowAgain': "Don't show this again",
 
     'weeklyOptIn.title': "This week's menu",
     'weeklyOptIn.weekOf': 'Week of {start} — {end}',
@@ -492,6 +493,7 @@ export const translations: Record<Lang, Dict> = {
       '现已开放订购。便当取餐将于 6 月 22 日（星期一）开始 — 现在立即订购，预留下周的餐点。',
     'launch.pickup': '于 Moja Maison Eco Botanic 取餐',
     'launch.gotIt': '知道了',
+    'launch.dontShowAgain': '不再显示',
 
     'weeklyOptIn.title': '本周菜单',
     'weeklyOptIn.weekOf': '周期 {start} — {end}',

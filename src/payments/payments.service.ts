@@ -753,6 +753,11 @@ export class PaymentsService {
       subscriptionId,
       paymentIntentId: refreshed.paymentIntentId,
     });
+    // Notify the team inbox of every successful bento purchase.
+    void this.receiptEmail.sendBentoAdminNotification({
+      subscriptionId,
+      paymentIntentId: refreshed.paymentIntentId,
+    });
     return {
       subscription: {
         id: refreshed.id,
@@ -914,6 +919,11 @@ export class PaymentsService {
       // Fire-and-forget: a transient email failure must not roll back a
       // successful payment, and the webhook should still ack 200 quickly.
       void this.receiptEmail.sendBentoSubscriptionReceipt({
+        subscriptionId,
+        paymentIntentId: intent.id,
+      });
+      // Notify the team inbox of every successful bento purchase.
+      void this.receiptEmail.sendBentoAdminNotification({
         subscriptionId,
         paymentIntentId: intent.id,
       });

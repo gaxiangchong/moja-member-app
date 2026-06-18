@@ -1,18 +1,39 @@
 import { useState } from 'react';
 import { useI18n } from '../lib/i18n/context';
 
+const SUPPRESS_KEY = 'bento-launch-announcement-dismissed';
+
+function readSuppressed(): boolean {
+  try {
+    return localStorage.getItem(SUPPRESS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Closeable floating window shown on the weekly menu page announcing the bento
  * launch (22 June) and pickup location (Moja Maison Eco Botanic). It appears
- * fresh on every visit/login; closing only hides it for the current view.
+ * fresh on every visit/login unless the user ticks "Don't show this again",
+ * which suppresses it permanently (persisted in localStorage).
  */
 export function LaunchAnnouncement() {
   const { t } = useI18n();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => !readSuppressed());
+  const [dontShowAgain, setDontShowAgain] = useState(false);
 
   if (!open) return null;
 
-  const close = () => setOpen(false);
+  const close = () => {
+    if (dontShowAgain) {
+      try {
+        localStorage.setItem(SUPPRESS_KEY, '1');
+      } catch {
+        /* ignore */
+      }
+    }
+    setOpen(false);
+  };
 
   return (
     <div className="launchAnnounceOverlay" role="dialog" aria-live="polite" aria-label={t('launch.title')}>
@@ -35,6 +56,14 @@ export function LaunchAnnouncement() {
         <button type="button" className="btnPrimary launchAnnounceCta" onClick={close}>
           {t('launch.gotIt')}
         </button>
+        <label className="launchAnnounceDismiss">
+          <input
+            type="checkbox"
+            checked={dontShowAgain}
+            onChange={(e) => setDontShowAgain(e.target.checked)}
+          />
+          {t('launch.dontShowAgain')}
+        </label>
       </div>
     </div>
   );

@@ -428,6 +428,147 @@ export class ReceiptEmailService {
     }
   }
 
+  /**
+   * Internal ops notification sent to the bento admin inbox on every successful
+   * bento purchase. Independent of the customer receipt — it still sends even
+   * when the customer has no email on file. Best-effort: never throws.
+   *
+   * Recipient: BENTO_ADMIN_NOTIFY_EMAIL (falls back to admin@mojamaison.com).
+   */
+  async sendBentoAdminNotification(
+    input: SendBentoSubscriptionReceiptInput,
+  ): Promise<void> {
+    try {
+      if (!this.email.isConfigured()) {
+        this.logger.warn(
+          `Skipping bento admin notification for subscription ${input.subscriptionId}: email transport not configured.`,
+        );
+        return;
+      }
+
+      const recipient = (
+        this.config.get<string>('BENTO_ADMIN_NOTIFY_EMAIL')?.trim() ||
+        'admin@mojamaison.com'
+      ).trim();
+
+      const sub = await this.prisma.bentoSubscription.findUnique({
+        where: { id: input.subscriptionId },
+        include: { package: true, customer: true },
+      });
+      if (!sub) {
+        this.logger.warn(
+          `Skipping bento admin notification: subscription ${input.subscriptionId} not found.`,
+        );
+        return;
+      }
+
+      const intent = input.paymentIntentId
+        ? await this.prisma.paymentIntent.findUnique({
+            where: { id: input.paymentIntentId },
+          })
+        : sub.paymentIntentId
+          ? await this.prisma.paymentIntent.findUnique({
+              where: { id: sub.paymentIntentId },
+            })
+          : null;
+
+      const currency = intent?.currency || 'MYR';
+      const channelLabel = this.formatChannelLabel(intent?.channelCode);
+      const reference = intent?.referenceId || sub.id;
+      const totalStr = formatMoney(sub.totalCents, currency);
+      const paidAtStr = formatDateTime(intent?.updatedAt ?? sub.createdAt);
+
+      const customerName = sub.customer.displayName?.trim() || '—';
+      const customerEmail = sub.customer.email?.trim() || '—';
+      const customerPhone = sub.customer.phoneE164?.trim() || '—';
+      const pickupCode = sub.customer.kitchenPickupCode?.trim() || '—';
+
+      const mealOptionLabel =
+        sub.mealOption === 'BOTH'
+          ? 'Lunch + Dinner'
+          : sub.mealOption === 'LUNCH'
+            ? 'Lunch only'
+            : 'Dinner only';
+      const dietLabel = (v: string) => (v === 'VEG' ? 'Vegetarian' : 'Regular');
+      const riceLabel = sub.riceType === 'BROWN' ? 'Brown rice' : 'White rice';
+
+      const details: Array<[string, string]> = [
+        ['Customer', customerName],
+        ['Phone', customerPhone],
+        ['Email', customerEmail],
+        ['Pickup ID', pickupCode],
+        ['Package', sub.package.label],
+        ['Meals included', `${sub.mealCreditsTotal} meals`],
+        ['Schedule', mealOptionLabel],
+      ];
+      if (sub.mealOption === 'LUNCH' || sub.mealOption === 'BOTH') {
+        details.push([
+          'Lunch',
+          `${sub.lunchCredits} meals · ${dietLabel(sub.lunchVariant)}`,
+        ]);
+      }
+      if (sub.mealOption === 'DINNER' || sub.mealOption === 'BOTH') {
+        details.push([
+          'Dinner',
+          `${sub.dinnerCredits} meals · ${dietLabel(sub.dinnerVariant)}`,
+        ]);
+      }
+      details.push(['Rice', riceLabel]);
+      if (sub.includeDrinkAddon) details.push(['Add-on', 'Drink included']);
+      details.push(['Total paid', totalStr]);
+      details.push(['Paid', paidAtStr]);
+      if (channelLabel) details.push(['Paid with', channelLabel]);
+      details.push(['Reference', reference]);
+
+      const detailRowsHtml = details
+        .map(
+          ([label, value]) => `
+            <tr>
+              <td style="padding:6px 12px 6px 0;color:#6b7280;white-space:nowrap;">${escapeHtml(label)}</td>
+              <td style="padding:6px 0;color:#111827;font-weight:600;">${escapeHtml(value)}</td>
+            </tr>`,
+        )
+        .join('');
+
+      const subject = `${this.email.getSubjectPrefix()} New bento order — ${customerName} (${totalStr})`;
+
+      const html = `
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f9fafb;font-family:Inter,Arial,sans-serif;color:#111827;">
+    <div style="max-width:560px;margin:0 auto;padding:24px;">
+      <div style="background:#ffffff;border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+        <h1 style="font-size:20px;margin:0 0 4px;">New bento order 🍱</h1>
+        <p style="margin:0 0 16px;color:#6b7280;font-size:14px;">A customer just paid for a bento meal plan. Details below.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tbody>
+            ${detailRowsHtml}
+          </tbody>
+        </table>
+        <p style="margin:24px 0 0;font-size:13px;color:#6b7280;">
+          This is an internal notification for the Moja Maison team.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+      const text = [
+        `New bento order`,
+        ``,
+        ...details.map(([label, value]) => `- ${label}: ${value}`),
+      ].join('\n');
+
+      await this.email.send({ to: recipient, subject, html, text });
+    } catch (err) {
+      this.logger.error(
+        `sendBentoAdminNotification failed for subscription ${input.subscriptionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   private formatChannelLabel(code: string | null | undefined): string | null {
     if (!code) return null;
     const upper = code.toUpperCase();
