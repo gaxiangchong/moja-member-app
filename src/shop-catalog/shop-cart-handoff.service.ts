@@ -1,13 +1,17 @@
 import {
   BadRequestException,
   Injectable,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import {
+  ShopCatalogService,
+  type ShopCatalogProduct,
+  type ShopCatalogProductVariant,
+} from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
@@ -38,6 +42,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly catalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -81,17 +86,50 @@ export class ShopCartHandoffService {
     return 'http://localhost:5193';
   }
 
+  private variantForLine(
+    product: ShopCatalogProduct,
+    requestedLabel?: string | null,
+  ): ShopCatalogProductVariant | null {
+    const available =
+      product.variants?.filter((v) => v.available !== false) ?? [];
+    if (available.length === 0) return null;
+
+    const requested = requestedLabel?.trim();
+    if (!requested) {
+      return (
+        available.find((v) => v.priceCents === product.basePriceCents) ?? null
+      );
+    }
+
+    const requestedLower = requested.toLowerCase();
+    return (
+      available.find(
+        (v) =>
+          v.label.trim().toLowerCase() === requestedLower ||
+          v.id.trim() === requested,
+      ) ?? null
+    );
+  }
+
   private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
+    const productsById = new Map(
+      this.catalog.listPublicProducts().map((p) => [p.id, p]),
+    );
     const lines: CartHandoffLine[] = [];
     for (const raw of dto.lines) {
       const productId = raw.productId.trim();
-      const name = raw.name.trim();
       const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs productId',
+        });
+      }
+      const product = productsById.get(productId);
+      if (!product || product.soldOut === true) {
+        throw new BadRequestException({
+          code: 'CART_HANDOFF_PRODUCT_UNAVAILABLE',
+          message: 'Cart contains a product that is not available',
         });
       }
       if (qty < 1 || qty > 99) {
@@ -100,19 +138,25 @@ export class ShopCartHandoffService {
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
+
+      const requestedVariant = raw.variantLabel?.trim() || null;
+      const variant = this.variantForLine(product, requestedVariant);
+      if (requestedVariant && product.variants?.length && !variant) {
         throw new BadRequestException({
-          code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
+          code: 'CART_HANDOFF_VARIANT_UNAVAILABLE',
+          message: 'Cart contains a product variant that is not available',
         });
       }
+      const unitPriceCents = Math.floor(
+        variant?.priceCents ?? product.basePriceCents,
+      );
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? requestedVariant,
+        imageUrl: product.imageUrl?.trim() || null,
       });
     }
     return lines;
@@ -138,14 +182,6 @@ export class ShopCartHandoffService {
   }
 
   async createHandoff(dto: CreateCartHandoffDto) {
-    const shopBase = this.config.get<string>('SHOP_WEB_BASE_URL')?.trim();
-    if (!shopBase) {
-      throw new ServiceUnavailableException({
-        code: 'CART_HANDOFF_MISCONFIGURED',
-        message: 'SHOP_WEB_BASE_URL is not set on the member API.',
-      });
-    }
-
     const lines = this.normalizeLines(dto);
     const fulfillment = this.normalizeFulfillment(dto.fulfillment);
     const ttlSec = this.ttlSec();

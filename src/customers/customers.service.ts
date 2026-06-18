@@ -174,21 +174,4 @@ export class CustomersService {
       transactions: entries,
     };
   }
-
-  async topUpMyWallet(
-    customerId: string,
-    dto: { amountCents: number; channel: 'online' | 'cashier' },
-  ) {
-    const entry = await this.wallet.appendTransaction({
-      customerId,
-      type: 'TOPUP',
-      amountCents: dto.amountCents,
-      reason: `customer_topup_${dto.channel}`,
-      createdByType: 'customer',
-      createdBy: customerId,
-      metadata: { channel: dto.channel },
-    });
-    const summary = await this.wallet.getSummary(customerId);
-    return { entry, summary };
-  }
 }
