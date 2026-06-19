@@ -400,6 +400,8 @@ export async function scheduleBentoSubscription(
       date: string;
       includeLunch: boolean;
       includeDinner: boolean;
+      lunchQty?: number;
+      dinnerQty?: number;
     }>;
   },
 ): Promise<BentoSubscription> {

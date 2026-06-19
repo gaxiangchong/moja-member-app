@@ -113,8 +113,8 @@ function mergeDeliveries(subs: BentoSubscription[]): DaySelection[] {
   for (const sub of subs) {
     for (const d of sub.deliveries) {
       const ex = map.get(d.deliveryDate) ?? { date: d.deliveryDate, lunchQty: 0, dinnerQty: 0 };
-      if (d.includesLunch)  ex.lunchQty++;
-      if (d.includesDinner) ex.dinnerQty++;
+      ex.lunchQty  += d.lunchQty  ?? (d.includesLunch  ? 1 : 0);
+      ex.dinnerQty += d.dinnerQty ?? (d.includesDinner ? 1 : 0);
       map.set(d.deliveryDate, ex);
     }
   }
@@ -397,19 +397,26 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
         const myLunch  = lunchSlots.filter((_,  idx) => idx % N === si);
         const myDinner = dinnerSlots.filter((_, idx) => idx % N === si);
 
-        const dateMap = new Map<string, { includeLunch: boolean; includeDinner: boolean }>();
+        // Count quantity per date so a single plan can place several meals/day.
+        const dateMap = new Map<string, { lunchQty: number; dinnerQty: number }>();
         myLunch.forEach(d => {
-          const e = dateMap.get(d) ?? { includeLunch: false, includeDinner: false };
-          e.includeLunch = true; dateMap.set(d, e);
+          const e = dateMap.get(d) ?? { lunchQty: 0, dinnerQty: 0 };
+          e.lunchQty += 1; dateMap.set(d, e);
         });
         myDinner.forEach(d => {
-          const e = dateMap.get(d) ?? { includeLunch: false, includeDinner: false };
-          e.includeDinner = true; dateMap.set(d, e);
+          const e = dateMap.get(d) ?? { lunchQty: 0, dinnerQty: 0 };
+          e.dinnerQty += 1; dateMap.set(d, e);
         });
 
         const slots = [...dateMap.entries()]
-          .map(([date, m]) => ({ date, ...m }))
-          .filter(s => s.includeLunch || s.includeDinner);
+          .map(([date, m]) => ({
+            date,
+            includeLunch: m.lunchQty > 0,
+            includeDinner: m.dinnerQty > 0,
+            lunchQty: m.lunchQty,
+            dinnerQty: m.dinnerQty,
+          }))
+          .filter(s => s.lunchQty > 0 || s.dinnerQty > 0);
 
         await scheduleBentoSubscription(sub.id, { slots });
       }
@@ -482,15 +489,15 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   // Remaining credits available (excluding what this day already uses)
   const sheetLunchBase  = sheetRow ? lunchUpcoming  - sheetRow.lunchQty  : lunchUpcoming;
   const sheetDinnerBase = sheetRow ? dinnerUpcoming - sheetRow.dinnerQty : dinnerUpcoming;
+  // Per-day quantity is bounded by remaining credits and kitchen capacity only
+  // (no fixed per-day cap) so a single plan can pick up several meals to share.
   const maxLunchQty  = Math.min(
-    N,
     Math.max(0, totalLunch - lunchConsumed - sheetLunchBase),
-    sheetRow ? sheetMaxTotalPacks - sheetRow.dinnerQty : N,
+    sheetRow ? sheetMaxTotalPacks - sheetRow.dinnerQty : Number.MAX_SAFE_INTEGER,
   );
   const maxDinnerQty = Math.min(
-    N,
     Math.max(0, totalDinner - dinnerConsumed - sheetDinnerBase),
-    sheetRow ? sheetMaxTotalPacks - sheetRow.lunchQty : N,
+    sheetRow ? sheetMaxTotalPacks - sheetRow.lunchQty : Number.MAX_SAFE_INTEGER,
   );
 
   const cells = getMonthGrid(viewYear, viewMonth);
@@ -729,12 +736,10 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 const dayCapacity = capacityByDate.get(iso);
                 const maxTotal = maxTotalPacksOnDay(row, dayCapacity);
                 const rowLunchMax = Math.min(
-                  N,
                   Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + row.lunchQty),
                   maxTotal - row.dinnerQty,
                 );
                 const rowDinnerMax = Math.min(
-                  N,
                   Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + row.dinnerQty),
                   maxTotal - row.lunchQty,
                 );

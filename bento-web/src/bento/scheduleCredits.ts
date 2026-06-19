@@ -5,8 +5,8 @@ export function countScheduledMeals(subscriptions: BentoSubscription[]) {
   let dinner = 0;
   for (const sub of subscriptions) {
     for (const d of sub.deliveries) {
-      if (d.includesLunch) lunch += 1;
-      if (d.includesDinner) dinner += 1;
+      lunch += d.lunchQty ?? (d.includesLunch ? 1 : 0);
+      dinner += d.dinnerQty ?? (d.includesDinner ? 1 : 0);
     }
   }
   return { lunch, dinner };

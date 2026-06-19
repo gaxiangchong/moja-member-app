@@ -1056,6 +1056,11 @@ model BentoDeliveryDay {
   deliveryDate   DateTime            @map("delivery_date") @db.Date
   includesLunch  Boolean             @map("includes_lunch")
   includesDinner Boolean             @map("includes_dinner")
+  /// Number of lunch packs to collect this day (>=1 when includesLunch). Allows
+  /// picking up multiple meals on one day to share.
+  lunchQty       Int                 @default(0) @map("lunch_qty")
+  /// Number of dinner packs to collect this day (>=1 when includesDinner).
+  dinnerQty      Int                 @default(0) @map("dinner_qty")
   status         BentoDeliveryStatus @default(SCHEDULED)
 
   @@unique([subscriptionId, deliveryDate])

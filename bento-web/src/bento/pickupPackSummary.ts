@@ -52,7 +52,12 @@ export function buildUpcomingPickupSummaries(
       if (delivery.deliveryDate < todayIso) continue;
       if (delivery.status === 'SKIPPED') continue;
 
-      const addMeal = (meal: 'lunch' | 'dinner', variant: BentoDietVariant) => {
+      const addMeal = (
+        meal: 'lunch' | 'dinner',
+        variant: BentoDietVariant,
+        qty: number,
+      ) => {
+        if (qty <= 0) return;
         const category = categorizePack(variant, sub.riceType);
         const row = byDate.get(delivery.deliveryDate) ?? {
           date: delivery.deliveryDate,
@@ -65,20 +70,18 @@ export function buildUpcomingPickupSummaries(
           vegetarianBrown: 0,
           withDrink: 0,
         };
-        row.totalPacks += 1;
-        if (meal === 'lunch') row.lunchCount += 1;
-        else row.dinnerCount += 1;
-        row[category] += 1;
-        if (drink) row.withDrink += 1;
+        row.totalPacks += qty;
+        if (meal === 'lunch') row.lunchCount += qty;
+        else row.dinnerCount += qty;
+        row[category] += qty;
+        if (drink) row.withDrink += qty;
         byDate.set(delivery.deliveryDate, row);
       };
 
-      if (delivery.includesLunch) {
-        addMeal('lunch', sub.lunchVariant);
-      }
-      if (delivery.includesDinner) {
-        addMeal('dinner', sub.dinnerVariant);
-      }
+      const lunchQty = delivery.lunchQty ?? (delivery.includesLunch ? 1 : 0);
+      const dinnerQty = delivery.dinnerQty ?? (delivery.includesDinner ? 1 : 0);
+      addMeal('lunch', sub.lunchVariant, lunchQty);
+      addMeal('dinner', sub.dinnerVariant, dinnerQty);
     }
   }
 

@@ -61,6 +61,23 @@ export class BentoScheduleSlotDto {
 
   @IsBoolean()
   includeDinner!: boolean;
+
+  /**
+   * How many lunch packs to collect this day (allows sharing). Defaults to
+   * `includeLunch ? 1 : 0` when omitted, for backward compatibility.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  lunchQty?: number;
+
+  /** How many dinner packs to collect this day. Defaults from `includeDinner`. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  dinnerQty?: number;
 }
 
 export class BentoScheduleDto {

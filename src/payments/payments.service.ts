@@ -829,7 +829,7 @@ export class PaymentsService {
         message: 'Payment intent not found.',
       });
     }
-    const intent = await this.prisma.paymentIntent.findUnique({
+    let intent = await this.prisma.paymentIntent.findUnique({
       where: { referenceId: trimmed },
     });
     if (!intent || intent.customerId !== customerId) {
@@ -837,6 +837,38 @@ export class PaymentsService {
         code: 'PAYMENT_INTENT_NOT_FOUND',
         message: 'Payment intent not found.',
       });
+    }
+
+    // Active reconciliation: if the intent is still pending, pull the latest
+    // status straight from Xendit and finalize it. This makes e-wallet
+    // payments (TnG, ShopeePay) succeed even when the webhook can't reach us
+    // (common in test/local), instead of getting stuck on PENDING_PAYMENT.
+    if (intent.status === 'PENDING' && intent.xenditPaymentRequestId) {
+      try {
+        const data = await this.xendit.getPaymentRequest(
+          intent.xenditPaymentRequestId,
+        );
+        if (data.status === 'SUCCEEDED') {
+          if (intent.purpose === 'wallet_topup') {
+            await this.applyWalletTopUpFromXendit(intent.referenceId, data);
+          } else if (intent.purpose === 'shop_order') {
+            await this.applyShopOrderFromXendit(intent.referenceId, data);
+          } else if (intent.purpose === 'bento_subscription') {
+            await this.applyBentoSubscriptionFromXendit(intent.referenceId, data);
+          }
+          const refreshed = await this.prisma.paymentIntent.findUnique({
+            where: { referenceId: trimmed },
+          });
+          if (refreshed) intent = refreshed;
+        }
+      } catch (err) {
+        // Xendit unreachable / transient — fall back to the stored status.
+        this.logger.warn(
+          `Payment status reconcile failed for ${trimmed}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
 
     let orderId: string | null = null;
@@ -864,6 +896,44 @@ export class PaymentsService {
       orderNumber,
       updatedAt: intent.updatedAt.toISOString(),
     };
+  }
+
+  /**
+   * Best-effort: if a bento subscription's payment is still pending, pull the
+   * latest status from Xendit and finalize it. Lets a member schedule pickups
+   * right after paying even when the webhook hasn't arrived (test/local).
+   */
+  async reconcileBentoSubscriptionPayment(subscriptionId: string): Promise<void> {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id: subscriptionId },
+      select: { paymentIntentId: true },
+    });
+    if (!sub?.paymentIntentId) return;
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { id: sub.paymentIntentId },
+    });
+    if (
+      !intent ||
+      intent.status !== 'PENDING' ||
+      intent.purpose !== 'bento_subscription' ||
+      !intent.xenditPaymentRequestId
+    ) {
+      return;
+    }
+    try {
+      const data = await this.xendit.getPaymentRequest(
+        intent.xenditPaymentRequestId,
+      );
+      if (data.status === 'SUCCEEDED') {
+        await this.applyBentoSubscriptionFromXendit(intent.referenceId, data);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Bento payment reconcile failed for subscription ${subscriptionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async applyWalletTopUpFromXendit(

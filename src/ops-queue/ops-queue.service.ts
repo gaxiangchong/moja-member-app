@@ -268,6 +268,8 @@ export class OpsQueueService {
         status: true,
         includesLunch: true,
         includesDinner: true,
+        lunchQty: true,
+        dinnerQty: true,
         subscription: {
           select: {
             lunchVariant: true,
@@ -295,17 +297,24 @@ export class OpsQueueService {
         sub.includeDrinkAddon || sub.package.includeFreeSoupAndDrinks;
       let dayHasMeal = false;
 
-      const addMeal = (meal: 'lunch' | 'dinner', variant: BentoDinnerVariant) => {
+      const addMeal = (
+        meal: 'lunch' | 'dinner',
+        variant: BentoDinnerVariant,
+        qty: number,
+      ) => {
+        if (qty <= 0) return;
         const category = categorizePack(variant, sub.riceType);
-        summary.totalPacks += 1;
+        summary.totalPacks += qty;
         dayHasMeal = true;
-        if (meal === 'lunch') summary.lunchCount += 1;
-        else summary.dinnerCount += 1;
-        summary[category] += 1;
+        if (meal === 'lunch') summary.lunchCount += qty;
+        else summary.dinnerCount += qty;
+        summary[category] += qty;
       };
 
-      if (row.includesLunch) addMeal('lunch', sub.lunchVariant);
-      if (row.includesDinner) addMeal('dinner', sub.dinnerVariant);
+      const lunchQty = row.lunchQty || (row.includesLunch ? 1 : 0);
+      const dinnerQty = row.dinnerQty || (row.includesDinner ? 1 : 0);
+      addMeal('lunch', sub.lunchVariant, lunchQty);
+      addMeal('dinner', sub.dinnerVariant, dinnerQty);
       if (dayHasMeal && hasDrink) summary.withDrink += 1;
     }
     return summary;

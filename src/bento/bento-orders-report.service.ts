@@ -35,6 +35,8 @@ export type BentoKitchenPackRow = {
   phoneE164: string;
   meal: 'Lunch' | 'Dinner';
   diet: string;
+  /** Number of packs of this meal for this customer on this day (>=1). */
+  qty: number;
   packageLabel: string;
   riceType: string;
 };
@@ -160,6 +162,8 @@ export class BentoOrdersReportService {
         deliveryDate: true,
         includesLunch: true,
         includesDinner: true,
+        lunchQty: true,
+        dinnerQty: true,
         subscription: {
           select: {
             mealOption: true,
@@ -198,7 +202,10 @@ export class BentoOrdersReportService {
       const riceType =
         row.subscription.riceType === 'BROWN' ? 'Brown rice' : 'White rice';
 
-      const pushKitchen = (meal: 'Lunch' | 'Dinner', diet: string) => {
+      const lunchQty = row.lunchQty || (row.includesLunch ? 1 : 0);
+      const dinnerQty = row.dinnerQty || (row.includesDinner ? 1 : 0);
+
+      const pushKitchen = (meal: 'Lunch' | 'Dinner', diet: string, qty: number) => {
         kitchen.push({
           date: iso,
           weekday,
@@ -208,23 +215,26 @@ export class BentoOrdersReportService {
           phoneE164: customer.phoneE164,
           meal,
           diet,
+          qty,
           packageLabel,
           riceType,
         });
       };
 
-      if (row.includesLunch) {
-        cur.lunch++;
+      if (lunchQty > 0) {
+        cur.lunch += lunchQty;
         pushKitchen(
           'Lunch',
           row.subscription.lunchVariant === 'VEG' ? 'Vegetarian' : 'Regular',
+          lunchQty,
         );
       }
-      if (row.includesDinner) {
-        cur.dinner++;
+      if (dinnerQty > 0) {
+        cur.dinner += dinnerQty;
         pushKitchen(
           'Dinner',
           row.subscription.dinnerVariant === 'VEG' ? 'Vegetarian' : 'Regular',
+          dinnerQty,
         );
       }
       dailyMap.set(iso, cur);
@@ -345,6 +355,7 @@ export class BentoOrdersReportService {
       'Email',
       'Phone',
       'Meal',
+      'Qty',
       'Diet',
       'Package',
       'Rice',
@@ -358,6 +369,7 @@ export class BentoOrdersReportService {
         row.email,
         row.phoneE164,
         row.meal,
+        row.qty,
         row.diet,
         row.packageLabel,
         row.riceType,
@@ -372,6 +384,7 @@ export class BentoOrdersReportService {
       { width: 28 },
       { width: 16 },
       { width: 10 },
+      { width: 6 },
       { width: 12 },
       { width: 24 },
       { width: 12 },

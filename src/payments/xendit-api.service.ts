@@ -137,6 +137,53 @@ export class XenditApiService {
     return json;
   }
 
+  /**
+   * Fetch the latest state of a payment request by its Xendit id. Used to
+   * actively reconcile e-wallet payments (TnG/ShopeePay) when the webhook
+   * cannot reach us — e.g. in test/local environments.
+   */
+  async getPaymentRequest(
+    paymentRequestId: string,
+  ): Promise<XenditPaymentRequestResponse> {
+    const apiVersion = this.getApiVersion();
+    const base = this.getApiBase();
+    const url = `${base.replace(/\/$/, '')}/v3/payment_requests/${encodeURIComponent(
+      paymentRequestId,
+    )}`;
+
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: this.getAuthHeader(),
+        'api-version': apiVersion,
+      },
+    });
+
+    const text = await res.text();
+    let json: XenditPaymentRequestResponse;
+    try {
+      json = text ? (JSON.parse(text) as XenditPaymentRequestResponse) : {};
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'XENDIT_INVALID_RESPONSE',
+        message: 'Xendit returned a non-JSON response.',
+      });
+    }
+
+    if (!res.ok) {
+      const message =
+        typeof json.message === 'string'
+          ? json.message
+          : `Xendit error (${res.status})`;
+      throw new ServiceUnavailableException({
+        code: 'XENDIT_REQUEST_FAILED',
+        message,
+      });
+    }
+
+    return json;
+  }
+
   async createCardsSaveSession(input: {
     referenceId: string;
     country: string;

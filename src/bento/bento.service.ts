@@ -277,6 +277,8 @@ export class BentoService implements OnModuleInit {
         deliveryDate: true,
         includesLunch: true,
         includesDinner: true,
+        lunchQty: true,
+        dinnerQty: true,
       },
     });
 
@@ -378,6 +380,8 @@ export class BentoService implements OnModuleInit {
         deliveryDate: true,
         includesLunch: true,
         includesDinner: true,
+        lunchQty: true,
+        dinnerQty: true,
       },
     });
     const scheduledByDate = new Map<string, number>();
@@ -584,7 +588,7 @@ export class BentoService implements OnModuleInit {
     subscriptionId: string,
     dto: BentoScheduleDto,
   ) {
-    const sub = await this.prisma.bentoSubscription.findFirst({
+    let sub = await this.prisma.bentoSubscription.findFirst({
       where: { id: subscriptionId, customerId },
       include: { package: true, deliveries: true },
     });
@@ -593,6 +597,17 @@ export class BentoService implements OnModuleInit {
         code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
         message: 'Subscription not found',
       });
+    }
+    // If payment hasn't been recorded yet (e-wallet webhook not arrived),
+    // actively reconcile with Xendit before refusing — avoids a false
+    // "pay for your plan" right after a successful payment.
+    if (sub.status !== BentoSubscriptionStatus.ACTIVE) {
+      await this.payments.reconcileBentoSubscriptionPayment(subscriptionId);
+      sub =
+        (await this.prisma.bentoSubscription.findFirst({
+          where: { id: subscriptionId, customerId },
+          include: { package: true, deliveries: true },
+        })) ?? sub;
     }
     if (sub.status !== BentoSubscriptionStatus.ACTIVE) {
       throw new BadRequestException({
@@ -638,31 +653,15 @@ export class BentoService implements OnModuleInit {
         },
       });
 
-      const immutableByDate = new Map<
-        string,
-        { includesLunch: boolean; includesDinner: boolean }
-      >();
-      for (const delivery of immutableDeliveries) {
-        const iso = formatDateOnly(delivery.deliveryDate);
-        const existing = immutableByDate.get(iso) ?? {
-          includesLunch: false,
-          includesDinner: false,
-        };
-        existing.includesLunch ||= delivery.includesLunch;
-        existing.includesDinner ||= delivery.includesDinner;
-        immutableByDate.set(iso, existing);
-      }
+      // Locked or already-delivered days are frozen and kept as-is — there is
+      // one row per (subscription, date), so we never recreate them.
+      const immutableDates = new Set(
+        immutableDeliveries.map((d) => formatDateOnly(d.deliveryDate)),
+      );
 
       for (const row of rows) {
         const iso = formatDateOnly(row.deliveryDate);
-        const immutable = immutableByDate.get(iso);
-        if (
-          immutable &&
-          (!row.includesLunch || immutable.includesLunch) &&
-          (!row.includesDinner || immutable.includesDinner)
-        ) {
-          continue;
-        }
+        if (immutableDates.has(iso)) continue;
 
         await tx.bentoDeliveryDay.create({
           data: {
@@ -670,6 +669,8 @@ export class BentoService implements OnModuleInit {
             deliveryDate: row.deliveryDate,
             includesLunch: row.includesLunch,
             includesDinner: row.includesDinner,
+            lunchQty: row.lunchQty,
+            dinnerQty: row.dinnerQty,
           },
         });
       }
@@ -740,12 +741,16 @@ export class BentoService implements OnModuleInit {
       deliveryDate: Date;
       includesLunch: boolean;
       includesDinner: boolean;
+      lunchQty: number;
+      dinnerQty: number;
       status: BentoDeliveryStatus;
     }>,
     rows: Array<{
       deliveryDate: Date;
       includesLunch: boolean;
       includesDinner: boolean;
+      lunchQty: number;
+      dinnerQty: number;
     }>,
   ): void {
     for (const delivery of deliveries) {
@@ -757,7 +762,9 @@ export class BentoService implements OnModuleInit {
       if (
         !row ||
         row.includesLunch !== delivery.includesLunch ||
-        row.includesDinner !== delivery.includesDinner
+        row.includesDinner !== delivery.includesDinner ||
+        row.lunchQty !== delivery.lunchQty ||
+        row.dinnerQty !== delivery.dinnerQty
       ) {
         throw new BadRequestException({
           code: 'BENTO_PICKUP_LOCKED',
@@ -802,18 +809,20 @@ export class BentoService implements OnModuleInit {
     deliveryDate: Date;
     includesLunch: boolean;
     includesDinner: boolean;
+    lunchQty: number;
+    dinnerQty: number;
   }> {
     const rules = this.scheduleRulesInput();
     const earliest = rules.minSchedulableDate;
     const windowEnd = addDaysUtc(earliest, pkg.durationDays - 1);
 
-    const byDate = new Map<
-      string,
-      { includesLunch: boolean; includesDinner: boolean }
-    >();
+    const byDate = new Map<string, { lunchQty: number; dinnerQty: number }>();
 
     for (const slot of slots) {
-      if (!slot.includeLunch && !slot.includeDinner) continue;
+      // Quantity per meal; fall back to the legacy booleans (1 or 0).
+      const slotLunch = slot.lunchQty ?? (slot.includeLunch ? 1 : 0);
+      const slotDinner = slot.dinnerQty ?? (slot.includeDinner ? 1 : 0);
+      if (slotLunch <= 0 && slotDinner <= 0) continue;
 
       const d = parseDateOnly(slot.date);
 
@@ -849,23 +858,23 @@ export class BentoService implements OnModuleInit {
         });
       }
 
-      if (mealOption === BentoMealOption.LUNCH && slot.includeDinner) {
+      if (mealOption === BentoMealOption.LUNCH && slotDinner > 0) {
         throw new BadRequestException({
           code: 'BENTO_LUNCH_ONLY',
           message: 'Your plan includes lunch only — dinner cannot be scheduled.',
         });
       }
-      if (mealOption === BentoMealOption.DINNER && slot.includeLunch) {
+      if (mealOption === BentoMealOption.DINNER && slotLunch > 0) {
         throw new BadRequestException({
           code: 'BENTO_DINNER_ONLY',
           message: 'Your plan includes dinner only — lunch cannot be scheduled.',
         });
       }
 
-      const prev = byDate.get(slot.date);
+      const prev = byDate.get(slot.date) ?? { lunchQty: 0, dinnerQty: 0 };
       byDate.set(slot.date, {
-        includesLunch: (prev?.includesLunch ?? false) || slot.includeLunch,
-        includesDinner: (prev?.includesDinner ?? false) || slot.includeDinner,
+        lunchQty: prev.lunchQty + slotLunch,
+        dinnerQty: prev.dinnerQty + slotDinner,
       });
     }
 
@@ -879,8 +888,8 @@ export class BentoService implements OnModuleInit {
     let lunchUsed = 0;
     let dinnerUsed = 0;
     for (const row of byDate.values()) {
-      if (row.includesLunch) lunchUsed++;
-      if (row.includesDinner) dinnerUsed++;
+      lunchUsed += row.lunchQty;
+      dinnerUsed += row.dinnerQty;
     }
 
     if (lunchUsed > lunchCredits) {
@@ -906,10 +915,12 @@ export class BentoService implements OnModuleInit {
 
     return [...byDate.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([iso, flags]) => ({
+      .map(([iso, q]) => ({
         deliveryDate: parseDateOnly(iso),
-        includesLunch: flags.includesLunch,
-        includesDinner: flags.includesDinner,
+        includesLunch: q.lunchQty > 0,
+        includesDinner: q.dinnerQty > 0,
+        lunchQty: q.lunchQty,
+        dinnerQty: q.dinnerQty,
       }));
   }
 
@@ -919,6 +930,8 @@ export class BentoService implements OnModuleInit {
       deliveryDate: Date;
       includesLunch: boolean;
       includesDinner: boolean;
+      lunchQty: number;
+      dinnerQty: number;
     }>,
   ): Promise<void> {
     const capacity = this.bentoSettings.getDailyCapacityPacks();
@@ -971,7 +984,12 @@ export class BentoService implements OnModuleInit {
           ...this.reportingSettings.createdAtCutoffWhere(),
         },
       },
-      select: { includesLunch: true, includesDinner: true },
+      select: {
+        includesLunch: true,
+        includesDinner: true,
+        lunchQty: true,
+        dinnerQty: true,
+      },
     });
     return deliveries.reduce((sum, d) => sum + packsInDeliveryRow(d), 0);
   }
@@ -1052,6 +1070,8 @@ export class BentoService implements OnModuleInit {
         deliveryDate: Date;
         includesLunch: boolean;
         includesDinner: boolean;
+        lunchQty: number;
+        dinnerQty: number;
         status: string;
       }>;
     },
@@ -1090,8 +1110,8 @@ export class BentoService implements OnModuleInit {
         ),
         allowLunch: mealOpt !== BentoMealOption.DINNER,
         allowDinner: mealOpt !== BentoMealOption.LUNCH,
-        lunchScheduled: s.deliveries.filter((d) => d.includesLunch).length,
-        dinnerScheduled: s.deliveries.filter((d) => d.includesDinner).length,
+        lunchScheduled: s.deliveries.reduce((n, d) => n + d.lunchQty, 0),
+        dinnerScheduled: s.deliveries.reduce((n, d) => n + d.dinnerQty, 0),
       },
       createdAt: s.createdAt.toISOString(),
       package: this.mapPackage(s.package),
@@ -1100,6 +1120,8 @@ export class BentoService implements OnModuleInit {
         deliveryDate: formatDateOnly(d.deliveryDate),
         includesLunch: d.includesLunch,
         includesDinner: d.includesDinner,
+        lunchQty: d.lunchQty,
+        dinnerQty: d.dinnerQty,
         status: d.status,
       })),
     };

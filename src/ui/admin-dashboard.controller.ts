@@ -5421,11 +5421,13 @@ export class AdminDashboardController {
         var counts = 'Lunch ' + (d.lunchSets || 0) + ' · Dinner ' + (d.dinnerSets || 0) + ' · Total ' + (d.totalSets || g.rows.length);
         var rowsHtml = g.rows.map(function (r) {
           var dietCls = r.diet === 'Vegetarian' ? ' style="color:#15803d;font-weight:600"' : '';
+          var qtyTxt = (r.qty && r.qty > 1) ? ('×' + r.qty) : '1';
           return '<tr>'
             + '<td><strong>' + bentoEsc(r.customerName) + '</strong></td>'
             + '<td>' + bentoEsc(r.phoneE164) + '</td>'
             + '<td>' + bentoEsc(r.pickupId) + '</td>'
             + '<td>' + bentoEsc(r.meal) + '</td>'
+            + '<td style="text-align:center;font-weight:600">' + bentoEsc(qtyTxt) + '</td>'
             + '<td' + dietCls + '>' + bentoEsc(r.diet) + '</td>'
             + '<td>' + bentoEsc(r.riceType) + '</td>'
             + '<td>' + bentoEsc(r.packageLabel) + '</td>'
@@ -5435,7 +5437,7 @@ export class AdminDashboardController {
           + '<div class="bento-date-group-head"><span class="bento-date-group-title">' + bentoEsc(g.weekday) + ' · ' + bentoEsc(g.date) + '</span>'
           + '<span class="bento-date-group-counts">' + counts + '</span></div>'
           + '<div class="table-wrap"><table class="data"><thead><tr>'
-          + '<th>Customer</th><th>Phone</th><th>Pickup ID</th><th>Meal</th><th>Diet</th><th>Rice</th><th>Package</th>'
+          + '<th>Customer</th><th>Phone</th><th>Pickup ID</th><th>Meal</th><th>Qty</th><th>Diet</th><th>Rice</th><th>Package</th>'
           + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div></div>';
       }).join('');
     }

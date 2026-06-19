@@ -98,6 +98,8 @@ export type BentoSubscription = {
     deliveryDate: string;
     includesLunch: boolean;
     includesDinner: boolean;
+    lunchQty: number;
+    dinnerQty: number;
     status: string;
   }>;
 };
