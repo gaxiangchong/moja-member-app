@@ -46,6 +46,7 @@ export class LoyaltyService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.ensureWalletInTx(tx, params.customerId);
+      await this.lockWalletInTx(tx, params.customerId);
       const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
         where: { customerId: params.customerId },
       });
@@ -75,6 +76,18 @@ export class LoyaltyService {
 
       return { balanceAfter };
     });
+  }
+
+  private async lockWalletInTx(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "loyalty_wallets"
+      WHERE "customer_id" = CAST(${customerId} AS uuid)
+      FOR UPDATE
+    `;
   }
 
   private async ensureWalletInTx(

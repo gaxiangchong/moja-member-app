@@ -85,63 +85,7 @@ export class WalletService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      await this.ensureWalletInTx(tx, params.customerId);
-      const wallet = await tx.storedWallet.findUniqueOrThrow({
-        where: { customerId: params.customerId },
-      });
-      if (wallet.isFrozen && !params.allowWhenFrozen) {
-        throw new BadRequestException({
-          code: 'WALLET_FROZEN',
-          message: 'Wallet is frozen',
-        });
-      }
-
-      const balanceBefore = wallet.balanceCents;
-      const balanceAfter = balanceBefore + params.amountCents;
-      if (balanceAfter < 0) {
-        throw new BadRequestException({
-          code: 'WALLET_INSUFFICIENT_BALANCE',
-          message: 'Transaction would result in negative wallet balance',
-        });
-      }
-
-      const txEntry = await tx.storedWalletLedgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          customerId: params.customerId,
-          type: params.type,
-          amountCents: params.amountCents,
-          balanceBefore,
-          balanceAfter,
-          reason: params.reason,
-          createdByType: params.createdByType,
-          createdBy: params.createdBy ?? null,
-          metadata: params.metadata,
-        },
-      });
-
-      const updates: Prisma.StoredWalletUpdateInput = {
-        balanceCents: balanceAfter,
-      };
-      if (params.type === WalletTxnType.TOPUP && params.amountCents > 0) {
-        updates.lifetimeTopUpCents = { increment: params.amountCents };
-      }
-      if (params.type === WalletTxnType.SPEND && params.amountCents < 0) {
-        updates.lifetimeSpentCents = { increment: Math.abs(params.amountCents) };
-      }
-      if (params.type === WalletTxnType.MANUAL_ADJUSTMENT) {
-        updates.manualAdjustmentCents = { increment: params.amountCents };
-      }
-      if (params.type === WalletTxnType.PROMOTIONAL_BONUS && params.amountCents > 0) {
-        updates.promotionalCreditCents = { increment: params.amountCents };
-      }
-
-      await tx.storedWallet.update({
-        where: { customerId: params.customerId },
-        data: updates,
-      });
-
-      return txEntry;
+      return this.appendTransactionInTx(tx, params);
     });
   }
 
@@ -154,6 +98,7 @@ export class WalletService {
   }) {
     return this.prisma.$transaction(async (tx) => {
       await this.ensureWalletInTx(tx, params.customerId);
+      await this.lockWalletInTx(tx, params.customerId);
       const original = await tx.storedWalletLedgerEntry.findFirst({
         where: { id: params.transactionId, customerId: params.customerId },
       });
@@ -215,6 +160,18 @@ export class WalletService {
     });
   }
 
+  private async lockWalletInTx(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "stored_wallets"
+      WHERE "customer_id" = CAST(${customerId} AS uuid)
+      FOR UPDATE
+    `;
+  }
+
   private async appendTransactionInTx(
     tx: Prisma.TransactionClient,
     params: {
@@ -235,6 +192,7 @@ export class WalletService {
       });
     }
     await this.ensureWalletInTx(tx, params.customerId);
+    await this.lockWalletInTx(tx, params.customerId);
     const wallet = await tx.storedWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
     });
@@ -268,7 +226,9 @@ export class WalletService {
       },
     });
 
-    const updates: Prisma.StoredWalletUpdateInput = { balanceCents: balanceAfter };
+    const updates: Prisma.StoredWalletUpdateInput = {
+      balanceCents: balanceAfter,
+    };
     if (params.type === WalletTxnType.TOPUP && params.amountCents > 0) {
       updates.lifetimeTopUpCents = { increment: params.amountCents };
     }
@@ -278,7 +238,10 @@ export class WalletService {
     if (params.type === WalletTxnType.MANUAL_ADJUSTMENT) {
       updates.manualAdjustmentCents = { increment: params.amountCents };
     }
-    if (params.type === WalletTxnType.PROMOTIONAL_BONUS && params.amountCents > 0) {
+    if (
+      params.type === WalletTxnType.PROMOTIONAL_BONUS &&
+      params.amountCents > 0
+    ) {
       updates.promotionalCreditCents = { increment: params.amountCents };
     }
     await tx.storedWallet.update({
