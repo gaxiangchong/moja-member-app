@@ -67,6 +67,24 @@ export class AuthService {
     }
 
     const mode = this.resolveOtpMode();
+    const waConfigured = this.whatsappOtp.isConfigured();
+    const isProduction =
+      this.config.get<string>('NODE_ENV') === 'production' ||
+      process.env.NODE_ENV === 'production';
+    if (mode === 'mock' && isProduction) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_MOCK_DISABLED_IN_PRODUCTION',
+        message: 'Mock OTP delivery is disabled in production.',
+      });
+    }
+    if (mode !== 'mock' && !waConfigured) {
+      throw new ServiceUnavailableException({
+        code: 'OTP_DELIVERY_NOT_CONFIGURED',
+        message:
+          'OTP delivery is not configured. Set WhatsApp credentials or use OTP_DELIVERY_MODE=mock for local development.',
+      });
+    }
+
     const fixedCode = this.config.get<string>('OTP_MOCK_FIXED_CODE')?.trim();
     const code =
       mode === 'mock' && fixedCode
@@ -100,22 +118,12 @@ export class AuthService {
       metadata: { phoneE164, ipAddress: ipAddress ?? null },
     });
 
-    const waConfigured = this.whatsappOtp.isConfigured();
-
-    if (mode === 'whatsapp' && !waConfigured) {
-      throw new ServiceUnavailableException({
-        code: 'OTP_DELIVERY_NOT_CONFIGURED',
-        message:
-          'OTP mode is whatsapp but WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
-      });
-    }
-
-    if (mode !== 'mock' && waConfigured) {
+    if (mode !== 'mock') {
       await this.whatsappOtp.sendOtp(phoneE164, code);
     }
 
-    const channel = mode === 'mock' ? 'mock' : waConfigured ? 'whatsapp' : 'dev';
-    const returnCode = channel !== 'whatsapp';
+    const channel = mode === 'mock' ? 'mock' : 'whatsapp';
+    const returnCode = mode === 'mock' && !isProduction;
 
     return {
       sent: true,
@@ -191,7 +199,9 @@ export class AuthService {
   }
 
   private resolveOtpMode(): 'mock' | 'whatsapp' | 'auto' {
-    const raw = this.config.get<string>('OTP_DELIVERY_MODE', 'auto').toLowerCase();
+    const raw = this.config
+      .get<string>('OTP_DELIVERY_MODE', 'auto')
+      .toLowerCase();
     if (raw === 'mock' || raw === 'whatsapp') {
       return raw;
     }

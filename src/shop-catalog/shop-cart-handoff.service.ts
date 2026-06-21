@@ -8,6 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import {
+  ShopCatalogService,
+  type ShopCatalogProduct,
+  type ShopCatalogProductVariant,
+} from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
@@ -38,6 +43,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly catalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -81,17 +87,31 @@ export class ShopCartHandoffService {
     return 'http://localhost:5193';
   }
 
-  private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
+  private normalizeLines(
+    rawLines: Array<{
+      productId?: string | null;
+      name?: string | null;
+      qty?: number | null;
+      unitPriceCents?: number | null;
+      variantLabel?: string | null;
+      imageUrl?: string | null;
+    }>,
+  ): CartHandoffLine[] {
+    const productsById = new Map(
+      this.catalog.listPublicProducts().map((p) => [p.id, p]),
+    );
     const lines: CartHandoffLine[] = [];
-    for (const raw of dto.lines) {
-      const productId = raw.productId.trim();
-      const name = raw.name.trim();
-      const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+    for (const raw of rawLines) {
+      const productId = String(raw.productId ?? '').trim();
+      const qty = Math.floor(Number(raw.qty));
+      const variantLabel =
+        typeof raw.variantLabel === 'string' && raw.variantLabel.trim()
+          ? raw.variantLabel.trim()
+          : null;
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs productId',
         });
       }
       if (qty < 1 || qty > 99) {
@@ -100,22 +120,67 @@ export class ShopCartHandoffService {
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
+
+      const { product, variant } = this.resolveCatalogLine(
+        productsById,
+        productId,
+        variantLabel,
+      );
+      const unitPriceCents = Math.max(
+        0,
+        Math.floor(variant?.priceCents ?? product.basePriceCents),
+      );
+      if (unitPriceCents <= 0) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
+          message: 'Catalog item is missing a valid price',
         });
       }
+
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? variantLabel,
+        imageUrl: product.imageUrl || null,
       });
     }
     return lines;
+  }
+
+  private resolveCatalogLine(
+    productsById: Map<string, ShopCatalogProduct>,
+    productId: string,
+    variantLabel: string | null,
+  ): {
+    product: ShopCatalogProduct;
+    variant: ShopCatalogProductVariant | null;
+  } {
+    const product = productsById.get(productId);
+    if (!product || product.soldOut) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_PRODUCT_UNAVAILABLE',
+        message: 'Cart contains a product that is no longer available',
+      });
+    }
+
+    if (!variantLabel) return { product, variant: null };
+
+    const normalizedVariant = variantLabel.toLowerCase();
+    const variant = product.variants?.find((v) => {
+      return (
+        v.label.trim().toLowerCase() === normalizedVariant ||
+        v.id.trim().toLowerCase() === normalizedVariant
+      );
+    });
+    if (!variant || variant.available === false) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_VARIANT_UNAVAILABLE',
+        message: 'Cart contains a variant that is no longer available',
+      });
+    }
+    return { product, variant };
   }
 
   private normalizeFulfillment(
@@ -146,7 +211,7 @@ export class ShopCartHandoffService {
       });
     }
 
-    const lines = this.normalizeLines(dto);
+    const lines = this.normalizeLines(dto.lines);
     const fulfillment = this.normalizeFulfillment(dto.fulfillment);
     const ttlSec = this.ttlSec();
     const issuer = this.handoffIssuer();
@@ -214,14 +279,7 @@ export class ShopCartHandoffService {
       });
     }
 
-    const lines = payload.lines.filter(
-      (l) =>
-        l &&
-        typeof l.productId === 'string' &&
-        typeof l.name === 'string' &&
-        Number.isFinite(l.qty) &&
-        Number.isFinite(l.unitPriceCents),
-    );
+    const lines = this.normalizeLines(payload.lines);
     if (lines.length === 0) {
       throw new BadRequestException({
         code: 'CART_HANDOFF_EMPTY',
@@ -248,16 +306,9 @@ export class ShopCartHandoffService {
         : null;
 
     return {
-      lines: lines.map((l) => ({
-        productId: String(l.productId).trim(),
-        name: String(l.name).trim(),
-        qty: Math.max(1, Math.min(99, Math.floor(l.qty))),
-        unitPriceCents: Math.max(0, Math.floor(l.unitPriceCents)),
-        variantLabel: l.variantLabel ? String(l.variantLabel).trim() : null,
-        imageUrl: l.imageUrl ? String(l.imageUrl).trim() : null,
-      })),
+      lines,
       subtotalCents: lines.reduce(
-        (sum, l) => sum + Math.floor(l.unitPriceCents) * Math.floor(l.qty),
+        (sum, l) => sum + l.unitPriceCents * l.qty,
         0,
       ),
       fulfillment,

@@ -4,7 +4,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
 import { CustomersService } from './customers.service';
 import { UpdateMeDto } from './dto/update-me.dto';
-import { WalletTopUpDto } from './dto/wallet-topup.dto';
 
 @Controller('customers')
 export class CustomersController {
@@ -32,14 +31,5 @@ export class CustomersController {
   @UseGuards(JwtAuthGuard)
   async meWallet(@CurrentUser() user: AuthUser) {
     return this.customers.getMeWallet(user.customerId);
-  }
-
-  @Patch('me/wallet/topup')
-  @UseGuards(JwtAuthGuard)
-  async meWalletTopUp(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: WalletTopUpDto,
-  ) {
-    return this.customers.topUpMyWallet(user.customerId, dto);
   }
 }
