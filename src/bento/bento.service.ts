@@ -548,37 +548,50 @@ export class BentoService implements OnModuleInit {
     const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
     await this.assertCanPurchase(pkg, requiredPacks);
 
-    if (quote.totalCents < 100) {
+    const totalCents = quote.totalCents * sets;
+    if (totalCents < 100) {
       throw new BadRequestException({
         code: 'BENTO_MIN_AMOUNT',
         message: 'Minimum order is RM1.00.',
       });
     }
 
-    const subscription = await this.prisma.bentoSubscription.create({
-      data: {
-        customerId,
-        packageId: pkg.id,
-        mealOption: dto.mealOption,
-        lunchVariant: dto.lunchVariant,
-        dinnerVariant: dto.dinnerVariant,
-        riceType: dto.riceType,
-        includeDrinkAddon:
-          drinksAndSoupEnabled &&
-          (pkg.includeFreeSoupAndDrinks || includeDrinkAddon),
-        mealCreditsTotal: pkg.mealCredits,
-        lunchCredits: quote.lunchCredits,
-        dinnerCredits: quote.dinnerCredits,
-        totalCents: quote.totalCents,
-        status: BentoSubscriptionStatus.PENDING_PAYMENT,
-      },
-      include: { package: true },
+    const subscriptionData = {
+      customerId,
+      packageId: pkg.id,
+      mealOption: dto.mealOption,
+      lunchVariant: dto.lunchVariant,
+      dinnerVariant: dto.dinnerVariant,
+      riceType: dto.riceType,
+      includeDrinkAddon:
+        drinksAndSoupEnabled &&
+        (pkg.includeFreeSoupAndDrinks || includeDrinkAddon),
+      mealCreditsTotal: pkg.mealCredits,
+      lunchCredits: quote.lunchCredits,
+      dinnerCredits: quote.dinnerCredits,
+      totalCents: quote.totalCents,
+      status: BentoSubscriptionStatus.PENDING_PAYMENT,
+    };
+
+    const subscriptions = await this.prisma.$transaction(async (tx) => {
+      const created: Awaited<
+        ReturnType<typeof tx.bentoSubscription.create>
+      >[] = [];
+      for (let i = 0; i < sets; i++) {
+        created.push(
+          await tx.bentoSubscription.create({
+            data: subscriptionData,
+            include: { package: true },
+          }),
+        );
+      }
+      return created;
     });
 
     return this.payments.createBentoSubscriptionCheckout(
       customerId,
-      subscription.id,
-      quote.totalCents,
+      subscriptions.map((s) => s.id),
+      totalCents,
       dto.channelCode,
     );
   }

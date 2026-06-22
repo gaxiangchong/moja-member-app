@@ -283,6 +283,7 @@ export async function checkoutBentoSubscription(body: {
   }) as Promise<{
     demoMode?: boolean;
     subscriptionId: string;
+    subscriptionIds?: string[];
     referenceId?: string;
     redirectUrl?: string | null;
     totalCents?: number;
