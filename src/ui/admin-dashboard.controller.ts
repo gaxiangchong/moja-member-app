@@ -628,6 +628,14 @@ export class AdminDashboardController {
     .bento-date-group .table-wrap { margin: 0; }
     .bento-date-group table.data th { background: #fff; }
     .bento-await-badge { display: inline-block; min-width: 20px; padding: 1px 8px; border-radius: 999px; background: #fef9c3; color: #854d0e; font-size: 12px; font-weight: 700; text-align: center; margin-left: 4px; }
+    .bento-refund-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 700; }
+    .bento-status-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #e2e8f0; color: #334155; font-size: 11px; font-weight: 700; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .bento-refund-line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 14px; }
+    .bento-refund-line:last-child { border-bottom: 0; }
+    .bento-refund-line .lbl { color: var(--text-muted); }
+    .bento-refund-line .val { font-weight: 600; }
+    .bento-refund-line.total .val { font-size: 18px; font-weight: 800; color: #047857; }
     .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-block; }
     .pill.ok { background: #dcfce7; color: #166534; }
     .pill.warn { background: #fef9c3; color: #854d0e; }
@@ -2762,6 +2770,7 @@ export class AdminDashboardController {
                 </select>
               </div>
               <div class="sa-toolbar-actions">
+                <button type="button" class="btn-outline" id="bsReconcileBtn" title="Poll Xendit for paid plans whose webhook didn't arrive (test mode / local)">Sync Xendit payments</button>
                 <button type="button" class="btn-primary" id="bsRefreshBtn">Apply</button>
               </div>
             </div>
@@ -2812,8 +2821,8 @@ export class AdminDashboardController {
               </div>
               <div class="table-wrap">
                 <table class="data">
-                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Amount (RM)</th></tr></thead>
-                  <tbody id="bsTxnBody"><tr><td colspan="6" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Amount (RM)</th><th>Status</th><th>Refund</th><th></th></tr></thead>
+                  <tbody id="bsTxnBody"><tr><td colspan="9" class="muted-hint">Apply a date range to load.</td></tr></tbody>
                 </table>
               </div>
             </div>
@@ -2904,13 +2913,14 @@ export class AdminDashboardController {
                 <button type="button" class="btn-outline" id="bentoMenuTemplateBtn">Download template</button>
                 <button type="button" class="btn-outline" id="bentoMenuImportBtn">Import file</button>
                 <input type="file" id="bentoMenuImportFile" accept=".xlsx,.csv" style="display:none" />
+                <input type="file" id="bentoMenuImageFile" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" />
                 <button type="button" class="btn-outline" id="refreshBentoMenuBtn">Refresh</button>
                 <button type="button" class="btn-primary" id="bentoMenuSaveBtn">Save menu</button>
               </div>
             </div>
             <div style="padding:12px 20px;max-width:1040px">
               <p class="field-hint" style="margin-top:0">
-                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. Tick <strong>Closed</strong> to block scheduling on that weekday (e.g. Sunday). This is separate from the cake-sales shopping catalog.
+                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. Tick <strong>Closed</strong> to block scheduling on that weekday (e.g. Sunday). This is separate from the cake-sales shopping catalog.<br />Use <strong>Upload photo</strong> under the Lunch / Dinner Regular column to add a decorative meal photo (one per Lunch and per Dinner, PNG/JPEG/WEBP/GIF up to 5&nbsp;MB). Photos save instantly — no need to click Save menu.
               </p>
               <p class="field-hint" style="margin-top:0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px">
                 <strong>Bulk edit:</strong> click <strong>Download template</strong> to get an Excel file pre-filled with the current menu, edit it, then <strong>Import file</strong> (.xlsx or .csv) to load it back in. Imported values appear in the table below for review — click <strong>Save menu</strong> to publish.
@@ -3317,6 +3327,34 @@ export class AdminDashboardController {
     <div class="modal-footer">
       <button type="button" class="btn-outline" id="editMemberCancel">Cancel</button>
       <button type="button" class="btn-primary" id="editMemberSave">Save changes</button>
+    </div>
+  </div>
+
+  <div id="bentoRefundBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
+  <div id="bentoRefundModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="bentoRefundTitle" style="max-width:520px">
+    <div class="modal-head">
+      <h2 id="bentoRefundTitle">Refund bento plan</h2>
+      <button type="button" class="icon-btn" id="bentoRefundClose" aria-label="Close" style="margin:0">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="field-hint" style="margin-top:0">
+        Consumed meals (picked up + meals locked for kitchen prep) are charged at the single-meal rate. The rest is refunded. Payout is manual/offline — this records what is owed.
+      </p>
+      <input type="hidden" id="brSubId" />
+      <div id="brPreview" class="muted-box" style="margin:12px 0">Loading breakdown…</div>
+      <div class="form-section">
+        <label for="brReason">Reason <span style="color:#b91c1c">*</span></label>
+        <input type="text" id="brReason" maxlength="300" placeholder="e.g. Member requested cancellation" />
+      </div>
+      <div class="form-section">
+        <label for="brPayoutNote">Payout note (optional)</label>
+        <input type="text" id="brPayoutNote" maxlength="300" placeholder="e.g. Cash refunded at counter / DuitNow ref 12345" />
+      </div>
+      <p class="field-hint" id="brResult"></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-outline" id="bentoRefundCancel">Cancel</button>
+      <button type="button" class="btn-primary" id="bentoRefundConfirm" disabled>Confirm refund</button>
     </div>
   </div>
 
@@ -5212,12 +5250,24 @@ export class AdminDashboardController {
             '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
             '</div>';
         }
+        function imgCtrl(meal, url) {
+          var has = url && String(url).trim();
+          var thumb = has
+            ? '<img src="' + bmAttr(url) + '" alt="" style="width:100%;max-width:170px;height:62px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;display:block" />'
+            : '<div style="font-size:11px;color:#9ca3af;padding:2px 0">No photo</div>';
+          return '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">' +
+            thumb +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button type="button" class="btn-outline bm-img-upload" data-weekday="' + bmAttr(d.weekday) + '" data-meal="' + meal + '" style="padding:2px 8px;font-size:12px">' + (has ? 'Replace' : 'Upload') + ' photo</button>' +
+            (has ? '<button type="button" class="btn-outline bm-img-remove" data-weekday="' + bmAttr(d.weekday) + '" data-meal="' + meal + '" style="padding:2px 8px;font-size:12px">Remove</button>' : '') +
+            '</div></div>';
+        }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
           '<td>' + stackedInp('lunch.veg', lunch.veg, lunch.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + '</td>' +
+          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + imgCtrl('lunch', lunch.image) + '</td>' +
           '<td>' + stackedInp('dinner.veg', dinner.veg, dinner.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + '</td>' +
+          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + imgCtrl('dinner', dinner.image) + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
@@ -5241,28 +5291,39 @@ export class AdminDashboardController {
     }
     function collectBentoMenu() {
       var rows = Array.prototype.slice.call(document.querySelectorAll('#bentoMenuBody tr[data-weekday]'));
+      var imgMap = {};
+      (lastBentoMenu || []).forEach(function (d) {
+        imgMap[d.weekday] = {
+          lunch: (d.lunch && d.lunch.image) || '',
+          dinner: (d.dinner && d.dinner.image) || '',
+        };
+      });
       return {
         weekdays: rows.map(function (tr) {
           var closedEl = tr.querySelector('.bm-closed');
           var closed = closedEl ? closedEl.checked : false;
+          var wk = tr.getAttribute('data-weekday');
+          var imgs = imgMap[wk] || { lunch: '', dinner: '' };
           function val(field) {
             var el = tr.querySelector('[data-field="' + field + '"]');
             return el ? el.value.trim() : '';
           }
           return {
-            weekday: tr.getAttribute('data-weekday'),
+            weekday: wk,
             closed: closed,
             lunch: {
               regular: val('lunch.regular'),
               veg: val('lunch.veg'),
               regularZh: val('lunch.regularZh'),
               vegZh: val('lunch.vegZh'),
+              image: imgs.lunch,
             },
             dinner: {
               regular: val('dinner.regular'),
               veg: val('dinner.veg'),
               regularZh: val('dinner.regularZh'),
               vegZh: val('dinner.vegZh'),
+              image: imgs.dinner,
             },
           };
         }),
@@ -5672,14 +5733,91 @@ export class AdminDashboardController {
         var list = (txn && Array.isArray(txn.transactions)) ? txn.transactions : [];
         var xb = document.getElementById('bsTxnBody');
         var xrows = list.map(function (x) {
-          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
+          var st = (x.subscriptionStatus || '').toString();
+          var refunded = x.refundCents != null;
+          var statusCell = refunded
+            ? '<span class="bento-refund-badge">Refunded</span>'
+            : (st ? '<span class="bento-status-badge">' + fmt(st) + '</span>' : '—');
+          var refundCell = refunded
+            ? 'RM ' + moneyFromCents(x.refundCents) + '<span class="field-hint" style="display:block">kept RM ' + moneyFromCents(x.chargedCents) + ' · ' + fmt(x.consumedMeals) + ' meals</span>'
+            : '—';
+          var canRefund = !refunded && x.subscriptionId && (st === 'ACTIVE' || st === 'COMPLETED');
+          var actionCell = canRefund
+            ? '<button type="button" class="btn-outline btn-sm bento-refund-btn" data-sub-id="' + bpAttr(x.subscriptionId) + '" data-member="' + bpAttr(x.customerName || x.customerPhone || '') + '" data-paid="' + (x.amountCents || 0) + '">Refund</button>'
+            : '';
+          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + moneyFromCents(x.amountCents) + '</td><td>' + statusCell + '</td><td>' + refundCell + '</td><td>' + actionCell + '</td></tr>';
         });
-        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="6" class="muted-hint">No transactions in this range.</td></tr>';
+        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="9" class="muted-hint">No transactions in this range.</td></tr>';
         if (hint) hint.textContent = list.length + ' shown (latest 100)';
         statusPanel.textContent = 'Bento sales updated.';
       } catch (e) {
         if (hint) hint.textContent = e.message || String(e);
         statusPanel.textContent = e.message || String(e);
+      }
+    }
+
+    function closeBentoRefundModal() {
+      document.getElementById('bentoRefundBackdrop').classList.add('hidden');
+      document.getElementById('bentoRefundModal').classList.add('hidden');
+    }
+
+    function bentoRefundLine(label, value, isTotal) {
+      return '<div class="bento-refund-line' + (isTotal ? ' total' : '') + '"><span class="lbl">' + label + '</span><span class="val">' + value + '</span></div>';
+    }
+
+    async function openBentoRefundModal(subId, memberLabel) {
+      if (!subId) return;
+      document.getElementById('brSubId').value = subId;
+      document.getElementById('brReason').value = '';
+      document.getElementById('brPayoutNote').value = '';
+      document.getElementById('brResult').textContent = '';
+      var confirmBtn = document.getElementById('bentoRefundConfirm');
+      confirmBtn.disabled = true;
+      var prev = document.getElementById('brPreview');
+      prev.textContent = 'Loading breakdown…';
+      document.getElementById('bentoRefundBackdrop').classList.remove('hidden');
+      document.getElementById('bentoRefundModal').classList.remove('hidden');
+      try {
+        var p = await api('/admin/bento/subscriptions/' + encodeURIComponent(subId) + '/refund-preview');
+        var html = '';
+        if (memberLabel) html += bentoRefundLine('Member', bpAttr(memberLabel));
+        html += bentoRefundLine('Paid', 'RM ' + moneyFromCents(p.paidCents));
+        html += bentoRefundLine('Meals purchased', fmt(p.purchasedMeals));
+        html += bentoRefundLine('Consumed (picked up + locked)', fmt(p.consumedMeals) + ' meal(s)');
+        html += bentoRefundLine('Single-meal rate', 'RM ' + moneyFromCents(p.singleMealCents));
+        html += bentoRefundLine('Kept for consumed', '− RM ' + moneyFromCents(p.chargedCents));
+        html += bentoRefundLine('Refund to member', 'RM ' + moneyFromCents(p.refundCents), true);
+        prev.innerHTML = html;
+        if (p.alreadyRefunded) {
+          prev.innerHTML += '<p class="field-hint" style="color:#b91c1c">Already refunded.</p>';
+        } else {
+          confirmBtn.disabled = false;
+        }
+      } catch (e) {
+        prev.textContent = e.message || String(e);
+      }
+    }
+
+    async function submitBentoRefund() {
+      var subId = document.getElementById('brSubId').value;
+      var reason = document.getElementById('brReason').value.trim();
+      var out = document.getElementById('brResult');
+      if (!subId) return;
+      if (!reason) { out.textContent = 'Reason is required.'; return; }
+      var confirmBtn = document.getElementById('bentoRefundConfirm');
+      try {
+        confirmBtn.disabled = true;
+        out.textContent = 'Processing…';
+        var body = { reason: reason };
+        var note = document.getElementById('brPayoutNote').value.trim();
+        if (note) body.payoutNote = note;
+        var res = await apiPost('/admin/bento/subscriptions/' + encodeURIComponent(subId) + '/refund', body);
+        closeBentoRefundModal();
+        statusPanel.textContent = 'Refund recorded — RM ' + moneyFromCents(res.refund ? res.refund.refundCents : 0) + ' owed to member.';
+        await loadBentoSales();
+      } catch (e) {
+        out.textContent = e.message || String(e);
+        confirmBtn.disabled = false;
       }
     }
 
@@ -5711,6 +5849,41 @@ export class AdminDashboardController {
         lastBentoMenu = (data && Array.isArray(data.weekdays)) ? data.weekdays : [];
         renderBentoMenu();
         if (out) out.textContent = 'Loaded ' + lastBentoMenu.length + ' day(s) from ' + (file.name || 'file') + '. Review the table above, then click Save menu to publish.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function uploadBentoMenuImage(weekday, meal, file) {
+      var out = document.getElementById('bentoMenuSaveResult');
+      if (!file) return;
+      if (out) out.textContent = 'Uploading photo…';
+      try {
+        var headers = { ...getAuthHeaders() };
+        delete headers['Content-Type'];
+        var fd = new FormData();
+        fd.append('file', file);
+        var url = '/admin/bento-menu/image?weekday=' + encodeURIComponent(weekday) + '&meal=' + encodeURIComponent(meal);
+        var res = await fetch(url, { method: 'POST', headers, body: fd });
+        if (!res.ok) {
+          var txt = await res.text();
+          throw new Error('Upload failed (' + res.status + '): ' + txt);
+        }
+        var data = await res.json();
+        lastBentoMenu = (data && Array.isArray(data.weekdays)) ? data.weekdays : lastBentoMenu;
+        renderBentoMenu();
+        if (out) out.textContent = 'Photo saved for ' + weekday + ' ' + meal + ' — live in the Bento app menu.';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function removeBentoMenuImage(weekday, meal) {
+      var out = document.getElementById('bentoMenuSaveResult');
+      if (out) out.textContent = 'Removing photo…';
+      try {
+        var data = await apiDelete('/admin/bento-menu/image?weekday=' + encodeURIComponent(weekday) + '&meal=' + encodeURIComponent(meal));
+        lastBentoMenu = (data && Array.isArray(data.weekdays)) ? data.weekdays : lastBentoMenu;
+        renderBentoMenu();
+        if (out) out.textContent = 'Photo removed for ' + weekday + ' ' + meal + '.';
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -6802,6 +6975,16 @@ export class AdminDashboardController {
     document.getElementById('editMemberBackdrop').addEventListener('click', closeEditMemberModal);
     document.getElementById('editMemberClose').addEventListener('click', closeEditMemberModal);
     document.getElementById('editMemberCancel').addEventListener('click', closeEditMemberModal);
+    document.getElementById('bsTxnBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('.bento-refund-btn');
+      if (!btn) return;
+      e.preventDefault();
+      openBentoRefundModal(btn.getAttribute('data-sub-id'), btn.getAttribute('data-member'));
+    });
+    document.getElementById('bentoRefundBackdrop').addEventListener('click', closeBentoRefundModal);
+    document.getElementById('bentoRefundClose').addEventListener('click', closeBentoRefundModal);
+    document.getElementById('bentoRefundCancel').addEventListener('click', closeBentoRefundModal);
+    document.getElementById('bentoRefundConfirm').addEventListener('click', () => submitBentoRefund().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('editMemberForm').addEventListener('submit', (e) => {
       e.preventDefault();
       saveEditMember().catch((err) => { statusPanel.textContent = err.message; });
@@ -6813,6 +6996,9 @@ export class AdminDashboardController {
       }
       if (e.key === 'Escape' && !document.getElementById('editMemberModal').classList.contains('hidden')) {
         closeEditMemberModal();
+      }
+      if (e.key === 'Escape' && !document.getElementById('bentoRefundModal').classList.contains('hidden')) {
+        closeBentoRefundModal();
       }
     });
     document.getElementById('refreshCustomersBtn').addEventListener('click', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
@@ -7128,6 +7314,17 @@ export class AdminDashboardController {
         loadBentoPackages().catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
+    var bentoMenuImageFile = document.getElementById('bentoMenuImageFile');
+    var bentoMenuImageTarget = null;
+    if (bentoMenuImageFile) {
+      bentoMenuImageFile.addEventListener('change', function () {
+        var file = bentoMenuImageFile.files && bentoMenuImageFile.files[0];
+        if (file && bentoMenuImageTarget) {
+          uploadBentoMenuImage(bentoMenuImageTarget.weekday, bentoMenuImageTarget.meal, file)
+            .catch(function (e) { statusPanel.textContent = e.message; });
+        }
+      });
+    }
     var bentoMenuBody = document.getElementById('bentoMenuBody');
     if (bentoMenuBody) {
       bentoMenuBody.addEventListener('change', function (e) {
@@ -7140,6 +7337,19 @@ export class AdminDashboardController {
             inp.disabled = disabled;
             inp.placeholder = disabled ? 'Closed' : 'Dish name';
           });
+        }
+      });
+      bentoMenuBody.addEventListener('click', function (e) {
+        var up = e.target && e.target.closest ? e.target.closest('.bm-img-upload') : null;
+        if (up) {
+          bentoMenuImageTarget = { weekday: up.getAttribute('data-weekday'), meal: up.getAttribute('data-meal') };
+          if (bentoMenuImageFile) { bentoMenuImageFile.value = ''; bentoMenuImageFile.click(); }
+          return;
+        }
+        var rm = e.target && e.target.closest ? e.target.closest('.bm-img-remove') : null;
+        if (rm) {
+          removeBentoMenuImage(rm.getAttribute('data-weekday'), rm.getAttribute('data-meal'))
+            .catch(function (e2) { statusPanel.textContent = e2.message; });
         }
       });
     }
@@ -7201,6 +7411,24 @@ export class AdminDashboardController {
     }
     wireBentoRange('bo', loadBentoOverview);
     wireBentoRange('bs', loadBentoSales);
+    var bsReconcileBtn = document.getElementById('bsReconcileBtn');
+    if (bsReconcileBtn) {
+      bsReconcileBtn.addEventListener('click', async function () {
+        var hint = document.getElementById('bsTxnHint');
+        bsReconcileBtn.disabled = true;
+        if (hint) hint.textContent = 'Syncing with Xendit…';
+        try {
+          var res = await apiPost('/admin/bento/reconcile-pending', {});
+          statusPanel.textContent = 'Xendit sync: ' + (res.finalized || 0) + ' of ' + (res.checked || 0) + ' pending payment(s) confirmed.';
+          await loadBentoSales();
+        } catch (e) {
+          if (hint) hint.textContent = e.message || String(e);
+          statusPanel.textContent = e.message || String(e);
+        } finally {
+          bsReconcileBtn.disabled = false;
+        }
+      });
+    }
     var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
     if (scSitesCatalogSaveBtn) {
       scSitesCatalogSaveBtn.addEventListener('click', function () {

@@ -5,9 +5,11 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 /** Mon–Sun weekday codes used as stable keys for the weekly menu. */
 export const BENTO_WEEKDAY_CODES = [
@@ -48,6 +50,8 @@ export type BentoMealDishes = {
   regularZh: string;
   /** Vegetarian dish name in Chinese (optional). */
   vegZh: string;
+  /** Decorative meal photo URL (e.g. /uploads/bento-menu/..). Optional. */
+  image: string;
 };
 
 export type BentoWeekdayMenu = {
@@ -66,7 +70,20 @@ const EMPTY_DISHES: BentoMealDishes = {
   veg: '',
   regularZh: '',
   vegZh: '',
+  image: '',
 };
+
+/** Max menu photo size and the image types we accept on upload. */
+const MAX_MENU_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_MENU_IMAGE_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+
+export type BentoMealSlot = 'lunch' | 'dinner';
 
 /**
  * Default weekly menu. Mon–Sat have dishes; Sunday is closed. Seeded from the
@@ -156,7 +173,16 @@ export class BentoMenuService {
       veg: clean(obj.veg, fallback.veg),
       regularZh: clean(obj.regularZh, fallback.regularZh),
       vegZh: clean(obj.vegZh, fallback.vegZh),
+      image: this.sanitizeImageUrl(obj.image, fallback.image),
     };
+  }
+
+  /** Only accept locally-served upload URLs; ignore anything else. */
+  private sanitizeImageUrl(v: unknown, fb: string): string {
+    if (typeof v !== 'string') return fb;
+    const url = v.trim().slice(0, 300);
+    if (!url) return '';
+    return url.startsWith('/uploads/bento-menu/') ? url : fb;
   }
 
   /** Normalize arbitrary input into a full Mon–Sun config (all 7 days present). */
@@ -200,6 +226,101 @@ export class BentoMenuService {
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
     return next;
+  }
+
+  // --- Per-meal decorative photo upload (Lunch / Dinner) ---
+
+  private uploadsDir(): string {
+    return resolve(process.cwd(), 'data', 'uploads', 'bento-menu');
+  }
+
+  private tryRemoveImageByUrl(url: string): void {
+    if (!url || !url.startsWith('/uploads/bento-menu/')) return;
+    const name = url.substring('/uploads/bento-menu/'.length);
+    if (!/^[a-z0-9._-]+$/i.test(name)) return;
+    const p = resolve(this.uploadsDir(), name);
+    try {
+      if (existsSync(p)) unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private assertWeekday(weekday: string): BentoWeekdayCode {
+    if (!BENTO_WEEKDAY_CODES.includes(weekday as BentoWeekdayCode)) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_BAD_WEEKDAY',
+        message: 'Invalid weekday. Use Mon–Sun.',
+      });
+    }
+    return weekday as BentoWeekdayCode;
+  }
+
+  private assertMeal(meal: string): BentoMealSlot {
+    if (meal !== 'lunch' && meal !== 'dinner') {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_BAD_MEAL',
+        message: 'Invalid meal. Use lunch or dinner.',
+      });
+    }
+    return meal;
+  }
+
+  /** Save an uploaded photo for a weekday's lunch/dinner and persist the URL. */
+  attachMealImage(
+    weekday: string,
+    meal: string,
+    file?: Express.Multer.File,
+  ): BentoMenuConfig {
+    const day = this.assertWeekday(weekday);
+    const slot = this.assertMeal(meal);
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_EMPTY',
+        message: 'No file uploaded.',
+      });
+    }
+    if (file.size > MAX_MENU_IMAGE_BYTES) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_TOO_LARGE',
+        message: `Image too large. Max ${Math.round(MAX_MENU_IMAGE_BYTES / 1024 / 1024)} MB.`,
+      });
+    }
+    const ext =
+      ALLOWED_MENU_IMAGE_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    if (!ext || !Object.values(ALLOWED_MENU_IMAGE_MIME).includes(ext)) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_BAD_TYPE',
+        message: 'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      });
+    }
+
+    mkdirSync(this.uploadsDir(), { recursive: true });
+    const filename = `${day}-${slot}-${randomUUID()}${ext}`;
+    writeFileSync(resolve(this.uploadsDir(), filename), file.buffer);
+    const publicUrl = `/uploads/bento-menu/${filename}`;
+
+    const config = this.getConfig();
+    const target = config.weekdays.find((d) => d.weekday === day)!;
+    const prevUrl = target[slot].image;
+    target[slot] = { ...target[slot], image: publicUrl };
+    const saved = this.setConfig(config);
+    if (prevUrl && prevUrl !== publicUrl) this.tryRemoveImageByUrl(prevUrl);
+    return saved;
+  }
+
+  /** Remove a weekday's lunch/dinner photo and delete the file. */
+  clearMealImage(weekday: string, meal: string): BentoMenuConfig {
+    const day = this.assertWeekday(weekday);
+    const slot = this.assertMeal(meal);
+    const config = this.getConfig();
+    const target = config.weekdays.find((d) => d.weekday === day)!;
+    const prevUrl = target[slot].image;
+    target[slot] = { ...target[slot], image: '' };
+    const saved = this.setConfig(config);
+    if (prevUrl) this.tryRemoveImageByUrl(prevUrl);
+    return saved;
   }
 
   // --- Spreadsheet template download + import (review-then-save flow) ---
@@ -263,11 +384,17 @@ export class BentoMenuService {
       });
     }
 
+    // Images are managed via upload (not the spreadsheet), so carry over any
+    // existing photo URLs so a text-only import doesn't wipe them.
+    const existing = new Map<BentoWeekdayCode, BentoWeekdayMenu>(
+      this.getConfig().weekdays.map((d) => [d.weekday, d]),
+    );
     const dataRows = this.stripHeaderRow(rows);
     const weekdays: BentoWeekdayMenu[] = [];
     for (const r of dataRows) {
       const code = this.normalizeWeekday(r[0] ?? '');
       if (!code) continue;
+      const prev = existing.get(code);
       weekdays.push({
         weekday: code,
         closed: this.parseClosedCell(r[1] ?? ''),
@@ -276,12 +403,14 @@ export class BentoMenuService {
           regularZh: (r[3] ?? '').trim(),
           veg: (r[4] ?? '').trim(),
           vegZh: (r[5] ?? '').trim(),
+          image: prev?.lunch.image ?? '',
         },
         dinner: {
           regular: (r[6] ?? '').trim(),
           regularZh: (r[7] ?? '').trim(),
           veg: (r[8] ?? '').trim(),
           vegZh: (r[9] ?? '').trim(),
+          image: prev?.dinner.image ?? '',
         },
       });
     }

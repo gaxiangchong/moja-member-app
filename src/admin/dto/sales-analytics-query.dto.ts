@@ -89,6 +89,13 @@ export interface BentoTransactionRow {
   packageLabel: string | null;
   mealOption: string | null;
   amountCents: number;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  /** Refund recorded for this subscription, if any. */
+  refundCents: number | null;
+  chargedCents: number | null;
+  consumedMeals: number | null;
+  refundedAt: string | null;
 }
 
 export class SalesAnalyticsQueryDto {

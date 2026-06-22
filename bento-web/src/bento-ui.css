@@ -2873,6 +2873,250 @@ button {
   line-height: 1.35;
 }
 
+/* =========================================================
+   Premium bento menu — restaurant-quality, mobile-first
+   ========================================================= */
+.bmMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  background: #f5f2ed;
+  border-radius: 22px;
+  padding: 16px 14px 18px;
+}
+
+/* ---- Day section ---- */
+.bmDay {
+  display: flex;
+  flex-direction: column;
+}
+.bmDay.closed {
+  opacity: 0.55;
+}
+.bmDayHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+  padding: 0 2px;
+}
+.bmDayDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d8b48a;
+  flex-shrink: 0;
+}
+.bmDay.today .bmDayDot {
+  background: #f97316;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.18);
+}
+.bmDayName {
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #2b2118;
+}
+.bmDayDate {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #a89683;
+}
+.bmTodayPill {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c2410c;
+  background: #ffe8d2;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.bmClosedPill {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b8b8b;
+  background: #ececec;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.bmOrderBtn {
+  margin-left: auto;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, #fb923c, #f97316);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 8px 15px;
+  border-radius: 999px;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.3);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.bmOrderBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 20px rgba(249, 115, 22, 0.42);
+}
+.bmOrderBtn:active {
+  transform: translateY(0);
+}
+
+/* ---- Meals grid: stacked on mobile, side-by-side on wider screens ---- */
+.bmMealsRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 760px) {
+  .bmMealsRow {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* ---- Meal card (hero) ---- */
+.bmCard {
+  position: relative;
+  background: #fff;
+  border-radius: 22px;
+  border: 1px solid #f1ece3;
+  box-shadow: 0 6px 20px rgba(60, 40, 15, 0.07);
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+@media (hover: hover) {
+  .bmCard:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(60, 40, 15, 0.13);
+  }
+}
+.bmCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 1;
+}
+.bmCard.lunch::before {
+  background: linear-gradient(180deg, #fbbf24, #f97316);
+}
+.bmCard.dinner::before {
+  background: linear-gradient(180deg, #818cf8, #6366f1);
+}
+.bmCard.veg::before {
+  background: linear-gradient(180deg, #4ade80, #16a34a);
+}
+
+/* Decorative-only image — never interactive */
+.bmCardImg {
+  width: 100%;
+  height: 150px;
+  background: #efe7db;
+  overflow: hidden;
+}
+.bmCardImg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.bmCardBody {
+  padding: 15px 17px 17px 21px;
+}
+
+.bmKicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.bmKickerIcon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.bmKickerText {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.bmCard.lunch .bmKickerText { color: #c2410c; }
+.bmCard.dinner .bmKickerText { color: #4f46e5; }
+.bmCard.veg .bmKickerText { color: #15803d; }
+
+/* Hero main dish — dominates the card */
+.bmHero {
+  margin: 0;
+  font-size: clamp(1.4rem, 5.6vw, 1.65rem); /* ~22–26px */
+  font-weight: 800;
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  color: #241a12;
+}
+.bmHeroLabel {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #b08968;
+}
+
+/* Side dishes — clearly secondary, 2-column grid */
+.bmSideGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 14px;
+}
+@media (max-width: 340px) {
+  .bmSideGrid { grid-template-columns: 1fr; }
+}
+.bmSideItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #faf6f0;
+  border-radius: 13px;
+  padding: 9px 11px;
+}
+.bmCard.dinner .bmSideItem { background: #f5f6fd; }
+.bmCard.veg .bmSideItem { background: #f2fbf5; }
+.bmSideKicker {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #b39476;
+}
+.bmCard.dinner .bmSideKicker { color: #8389c4; }
+.bmCard.veg .bmSideKicker { color: #4f9c6b; }
+.bmSideName {
+  font-size: 0.9rem; /* ~14px */
+  font-weight: 600;
+  color: #3d342a;
+  line-height: 1.22;
+}
+
+.bmFootnote {
+  margin: 14px 0 0;
+  font-size: 0.76rem;
+  font-style: italic;
+  color: #9a8a76;
+  line-height: 1.4;
+}
+
 /* ---- Schedule summary view ---- */
 .schedSummaryHead {
   display: flex;

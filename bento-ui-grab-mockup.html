@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Moja Bento — Grab-style UI mockup</title>
+<style>
+  :root{
+    /* Moja orange palette, retained */
+    --bg:#f4f5f7;            /* app canvas (Grab uses a soft grey behind cards) */
+    --surface:#ffffff;
+    --surface-soft:#fff6ef;
+    --primary:#e8590c;       /* Moja orange, slightly punchier for CTAs */
+    --primary-deep:#c2410c;
+    --accent:#f97316;
+    --primary-soft:#ffedd5;
+    --text:#1c140d;
+    --muted:#7a6a5a;
+    --line:#ececf0;
+    --success:#15803d;
+    --success-soft:#dcfce7;
+    --danger:#b91c1c;
+    --radius:18px;
+    --shadow-card:0 1px 2px rgba(28,20,13,.06), 0 6px 18px rgba(28,20,13,.05);
+    --shadow-float:0 -2px 16px rgba(28,20,13,.08);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{
+    font-family:var(--font);background:#e7e3df;color:var(--text);
+    display:flex;flex-direction:column;align-items:center;gap:18px;
+    padding:28px 14px 60px;min-height:100vh;
+  }
+  .pageHead{text-align:center;max-width:560px;}
+  .pageHead h1{font-size:22px;font-weight:800;letter-spacing:-.02em;}
+  .pageHead p{color:#6b5d50;font-size:14px;margin-top:6px;line-height:1.5;}
+  .pageHead .tag{display:inline-block;margin-top:10px;font-size:12px;font-weight:600;color:var(--primary-deep);background:var(--primary-soft);padding:5px 12px;border-radius:999px;}
+
+  /* phone frame */
+  .phone{
+    width:390px;max-width:96vw;height:800px;background:var(--bg);
+    border-radius:42px;box-shadow:0 30px 70px rgba(20,12,6,.28),0 0 0 11px #11100f,0 0 0 13px #2b2723;
+    overflow:hidden;position:relative;display:flex;flex-direction:column;
+  }
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:150px;height:26px;background:#11100f;border-radius:0 0 18px 18px;z-index:60;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 6px;font-size:12px;font-weight:600;color:var(--text);z-index:50;}
+  .statusbar .dots{display:flex;gap:5px;align-items:center;}
+
+  .screenWrap{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:none;}
+  .screenWrap::-webkit-scrollbar{display:none;}
+  .screen{display:none;padding-bottom:96px;animation:fade .25s ease;}
+  .screen.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+  /* top app bar */
+  .appbar{padding:6px 18px 14px;background:linear-gradient(180deg,var(--surface-soft),var(--bg));}
+  .appbar .row{display:flex;align-items:center;justify-content:space-between;}
+  .greet{font-size:13px;color:var(--muted);}
+  .loc{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;margin-top:2px;}
+  .loc svg{width:16px;height:16px;}
+  .avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--primary-deep));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+  .search{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;box-shadow:var(--shadow-card);}
+  .search svg{width:18px;height:18px;flex:none;}
+
+  .sectionPad{padding:0 18px;}
+  .secHead{display:flex;align-items:baseline;justify-content:space-between;margin:22px 0 12px;}
+  .secHead h2{font-size:18px;font-weight:800;letter-spacing:-.01em;}
+  .secHead a{font-size:13px;font-weight:600;color:var(--primary);}
+
+  /* hero banner */
+  .hero{margin:16px 18px 0;border-radius:var(--radius);overflow:hidden;position:relative;background:linear-gradient(120deg,#9a3412,#e8590c 60%,#fb923c);color:#fff;padding:20px;min-height:140px;display:flex;flex-direction:column;justify-content:center;box-shadow:var(--shadow-card);}
+  .hero .eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9;}
+  .hero h3{font-size:21px;font-weight:800;margin:6px 0 4px;line-height:1.15;}
+  .hero p{font-size:13px;opacity:.92;max-width:70%;}
+  .hero .heroBtn{margin-top:14px;align-self:flex-start;background:#fff;color:var(--primary-deep);font-weight:700;font-size:13px;padding:9px 16px;border-radius:999px;border:none;cursor:pointer;}
+  .hero .blob{position:absolute;right:-30px;bottom:-30px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12);}
+  .hero .emoji{position:absolute;right:18px;top:16px;font-size:46px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2));}
+  .dots3{display:flex;gap:6px;justify-content:center;margin-top:12px;}
+  .dots3 span{width:6px;height:6px;border-radius:50%;background:#d8c8ba;}
+  .dots3 span.on{width:18px;background:var(--primary);border-radius:999px;}
+
+  /* category quick row */
+  .cats{display:flex;gap:8px;padding:0 18px;margin-top:18px;overflow-x:auto;scrollbar-width:none;}
+  .cats::-webkit-scrollbar{display:none;}
+  .cat{flex:none;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;width:74px;text-align:center;cursor:pointer;box-shadow:var(--shadow-card);}
+  .cat .ic{font-size:22px;}
+  .cat span{display:block;font-size:11px;font-weight:600;margin-top:6px;color:var(--text);}
+  .cat.active{background:var(--primary-soft);border-color:#f0c8a8;}
+
+  /* meal cards */
+  .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-card);overflow:hidden;margin-bottom:14px;}
+  .mealCard{display:flex;gap:0;}
+  .mealThumb{width:108px;flex:none;background:linear-gradient(135deg,#ffe3c7,#ffd0a8);display:flex;align-items:center;justify-content:center;font-size:42px;position:relative;}
+  .mealThumb .badge{position:absolute;top:8px;left:8px;background:var(--primary);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;}
+  .mealBody{padding:13px 14px;flex:1;min-width:0;}
+  .mealDay{font-size:11px;font-weight:700;color:var(--primary-deep);text-transform:uppercase;letter-spacing:.05em;}
+  .mealBody h4{font-size:15px;font-weight:700;margin:3px 0 3px;}
+  .mealBody p{font-size:12.5px;color:var(--muted);line-height:1.45;}
+  .mealMeta{display:flex;align-items:center;gap:8px;margin-top:9px;}
+  .pill{font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;background:var(--primary-soft);color:var(--primary-deep);}
+  .pill.veg{background:var(--success-soft);color:var(--success);}
+  .star{margin-left:auto;font-size:12px;font-weight:700;color:var(--text);}
+
+  /* package plans */
+  .planPromo{background:linear-gradient(120deg,#fff3e8,#ffe6d2);border:1.5px solid #f4c79f;border-radius:var(--radius);padding:16px;margin-bottom:16px;position:relative;overflow:hidden;}
+  .planPromo .rib{position:absolute;top:13px;right:-30px;transform:rotate(38deg);background:var(--primary);color:#fff;font-size:10px;font-weight:700;padding:4px 36px;}
+  .planPromo .eyebrow{font-size:11px;font-weight:700;color:var(--primary-deep);text-transform:uppercase;letter-spacing:.06em;}
+  .planPromo h3{font-size:18px;font-weight:800;margin:5px 0;}
+  .planPromo .desc{font-size:13px;color:#6b5d50;}
+  .planPromo .price{font-size:26px;font-weight:800;color:var(--primary-deep);margin-top:10px;}
+  .planPromo .price small{font-size:13px;font-weight:600;color:var(--muted);}
+  .planBtn{margin-top:12px;width:100%;background:var(--primary);color:#fff;border:none;border-radius:13px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;}
+
+  .planCard{padding:16px;margin-bottom:13px;cursor:pointer;border:2px solid transparent;}
+  .planCard.sel{border-color:var(--primary);background:var(--surface-soft);}
+  .planTop{display:flex;justify-content:space-between;align-items:flex-start;}
+  .planName{font-size:16px;font-weight:800;}
+  .planTier{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;color:#fff;}
+  .t-value{background:#0ea5e9;}.t-good{background:#8b5cf6;}.t-super{background:var(--primary);}
+  .planRow{display:flex;align-items:baseline;gap:8px;margin-top:10px;}
+  .planRow .now{font-size:23px;font-weight:800;color:var(--text);}
+  .planRow .was{font-size:13px;color:var(--muted);text-decoration:line-through;}
+  .planRow .per{font-size:12px;color:var(--muted);}
+  .planFeat{display:flex;gap:14px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);}
+  .planFeat div{font-size:12px;color:var(--muted);}
+  .planFeat strong{display:block;font-size:14px;color:var(--text);font-weight:700;}
+  .saveTag{display:inline-flex;align-items:center;gap:5px;margin-top:11px;font-size:12px;font-weight:700;color:var(--success);background:var(--success-soft);padding:5px 11px;border-radius:999px;}
+
+  /* checkout */
+  .coHead{padding:16px 18px 6px;}
+  .coHead h2{font-size:19px;font-weight:800;}
+  .coHead p{font-size:13px;color:var(--muted);margin-top:3px;}
+  .lineList{padding:4px 4px;}
+  .lineRow{display:flex;justify-content:space-between;padding:11px 14px;font-size:14px;}
+  .lineRow + .lineRow{border-top:1px solid var(--line);}
+  .lineRow .lbl{color:var(--text);}
+  .lineRow .amt{font-weight:700;}
+  .gb{margin:8px 4px 0;padding:16px;border:1.5px solid #f0d8c4;border-radius:var(--radius);background:var(--surface);}
+  .gbTop{display:flex;align-items:center;gap:12px;}
+  .gbTxt{flex:1;}
+  .gbTxt b{font-size:15px;font-weight:800;display:block;}
+  .gbTxt span{font-size:12.5px;color:var(--muted);}
+  .toggle{width:48px;height:28px;border-radius:999px;background:var(--primary);position:relative;flex:none;cursor:pointer;transition:.2s;}
+  .toggle::after{content:'';position:absolute;top:3px;left:23px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  .toggle.off{background:#d8cabc;}
+  .toggle.off::after{left:3px;}
+  .qtyRow{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);}
+  .qtyRow .ql{font-size:13.5px;font-weight:600;}
+  .qtyCtrl{display:flex;align-items:center;gap:14px;}
+  .qtyBtn{width:34px;height:34px;border-radius:11px;border:1.5px solid var(--line);background:var(--surface);font-size:20px;font-weight:700;color:var(--primary-deep);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .qtyVal{font-size:18px;font-weight:800;min-width:20px;text-align:center;}
+  .gbCalc{margin-top:14px;background:var(--primary-soft);border-radius:12px;padding:11px 14px;font-size:14px;color:var(--primary-deep);text-align:center;font-weight:600;}
+  .gbCalc strong{font-weight:800;}
+  .payNote{font-size:11.5px;color:var(--success);font-weight:600;margin-top:8px;text-align:center;}
+  .payMethod{margin:14px 4px 0;}
+  .payMethod .pml{font-size:13px;font-weight:700;margin-bottom:8px;}
+  .pmOpt{display:flex;align-items:center;gap:12px;background:var(--surface);border:1.5px solid var(--primary);border-radius:13px;padding:12px 14px;}
+  .pmOpt .pmIc{width:40px;height:28px;border-radius:6px;background:#0a4ea2;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+  .pmOpt b{font-size:14px;}
+  .pmOpt .chk{margin-left:auto;color:var(--primary);font-weight:800;}
+
+  /* schedule */
+  .calCard{padding:16px;}
+  .calHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .calHead b{font-size:16px;font-weight:800;}
+  .calNav{display:flex;gap:8px;}
+  .calNav button{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:var(--muted);}
+  .calGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .calGrid .dow{font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding-bottom:4px;}
+  .day{aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:#f6f2ee;color:var(--text);cursor:pointer;position:relative;}
+  .day.muted{color:#c9bdb0;background:transparent;}
+  .day.sel{background:var(--primary);color:#fff;}
+  .day.has{background:var(--primary-soft);color:var(--primary-deep);}
+  .day .dot{width:5px;height:5px;border-radius:50%;background:var(--primary);margin-top:3px;}
+  .day.sel .dot{background:#fff;}
+  .creditCard{padding:15px;display:flex;align-items:center;gap:13px;margin-bottom:12px;}
+  .creditIc{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--primary-soft);flex:none;}
+  .creditBody{flex:1;}
+  .creditBody b{font-size:14.5px;font-weight:700;}
+  .creditBody .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .progress{height:7px;border-radius:999px;background:#eee5dd;margin-top:9px;overflow:hidden;}
+  .progress i{display:block;height:100%;background:var(--primary);border-radius:999px;}
+  .creditNum{text-align:right;}
+  .creditNum b{font-size:18px;font-weight:800;}
+  .creditNum span{display:block;font-size:11px;color:var(--muted);}
+
+  /* account */
+  .profCard{padding:20px;text-align:center;margin-bottom:14px;}
+  .profAv{width:72px;height:72px;border-radius:50%;margin:0 auto 12px;background:linear-gradient(135deg,var(--accent),var(--primary-deep));color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;}
+  .profCard h3{font-size:18px;font-weight:800;}
+  .profCard p{font-size:13px;color:var(--muted);margin-top:3px;}
+  .acctList{}
+  .acctItem{display:flex;align-items:center;gap:14px;padding:15px 16px;background:var(--surface);border-radius:14px;margin-bottom:10px;cursor:pointer;box-shadow:var(--shadow-card);}
+  .acctItem .ic{font-size:20px;width:24px;text-align:center;}
+  .acctItem b{font-size:14.5px;font-weight:600;flex:1;}
+  .acctItem .arr{color:#c9bdb0;font-weight:700;}
+
+  /* sticky bottom CTA on checkout */
+  .ctaBar{position:absolute;left:0;right:0;bottom:62px;background:var(--surface);box-shadow:var(--shadow-float);padding:12px 18px;display:none;align-items:center;gap:14px;z-index:40;border-top:1px solid var(--line);}
+  .ctaBar.show{display:flex;}
+  .ctaBar .totWrap{flex:none;}
+  .ctaBar .totWrap span{font-size:11px;color:var(--muted);display:block;}
+  .ctaBar .totWrap b{font-size:20px;font-weight:800;color:var(--text);}
+  .ctaBar button{flex:1;background:var(--primary);color:#fff;border:none;border-radius:13px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;}
+
+  /* bottom nav */
+  .nav{position:absolute;left:0;right:0;bottom:0;height:62px;background:var(--surface);border-top:1px solid var(--line);display:flex;z-index:45;}
+  .navItem{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:#a99c8e;font-size:11px;font-weight:600;}
+  .navItem svg{width:23px;height:23px;}
+  .navItem.active{color:var(--primary);}
+  .switchHint{font-size:12px;color:#8a7d70;text-align:center;max-width:390px;}
+  @media(max-width:430px){.phone{height:740px;}}
+</style>
+</head>
+<body>
+  <div class="pageHead">
+    <h1>Moja Bento — Grab-style redesign</h1>
+    <p>Interactive concept keeping your Moja orange brand with a cleaner, Grab-inspired layout: card surfaces on a soft canvas, a hero promo, quick categories, and a sticky checkout bar. Tap the bottom nav and buttons to explore.</p>
+    <span class="tag">Concept mockup · not yet wired into the app</span>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="statusbar">
+      <span>9:41</span>
+      <span class="dots">📶 🔋</span>
+    </div>
+
+    <div class="screenWrap">
+
+      <!-- ============ MENU ============ -->
+      <section class="screen active" id="s-menu">
+        <div class="appbar">
+          <div class="row">
+            <div>
+              <div class="greet">Good afternoon, Jax 👋</div>
+              <div class="loc">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#e8590c" stroke-width="2"><path d="M12 21s-7-5.7-7-11a7 7 0 1 1 14 0c0 5.3-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                Pickup · Moja Maison KL
+              </div>
+            </div>
+            <div class="avatar">JC</div>
+          </div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>
+            Search this week's dishes
+          </div>
+        </div>
+
+        <div class="hero">
+          <span class="emoji">🍱</span>
+          <span class="eyebrow">Fresh meal everyday</span>
+          <h3>Newcomer pack<br>3 meals · RM39</h3>
+          <p>Try chef-prepared bento before you commit to a plan.</p>
+          <button class="heroBtn" onclick="go('package')">Claim offer →</button>
+          <div class="blob"></div>
+        </div>
+        <div class="dots3"><span class="on"></span><span></span><span></span></div>
+
+        <div class="cats">
+          <div class="cat active"><div class="ic">🍱</div><span>This week</span></div>
+          <div class="cat"><div class="ic">🍗</div><span>Regular</span></div>
+          <div class="cat"><div class="ic">🌱</div><span>Vegetarian</span></div>
+          <div class="cat"><div class="ic">🍚</div><span>Rice</span></div>
+          <div class="cat"><div class="ic">🥤</div><span>Add-ons</span></div>
+        </div>
+
+        <div class="sectionPad">
+          <div class="secHead"><h2>This week's menu</h2><a onclick="go('package')">Order a plan →</a></div>
+        </div>
+        <div class="sectionPad">
+          <div class="card mealCard">
+            <div class="mealThumb">🍛<span class="badge">MON</span></div>
+            <div class="mealBody">
+              <div class="mealDay">Monday lunch</div>
+              <h4>Hainanese Chicken Rice</h4>
+              <p>Poached chicken, fragrant rice, ginger-scallion oil & soup.</p>
+              <div class="mealMeta"><span class="pill">🍗 Regular</span><span class="pill veg">🌱 Veg option</span><span class="star">★ 4.9</span></div>
+            </div>
+          </div>
+          <div class="card mealCard">
+            <div class="mealThumb">🍲<span class="badge">TUE</span></div>
+            <div class="mealBody">
+              <div class="mealDay">Tuesday lunch</div>
+              <h4>Braised Beef Noodle Bowl</h4>
+              <p>Slow-braised beef, bok choy, hand-pulled noodles.</p>
+              <div class="mealMeta"><span class="pill">🍗 Regular</span><span class="pill veg">🌱 Veg option</span><span class="star">★ 4.8</span></div>
+            </div>
+          </div>
+          <div class="card mealCard">
+            <div class="mealThumb">🥗<span class="badge">WED</span></div>
+            <div class="mealBody">
+              <div class="mealDay">Wednesday lunch</div>
+              <h4>Garden Tofu &amp; Grains</h4>
+              <p>Crispy tofu, quinoa, seasonal greens, sesame dressing.</p>
+              <div class="mealMeta"><span class="pill veg">🌱 Vegetarian</span><span class="star">★ 4.7</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PACKAGE ============ -->
+      <section class="screen" id="s-package">
+        <div class="appbar"><div class="row"><div>
+          <div class="greet">Step 1 of 3</div>
+          <div class="loc">Choose your meal plan</div>
+        </div><div class="avatar">JC</div></div></div>
+
+        <div class="sectionPad" style="margin-top:6px">
+          <div class="planPromo">
+            <div class="rib">BEST START</div>
+            <span class="eyebrow">Newcomer trial</span>
+            <h3>3-Meal Starter</h3>
+            <div class="desc">Sample our kitchen for one fixed price.</div>
+            <div class="price">RM39<small> fixed</small></div>
+            <button class="planBtn" onclick="go('checkout')">Select starter</button>
+          </div>
+
+          <div class="card planCard sel" onclick="selPlan(this)">
+            <div class="planTop"><div class="planName">10-Meal Plan</div><span class="planTier t-value">VALUE</span></div>
+            <div class="planRow"><span class="now">RM16.00</span><span class="was">RM17.90</span><span class="per">/ meal</span></div>
+            <div class="planFeat"><div><strong>10 meals</strong>credits</div><div><strong>30 days</strong>validity</div><div><strong>Lunch/Dinner</strong>flexible</div></div>
+            <span class="saveTag">💰 Save RM19.00</span>
+          </div>
+
+          <div class="card planCard" onclick="selPlan(this)">
+            <div class="planTop"><div class="planName">20-Meal Plan</div><span class="planTier t-good">POPULAR</span></div>
+            <div class="planRow"><span class="now">RM15.00</span><span class="was">RM17.90</span><span class="per">/ meal</span></div>
+            <div class="planFeat"><div><strong>20 meals</strong>credits</div><div><strong>45 days</strong>validity</div><div><strong>Lunch/Dinner</strong>flexible</div></div>
+            <span class="saveTag">💰 Save RM58.00</span>
+          </div>
+
+          <div class="card planCard" onclick="selPlan(this)">
+            <div class="planTop"><div class="planName">30-Meal Plan</div><span class="planTier t-super">SUPER</span></div>
+            <div class="planRow"><span class="now">RM13.00</span><span class="was">RM17.90</span><span class="per">/ meal</span></div>
+            <div class="planFeat"><div><strong>30 meals</strong>credits</div><div><strong>60 days</strong>validity</div><div><strong>Lunch/Dinner</strong>flexible</div></div>
+            <span class="saveTag">💰 Save RM147.00</span>
+          </div>
+
+          <div class="card planCard" onclick="selPlan(this)" style="margin-bottom:4px">
+            <div class="planTop"><div class="planName">Single Meal</div></div>
+            <div class="planRow"><span class="now">RM17.90</span><span class="per">one-off · no commitment</span></div>
+          </div>
+        </div>
+        <div class="ctaBar show" id="cta-package">
+          <div class="totWrap"><span>From</span><b>RM160.00</b></div>
+          <button onclick="go('checkout')">Review order →</button>
+        </div>
+      </section>
+
+      <!-- ============ CHECKOUT ============ -->
+      <section class="screen" id="s-checkout">
+        <div class="coHead">
+          <h2>Review your order</h2>
+          <p>Confirm details then pay to lock in your plan.</p>
+        </div>
+        <div class="sectionPad">
+          <div class="card lineList">
+            <div class="lineRow"><span class="lbl">Single Meal × 1</span><span class="amt">RM17.90</span></div>
+            <div class="lineRow"><span class="lbl">Rice — white</span><span class="amt">Included</span></div>
+            <div class="lineRow"><span class="lbl">Drink add-on</span><span class="amt">RM2.00</span></div>
+          </div>
+
+          <div class="gb">
+            <div class="gbTop">
+              <div class="gbTxt"><b>Group buy</b><span>Order multiple sets at once</span></div>
+              <div class="toggle" id="gbToggle" onclick="toggleGB()"></div>
+            </div>
+            <div id="gbExpand">
+              <div class="qtyRow">
+                <span class="ql">How many sets?</span>
+                <div class="qtyCtrl">
+                  <button class="qtyBtn" onclick="qty(-1)">−</button>
+                  <span class="qtyVal" id="qtyVal">3</span>
+                  <button class="qtyBtn" onclick="qty(1)">+</button>
+                </div>
+              </div>
+              <div class="gbCalc">RM19.90 × <span id="qtyCalc">3</span> = <strong id="gbTotal">RM59.70</strong></div>
+              <div class="payNote">✓ One combined bill — your e-wallet is charged the full RM59.70</div>
+            </div>
+          </div>
+
+          <div class="payMethod">
+            <div class="pml">Payment method</div>
+            <div class="pmOpt">
+              <div class="pmIc">TnG</div>
+              <b>Touch 'n Go eWallet</b>
+              <span class="chk">✓</span>
+            </div>
+          </div>
+        </div>
+        <div class="ctaBar show" id="cta-checkout">
+          <div class="totWrap"><span>Total</span><b id="payTotal">RM59.70</b></div>
+          <button onclick="go('schedule')" id="payBtn">Pay RM59.70</button>
+        </div>
+      </section>
+
+      <!-- ============ SCHEDULE ============ -->
+      <section class="screen" id="s-schedule">
+        <div class="appbar"><div class="row"><div>
+          <div class="greet">3 active plans · up to 5 sets/day</div>
+          <div class="loc">Schedule pickups</div>
+        </div><div class="avatar">JC</div></div></div>
+
+        <div class="sectionPad">
+          <div class="card creditCard">
+            <div class="creditIc">🍱</div>
+            <div class="creditBody"><b>Lunch credits</b><div class="sub">8 of 10 scheduled</div><div class="progress"><i style="width:80%"></i></div></div>
+            <div class="creditNum"><b>2</b><span>left</span></div>
+          </div>
+
+          <div class="secHead"><h2>June 2026</h2></div>
+          <div class="card calCard">
+            <div class="calHead"><b>Pick your days</b><div class="calNav"><button>‹</button><button>›</button></div></div>
+            <div class="calGrid">
+              <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
+              <div class="day muted">26</div><div class="day muted">27</div><div class="day muted">28</div><div class="day muted">29</div><div class="day muted">30</div><div class="day muted">31</div><div class="day">1</div>
+              <div class="day">2</div><div class="day has">3<span class="dot"></span></div><div class="day">4</div><div class="day sel">5<span class="dot"></span></div><div class="day">6</div><div class="day muted">7</div><div class="day muted">8</div>
+              <div class="day">9</div><div class="day has">10<span class="dot"></span></div><div class="day">11</div><div class="day sel">12<span class="dot"></span></div><div class="day">13</div><div class="day muted">14</div><div class="day muted">15</div>
+              <div class="day">16</div><div class="day">17</div><div class="day has">18<span class="dot"></span></div><div class="day">19</div><div class="day">20</div><div class="day muted">21</div><div class="day muted">22</div>
+            </div>
+          </div>
+        </div>
+        <div class="ctaBar show" id="cta-schedule">
+          <div class="totWrap"><span>Selected</span><b>4 days</b></div>
+          <button onclick="go('account')">Confirm pickups</button>
+        </div>
+      </section>
+
+      <!-- ============ ACCOUNT ============ -->
+      <section class="screen" id="s-account">
+        <div class="appbar"></div>
+        <div class="sectionPad">
+          <div class="card profCard">
+            <div class="profAv">JC</div>
+            <h3>Jax Chong</h3>
+            <p>+60 12-345 6789 · gaxiang.chong@gmail.com</p>
+          </div>
+          <div class="acctList">
+            <div class="acctItem"><span class="ic">🧾</span><b>Purchase history</b><span class="arr">›</span></div>
+            <div class="acctItem"><span class="ic">🍱</span><b>My subscriptions</b><span class="arr">›</span></div>
+            <div class="acctItem"><span class="ic">🔔</span><b>Pickup reminders</b><span class="arr">›</span></div>
+            <div class="acctItem"><span class="ic">🌐</span><b>Language · English</b><span class="arr">›</span></div>
+            <div class="acctItem"><span class="ic">💬</span><b>Contact us</b><span class="arr">›</span></div>
+            <div class="acctItem"><span class="ic">🚪</span><b>Log out</b><span class="arr">›</span></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- bottom nav -->
+    <nav class="nav">
+      <div class="navItem active" data-s="menu" onclick="go('menu')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Menu
+      </div>
+      <div class="navItem" data-s="package" onclick="go('package')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M9 6V4h6v2"/></svg>Package
+      </div>
+      <div class="navItem" data-s="schedule" onclick="go('schedule')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 11h16"/></svg>Schedule
+      </div>
+      <div class="navItem" data-s="account" onclick="go('account')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Account
+      </div>
+    </nav>
+  </div>
+
+  <p class="switchHint">Tip: the <b>Group buy</b> toggle on Checkout shows the corrected behaviour — one combined bill for the full total (the TnG fix).</p>
+
+<script>
+  function go(name){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById('s-'+name).classList.add('active');
+    document.querySelectorAll('.navItem').forEach(n=>n.classList.toggle('active', n.dataset.s===name));
+    document.querySelector('.screenWrap').scrollTop=0;
+  }
+  function selPlan(el){
+    document.querySelectorAll('#s-package .planCard').forEach(c=>c.classList.remove('sel'));
+    el.classList.add('sel');
+  }
+  let gbOn=true, q=3, unit=19.90;
+  function render(){
+    var total=(unit*q).toFixed(2);
+    document.getElementById('qtyVal').textContent=q;
+    document.getElementById('qtyCalc').textContent=q;
+    document.getElementById('gbTotal').textContent='RM'+total;
+    var pay = gbOn ? total : unit.toFixed(2);
+    document.getElementById('payTotal').textContent='RM'+pay;
+    document.getElementById('payBtn').textContent='Pay RM'+pay;
+    document.querySelector('.payNote').textContent='✓ One combined bill — your e-wallet is charged the full RM'+pay;
+    document.getElementById('gbExpand').style.display=gbOn?'block':'none';
+    document.getElementById('gbToggle').classList.toggle('off', !gbOn);
+  }
+  function toggleGB(){ gbOn=!gbOn; render(); }
+  function qty(d){ q=Math.max(2,Math.min(10,q+d)); render(); }
+  render();
+</script>
+</body>
+</html>

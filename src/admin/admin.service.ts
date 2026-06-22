@@ -2236,6 +2236,12 @@ export class AdminService {
         package_label: string | null;
         meal_option: string | null;
         amount_cents: bigint;
+        subscription_id: string | null;
+        subscription_status: string | null;
+        refund_cents: number | null;
+        charged_cents: number | null;
+        consumed_meals: number | null;
+        refunded_at: Date | null;
       }[]
     >`
       SELECT pi.id AS payment_intent_id,
@@ -2246,10 +2252,17 @@ export class AdminService {
              bp.code AS package_code,
              bp.label AS package_label,
              bs.meal_option AS meal_option,
-             pi.amount_cents AS amount_cents
+             pi.amount_cents AS amount_cents,
+             bs.id AS subscription_id,
+             bs.status AS subscription_status,
+             br.refund_cents AS refund_cents,
+             br.charged_cents AS charged_cents,
+             br.consumed_meals AS consumed_meals,
+             br.created_at AS refunded_at
       FROM payment_intents pi
       LEFT JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
       LEFT JOIN bento_packages bp ON bp.id = bs.package_id
+      LEFT JOIN bento_refunds br ON br.subscription_id = bs.id
       LEFT JOIN customers c ON c.id = pi.customer_id
       WHERE pi.purpose = 'bento_subscription'
         AND pi.status = 'SUCCEEDED'
@@ -2270,6 +2283,13 @@ export class AdminService {
         packageLabel: r.package_label,
         mealOption: r.meal_option,
         amountCents: Number(r.amount_cents),
+        subscriptionId: r.subscription_id,
+        subscriptionStatus: r.subscription_status,
+        refundCents: r.refund_cents != null ? Number(r.refund_cents) : null,
+        chargedCents: r.charged_cents != null ? Number(r.charged_cents) : null,
+        consumedMeals:
+          r.consumed_meals != null ? Number(r.consumed_meals) : null,
+        refundedAt: r.refunded_at ? r.refunded_at.toISOString() : null,
       })),
     };
   }

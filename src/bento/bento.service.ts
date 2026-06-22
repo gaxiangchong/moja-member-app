@@ -71,7 +71,7 @@ const PACKAGE_SEED: Array<{
 }> = [
   {
     code: BentoPackageCode.NEWCOMER_3,
-    label: 'Trial pack — 3 lunches',
+    label: 'Trial pack — 3 meals',
     durationDays: 14,
     mealCredits: 3,
     pricePerMealCents: 1300,
@@ -555,30 +555,36 @@ export class BentoService implements OnModuleInit {
       });
     }
 
-    const subscription = await this.prisma.bentoSubscription.create({
-      data: {
-        customerId,
-        packageId: pkg.id,
-        mealOption: dto.mealOption,
-        lunchVariant: dto.lunchVariant,
-        dinnerVariant: dto.dinnerVariant,
-        riceType: dto.riceType,
-        includeDrinkAddon:
-          drinksAndSoupEnabled &&
-          (pkg.includeFreeSoupAndDrinks || includeDrinkAddon),
-        mealCreditsTotal: pkg.mealCredits,
-        lunchCredits: quote.lunchCredits,
-        dinnerCredits: quote.dinnerCredits,
-        totalCents: quote.totalCents,
-        status: BentoSubscriptionStatus.PENDING_PAYMENT,
-      },
-      include: { package: true },
-    });
+    // Group buy creates one subscription per set, but they are all paid for in
+    // a single combined bill so the e-wallet (TnG/ShopeePay/etc.) charges the
+    // full grand total — not just one set. See createBentoSubscriptionCheckout.
+    const subData = {
+      customerId,
+      packageId: pkg.id,
+      mealOption: dto.mealOption,
+      lunchVariant: dto.lunchVariant,
+      dinnerVariant: dto.dinnerVariant,
+      riceType: dto.riceType,
+      includeDrinkAddon:
+        drinksAndSoupEnabled &&
+        (pkg.includeFreeSoupAndDrinks || includeDrinkAddon),
+      mealCreditsTotal: pkg.mealCredits,
+      lunchCredits: quote.lunchCredits,
+      dinnerCredits: quote.dinnerCredits,
+      totalCents: quote.totalCents,
+      status: BentoSubscriptionStatus.PENDING_PAYMENT,
+    };
+
+    const subscriptionIds: string[] = [];
+    for (let i = 0; i < sets; i++) {
+      const sub = await this.prisma.bentoSubscription.create({ data: subData });
+      subscriptionIds.push(sub.id);
+    }
 
     return this.payments.createBentoSubscriptionCheckout(
       customerId,
-      subscription.id,
-      quote.totalCents,
+      subscriptionIds,
+      quote.totalCents * sets,
       dto.channelCode,
     );
   }
@@ -780,12 +786,6 @@ export class BentoService implements OnModuleInit {
     dto: BentoQuoteDto,
   ): Promise<void> {
     if (pkg.code === BentoPackageCode.NEWCOMER_3) {
-      if (dto.mealOption !== BentoMealOption.LUNCH) {
-        throw new BadRequestException({
-          code: 'BENTO_NEWCOMER_LUNCH_ONLY',
-          message: 'Trial pack is lunch-only. Add-ons (brown rice, vegetarian) are still available.',
-        });
-      }
       await this.assertNewcomerEligible(customerId);
     }
   }
@@ -1038,7 +1038,7 @@ export class BentoService implements OnModuleInit {
       pricePerMealRm: p.pricePerMealCents / 100,
       fixedCheckoutCents: p.fixedCheckoutCents,
       isNewcomer: p.code === BentoPackageCode.NEWCOMER_3,
-      newcomerLunchOnly: p.code === BentoPackageCode.NEWCOMER_3,
+      newcomerLunchOnly: false,
       includeFreeSoupAndDrinks,
       perksLabel: includeFreeSoupAndDrinks
         ? 'Free soup + free drinks included'

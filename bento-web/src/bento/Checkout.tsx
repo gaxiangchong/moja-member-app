@@ -102,34 +102,28 @@ export function Checkout({ draft, onSuccess }: Props) {
     };
 
     try {
+      // The backend creates all sets and issues ONE combined bill for the full
+      // total, so we make a single checkout call (not one per set). This is what
+      // ensures the e-wallet (TnG/ShopeePay/etc.) charges the grand total.
+      const result = await checkoutBentoSubscription(payload);
+
       if (paymentsDemoMode) {
-        for (let i = 0; i < sets; i++) {
-          const result = await checkoutBentoSubscription(payload);
-          await completeDemoBentoSubscription(result.subscriptionId);
+        const ids = result.subscriptionIds ?? [result.subscriptionId];
+        for (const id of ids) {
+          await completeDemoBentoSubscription(id);
         }
         onSuccess();
         return;
       }
 
-      let firstRedirectUrl: string | null = null;
-      let firstReferenceId: string | null = null;
-      let firstSubscriptionId: string | null = null;
-      for (let i = 0; i < sets; i++) {
-        const result = await checkoutBentoSubscription(payload);
-        if (i === 0) {
-          if (result.redirectUrl) firstRedirectUrl = result.redirectUrl;
-          if (result.referenceId) firstReferenceId = result.referenceId;
-          firstSubscriptionId = result.subscriptionId;
-        }
-      }
-      if (firstRedirectUrl) {
-        if (firstReferenceId) {
+      if (result.redirectUrl) {
+        if (result.referenceId) {
           savePendingBentoPayment({
-            referenceId: firstReferenceId,
-            subscriptionId: firstSubscriptionId,
+            referenceId: result.referenceId,
+            subscriptionId: result.subscriptionId,
           });
         }
-        window.location.href = firstRedirectUrl;
+        window.location.href = result.redirectUrl;
         return;
       }
       onSuccess();

@@ -17,7 +17,9 @@ export function MealOptionPicker({
   onChange,
 }: Props) {
   const { t } = useI18n();
-  const newcomerOnly = packageCode === 'NEWCOMER_3';
+  // Trial pack is a flat RM39 regardless of meal choice — no dinner surcharge,
+  // but lunch/dinner/both are all selectable like a regular plan.
+  const noDinnerSurcharge = packageCode === 'NEWCOMER_3';
   const singleMealOnly = packageCode === 'ONE_TIME';
   const lunchOn = value === 'LUNCH' || value === 'BOTH';
   const dinnerOn = value === 'DINNER' || value === 'BOTH';
@@ -28,16 +30,15 @@ export function MealOptionPicker({
   const dinnerSub = bothSelected
     ? [
         t('rhythm.mealsCount', { count: dinnerCount }),
-        !newcomerOnly && drinksAndSoupEnabled ? t('rhythm.dinnerSurcharge') : null,
+        !noDinnerSurcharge && drinksAndSoupEnabled ? t('rhythm.dinnerSurcharge') : null,
       ]
         .filter(Boolean)
         .join(' · ')
-    : !newcomerOnly && drinksAndSoupEnabled && dinnerOn
+    : !noDinnerSurcharge && drinksAndSoupEnabled && dinnerOn
       ? t('rhythm.dinnerSurcharge')
       : null;
 
   const toggle = (meal: 'LUNCH' | 'DINNER') => {
-    if (newcomerOnly) return;
     if (singleMealOnly) {
       onChange(meal);
       return;
@@ -60,12 +61,6 @@ export function MealOptionPicker({
         </div>
       </div>
 
-      {newcomerOnly && (
-        <p className="caption" style={{ marginBottom: 10, color: '#15803d' }}>
-          {t('rhythm.trialOnly')}
-        </p>
-      )}
-
       {singleMealOnly && (
         <p className="caption" style={{ marginBottom: 10, color: '#9a3412' }}>
           {t('rhythm.singleOnly')}
@@ -78,7 +73,6 @@ export function MealOptionPicker({
           className={[
             'mealToggleCard',
             lunchOn ? 'active' : '',
-            newcomerOnly ? 'locked' : '',
           ].filter(Boolean).join(' ')}
           onClick={() => toggle('LUNCH')}
         >
@@ -95,16 +89,13 @@ export function MealOptionPicker({
           className={[
             'mealToggleCard',
             dinnerOn ? 'active' : '',
-            newcomerOnly ? 'unavail' : '',
           ].filter(Boolean).join(' ')}
-          disabled={newcomerOnly}
           onClick={() => toggle('DINNER')}
         >
           <span className="mealToggleCheckmark">✓</span>
           <span className="mealToggleEmoji">🌙</span>
           <span className="mealToggleTitle">{t('common.dinner')}</span>
           {dinnerSub && <span className="mealToggleSub">{dinnerSub}</span>}
-          {newcomerOnly && <span className="mealToggleTag">{t('rhythm.unavailable')}</span>}
         </button>
       </div>
     </section>

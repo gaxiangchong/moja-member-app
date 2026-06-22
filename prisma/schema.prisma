@@ -194,6 +194,7 @@ enum BentoSubscriptionStatus {
   ACTIVE
   CANCELLED
   COMPLETED
+  REFUNDED
 }
 
 enum BentoDeliveryStatus {
@@ -1044,9 +1045,38 @@ model BentoSubscription {
   paymentIntentId   String?                 @map("payment_intent_id") @db.Uuid
   createdAt         DateTime                @default(now()) @map("created_at")
   deliveries        BentoDeliveryDay[]
+  refund            BentoRefund?
 
   @@index([customerId, createdAt])
   @@map("bento_subscriptions")
+}
+
+/// Audit record for a bento subscription refund. Refunds are paid out manually
+/// (offline) — this row is the system-of-record for what was owed back. Policy:
+/// consumed meals (picked up + meals locked for kitchen prep) are charged at the
+/// single-meal rate; everything paid beyond that is refunded.
+model BentoRefund {
+  id               String            @id @default(uuid()) @db.Uuid
+  subscriptionId   String            @unique @map("subscription_id") @db.Uuid
+  subscription     BentoSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  /// Meals treated as consumed (DELIVERED + locked SCHEDULED) at refund time.
+  consumedMeals    Int               @map("consumed_meals")
+  /// Single-meal rate used to charge consumed meals (cents). Snapshotted.
+  singleMealCents  Int               @map("single_meal_cents")
+  /// Amount the member originally paid (cents).
+  paidCents        Int               @map("paid_cents")
+  /// Amount retained for consumed meals = consumedMeals * singleMealCents (cents).
+  chargedCents     Int               @map("charged_cents")
+  /// Amount refunded to the member (cents), clamped to >= 0.
+  refundCents      Int               @map("refund_cents")
+  reason           String
+  /// Optional free-text note about how the manual payout was made.
+  payoutNote       String?           @map("payout_note")
+  adminUserId      String?           @map("admin_user_id") @db.Uuid
+  adminActorLabel  String?           @map("admin_actor_label")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  @@map("bento_refunds")
 }
 
 model BentoDeliveryDay {

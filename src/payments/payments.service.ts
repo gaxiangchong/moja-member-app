@@ -594,34 +594,55 @@ export class PaymentsService {
   /**
    * Bento subscription checkout via Xendit (or demo mode).
    */
+  /**
+   * Creates a single payment for one or more bento subscriptions (group buy
+   * creates several sets at once). The bill amount is the combined
+   * `amountCents` for all sets, and a successful payment activates every
+   * subscription linked to the intent — so the e-wallet charges the full grand
+   * total rather than a single set.
+   */
   async createBentoSubscriptionCheckout(
     customerId: string,
-    subscriptionId: string,
+    subscriptionIdInput: string | string[],
     amountCents: number,
     channelCodeRaw?: string,
   ) {
-    const subscription = await this.prisma.bentoSubscription.findFirst({
-      where: { id: subscriptionId, customerId },
+    const subscriptionIds = Array.isArray(subscriptionIdInput)
+      ? subscriptionIdInput
+      : [subscriptionIdInput];
+    if (subscriptionIds.length === 0) {
+      throw new BadRequestException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    const primaryId = subscriptionIds[0];
+
+    const subscriptions = await this.prisma.bentoSubscription.findMany({
+      where: { id: { in: subscriptionIds }, customerId },
       include: { package: true },
     });
-    if (!subscription) {
+    if (subscriptions.length !== subscriptionIds.length) {
       throw new NotFoundException({
         code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
         message: 'Subscription not found',
       });
     }
-    if (subscription.status !== 'PENDING_PAYMENT') {
+    if (subscriptions.some((s) => s.status !== 'PENDING_PAYMENT')) {
       throw new BadRequestException({
         code: 'BENTO_NOT_PENDING',
         message: 'Subscription is not awaiting payment.',
       });
     }
+    const subscription =
+      subscriptions.find((s) => s.id === primaryId) ?? subscriptions[0];
 
     if (this.isDemoMode()) {
       return {
         demoMode: true as const,
         subscriptionId: subscription.id,
-        totalCents: subscription.totalCents,
+        subscriptionIds,
+        totalCents: amountCents,
         status: subscription.status,
       };
     }
@@ -645,6 +666,11 @@ export class PaymentsService {
     const base = this.bentoPublicBase();
     const successUrl = `${base}/?bentoPayment=success&subscriptionId=${encodeURIComponent(subscription.id)}`;
     const failureUrl = `${base}/?bentoPayment=failed`;
+    const setCount = subscriptionIds.length;
+    const description =
+      setCount > 1
+        ? `Moja Bento ${subscription.package.label} × ${setCount}`
+        : `Moja Bento ${subscription.package.label}`;
 
     const xenditResponse = await this.xendit.createPaymentRequest({
       referenceId,
@@ -652,13 +678,14 @@ export class PaymentsService {
       currency,
       requestAmount: amountCents / 100,
       channelCode,
-      description: `Moja Bento ${subscription.package.label}`,
+      description,
       successReturnUrl: successUrl,
       failureReturnUrl: failureUrl,
       metadata: {
         customerId: String(customerId),
         purpose: 'bento_subscription',
         subscriptionId: String(subscription.id),
+        subscriptionIds: subscriptionIds.join(','),
       },
     });
 
@@ -682,12 +709,15 @@ export class PaymentsService {
         channelCode,
         status: 'PENDING',
         xenditPaymentRequestId: paymentRequestId,
-        metadata: { subscriptionId: subscription.id } as object,
+        metadata: {
+          subscriptionId: subscription.id,
+          subscriptionIds,
+        } as object,
       },
     });
 
-    await this.prisma.bentoSubscription.update({
-      where: { id: subscription.id },
+    await this.prisma.bentoSubscription.updateMany({
+      where: { id: { in: subscriptionIds } },
       data: { paymentIntentId: intent.id },
     });
 
@@ -703,6 +733,7 @@ export class PaymentsService {
     return {
       demoMode: false as const,
       subscriptionId: subscription.id,
+      subscriptionIds,
       referenceId,
       paymentRequestId,
       status: apiStatus,
@@ -903,6 +934,47 @@ export class PaymentsService {
    * latest status from Xendit and finalize it. Lets a member schedule pickups
    * right after paying even when the webhook hasn't arrived (test/local).
    */
+  /**
+   * Admin/test helper: sweep every pending bento payment and finalize the ones
+   * Xendit already marks SUCCEEDED. In Xendit test mode the inbound webhook
+   * can't reach a local server, so paid subscriptions get stuck on
+   * PENDING_PAYMENT and never appear in admin sales. This polls Xendit directly
+   * (outbound works fine) and activates them.
+   */
+  async reconcilePendingBentoSubscriptions(): Promise<{
+    checked: number;
+    finalized: number;
+  }> {
+    const pending = await this.prisma.paymentIntent.findMany({
+      where: {
+        purpose: 'bento_subscription',
+        status: 'PENDING',
+        xenditPaymentRequestId: { not: null },
+      },
+      select: { referenceId: true, xenditPaymentRequestId: true },
+    });
+    let finalized = 0;
+    for (const intent of pending) {
+      if (!intent.xenditPaymentRequestId) continue;
+      try {
+        const data = await this.xendit.getPaymentRequest(
+          intent.xenditPaymentRequestId,
+        );
+        if (data.status === 'SUCCEEDED') {
+          await this.applyBentoSubscriptionFromXendit(intent.referenceId, data);
+          finalized += 1;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Bento payment reconcile failed for ${intent.referenceId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    return { checked: pending.length, finalized };
+  }
+
   async reconcileBentoSubscriptionPayment(subscriptionId: string): Promise<void> {
     const sub = await this.prisma.bentoSubscription.findUnique({
       where: { id: subscriptionId },
@@ -963,10 +1035,16 @@ export class PaymentsService {
     });
     if (lock.count === 0) return;
 
-    const meta = intent.metadata as { subscriptionId?: string } | null;
-    const subscriptionId =
-      typeof meta?.subscriptionId === 'string' ? meta.subscriptionId : null;
-    if (!subscriptionId) {
+    const meta = intent.metadata as {
+      subscriptionId?: string;
+      subscriptionIds?: string[];
+    } | null;
+    const subscriptionIds = Array.isArray(meta?.subscriptionIds)
+      ? meta.subscriptionIds.filter((id): id is string => typeof id === 'string')
+      : typeof meta?.subscriptionId === 'string'
+        ? [meta.subscriptionId]
+        : [];
+    if (subscriptionIds.length === 0) {
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
         data: { status: 'PENDING' },
@@ -976,7 +1054,7 @@ export class PaymentsService {
 
     try {
       await this.prisma.bentoSubscription.updateMany({
-        where: { id: subscriptionId, status: 'PENDING_PAYMENT' },
+        where: { id: { in: subscriptionIds }, status: 'PENDING_PAYMENT' },
         data: { status: 'ACTIVE' },
       });
       await this.prisma.paymentIntent.update({
@@ -988,15 +1066,18 @@ export class PaymentsService {
       });
       // Fire-and-forget: a transient email failure must not roll back a
       // successful payment, and the webhook should still ack 200 quickly.
-      void this.receiptEmail.sendBentoSubscriptionReceipt({
-        subscriptionId,
-        paymentIntentId: intent.id,
-      });
-      // Notify the team inbox of every successful bento purchase.
-      void this.receiptEmail.sendBentoAdminNotification({
-        subscriptionId,
-        paymentIntentId: intent.id,
-      });
+      // Each set is its own subscription, so send a receipt per set.
+      for (const subscriptionId of subscriptionIds) {
+        void this.receiptEmail.sendBentoSubscriptionReceipt({
+          subscriptionId,
+          paymentIntentId: intent.id,
+        });
+        // Notify the team inbox of every successful bento purchase.
+        void this.receiptEmail.sendBentoAdminNotification({
+          subscriptionId,
+          paymentIntentId: intent.id,
+        });
+      }
     } catch (err) {
       this.logger.error(
         `Bento subscription finalize failed for ${referenceId}`,

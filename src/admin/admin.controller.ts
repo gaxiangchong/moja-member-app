@@ -57,6 +57,9 @@ import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
 import { BentoPackagesService } from '../bento/bento-packages.service';
 import { BentoSettingsService } from '../bento/bento-settings.service';
+import { BentoRefundService } from '../bento/bento-refund.service';
+import { BentoRefundDto } from './dto/bento-refund.dto';
+import { PaymentsService } from '../payments/payments.service';
 import { ReportingSettingsService } from './reporting-settings.service';
 import { UpdateReportingSettingsDto } from './dto/update-reporting-settings.dto';
 import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
@@ -74,6 +77,8 @@ export class AdminController {
     private readonly bentoMenu: BentoMenuService,
     private readonly bentoPackages: BentoPackagesService,
     private readonly bentoSettings: BentoSettingsService,
+    private readonly bentoRefunds: BentoRefundService,
+    private readonly payments: PaymentsService,
     private readonly reportingSettings: ReportingSettingsService,
   ) {}
 
@@ -443,6 +448,29 @@ export class AdminController {
     return this.bentoMenu.parseUploadToConfig(file);
   }
 
+  /** Upload a decorative photo for a weekday's lunch/dinner card. */
+  @Post('bento-menu/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  uploadBentoMenuImage(
+    @Query('weekday') weekday: string,
+    @Query('meal') meal: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.bentoMenu.attachMealImage(weekday, meal, file);
+  }
+
+  @Delete('bento-menu/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  clearBentoMenuImage(
+    @Query('weekday') weekday: string,
+    @Query('meal') meal: string,
+  ) {
+    return this.bentoMenu.clearMealImage(weekday, meal);
+  }
+
   // --- Sales reporting cutoff (System config) ---
 
   @Get('reporting-settings')
@@ -493,6 +521,32 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_UPDATE)
   updateBentoPackages(@Body() dto: UpdateBentoPackagesDto) {
     return this.bentoPackages.updatePricing(dto.packages);
+  }
+
+  @Post('bento/reconcile-pending')
+  @RequirePermissions(P.REPORT_VIEW)
+  reconcilePendingBentoPayments() {
+    return this.payments.reconcilePendingBentoSubscriptions();
+  }
+
+  @Get('bento/subscriptions/:id/refund-preview')
+  @RequirePermissions(P.BENTO_REFUND)
+  previewBentoRefund(@Param('id') id: string) {
+    return this.bentoRefunds.previewRefund(id);
+  }
+
+  @Post('bento/subscriptions/:id/refund')
+  @RequirePermissions(P.BENTO_REFUND)
+  refundBentoSubscription(
+    @Param('id') id: string,
+    @Body() dto: BentoRefundDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.bentoRefunds.refundSubscription(
+      id,
+      { reason: dto.reason, payoutNote: dto.payoutNote },
+      auth,
+    );
   }
 
   @Get('shop-catalog/popular')

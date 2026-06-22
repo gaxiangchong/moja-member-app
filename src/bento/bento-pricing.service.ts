@@ -145,10 +145,6 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
       ? BENTO_DINNER_PREMIUM_CENTS
       : 0;
 
-  if (packageCode === BentoPackageCode.NEWCOMER_3 && mealOption !== BentoMealOption.LUNCH) {
-    throw new Error('NEWCOMER_3 requires lunch-only meal option');
-  }
-
   const split = splitMealCredits(mealCredits, mealOption);
   const totalMealSlots = split.lunchCredits + split.dinnerCredits;
 
@@ -187,8 +183,15 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
   const lines: BentoQuoteLine[] = [];
 
   if (packageCode === BentoPackageCode.NEWCOMER_3) {
+    const trialRm = subtotalMealsCents / 100;
+    const trialDesc =
+      mealOption === BentoMealOption.LUNCH
+        ? `${split.lunchCredits} lunches`
+        : mealOption === BentoMealOption.DINNER
+          ? `${split.dinnerCredits} dinners`
+          : `${split.lunchCredits} lunch + ${split.dinnerCredits} dinner`;
     lines.push({
-      label: `Trial pack (${split.lunchCredits} lunches @ RM39)`,
+      label: `Trial pack (${trialDesc} @ RM${trialRm})`,
       amountCents: subtotalMealsCents,
     });
   } else if (mealOption === BentoMealOption.LUNCH) {

@@ -6,6 +6,7 @@ import { BentoOrdersReportService } from './bento-orders-report.service';
 import { BentoPackagesService } from './bento-packages.service';
 import { BentoSettingsService } from './bento-settings.service';
 import { BentoFeaturesService } from './bento-features.service';
+import { BentoRefundService } from './bento-refund.service';
 
 /**
  * Standalone, dependency-light module so both the bento module (public reads)
@@ -14,7 +15,7 @@ import { BentoFeaturesService } from './bento-features.service';
  */
 @Module({
   imports: [PrismaModule, ReportingSettingsModule],
-  providers: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService],
-  exports: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService],
+  providers: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService, BentoRefundService],
+  exports: [BentoMenuService, BentoOrdersReportService, BentoPackagesService, BentoSettingsService, BentoFeaturesService, BentoRefundService],
 })
 export class BentoMenuModule {}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 import './bento-ui.css';
+import './grab-theme.css';
 import { AuthScreens, logout } from './auth/AuthScreens';
 import {
   clearToken,
@@ -432,7 +433,7 @@ export default function App() {
       ...d,
       packageCode: code,
       mealOption:
-        pkg.newcomerLunchOnly || pkg.code === 'ONE_TIME'
+        pkg.code === 'ONE_TIME'
           ? 'LUNCH'
           : d.mealOption === 'BOTH' && pkg.mealCredits === 1
             ? 'LUNCH'
@@ -560,7 +561,11 @@ export default function App() {
             className={tab === 'menu' ? 'active' : ''}
             onClick={() => setTab('menu')}
           >
-            <span className="tabIcon">🍽️</span>
+            <span className="tabIcon">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h10" />
+              </svg>
+            </span>
             {t('nav.menu')}
           </button>
           <button
@@ -568,7 +573,12 @@ export default function App() {
             className={tab === 'package' ? 'active' : ''}
             onClick={() => { setTab('package'); setOrderStep('configure'); }}
           >
-            <span className="tabIcon">🍱</span>
+            <span className="tabIcon">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="14" rx="2" />
+                <path d="M4 10h16M9 6V4h6v2" />
+              </svg>
+            </span>
             {t('nav.package')}
           </button>
           <button
@@ -576,7 +586,12 @@ export default function App() {
             className={tab === 'schedule' ? 'active' : ''}
             onClick={() => setTab('schedule')}
           >
-            <span className="tabIcon">📅</span>
+            <span className="tabIcon">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="16" rx="2" />
+                <path d="M16 3v4M8 3v4M4 11h16" />
+              </svg>
+            </span>
             {t('nav.schedule')}
           </button>
           <button
@@ -584,7 +599,12 @@ export default function App() {
             className={tab === 'account' ? 'active' : ''}
             onClick={() => setTab('account')}
           >
-            <span className="tabIcon">👤</span>
+            <span className="tabIcon">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+              </svg>
+            </span>
             {t('nav.account')}
             {profileIncomplete && (
               <span className="tabAlertBadge" aria-label={t('nav.profileIncomplete')}>!</span>

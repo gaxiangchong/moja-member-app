@@ -12,6 +12,18 @@ import type {
 const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3153';
 const TOKEN_KEY = 'moja_bento_access_token';
 
+/**
+ * Resolve a server asset path (e.g. /uploads/..) against the API origin so menu
+ * photos load from the backend rather than the frontend origin. Absolute URLs
+ * are returned unchanged.
+ */
+export function assetUrl(path?: string | null): string {
+  const p = (path ?? '').trim();
+  if (!p) return '';
+  if (/^https?:\/\//i.test(p) || p.startsWith('data:')) return p;
+  return `${base}${p.startsWith('/') ? '' : '/'}${p}`;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -283,6 +295,7 @@ export async function checkoutBentoSubscription(body: {
   }) as Promise<{
     demoMode?: boolean;
     subscriptionId: string;
+    subscriptionIds?: string[];
     referenceId?: string;
     redirectUrl?: string | null;
     totalCents?: number;
@@ -328,6 +341,9 @@ export type WeeklyMenuMeal = {
   dishZh: string;
   /** Vegetarian dish in Chinese (optional). */
   dishVegZh: string;
+  /** Optional decorative food image URL (display-only, never interactive). */
+  image?: string;
+  imageVeg?: string;
 };
 
 export type WeeklyMenuDay = {

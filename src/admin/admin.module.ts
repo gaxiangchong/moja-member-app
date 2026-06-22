@@ -14,6 +14,7 @@ import { HomeAdsModule } from '../home-ads/home-ads.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { AdminEmployeesController } from './admin-employees.controller';
 import { BentoMenuModule } from '../bento/bento-menu.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
     HomeAdsModule,
     EmployeesModule,
     BentoMenuModule,
+    PaymentsModule,
     ReportingSettingsModule,
   ],
   controllers: [

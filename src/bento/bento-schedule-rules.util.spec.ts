@@ -19,8 +19,8 @@ const MENU_ALL_OPEN: BentoMenuConfig = {
   ].map((weekday) => ({
     weekday: weekday as BentoMenuConfig['weekdays'][number]['weekday'],
     closed: false,
-    lunch: { regular: '', veg: '', regularZh: '', vegZh: '' },
-    dinner: { regular: '', veg: '', regularZh: '', vegZh: '' },
+    lunch: { regular: '', veg: '', regularZh: '', vegZh: '', image: '' },
+    dinner: { regular: '', veg: '', regularZh: '', vegZh: '', image: '' },
   })),
 };
 

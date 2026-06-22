@@ -11,8 +11,8 @@ const MENU_SUN_CLOSED: BentoMenuConfig = {
   weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((weekday) => ({
     weekday: weekday as BentoMenuConfig['weekdays'][number]['weekday'],
     closed: weekday === 'Sun',
-    lunch: { regular: '', veg: '', regularZh: '', vegZh: '' },
-    dinner: { regular: '', veg: '', regularZh: '', vegZh: '' },
+    lunch: { regular: '', veg: '', regularZh: '', vegZh: '', image: '' },
+    dinner: { regular: '', veg: '', regularZh: '', vegZh: '', image: '' },
   })),
 };
 
