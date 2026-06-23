@@ -104,9 +104,10 @@ export class ImportExportController {
   @RequirePermissions(P.EXPORT_RUN)
   async downloadExport(
     @Param('id') id: string,
+    @CurrentAdmin() auth: AdminAuthState,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { path: filePath, fileName } = await this.io.getExportJobFile(id);
+    const { path: filePath, fileName } = await this.io.getExportJobFile(id, auth);
     res.set({
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${fileName}"`,
