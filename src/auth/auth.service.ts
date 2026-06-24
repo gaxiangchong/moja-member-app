@@ -67,9 +67,11 @@ export class AuthService {
     }
 
     const mode = this.resolveOtpMode();
+    const waConfigured = this.whatsappOtp.isConfigured();
+    const channel = this.resolveOtpChannel(mode, waConfigured);
     const fixedCode = this.config.get<string>('OTP_MOCK_FIXED_CODE')?.trim();
     const code =
-      mode === 'mock' && fixedCode
+      channel === 'mock' && fixedCode
         ? fixedCode
         : String(randomInt(0, 1_000_000)).padStart(6, '0');
     const otpHash = await bcrypt.hash(code, 12);
@@ -100,22 +102,11 @@ export class AuthService {
       metadata: { phoneE164, ipAddress: ipAddress ?? null },
     });
 
-    const waConfigured = this.whatsappOtp.isConfigured();
-
-    if (mode === 'whatsapp' && !waConfigured) {
-      throw new ServiceUnavailableException({
-        code: 'OTP_DELIVERY_NOT_CONFIGURED',
-        message:
-          'OTP mode is whatsapp but WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
-      });
-    }
-
-    if (mode !== 'mock' && waConfigured) {
+    if (channel === 'whatsapp') {
       await this.whatsappOtp.sendOtp(phoneE164, code);
     }
 
-    const channel = mode === 'mock' ? 'mock' : waConfigured ? 'whatsapp' : 'dev';
-    const returnCode = channel !== 'whatsapp';
+    const returnCode = !this.isProduction() && channel !== 'whatsapp';
 
     return {
       sent: true,
@@ -196,5 +187,50 @@ export class AuthService {
       return raw;
     }
     return 'auto';
+  }
+
+  private resolveOtpChannel(
+    mode: 'mock' | 'whatsapp' | 'auto',
+    waConfigured: boolean,
+  ): 'mock' | 'whatsapp' | 'dev' {
+    if (mode === 'mock') {
+      if (this.isProduction()) {
+        this.throwOtpDeliveryNotConfigured(
+          'OTP mock delivery is disabled in production.',
+        );
+      }
+      return 'mock';
+    }
+
+    if (mode === 'whatsapp') {
+      if (!waConfigured) {
+        this.throwOtpDeliveryNotConfigured(
+          'OTP mode is whatsapp but WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.',
+        );
+      }
+      return 'whatsapp';
+    }
+
+    if (waConfigured) {
+      return 'whatsapp';
+    }
+
+    if (this.isProduction()) {
+      this.throwOtpDeliveryNotConfigured(
+        'WhatsApp credentials are required for OTP delivery in production.',
+      );
+    }
+    return 'dev';
+  }
+
+  private isProduction(): boolean {
+    return this.config.get<string>('NODE_ENV') === 'production';
+  }
+
+  private throwOtpDeliveryNotConfigured(message: string): never {
+    throw new ServiceUnavailableException({
+      code: 'OTP_DELIVERY_NOT_CONFIGURED',
+      message,
+    });
   }
 }
