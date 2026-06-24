@@ -86,6 +86,7 @@ export class WalletService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.ensureWalletInTx(tx, params.customerId);
+      await this.lockWalletInTx(tx, params.customerId);
       const wallet = await tx.storedWallet.findUniqueOrThrow({
         where: { customerId: params.customerId },
       });
@@ -154,6 +155,7 @@ export class WalletService {
   }) {
     return this.prisma.$transaction(async (tx) => {
       await this.ensureWalletInTx(tx, params.customerId);
+      await this.lockWalletInTx(tx, params.customerId);
       const original = await tx.storedWalletLedgerEntry.findFirst({
         where: { id: params.transactionId, customerId: params.customerId },
       });
@@ -215,6 +217,18 @@ export class WalletService {
     });
   }
 
+  private async lockWalletInTx(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await tx.$queryRaw`
+      SELECT id
+      FROM "stored_wallets"
+      WHERE "customer_id" = ${customerId}::uuid
+      FOR UPDATE
+    `;
+  }
+
   private async appendTransactionInTx(
     tx: Prisma.TransactionClient,
     params: {
@@ -235,6 +249,7 @@ export class WalletService {
       });
     }
     await this.ensureWalletInTx(tx, params.customerId);
+    await this.lockWalletInTx(tx, params.customerId);
     const wallet = await tx.storedWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
     });
