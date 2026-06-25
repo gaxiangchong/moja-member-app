@@ -57,11 +57,14 @@ import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
 import { BentoPackagesService } from '../bento/bento-packages.service';
 import { BentoSettingsService } from '../bento/bento-settings.service';
+import { BentoVoucherService } from '../bento-vouchers/bento-voucher.service';
 import { ReportingSettingsService } from './reporting-settings.service';
 import { UpdateReportingSettingsDto } from './dto/update-reporting-settings.dto';
 import { UpdateBentoMenuDto } from './dto/update-bento-menu.dto';
 import { UpdateBentoPackagesDto } from './dto/update-bento-packages.dto';
 import { UpdateBentoSettingsDto } from './dto/update-bento-settings.dto';
+import { CreateBentoDiscountVoucherDto } from './dto/create-bento-discount-voucher.dto';
+import { UpdateBentoDiscountVoucherDto } from './dto/update-bento-discount-voucher.dto';
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -75,6 +78,7 @@ export class AdminController {
     private readonly bentoPackages: BentoPackagesService,
     private readonly bentoSettings: BentoSettingsService,
     private readonly reportingSettings: ReportingSettingsService,
+    private readonly bentoVouchers: BentoVoucherService,
   ) {}
 
   @Get('commerce/orders')
@@ -122,6 +126,17 @@ export class AdminController {
   @RequirePermissions(P.CUSTOMER_READ)
   getCustomer(@Param('id') id: string) {
     return this.admin.getCustomer(id);
+  }
+
+  // Admin-assisted login: generate a one-time login PIN for a member who can't
+  // receive their OTP. Returns the PIN once for the admin to relay.
+  @Post('customers/:id/login-pin')
+  @RequirePermissions(P.CUSTOMER_WRITE_IDENTITY)
+  setCustomerLoginPin(
+    @Param('id') id: string,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.setCustomerLoginPin(id, auth);
   }
 
   @Post('customers/:id/loyalty/adjustments')
@@ -235,6 +250,27 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_READ)
   listVoucherDefinitions() {
     return this.admin.listVoucherDefinitions();
+  }
+
+  @Get('bento-vouchers')
+  @RequirePermissions(P.VOUCHER_READ)
+  listBentoVouchers() {
+    return this.bentoVouchers.adminList();
+  }
+
+  @Post('bento-vouchers')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  createBentoVoucher(@Body() dto: CreateBentoDiscountVoucherDto) {
+    return this.bentoVouchers.adminCreate(dto);
+  }
+
+  @Patch('bento-vouchers/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  updateBentoVoucher(
+    @Param('id') id: string,
+    @Body() dto: UpdateBentoDiscountVoucherDto,
+  ) {
+    return this.bentoVouchers.adminUpdate(id, dto);
   }
 
   @Get('loyalty-ledger')
@@ -441,6 +477,16 @@ export class AdminController {
   )
   importBentoMenu(@UploadedFile() file: Express.Multer.File) {
     return this.bentoMenu.parseUploadToConfig(file);
+  }
+
+  /** Upload a dish photo; returns its public URL to store on the menu + save. */
+  @Post('bento-menu/image')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  uploadBentoMenuImage(@UploadedFile() file: Express.Multer.File) {
+    return this.bentoMenu.saveMenuImage(file);
   }
 
   // --- Sales reporting cutoff (System config) ---

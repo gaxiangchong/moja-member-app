@@ -54,6 +54,8 @@ type WeeklyMenuMeal = {
   dishZh: string;
   /** Vegetarian dish in Chinese (optional). */
   dishVegZh: string;
+  /** Meal photo URL (empty = client shows the icon tile). */
+  image: string;
 };
 
 /**
@@ -106,6 +108,7 @@ export function buildWeeklyMenu(
         dishVeg: cfg?.lunch.veg ?? '',
         dishZh: cfg?.lunch.regularZh ?? '',
         dishVegZh: cfg?.lunch.vegZh ?? '',
+        image: cfg?.lunch.image ?? '',
       },
       dinner: {
         title: BENTO_MENU.dinner.title,
@@ -114,6 +117,7 @@ export function buildWeeklyMenu(
         dishVeg: cfg?.dinner.veg ?? '',
         dishZh: cfg?.dinner.regularZh ?? '',
         dishVegZh: cfg?.dinner.vegZh ?? '',
+        image: cfg?.dinner.image ?? '',
       },
     });
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
+import { assetUrl, fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
 import { useI18n } from '../lib/i18n/context';
 import { isTodayIso, parseDateOnly } from '../lib/dateUtils';
 import { LaunchAnnouncement } from './LaunchAnnouncement';
@@ -116,21 +116,34 @@ export function MenuTab({ onOrderNow }: Props) {
                 className={`wkMenuDay${isClosed ? ' wkMenuDayClosed' : ''}${isToday ? ' wkMenuDayToday' : ''}${showVeg ? ' veg' : ''}`}
               >
                 <div className="wkMenuDayHead">
-                  <strong>{dayLabel}</strong>
-                  {isToday &&<span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
+                  <span className="wkMenuDayPill">{dayLabel}</span>
+                  {isToday && <span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
                   {isClosed && <span className="wkMenuDayTag">{t('common.closed')}</span>}
                 </div>
-                {!isClosed && (
+                {isClosed ? (
+                  <div className="wkMenuClosedNote">
+                    <span className="wkMenuClosedIcon">😴</span>
+                    {t('weeklyOptIn.kitchenClosed')}
+                  </div>
+                ) : (
                   <div className="wkMenuMeals">
-                    <div className="wkMenuMeal">
-                      <span className="wkMenuMealIcon">🌞</span>
+                    <div className="wkMenuMeal lunch">
+                      <span className="wkMenuMealIcon">
+                        {day.lunch.image
+                          ? <img src={assetUrl(day.lunch.image)} alt="" className="wkMenuMealPhoto" loading="lazy" />
+                          : '🌞'}
+                      </span>
                       <div className="wkMenuMealContent">
                         <strong className="wkMenuMealLabel">{t('common.lunch')}</strong>
                         <span className="wkMenuMealText">{dishFor(day.lunch)}</span>
                       </div>
                     </div>
-                    <div className="wkMenuMeal">
-                      <span className="wkMenuMealIcon">🌙</span>
+                    <div className="wkMenuMeal dinner">
+                      <span className="wkMenuMealIcon">
+                        {day.dinner.image
+                          ? <img src={assetUrl(day.dinner.image)} alt="" className="wkMenuMealPhoto" loading="lazy" />
+                          : '🌙'}
+                      </span>
                       <div className="wkMenuMealContent">
                         <strong className="wkMenuMealLabel">{t('common.dinner')}</strong>
                         <span className="wkMenuMealText">{dishFor(day.dinner)}</span>

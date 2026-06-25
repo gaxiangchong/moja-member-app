@@ -484,6 +484,7 @@ model Customer {
   redeemedGiftCodes GiftVoucherCode[]
   bentoSubscriptions BentoSubscription[]
   bentoWeeklyOptIns  BentoWeeklyOptIn[]
+  bentoDiscountRedemptions BentoDiscountRedemption[]
 
   @@index([displayName])
   @@index([email])
@@ -1078,4 +1079,57 @@ model BentoWeeklyOptIn {
 
   @@unique([customerId, weekStart])
   @@map("bento_weekly_opt_ins")
+}
+
+/// Lifecycle of a single bento discount-voucher redemption. RESERVED is held at
+/// checkout (and counts against capacity); CONFIRMED once payment succeeds;
+/// RELEASED if the payment fails/expires (capacity is returned).
+enum BentoDiscountRedemptionStatus {
+  RESERVED
+  CONFIRMED
+  RELEASED
+}
+
+/// Shared discount code mass-emailed to customers and typed at bento checkout.
+/// Fixed RM amount off, a validity window, and a total redemption capacity.
+model BentoDiscountVoucher {
+  id             String   @id @default(uuid()) @db.Uuid
+  code           String   @unique
+  description    String?
+  /// Fixed amount off in sen (e.g. RM5 off = 500).
+  amountOffCents Int      @map("amount_off_cents")
+  /// Optional minimum order subtotal (sen) required to use the code.
+  minSpendCents  Int?     @map("min_spend_cents")
+  startsAt       DateTime @map("starts_at")
+  endsAt         DateTime @map("ends_at")
+  /// Total number of redemptions allowed across all customers.
+  redemptionCap  Int      @map("redemption_cap")
+  redeemedCount  Int      @default(0) @map("redeemed_count")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  redemptions    BentoDiscountRedemption[]
+
+  @@index([isActive, startsAt, endsAt])
+  @@map("bento_discount_vouchers")
+}
+
+/// One redemption of a BentoDiscountVoucher, tied to a checkout/payment.
+model BentoDiscountRedemption {
+  id              String                        @id @default(uuid()) @db.Uuid
+  voucherId       String                        @map("voucher_id") @db.Uuid
+  voucher         BentoDiscountVoucher          @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  customerId      String                        @map("customer_id") @db.Uuid
+  customer        Customer                      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  paymentIntentId String?                       @map("payment_intent_id") @db.Uuid
+  discountCents   Int                           @map("discount_cents")
+  status          BentoDiscountRedemptionStatus @default(RESERVED)
+  createdAt       DateTime                      @default(now()) @map("created_at")
+  confirmedAt     DateTime?                     @map("confirmed_at")
+  releasedAt      DateTime?                     @map("released_at")
+
+  @@index([voucherId, status])
+  @@index([paymentIntentId])
+  @@map("bento_discount_redemptions")
 }

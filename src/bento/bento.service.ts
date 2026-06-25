@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
+import { BentoVoucherService } from '../bento-vouchers/bento-voucher.service';
 import { BentoMenuService } from './bento-menu.service';
 import { BentoSettingsService } from './bento-settings.service';
 import { BentoFeaturesService } from './bento-features.service';
@@ -94,14 +95,14 @@ const PACKAGE_SEED: Array<{
   {
     code: BentoPackageCode.DAYS_15,
     label: '20 meals',
-    durationDays: 45,
+    durationDays: 60,
     mealCredits: 20,
     pricePerMealCents: 1500,
   },
   {
     code: BentoPackageCode.DAYS_30,
     label: '30 meals',
-    durationDays: 60,
+    durationDays: 90,
     mealCredits: 30,
     pricePerMealCents: 1300,
   },
@@ -125,6 +126,7 @@ export class BentoService implements OnModuleInit {
     private readonly bentoSettings: BentoSettingsService,
     private readonly bentoFeatures: BentoFeaturesService,
     private readonly reportingSettings: ReportingSettingsService,
+    private readonly bentoVouchers: BentoVoucherService,
   ) {}
 
   async onModuleInit() {
@@ -136,7 +138,26 @@ export class BentoService implements OnModuleInit {
       const existing = await this.prisma.bentoPackage.findUnique({
         where: { code: pkg.code },
       });
-      if (existing) continue;
+      if (existing) {
+        // Keep structural fields (validity window + meal credits) in sync with
+        // the seed. These are not admin-editable, so reconciling them here lets
+        // a change to PACKAGE_SEED take effect on the next boot without a
+        // migration, while leaving admin-set label/price/active flags alone.
+        const drift: { durationDays?: number; mealCredits?: number } = {};
+        if (existing.durationDays !== pkg.durationDays) {
+          drift.durationDays = pkg.durationDays;
+        }
+        if (existing.mealCredits !== pkg.mealCredits) {
+          drift.mealCredits = pkg.mealCredits;
+        }
+        if (Object.keys(drift).length > 0) {
+          await this.prisma.bentoPackage.update({
+            where: { code: pkg.code },
+            data: drift,
+          });
+        }
+        continue;
+      }
       await this.prisma.bentoPackage.create({
         data: {
           code: pkg.code,
@@ -496,6 +517,8 @@ export class BentoService implements OnModuleInit {
     BentoQuoteResult & {
       package: ReturnType<typeof this.mapPackage>;
       purchaseAvailability: PurchaseCapacityEvaluation;
+      voucher: { code: string; discountCents: number; newTotalCents: number } | null;
+      voucherError: string | null;
     }
   > {
     const pkg = await this.resolvePackage(dto.packageCode);
@@ -522,7 +545,40 @@ export class BentoService implements OnModuleInit {
       pkg.durationDays,
       requiredPacks,
     );
-    return { ...quote, package: this.mapPackage(pkg, baseline), purchaseAvailability };
+
+    // Preview a typed promo code against the grand total (no capacity is held
+    // here — that happens at checkout). Surface either the applied discount or a
+    // reason string so the UI can show inline feedback.
+    const subtotalCents = quote.totalCents * sets;
+    let voucher: {
+      code: string;
+      discountCents: number;
+      newTotalCents: number;
+    } | null = null;
+    let voucherError: string | null = null;
+    if (dto.voucherCode && dto.voucherCode.trim()) {
+      const result = await this.bentoVouchers.validateForQuote(
+        dto.voucherCode,
+        subtotalCents,
+      );
+      if (result.ok) {
+        voucher = {
+          code: result.code,
+          discountCents: result.discountCents,
+          newTotalCents: result.newTotalCents,
+        };
+      } else {
+        voucherError = result.reason;
+      }
+    }
+
+    return {
+      ...quote,
+      package: this.mapPackage(pkg, baseline),
+      purchaseAvailability,
+      voucher,
+      voucherError,
+    };
   }
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
@@ -548,13 +604,31 @@ export class BentoService implements OnModuleInit {
     const requiredPacks = (quote.lunchCredits + quote.dinnerCredits) * sets;
     await this.assertCanPurchase(pkg, requiredPacks);
 
-    const totalCents = quote.totalCents * sets;
-    if (totalCents < 100) {
+    const subtotalCents = quote.totalCents * sets;
+    if (subtotalCents < 100) {
       throw new BadRequestException({
         code: 'BENTO_MIN_AMOUNT',
         message: 'Minimum order is RM1.00.',
       });
     }
+
+    // Reserve the promo code (atomic capacity claim) and apply the discount to
+    // the amount we charge. The reservation is released below if anything after
+    // it fails, so capacity is never silently consumed by an abandoned checkout.
+    let redemption: { redemptionId: string; discountCents: number } | null =
+      null;
+    if (dto.voucherCode && dto.voucherCode.trim()) {
+      const reserved = await this.bentoVouchers.reserve(
+        dto.voucherCode,
+        customerId,
+        subtotalCents,
+      );
+      redemption = {
+        redemptionId: reserved.redemptionId,
+        discountCents: reserved.discountCents,
+      };
+    }
+    const totalCents = subtotalCents - (redemption?.discountCents ?? 0);
 
     const subscriptionData = {
       customerId,
@@ -573,27 +647,39 @@ export class BentoService implements OnModuleInit {
       status: BentoSubscriptionStatus.PENDING_PAYMENT,
     };
 
-    const subscriptions = await this.prisma.$transaction(async (tx) => {
-      const created: Awaited<
-        ReturnType<typeof tx.bentoSubscription.create>
-      >[] = [];
-      for (let i = 0; i < sets; i++) {
-        created.push(
-          await tx.bentoSubscription.create({
-            data: subscriptionData,
-            include: { package: true },
-          }),
-        );
-      }
-      return created;
-    });
+    try {
+      const subscriptions = await this.prisma.$transaction(async (tx) => {
+        const created: Awaited<
+          ReturnType<typeof tx.bentoSubscription.create>
+        >[] = [];
+        for (let i = 0; i < sets; i++) {
+          created.push(
+            await tx.bentoSubscription.create({
+              data: subscriptionData,
+              include: { package: true },
+            }),
+          );
+        }
+        return created;
+      });
 
-    return this.payments.createBentoSubscriptionCheckout(
-      customerId,
-      subscriptions.map((s) => s.id),
-      totalCents,
-      dto.channelCode,
-    );
+      return await this.payments.createBentoSubscriptionCheckout(
+        customerId,
+        subscriptions.map((s) => s.id),
+        totalCents,
+        dto.channelCode,
+        redemption?.redemptionId,
+      );
+    } catch (err) {
+      // Return the claimed promo-code capacity if subscription creation or the
+      // payment-intent call fails after we reserved it.
+      if (redemption) {
+        await this.bentoVouchers
+          .releaseRedemption(redemption.redemptionId)
+          .catch(() => {});
+      }
+      throw err;
+    }
   }
 
   async scheduleDeliveries(

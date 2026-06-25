@@ -32,6 +32,8 @@ export function Checkout({ draft, onSuccess }: Props) {
   const [qty, setQty] = useState(MIN_QTY);
   const [showTakeawayDisclaimer, setShowTakeawayDisclaimer] = useState(false);
   const [takeawayAgreed, setTakeawayAgreed] = useState(false);
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
 
   const isTrialPack = draft.packageCode === 'NEWCOMER_3';
   const sets = isTrialPack ? 1 : groupBuy ? qty : 1;
@@ -77,13 +79,14 @@ export function Checkout({ draft, onSuccess }: Props) {
       riceType: draft.riceType,
       includeDrinkAddon: draft.includeDrinkAddon,
       sets,
+      voucherCode: appliedCode ?? undefined,
     })
       .then((q) => { if (!cancelled) { setQuote(q); setError(null); } })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : t('checkout.errorQuote'));
       });
     return () => { cancelled = true; };
-  }, [draft, sets, t]);
+  }, [draft, sets, appliedCode, t]);
 
   const handlePay = async () => {
     if (!draft.packageCode || !quote) return;
@@ -99,6 +102,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       includeDrinkAddon: draft.includeDrinkAddon,
       channelCode: paymentsDemoMode ? undefined : channelCode || undefined,
       sets,
+      voucherCode: appliedVoucher ? appliedCode ?? undefined : undefined,
     };
 
     try {
@@ -132,7 +136,31 @@ export function Checkout({ draft, onSuccess }: Props) {
   };
 
   const perSetTotal = quote?.totalCents ?? 0;
-  const grandTotal = perSetTotal * sets;
+  const baseGrandTotal = perSetTotal * sets;
+  const appliedVoucher = appliedCode ? quote?.voucher ?? null : null;
+  const voucherError = appliedCode ? quote?.voucherError ?? null : null;
+  const grandTotal = appliedVoucher ? appliedVoucher.newTotalCents : baseGrandTotal;
+
+  const applyPromo = () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setAppliedCode(code);
+  };
+  const removePromo = () => {
+    setAppliedCode(null);
+    setPromoInput('');
+  };
+  const PROMO_ERROR_KEYS: Record<string, string> = {
+    NOT_FOUND: 'checkout.promoError.notFound',
+    INACTIVE: 'checkout.promoError.inactive',
+    NOT_STARTED: 'checkout.promoError.notStarted',
+    EXPIRED: 'checkout.promoError.expired',
+    CAPACITY_FULL: 'checkout.promoError.capacityFull',
+    MIN_SPEND: 'checkout.promoError.minSpend',
+  };
+  const voucherErrorText = voucherError
+    ? t(PROMO_ERROR_KEYS[voucherError] ?? 'checkout.promoError.generic')
+    : null;
 
   const lunchPart =
     quote && quote.lunchCredits > 0
@@ -185,7 +213,13 @@ export function Checkout({ draft, onSuccess }: Props) {
             {sets > 1 && (
               <li className="quoteSetsRow">
                 <span>{t('checkout.setsRow', { count: sets })}</span>
-                <span>{formatRm(grandTotal)}</span>
+                <span>{formatRm(baseGrandTotal)}</span>
+              </li>
+            )}
+            {appliedVoucher && (
+              <li className="quoteVoucherRow">
+                <span>{t('checkout.promoDiscount', { code: appliedVoucher.code })}</span>
+                <span>−{formatRm(appliedVoucher.discountCents)}</span>
               </li>
             )}
           </ul>
@@ -198,6 +232,46 @@ export function Checkout({ draft, onSuccess }: Props) {
               })}
             </p>
           )}
+
+          <div className="promoSection">
+            <label className="fieldLabel" htmlFor="promoCode">{t('checkout.promoLabel')}</label>
+            {appliedVoucher ? (
+              <div className="promoApplied">
+                <span className="promoAppliedTag">✓ {appliedVoucher.code}</span>
+                <button type="button" className="promoRemoveBtn" onClick={removePromo}>
+                  {t('checkout.promoRemove')}
+                </button>
+              </div>
+            ) : (
+              <div className="promoInputRow">
+                <input
+                  id="promoCode"
+                  name="bentoPromoCode"
+                  type="text"
+                  className="dateInput promoInput"
+                  placeholder={t('checkout.promoPlaceholder')}
+                  value={promoInput}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  data-1p-ignore
+                  data-lpignore="true"
+                  onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }}
+                />
+                <button
+                  type="button"
+                  className="btnSecondary promoApplyBtn"
+                  disabled={!promoInput.trim()}
+                  onClick={applyPromo}
+                >
+                  {t('checkout.promoApply')}
+                </button>
+              </div>
+            )}
+            {voucherErrorText && <p className="err promoError">{voucherErrorText}</p>}
+          </div>
 
           {(lunchPart || dinnerPart) && (
             <p className="caption" style={{ marginTop: 6 }}>

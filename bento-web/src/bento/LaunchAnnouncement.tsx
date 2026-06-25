@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useI18n } from '../lib/i18n/context';
 
-const SUPPRESS_KEY = 'bento-launch-announcement-dismissed';
+const SUPPRESS_KEY = 'bento-voucher-announcement-dismissed';
 
 function readSuppressed(): boolean {
   try {
@@ -12,10 +12,10 @@ function readSuppressed(): boolean {
 }
 
 /**
- * Closeable floating window shown on the weekly menu page announcing the bento
- * launch (22 June) and pickup location (Moja Maison Eco Botanic). It appears
- * fresh on every visit/login unless the user ticks "Don't show this again",
- * which suppresses it permanently (persisted in localStorage).
+ * Closeable floating window shown on the weekly menu page announcing the active
+ * discount-voucher promo (enter the emailed code at checkout for money off). It
+ * appears fresh on every visit/login unless the user ticks "Don't show this
+ * again", which suppresses it permanently (persisted in localStorage).
  */
 export function LaunchAnnouncement() {
   const { t } = useI18n();

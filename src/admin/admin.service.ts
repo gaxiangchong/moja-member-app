@@ -16,6 +16,8 @@ import {
 } from '@prisma/client';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
+import { randomInt } from 'node:crypto';
+import * as bcrypt from 'bcrypt';
 
 // Voucher-definition image uploads land on the same persistent disk mounted
 // at <cwd>/data/ as the home-ad carousel uploads. See docs/DEPLOYMENT.md §6.1.
@@ -500,8 +502,71 @@ export class AdminService {
         message: 'Member not found',
       });
     }
-    const { loginPinHash: _loginPinHash, ...safe } = customer;
-    return safe;
+
+    // Derived email-verification status: the member has at some point completed
+    // an email OTP for their *current* email address. No dedicated column.
+    let emailVerifiedAt: string | null = null;
+    const currentEmail = customer.email?.trim().toLowerCase();
+    if (currentEmail) {
+      const usedEmailOtp = await this.prisma.otpChallenge.findFirst({
+        where: {
+          customerId: customer.id,
+          deliveryChannel: 'email',
+          usedAt: { not: null },
+          email: { equals: currentEmail, mode: 'insensitive' },
+        },
+        orderBy: { usedAt: 'desc' },
+        select: { usedAt: true },
+      });
+      emailVerifiedAt = usedEmailOtp?.usedAt
+        ? usedEmailOtp.usedAt.toISOString()
+        : null;
+    }
+
+    const { loginPinHash, ...safe } = customer;
+    return {
+      ...safe,
+      hasLoginPin: Boolean(loginPinHash),
+      emailVerified: emailVerifiedAt !== null,
+      emailVerifiedAt,
+    };
+  }
+
+  /**
+   * Admin-assisted login rescue: set a fresh 6-digit login PIN for a member who
+   * can't receive their OTP. Reuses the existing PIN-login path — once set,
+   * `loginLookup` reports `hasPin` and the member signs in with phone + PIN.
+   * The PIN is returned once (plaintext) for the admin to read out, and stored
+   * only as a bcrypt hash.
+   */
+  async setCustomerLoginPin(
+    id: string,
+    auth: AdminAuthState,
+  ): Promise<{ pin: string }> {
+    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+
+    const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const loginPinHash = await bcrypt.hash(pin, 12);
+    await this.prisma.customer.update({
+      where: { id },
+      data: { loginPinHash },
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'customer.login_pin_set_by_admin',
+      entityType: 'customer',
+      entityId: id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+
+    return { pin };
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {

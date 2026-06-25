@@ -62,6 +62,10 @@ export type BentoQuote = {
   savingsBaselineLabel: string;
   package: BentoPackage;
   purchaseAvailability?: PurchaseCapacityInfo;
+  /** Applied discount voucher when a valid promo code was passed to the quote. */
+  voucher?: { code: string; discountCents: number; newTotalCents: number } | null;
+  /** Reason string (e.g. EXPIRED, CAPACITY_FULL) when a passed code was rejected. */
+  voucherError?: string | null;
 };
 
 export type BentoSchedulingMeta = {

@@ -44,6 +44,11 @@ export class BentoQuoteDto {
   @Min(1)
   @Max(10)
   sets?: number;
+
+  /** Optional shared discount-voucher code typed at checkout. */
+  @IsOptional()
+  @IsString()
+  voucherCode?: string;
 }
 
 export class BentoCheckoutDto extends BentoQuoteDto {

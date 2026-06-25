@@ -7,7 +7,8 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 /** Mon–Sun weekday codes used as stable keys for the weekly menu. */
 export const BENTO_WEEKDAY_CODES = [
@@ -48,6 +49,9 @@ export type BentoMealDishes = {
   regularZh: string;
   /** Vegetarian dish name in Chinese (optional). */
   vegZh: string;
+  /** Photo for this meal (shown in the client thumbnail). Internal
+   * `/uploads/bento-menu/…` path or an http(s) URL; empty = use icon tile. */
+  image: string;
 };
 
 export type BentoWeekdayMenu = {
@@ -66,7 +70,28 @@ const EMPTY_DISHES: BentoMealDishes = {
   veg: '',
   regularZh: '',
   vegZh: '',
+  image: '',
 };
+
+const BENTO_MENU_IMAGE_PUBLIC_PREFIX = '/uploads/bento-menu/';
+const BENTO_MENU_IMAGE_ALLOWED_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const BENTO_MENU_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+
+/** Keep only empty, an internal upload path, or a plain http(s) URL. */
+function sanitizeMenuImageUrl(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const s = raw.trim().slice(0, 512);
+  if (!s) return '';
+  if (s.startsWith(BENTO_MENU_IMAGE_PUBLIC_PREFIX)) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  return '';
+}
 
 /**
  * Default weekly menu. Mon–Sat have dishes; Sunday is closed. Seeded from the
@@ -156,6 +181,10 @@ export class BentoMenuService {
       veg: clean(obj.veg, fallback.veg),
       regularZh: clean(obj.regularZh, fallback.regularZh),
       vegZh: clean(obj.vegZh, fallback.vegZh),
+      image:
+        obj.image !== undefined
+          ? sanitizeMenuImageUrl(obj.image)
+          : fallback.image ?? '',
     };
   }
 
@@ -200,6 +229,49 @@ export class BentoMenuService {
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
     return next;
+  }
+
+  /**
+   * Store an uploaded dish photo on the persistent uploads disk and return its
+   * public URL (`/uploads/bento-menu/<file>`). The admin then sets that URL on
+   * the relevant meal and saves the menu. Mirrors the shop-catalog image upload.
+   */
+  saveMenuImage(file?: {
+    buffer: Buffer;
+    mimetype: string;
+    originalname?: string;
+    size: number;
+  }): { url: string } {
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_EMPTY',
+        message: 'No image uploaded.',
+      });
+    }
+    if (file.size > BENTO_MENU_IMAGE_MAX_BYTES) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_TOO_LARGE',
+        message: `Image too large. Max ${Math.round(
+          BENTO_MENU_IMAGE_MAX_BYTES / 1024 / 1024,
+        )} MB.`,
+      });
+    }
+    const ext =
+      BENTO_MENU_IMAGE_ALLOWED_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    const allowedExts = new Set(Object.values(BENTO_MENU_IMAGE_ALLOWED_MIME));
+    if (!ext || !allowedExts.has(ext)) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMAGE_UNSUPPORTED',
+        message: 'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      });
+    }
+
+    const dir = resolve(process.cwd(), 'data', 'uploads', 'bento-menu');
+    mkdirSync(dir, { recursive: true });
+    const filename = `${Date.now()}-${randomBytes(4).toString('hex')}${ext}`;
+    writeFileSync(resolve(dir, filename), file.buffer);
+    return { url: `${BENTO_MENU_IMAGE_PUBLIC_PREFIX}${filename}` };
   }
 
   // --- Spreadsheet template download + import (review-then-save flow) ---
@@ -263,11 +335,18 @@ export class BentoMenuService {
       });
     }
 
+    // The template is text-only — preserve any photos already uploaded for each
+    // day/meal so a CSV/xlsx import doesn't wipe them.
+    const current = new Map(
+      this.getConfig().weekdays.map((d) => [d.weekday, d]),
+    );
+
     const dataRows = this.stripHeaderRow(rows);
     const weekdays: BentoWeekdayMenu[] = [];
     for (const r of dataRows) {
       const code = this.normalizeWeekday(r[0] ?? '');
       if (!code) continue;
+      const existing = current.get(code);
       weekdays.push({
         weekday: code,
         closed: this.parseClosedCell(r[1] ?? ''),
@@ -276,12 +355,14 @@ export class BentoMenuService {
           regularZh: (r[3] ?? '').trim(),
           veg: (r[4] ?? '').trim(),
           vegZh: (r[5] ?? '').trim(),
+          image: existing?.lunch.image ?? '',
         },
         dinner: {
           regular: (r[6] ?? '').trim(),
           regularZh: (r[7] ?? '').trim(),
           veg: (r[8] ?? '').trim(),
           vegZh: (r[9] ?? '').trim(),
+          image: existing?.dinner.image ?? '',
         },
       });
     }

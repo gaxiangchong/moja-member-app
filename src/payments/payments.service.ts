@@ -14,6 +14,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ReceiptEmailService } from '../notifications/receipt-email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RewardsWorkflowService } from '../rewards-workflow/rewards-workflow.service';
+import { BentoVoucherService } from '../bento-vouchers/bento-voucher.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
 import {
   discountCentsFromRebate,
@@ -45,6 +46,7 @@ export class PaymentsService {
     private readonly loyalty: LoyaltyService,
     private readonly rewardsWorkflow: RewardsWorkflowService,
     private readonly receiptEmail: ReceiptEmailService,
+    private readonly bentoVoucher: BentoVoucherService,
   ) {}
 
   private memberPublicBase(): string {
@@ -599,6 +601,7 @@ export class PaymentsService {
     subscriptionIds: string[],
     amountCents: number,
     channelCodeRaw?: string,
+    bentoVoucherRedemptionId?: string,
   ) {
     if (subscriptionIds.length === 0) {
       throw new BadRequestException({
@@ -629,6 +632,11 @@ export class PaymentsService {
     const subscription = subscriptions[0];
 
     if (this.isDemoMode()) {
+      // Demo checkout always completes (no real payment / webhook), so finalize
+      // the promo-code reservation now rather than waiting on a payment intent.
+      if (bentoVoucherRedemptionId) {
+        await this.bentoVoucher.confirmRedemption(bentoVoucherRedemptionId);
+      }
       return {
         demoMode: true as const,
         subscriptionId: subscription.id,
@@ -708,6 +716,15 @@ export class PaymentsService {
       where: { id: { in: subscriptions.map((s) => s.id) } },
       data: { paymentIntentId: intent.id },
     });
+
+    // Link the reserved promo-code redemption to this intent so it can be
+    // confirmed on payment success or released on failure.
+    if (bentoVoucherRedemptionId) {
+      await this.bentoVoucher.attachPaymentIntent(
+        bentoVoucherRedemptionId,
+        intent.id,
+      );
+    }
 
     if (apiStatus === 'SUCCEEDED') {
       await this.applyBentoSubscriptionFromXendit(
@@ -1012,6 +1029,9 @@ export class PaymentsService {
           metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
         },
       });
+      // Finalize any promo-code redemption tied to this intent. Capacity was
+      // already claimed at checkout, so this only flips RESERVED -> CONFIRMED.
+      void this.bentoVoucher.confirmByPaymentIntent(intent.id);
       // Fire-and-forget: a transient email failure must not roll back a
       // successful payment, and the webhook should still ack 200 quickly.
       for (const subscriptionId of subscriptionIds) {
@@ -1210,6 +1230,8 @@ export class PaymentsService {
             }) as object,
           },
         });
+        // Return any promo-code capacity claimed for this failed checkout.
+        await this.bentoVoucher.releaseByPaymentIntent(intent.id);
         return;
       }
       await this.prisma.paymentIntent.updateMany({

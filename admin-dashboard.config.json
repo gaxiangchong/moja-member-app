@@ -25,6 +25,7 @@
     "bento-pricing": true,
     "bento-operations": true,
     "bento-orders": true,
+    "bento-vouchers": true,
     "vouchers-rewards-hub": true,
     "settings-shopping-catalog": true,
     "settings-shop-layout": true,

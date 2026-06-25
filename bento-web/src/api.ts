@@ -12,6 +12,14 @@ import type {
 const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3153';
 const TOKEN_KEY = 'moja_bento_access_token';
 
+/** Resolve an internal `/uploads/…` asset path against the API origin. */
+export function assetUrl(pathOrUrl: string): string {
+  const s = (pathOrUrl || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  return `${base.replace(/\/$/, '')}${s.startsWith('/') ? s : `/${s}`}`;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -260,6 +268,7 @@ export async function quoteBentoSubscription(body: {
   riceType: BentoRiceType;
   includeDrinkAddon: boolean;
   sets?: number;
+  voucherCode?: string;
 }): Promise<BentoQuote> {
   return authFetch('/bento/subscriptions/quote', {
     method: 'POST',
@@ -276,6 +285,7 @@ export async function checkoutBentoSubscription(body: {
   includeDrinkAddon: boolean;
   channelCode?: string;
   sets?: number;
+  voucherCode?: string;
 }) {
   return authFetch('/bento/subscriptions/checkout', {
     method: 'POST',
@@ -329,6 +339,8 @@ export type WeeklyMenuMeal = {
   dishZh: string;
   /** Vegetarian dish in Chinese (optional). */
   dishVegZh: string;
+  /** Meal photo URL (empty = show the icon tile). */
+  image: string;
 };
 
 export type WeeklyMenuDay = {

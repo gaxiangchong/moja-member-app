@@ -29,6 +29,7 @@ import { OrderHero } from './bento/OrderHero';
 import { PackageSelector } from './bento/PackageSelector';
 import { ScheduleTab } from './bento/ScheduleTab';
 import { CapacityUrgencyNotice } from './bento/CapacityUrgencyNotice';
+import { useHiddenPurchases } from './bento/hiddenPurchases';
 import { useVisualViewportHeight } from './lib/useVisualViewportHeight';
 import { LangToggle, useI18n } from './lib/i18n/context';
 import {
@@ -72,6 +73,7 @@ function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
   const { t } = useI18n();
   const [subs, setSubs] = useState<BentoSubscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const { hidden, hide } = useHiddenPurchases();
 
   useEffect(() => {
     void fetchMyBentoSubscriptions()
@@ -80,29 +82,45 @@ function PurchaseHistory({ onViewAll }: { onViewAll: () => void }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const preview = subs.slice(0, 3);
-  const hasMore = subs.length > 3;
+  const visible = subs.filter((sub) => !hidden.has(sub.id));
+  const preview = visible.slice(0, 3);
+  const hasMore = visible.length > 3;
+
+  const clearHistory = () => {
+    if (!window.confirm(t('account.clearHistoryConfirm'))) return;
+    hide(visible.map((sub) => sub.id));
+  };
 
   return (
     <div className="purchaseHistorySection">
       <h3 className="purchaseHistoryTitle">{t('account.purchaseHistory')}</h3>
       {loading && <p className="caption">{t('common.loading')}</p>}
-      {!loading && subs.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
-      {!loading && subs.length > 0 && (
+      {!loading && visible.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
+      {!loading && visible.length > 0 && (
         <>
           <ul className="purchaseList">
             {preview.map((sub) => <PurchaseItem key={sub.id} sub={sub} />)}
           </ul>
-          {hasMore && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+            {hasMore && (
+              <button
+                type="button"
+                className="btnSecondary"
+                onClick={onViewAll}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {t('account.viewAllOrders', { count: visible.length })}
+              </button>
+            )}
             <button
               type="button"
               className="btnSecondary"
-              onClick={onViewAll}
-              style={{ marginTop: 12, fontSize: '0.85rem' }}
+              onClick={clearHistory}
+              style={{ fontSize: '0.85rem' }}
             >
-              {t('account.viewAllOrders', { count: subs.length })}
+              {t('account.clearHistory')}
             </button>
-          )}
+          </div>
         </>
       )}
     </div>
@@ -113,6 +131,7 @@ function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
   const { t } = useI18n();
   const [subs, setSubs] = useState<BentoSubscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const { hidden } = useHiddenPurchases();
 
   useEffect(() => {
     void fetchMyBentoSubscriptions()
@@ -120,6 +139,8 @@ function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
       .catch(() => setSubs([]))
       .finally(() => setLoading(false));
   }, []);
+
+  const visible = subs.filter((sub) => !hidden.has(sub.id));
 
   return (
     <>
@@ -129,10 +150,10 @@ function PurchaseHistoryPage({ onBack }: { onBack: () => void }) {
       </div>
       <section className="section">
         {loading && <p className="caption">{t('common.loading')}</p>}
-        {!loading && subs.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
-        {!loading && subs.length > 0 && (
+        {!loading && visible.length === 0 && <p className="caption">{t('account.noPurchases')}</p>}
+        {!loading && visible.length > 0 && (
           <ul className="purchaseList">
-            {subs.map((sub) => <PurchaseItem key={sub.id} sub={sub} />)}
+            {visible.map((sub) => <PurchaseItem key={sub.id} sub={sub} />)}
           </ul>
         )}
       </section>

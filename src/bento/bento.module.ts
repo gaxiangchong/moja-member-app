@@ -6,9 +6,17 @@ import { BentoController } from './bento.controller';
 import { BentoService } from './bento.service';
 import { BentoMenuModule } from './bento-menu.module';
 import { ReportingSettingsModule } from '../admin/reporting-settings.module';
+import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 
 @Module({
-  imports: [PrismaModule, JwtAccessModule, PaymentsModule, BentoMenuModule, ReportingSettingsModule],
+  imports: [
+    PrismaModule,
+    JwtAccessModule,
+    PaymentsModule,
+    BentoMenuModule,
+    ReportingSettingsModule,
+    BentoVoucherModule,
+  ],
   controllers: [BentoController],
   providers: [BentoService],
   exports: [BentoService],

@@ -28,6 +28,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-pricing': true,
     'bento-operations': true,
     'bento-orders': true,
+    'bento-vouchers': true,
     'vouchers-rewards-hub': true,
     'settings-shopping-catalog': true,
     'settings-shop-layout': true,
@@ -1016,6 +1017,10 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="bento-orders">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Kitchen orders export
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="bento-vouchers">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/><path d="M7 12h.01M17 12h.01M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
+              Discount vouchers
             </button>
           </div>
         </details>
@@ -2936,6 +2941,79 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="bento-vouchers" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Bento discount vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshBentoVouchersBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Create a shared promo code to email to customers. Each code gives a <strong>fixed RM amount off</strong> the Bento checkout total, is valid within a date window, and can be used up to its <strong>redemption capacity</strong>. Once the capacity is reached the code stops working automatically.
+              </p>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 10px;font-size:14px">New voucher</h3>
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="bvCode">Code</label>
+                    <input type="text" id="bvCode" placeholder="e.g. MOJA5" style="text-transform:uppercase" />
+                  </div>
+                  <div>
+                    <label for="bvAmount">Amount off (RM)</label>
+                    <input type="text" id="bvAmount" inputmode="decimal" placeholder="5.00" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="bvStart">Valid from</label>
+                    <input type="datetime-local" id="bvStart" />
+                  </div>
+                  <div>
+                    <label for="bvEnd">Valid until</label>
+                    <input type="datetime-local" id="bvEnd" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="bvCap">Redemption capacity</label>
+                    <input type="text" id="bvCap" inputmode="numeric" placeholder="100" />
+                  </div>
+                  <div>
+                    <label for="bvMinSpend">Min spend (RM, optional)</label>
+                    <input type="text" id="bvMinSpend" inputmode="decimal" placeholder="—" />
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="bvDesc">Description (optional)</label>
+                  <input type="text" id="bvDesc" placeholder="Internal note shown in this list" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                  <button type="button" class="btn-primary" id="bentoVoucherCreateBtn">Create voucher</button>
+                  <span class="field-hint" id="bentoVoucherCreateResult" style="margin:0"></span>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Amount off</th>
+                      <th>Window</th>
+                      <th>Redeemed / Cap</th>
+                      <th>Min spend</th>
+                      <th style="text-align:center">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoVouchersBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoVouchersListResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="bento-orders" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
@@ -3264,8 +3342,20 @@ export class AdminDashboardController {
           <div class="form-section">
             <label for="emEmail">Email</label>
             <input type="email" id="emEmail" maxlength="254" />
-            <p class="field-hint">Leave blank to leave the stored email unchanged.</p>
+            <p class="field-hint" id="emEmailVerified">—</p>
           </div>
+        </div>
+
+        <div class="form-section" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+          <label style="display:block;margin-bottom:6px"><strong>Account login help</strong></label>
+          <p class="field-hint" style="margin-top:0">
+            If a member can't receive their OTP, set a login PIN here. They sign in by entering their phone number, then this PIN — no OTP needed.
+          </p>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <span class="field-hint" id="emPinStatus" style="margin:0">—</span>
+            <button type="button" class="btn-outline" id="emSetPinBtn">Set login PIN</button>
+          </div>
+          <p class="field-hint" id="emSetPinResult" style="margin-top:8px;display:none"></p>
         </div>
         <div class="form-row-2">
           <div class="form-section">
@@ -3326,7 +3416,7 @@ export class AdminDashboardController {
     const views = [
       'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
       'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
-      'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders',
+      'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders', 'bento-vouchers',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
       'vouchers-rewards-hub',
@@ -3406,6 +3496,7 @@ export class AdminDashboardController {
       'bento-pricing': iconLoyalty,
       'bento-operations': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
       'bento-orders': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+      'bento-vouchers': iconVoucher,
       'settings-shop-layout': '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
       'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
@@ -3453,6 +3544,7 @@ export class AdminDashboardController {
       'bento-pricing': 'Bento · Packages & pricing',
       'bento-operations': 'Bento · Capacity & schedule',
       'bento-orders': 'Bento · Kitchen orders export',
+      'bento-vouchers': 'Bento · Discount vouchers',
       'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
@@ -4295,6 +4387,25 @@ export class AdminDashboardController {
           document.getElementById('emDisplayName').value = c.displayName || '';
           document.getElementById('emEmail').value = c.email || '';
           document.getElementById('emStatus').value = c.status || 'DRAFT';
+          var emVerifiedEl = document.getElementById('emEmailVerified');
+          if (emVerifiedEl) {
+            if (!c.email) {
+              emVerifiedEl.textContent = 'No email on file. Add one above, then Save.';
+              emVerifiedEl.style.color = '#b45309';
+            } else if (c.emailVerified) {
+              emVerifiedEl.textContent = 'Email verified ✓' + (c.emailVerifiedAt ? (' (' + dateFmt(c.emailVerifiedAt) + ')') : '');
+              emVerifiedEl.style.color = '#047857';
+            } else {
+              emVerifiedEl.textContent = 'Email not verified yet (member has not completed an email code for this address).';
+              emVerifiedEl.style.color = '#b45309';
+            }
+          }
+          var emPinStatusEl = document.getElementById('emPinStatus');
+          if (emPinStatusEl) {
+            emPinStatusEl.textContent = c.hasLoginPin ? 'A login PIN is set.' : 'No login PIN set.';
+          }
+          var emSetPinResultEl = document.getElementById('emSetPinResult');
+          if (emSetPinResultEl) { emSetPinResultEl.style.display = 'none'; emSetPinResultEl.textContent = ''; }
           if (c.birthday) {
             const d = new Date(c.birthday);
             document.getElementById('emBirthday').value =
@@ -5127,6 +5238,92 @@ export class AdminDashboardController {
       if (!Number.isFinite(n)) return '';
       return (n / 100).toFixed(2);
     }
+    var lastBentoVouchers = [];
+    function bvRm(cents) {
+      var n = Number(cents);
+      if (!Number.isFinite(n)) return '—';
+      return 'RM' + (n / 100).toFixed(2);
+    }
+    function bvDate(iso) {
+      if (!iso) return '—';
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    function renderBentoVouchers() {
+      var body = document.getElementById('bentoVouchersBody');
+      if (!body) return;
+      body.innerHTML = (lastBentoVouchers || []).map(function (v) {
+        var full = v.redeemedCount >= v.redemptionCap;
+        var countStyle = full ? ' style="color:#b91c1c;font-weight:600"' : '';
+        return '<tr data-voucher-id="' + bmAttr(v.id) + '">' +
+          '<td><code style="font-size:11px">' + bmAttr(v.code) + '</code>' +
+            (v.description ? '<br><span class="field-hint" style="margin:0">' + bmAttr(v.description) + '</span>' : '') + '</td>' +
+          '<td>' + bvRm(v.amountOffCents) + '</td>' +
+          '<td><span class="field-hint" style="margin:0">' + bvDate(v.startsAt) + '<br>→ ' + bvDate(v.endsAt) + '</span></td>' +
+          '<td' + countStyle + '>' + fmt(v.redeemedCount) + ' / ' + fmt(v.redemptionCap) + '</td>' +
+          '<td>' + (v.minSpendCents != null ? bvRm(v.minSpendCents) : '—') + '</td>' +
+          '<td style="text-align:center"><input type="checkbox" class="bv-active"' + (v.isActive ? ' checked' : '') + ' /></td>' +
+          '</tr>';
+      }).join('') || '<tr><td colspan="6">No vouchers yet</td></tr>';
+    }
+    async function loadBentoVouchers() {
+      var data = await api('/admin/bento-vouchers');
+      lastBentoVouchers = Array.isArray(data) ? data : [];
+      renderBentoVouchers();
+    }
+    async function createBentoVoucher() {
+      var out = document.getElementById('bentoVoucherCreateResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var code = String((document.getElementById('bvCode') || {}).value || '').trim().toUpperCase();
+        var amountCents = bpRmToCents((document.getElementById('bvAmount') || {}).value);
+        var startRaw = String((document.getElementById('bvStart') || {}).value || '').trim();
+        var endRaw = String((document.getElementById('bvEnd') || {}).value || '').trim();
+        var capRaw = String((document.getElementById('bvCap') || {}).value || '').trim();
+        var minSpendRaw = String((document.getElementById('bvMinSpend') || {}).value || '').trim();
+        var desc = String((document.getElementById('bvDesc') || {}).value || '').trim();
+        if (!code) throw new Error('Enter a voucher code.');
+        if (!amountCents || amountCents < 1) throw new Error('Enter a valid amount off (≥ RM0.01).');
+        if (!startRaw || !endRaw) throw new Error('Enter both a start and end date.');
+        var startsAt = new Date(startRaw);
+        var endsAt = new Date(endRaw);
+        if (isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) throw new Error('Enter valid dates.');
+        if (endsAt <= startsAt) throw new Error('End date must be after the start date.');
+        var cap = parseInt(capRaw, 10);
+        if (!Number.isFinite(cap) || cap < 1) throw new Error('Enter a redemption capacity (≥ 1).');
+        var minSpendCents = minSpendRaw ? bpRmToCents(minSpendRaw) : null;
+        var payload = {
+          code: code,
+          amountOffCents: amountCents,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          redemptionCap: cap,
+        };
+        if (minSpendCents != null) payload.minSpendCents = minSpendCents;
+        if (desc) payload.description = desc;
+        await apiPost('/admin/bento-vouchers', payload);
+        ['bvCode', 'bvAmount', 'bvStart', 'bvEnd', 'bvCap', 'bvMinSpend', 'bvDesc'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        if (out) out.textContent = 'Created.';
+        await loadBentoVouchers();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function toggleBentoVoucherActive(id, isActive) {
+      var out = document.getElementById('bentoVouchersListResult');
+      try {
+        await apiPatch('/admin/bento-vouchers/' + encodeURIComponent(id), { isActive: isActive });
+        if (out) out.textContent = 'Updated.';
+        await loadBentoVouchers();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+        await loadBentoVouchers();
+      }
+    }
     function renderBentoPackages() {
       var body = document.getElementById('bentoPackagesBody');
       if (!body) return;
@@ -5212,12 +5409,24 @@ export class AdminDashboardController {
             '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
             '</div>';
         }
+        function photoCtrl(meal, img) {
+          var url = img || '';
+          var thumb = url
+            ? '<img src="' + bmAttr(url) + '" class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0" />'
+            : '<span class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px">🍽️</span>';
+          return '<div class="bm-photo" style="display:flex;align-items:center;gap:6px;margin-top:6px">' +
+            thumb +
+            '<input type="hidden" class="bm-input" data-field="' + meal + '.image" value="' + bmAttr(url) + '" />' +
+            '<button type="button" class="btn-outline bm-photo-upload" style="padding:3px 9px;font-size:11px"' + dis + '>Photo</button>' +
+            (url ? '<button type="button" class="bm-photo-remove" title="Remove photo" style="border:none;background:none;cursor:pointer;color:#b91c1c;font-size:16px;line-height:1"' + dis + '>×</button>' : '') +
+            '</div>';
+        }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
           '<td>' + stackedInp('lunch.veg', lunch.veg, lunch.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + '</td>' +
+          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + photoCtrl('lunch', lunch.image) + '</td>' +
           '<td>' + stackedInp('dinner.veg', dinner.veg, dinner.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + '</td>' +
+          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + photoCtrl('dinner', dinner.image) + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
@@ -5257,17 +5466,92 @@ export class AdminDashboardController {
               veg: val('lunch.veg'),
               regularZh: val('lunch.regularZh'),
               vegZh: val('lunch.vegZh'),
+              image: val('lunch.image'),
             },
             dinner: {
               regular: val('dinner.regular'),
               veg: val('dinner.veg'),
               regularZh: val('dinner.regularZh'),
               vegZh: val('dinner.vegZh'),
+              image: val('dinner.image'),
             },
           };
         }),
       };
     }
+    async function bentoMenuUploadPhoto(photoEl) {
+      if (!photoEl) return;
+      var fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
+      fileInput.onchange = async function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        var btn = photoEl.querySelector('.bm-photo-upload');
+        var out = document.getElementById('bentoMenuSaveResult');
+        if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+        try {
+          var headers = { ...getAuthHeaders() };
+          delete headers['Content-Type'];
+          var fd = new FormData();
+          fd.append('file', file);
+          var res = await fetch('/admin/bento-menu/image', { method: 'POST', headers, body: fd });
+          if (!res.ok) {
+            var txt = await res.text();
+            throw new Error('Upload failed (' + res.status + '): ' + txt);
+          }
+          var data = await res.json();
+          var url = data && data.url;
+          var hidden = photoEl.querySelector('input[type="hidden"]');
+          if (hidden) hidden.value = url || '';
+          var thumb = photoEl.querySelector('.bm-photo-thumb');
+          if (thumb && url) {
+            var img = document.createElement('img');
+            img.src = url;
+            img.className = 'bm-photo-thumb';
+            img.style.cssText = 'width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0';
+            thumb.replaceWith(img);
+          }
+          if (out) out.textContent = 'Photo uploaded — click Save menu to publish.';
+        } catch (e) {
+          if (out) out.textContent = e.message || String(e);
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = 'Photo'; }
+        }
+      };
+      fileInput.click();
+    }
+    (function () {
+      var menuBody = document.getElementById('bentoMenuBody');
+      if (!menuBody) return;
+      menuBody.addEventListener('click', function (e) {
+        var up = e.target.closest ? e.target.closest('.bm-photo-upload') : null;
+        if (up) {
+          var pe = up.closest('.bm-photo');
+          if (pe) bentoMenuUploadPhoto(pe);
+          return;
+        }
+        var rm = e.target.closest ? e.target.closest('.bm-photo-remove') : null;
+        if (rm) {
+          var pe2 = rm.closest('.bm-photo');
+          if (!pe2) return;
+          var hidden = pe2.querySelector('input[type="hidden"]');
+          if (hidden) hidden.value = '';
+          var thumb = pe2.querySelector('.bm-photo-thumb');
+          if (thumb) {
+            var span = document.createElement('span');
+            span.className = 'bm-photo-thumb';
+            span.style.cssText = 'width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px';
+            span.textContent = '🍽️';
+            thumb.replaceWith(span);
+          }
+          rm.remove();
+          var out = document.getElementById('bentoMenuSaveResult');
+          if (out) out.textContent = 'Photo removed — click Save menu to publish.';
+        }
+      });
+    })();
+
     async function loadBentoSettings() {
       var capEl = document.getElementById('bentoDailyCapacity');
       var blockEl = document.getElementById('bentoBlockNewOrders');
@@ -6807,6 +7091,33 @@ export class AdminDashboardController {
       saveEditMember().catch((err) => { statusPanel.textContent = err.message; });
     });
     document.getElementById('editMemberSave').addEventListener('click', () => saveEditMember().catch((e) => { statusPanel.textContent = e.message; }));
+    (function () {
+      var setPinBtn = document.getElementById('emSetPinBtn');
+      if (!setPinBtn) return;
+      setPinBtn.addEventListener('click', async function () {
+        var id = document.getElementById('emId').value;
+        var out = document.getElementById('emSetPinResult');
+        if (!id) return;
+        if (!window.confirm('Generate a new login PIN for this member? This replaces any existing PIN.')) return;
+        setPinBtn.disabled = true;
+        try {
+          var res = await apiPost('/admin/customers/' + encodeURIComponent(id) + '/login-pin', {});
+          var pinStatus = document.getElementById('emPinStatus');
+          if (pinStatus) pinStatus.textContent = 'A login PIN is set.';
+          if (out) {
+            out.style.display = 'block';
+            out.style.color = '#0f172a';
+            out.innerHTML =
+              'New login PIN: <strong style="font-size:18px;letter-spacing:2px">' + fmt(res && res.pin) + '</strong>' +
+              '<div style="font-size:13px;color:var(--text-muted,#475569);margin-top:6px">Give this PIN to the member. They log in by entering their phone number, then this PIN — no OTP needed. Shown once.</div>';
+          }
+        } catch (e) {
+          if (out) { out.style.display = 'block'; out.style.color = '#b91c1c'; out.textContent = e.message || String(e); }
+        } finally {
+          setPinBtn.disabled = false;
+        }
+      });
+    })();
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && dashboardApp.classList.contains('hidden')) {
         adminPassword.value = '';
@@ -7126,6 +7437,28 @@ export class AdminDashboardController {
     if (refreshBentoPackagesBtn) {
       refreshBentoPackagesBtn.addEventListener('click', function () {
         loadBentoPackages().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var refreshBentoVouchersBtn = document.getElementById('refreshBentoVouchersBtn');
+    if (refreshBentoVouchersBtn) {
+      refreshBentoVouchersBtn.addEventListener('click', function () {
+        loadBentoVouchers().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
+    var bentoVoucherCreateBtn = document.getElementById('bentoVoucherCreateBtn');
+    if (bentoVoucherCreateBtn) {
+      bentoVoucherCreateBtn.addEventListener('click', function () {
+        createBentoVoucher();
+      });
+    }
+    var bentoVouchersBody = document.getElementById('bentoVouchersBody');
+    if (bentoVouchersBody) {
+      bentoVouchersBody.addEventListener('change', function (ev) {
+        var target = ev.target;
+        if (!target || !target.classList || !target.classList.contains('bv-active')) return;
+        var tr = target.closest('tr[data-voucher-id]');
+        if (!tr) return;
+        toggleBentoVoucherActive(tr.getAttribute('data-voucher-id'), target.checked);
       });
     }
     var bentoMenuBody = document.getElementById('bentoMenuBody');
@@ -8430,6 +8763,11 @@ export class AdminDashboardController {
           if (view === 'bento-orders' && isConnected) {
             bentoOrdersInitDates();
             previewBentoOrders().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'bento-vouchers' && isConnected) {
+            loadBentoVouchers().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }
