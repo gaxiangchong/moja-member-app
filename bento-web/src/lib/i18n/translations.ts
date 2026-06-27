@@ -521,7 +521,7 @@ export const translations: Record<Lang, Dict> = {
     'menu.loading': '菜单加载中…',
     'menu.empty': '本周菜单暂未公布，请稍候再来。',
     'menu.browsePkg': '浏览套餐 →',
-    'menu.ctaPrompt': '喜欢今周菜单？',
+    'menu.ctaPrompt': '看了就想吃，别等了，立即下单！',
     'menu.ctaBtn': '立即订餐 →',
     'menu.footerTitle': '每日新鲜制作 · 均衡搭配',
     'menu.footerSub': '健康、美味、安心，每一餐都用心为您准备。',
