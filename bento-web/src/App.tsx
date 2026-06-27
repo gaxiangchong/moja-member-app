@@ -13,6 +13,7 @@ import {
   updateMe,
   type MemberProfile,
 } from './api';
+import { whatsappUrl } from './env';
 import type {
   BentoPackage,
   BentoPackageCode,
@@ -169,7 +170,7 @@ function ContactUs() {
       <p className="caption">{t('account.contactCaption')}</p>
       <div className="contactOptions">
         <a
-          href="https://wa.me/601139331134"
+          href={whatsappUrl()}
           className="contactBtn contactWhatsapp"
           target="_blank"
           rel="noreferrer"
