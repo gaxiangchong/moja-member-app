@@ -46,6 +46,8 @@ import {
 import {
   addDaysUtc,
   buildWeeklyMenu,
+  BENTO_DISPLAY_WEEKS,
+  displayWeekStartIsos,
   formatDateOnly,
   parseDateOnly as parseDateOnlyUtil,
   weekStartMondayIso,
@@ -252,12 +254,21 @@ export class BentoService implements OnModuleInit {
     };
   }
 
+  /** Build the consecutive weeks (this week, next week, …) the app can scroll. */
+  private buildWeeklyMenus(leadDays: number) {
+    return displayWeekStartIsos(BENTO_DISPLAY_WEEKS).map((iso) =>
+      buildWeeklyMenu(this.bentoMenu.getWeekConfig(iso), leadDays, iso),
+    );
+  }
+
   getWeeklyMenu() {
-    const menu = this.bentoMenu.getConfig();
     const settings = this.bentoSettings.getSettings();
+    const leadDays = resolveMinScheduleLeadDays(settings);
+    const weeks = this.buildWeeklyMenus(leadDays);
     return {
-      ...buildWeeklyMenu(menu, resolveMinScheduleLeadDays(settings)),
-      scheduleRules: buildScheduleRulesPayload(settings, menu),
+      ...weeks[0],
+      weeks,
+      scheduleRules: buildScheduleRulesPayload(settings, this.bentoMenu.getConfig()),
     };
   }
 
@@ -474,18 +485,16 @@ export class BentoService implements OnModuleInit {
       },
       orderBy: { createdAt: 'desc' },
     });
+    const leadDays = resolveMinScheduleLeadDays(this.bentoSettings.getSettings());
+    const weeks = this.buildWeeklyMenus(leadDays);
     return {
       weekStart: weekStartMondayIso(),
       optedIn: row?.optedIn ?? null,
       /** Show weekly menu only after purchase, when scheduling is pending. */
       showPrompt: row == null && awaitingSchedule != null,
-      menu: buildWeeklyMenu(
-        this.bentoMenu.getConfig(),
-        resolveMinScheduleLeadDays(this.bentoSettings.getSettings()),
-      ),
-      minScheduleLeadDays: resolveMinScheduleLeadDays(
-        this.bentoSettings.getSettings(),
-      ),
+      menu: weeks[0],
+      weeks,
+      minScheduleLeadDays: leadDays,
       pendingSubscriptionId: awaitingSchedule?.id ?? null,
     };
   }

@@ -45,35 +45,61 @@ export function addDaysUtc(d: Date, days: number): Date {
 
 type WeeklyMenuMeal = {
   title: string;
+  /** @deprecated Generic set blurb; prefer dishDesc fields. */
   description: string;
-  /** Regular / non-vegetarian dish (English). */
   dish: string;
-  /** Vegetarian dish (English). */
   dishVeg: string;
-  /** Regular dish in Chinese (optional). */
   dishZh: string;
-  /** Vegetarian dish in Chinese (optional). */
   dishVegZh: string;
-  /** Meal photo URL (empty = client shows the icon tile). */
+  dishDesc: string;
+  dishDescZh: string;
+  dishVegDesc: string;
+  dishVegDescZh: string;
   image: string;
 };
 
 /**
- * Builds the current week's menu (Mon–Sun) from the admin-managed config. Falls
- * back to empty dish names only when a weekday is missing; callers pass the
- * config from `BentoMenuService.getConfig()` which always returns all 7 days.
+ * Monday (UTC) of the first week shown to members: the current week, but never
+ * earlier than the launch week. Used as the anchor for the multi-week menu.
+ */
+export function resolveBaseWeekStartIso(ref = new Date()): string {
+  const launchWeekStart = weekStartMondayIso(
+    parseDateOnly(BENTO_SERVICE_START_ISO),
+  );
+  const currentWeekStart = weekStartMondayIso(ref);
+  return currentWeekStart < launchWeekStart ? launchWeekStart : currentWeekStart;
+}
+
+/** Number of consecutive weeks shown in the member app and editable in admin. */
+export const BENTO_DISPLAY_WEEKS = 4;
+
+/**
+ * Monday ISO dates for the `count` consecutive weeks shown to members, starting
+ * at the base week (week 1, week 2, …).
+ */
+export function displayWeekStartIsos(
+  count = BENTO_DISPLAY_WEEKS,
+  ref = new Date(),
+): string[] {
+  const base = parseDateOnly(resolveBaseWeekStartIso(ref));
+  return Array.from({ length: count }, (_, i) =>
+    formatDateOnly(addDaysUtc(base, i * 7)),
+  );
+}
+
+/**
+ * Builds a single week's menu (Mon–Sun) from the admin-managed config. When
+ * `weekStartIso` is omitted it defaults to the base (current) week, never
+ * earlier than the launch week. Callers pass the config from
+ * `BentoMenuService.getConfig()`/`getWeekConfig()` which always returns all 7
+ * days.
  */
 export function buildWeeklyMenu(
   config?: BentoMenuConfig,
   minScheduleLeadDays = 2,
+  weekStartIso?: string,
 ) {
-  // Never show a week earlier than the launch week.
-  const launchWeekStart = weekStartMondayIso(
-    parseDateOnly(BENTO_SERVICE_START_ISO),
-  );
-  const currentWeekStart = weekStartMondayIso();
-  const weekStart =
-    currentWeekStart < launchWeekStart ? launchWeekStart : currentWeekStart;
+  const weekStart = weekStartIso ?? resolveBaseWeekStartIso();
   const start = parseDateOnly(weekStart);
   const days: Array<{
     date: string;
@@ -103,20 +129,28 @@ export function buildWeeklyMenu(
       closed,
       lunch: {
         title: BENTO_MENU.lunch.title,
-        description: BENTO_MENU.lunch.description,
+        description: '',
         dish: cfg?.lunch.regular ?? '',
         dishVeg: cfg?.lunch.veg ?? '',
         dishZh: cfg?.lunch.regularZh ?? '',
         dishVegZh: cfg?.lunch.vegZh ?? '',
+        dishDesc: cfg?.lunch.regularDesc ?? '',
+        dishDescZh: cfg?.lunch.regularDescZh ?? '',
+        dishVegDesc: cfg?.lunch.vegDesc ?? '',
+        dishVegDescZh: cfg?.lunch.vegDescZh ?? '',
         image: cfg?.lunch.image ?? '',
       },
       dinner: {
         title: BENTO_MENU.dinner.title,
-        description: BENTO_MENU.dinner.description,
+        description: '',
         dish: cfg?.dinner.regular ?? '',
         dishVeg: cfg?.dinner.veg ?? '',
         dishZh: cfg?.dinner.regularZh ?? '',
         dishVegZh: cfg?.dinner.vegZh ?? '',
+        dishDesc: cfg?.dinner.regularDesc ?? '',
+        dishDescZh: cfg?.dinner.regularDescZh ?? '',
+        dishVegDesc: cfg?.dinner.vegDesc ?? '',
+        dishVegDescZh: cfg?.dinner.vegDescZh ?? '',
         image: cfg?.dinner.image ?? '',
       },
     });

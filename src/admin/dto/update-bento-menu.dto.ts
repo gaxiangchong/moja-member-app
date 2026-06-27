@@ -33,6 +33,26 @@ class BentoMealDishesDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
+  regularDesc?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  regularDescZh?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  vegDesc?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  vegDescZh?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   image?: string;
 }

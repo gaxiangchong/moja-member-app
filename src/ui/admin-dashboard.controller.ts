@@ -2914,11 +2914,20 @@ export class AdminDashboardController {
               </div>
             </div>
             <div style="padding:12px 20px;max-width:1040px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                <div class="seg" style="display:inline-flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:10px">
+                  <button type="button" class="btn-outline bentoMenuWeekBtn" data-week="0" style="border:none">Week 1</button>
+                  <button type="button" class="btn-outline bentoMenuWeekBtn" data-week="1" style="border:none">Week 2</button>
+                  <button type="button" class="btn-outline bentoMenuWeekBtn" data-week="2" style="border:none">Week 3</button>
+                  <button type="button" class="btn-outline bentoMenuWeekBtn" data-week="3" style="border:none">Week 4</button>
+                </div>
+                <span class="field-hint" id="bentoMenuWeekLabel" style="margin:0;font-weight:600"></span>
+              </div>
               <p class="field-hint" style="margin-top:0">
-                These dishes appear as <strong>“This week's menu”</strong> in the Bento client app. Enter English dish names first, then Chinese (中文) directly below each field — customers see the matching language when they switch EN / 中文. Tick <strong>Closed</strong> to block scheduling on that weekday (e.g. Sunday). This is separate from the cake-sales shopping catalog.
+                Week 1 is the current calendar week; Week 2–4 are the following weeks. Pick a week above to edit it in the table, or use the 4-sheet Excel template (<strong>Week 1</strong> … <strong>Week 4</strong> tabs) for bulk edit. Enter English dish names first, then Chinese (中文) below each field. Tick <strong>Closed</strong> to block scheduling on that weekday — closed days are shared across all weeks. Separate from the cake-sales catalog.
               </p>
               <p class="field-hint" style="margin-top:0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px">
-                <strong>Bulk edit:</strong> click <strong>Download template</strong> to get an Excel file pre-filled with the current menu, edit it, then <strong>Import file</strong> (.xlsx or .csv) to load it back in. Imported values appear in the table below for review — click <strong>Save menu</strong> to publish.
+                <strong>Bulk edit:</strong> <strong>Download template</strong> gets one Excel file with four sheets (Week 1–4). Edit each sheet, then <strong>Import file</strong> — all sheets load into the matching week tabs for review. Click <strong>Save menu</strong> on each week tab to publish (or switch tabs after import to check Week 2–4 before saving).
               </p>
               <p class="field-hint" id="bentoMenuImportResult" style="margin-top:0"></p>
               <div class="table-wrap">
@@ -5218,6 +5227,9 @@ export class AdminDashboardController {
     }
 
     var lastBentoMenu = [];
+    var bentoMenuWeek = 0;
+    var bentoMenuWeekRange = { 0: null, 1: null, 2: null, 3: null };
+    var bentoMenuImportCache = null;
     var lastBentoPackages = [];
     function bpAttr(s) {
       return String(s == null ? '' : s)
@@ -5396,18 +5408,36 @@ export class AdminDashboardController {
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;');
     }
+    function bentoMenuWeekName(idx) {
+      return 'Week ' + (Number(idx) + 1);
+    }
     function renderBentoMenu() {
       var body = document.getElementById('bentoMenuBody');
       if (!body) return;
-      body.innerHTML = (lastBentoMenu || []).map(function (d) {
+      var rows = (bentoMenuImportCache && bentoMenuImportCache[bentoMenuWeek])
+        ? bentoMenuImportCache[bentoMenuWeek]
+        : (lastBentoMenu || []);
+      body.innerHTML = rows.map(function (d) {
         var lunch = d.lunch || {};
         var dinner = d.dinner || {};
         var dis = d.closed ? ' disabled' : '';
-        function stackedInp(field, val, zhVal, zhPlaceholder) {
+        function stackedInp(field, val, zhVal, zhPlaceholder, enPlaceholder) {
           return '<div style="display:flex;flex-direction:column;gap:4px">' +
-            '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + (d.closed ? 'Closed' : 'English') + '" />' +
+            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Main dish</span>' +
+            '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + bmAttr(enPlaceholder || (d.closed ? 'Closed' : 'English')) + '" />' +
             '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
             '</div>';
+        }
+        function stackedDesc(field, val, zhVal, zhPlaceholder) {
+          return '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">' +
+            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Description</span>' +
+            '<textarea class="bm-input" data-field="' + field + '" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="English description">' + bmAttr(val) + '</textarea>' +
+            '<textarea class="bm-input" data-field="' + field + 'Zh" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="' + bmAttr(zhPlaceholder || '中文描述') + '">' + bmAttr(zhVal) + '</textarea>' +
+            '</div>';
+        }
+        function mealCol(prefix, meal, dishField, descField, zhDishPh, zhDescPh, enDishPh) {
+          return stackedInp(prefix + '.' + dishField, meal[dishField], meal[dishField + 'Zh'], zhDishPh, enDishPh) +
+            stackedDesc(prefix + '.' + descField, meal[descField], meal[descField + 'Zh'], zhDescPh);
         }
         function photoCtrl(meal, img) {
           var url = img || '';
@@ -5423,19 +5453,46 @@ export class AdminDashboardController {
         }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
-          '<td>' + stackedInp('lunch.veg', lunch.veg, lunch.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('lunch.regular', lunch.regular, lunch.regularZh, '荤菜') + photoCtrl('lunch', lunch.image) + '</td>' +
-          '<td>' + stackedInp('dinner.veg', dinner.veg, dinner.vegZh, '素食') + '</td>' +
-          '<td>' + stackedInp('dinner.regular', dinner.regular, dinner.regularZh, '荤菜') + photoCtrl('dinner', dinner.image) + '</td>' +
+          '<td>' + mealCol('lunch', lunch, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
+          '<td>' + mealCol('lunch', lunch, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('lunch', lunch.image) + '</td>' +
+          '<td>' + mealCol('dinner', dinner, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
+          '<td>' + mealCol('dinner', dinner, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('dinner', dinner.image) + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
     }
+    function bentoMenuFmtRange(startIso, endIso) {
+      if (!startIso || !endIso) return '';
+      function fmt(iso) {
+        var p = String(iso).split('-');
+        if (p.length !== 3) return iso;
+        var d = new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])));
+        return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+      }
+      return fmt(startIso) + ' — ' + fmt(endIso);
+    }
+    function renderBentoMenuWeekTabs() {
+      var btns = document.querySelectorAll('.bentoMenuWeekBtn');
+      Array.prototype.forEach.call(btns, function (b) {
+        var active = String(b.getAttribute('data-week')) === String(bentoMenuWeek);
+        b.classList.toggle('btn-primary', active);
+        b.classList.toggle('btn-outline', !active);
+      });
+      var label = document.getElementById('bentoMenuWeekLabel');
+      if (label) {
+        var range = bentoMenuWeekRange[bentoMenuWeek];
+        label.textContent = range ? (bentoMenuWeekName(bentoMenuWeek) + ': ' + range) : '';
+      }
+    }
     async function loadBentoMenu() {
       try {
-        const cfg = await api('/admin/bento-menu');
+        const cfg = await api('/admin/bento-menu?week=' + bentoMenuWeek);
         lastBentoMenu = (cfg && Array.isArray(cfg.weekdays)) ? cfg.weekdays : [];
+        if (cfg && cfg.weekStart && cfg.weekEnd) {
+          bentoMenuWeekRange[bentoMenuWeek] = bentoMenuFmtRange(cfg.weekStart, cfg.weekEnd);
+        }
         renderBentoMenu();
+        renderBentoMenuWeekTabs();
         await loadBentoSettings();
         await loadBentoPackages();
       } catch (e) {
@@ -5466,6 +5523,10 @@ export class AdminDashboardController {
               veg: val('lunch.veg'),
               regularZh: val('lunch.regularZh'),
               vegZh: val('lunch.vegZh'),
+              regularDesc: val('lunch.regularDesc'),
+              regularDescZh: val('lunch.regularDescZh'),
+              vegDesc: val('lunch.vegDesc'),
+              vegDescZh: val('lunch.vegDescZh'),
               image: val('lunch.image'),
             },
             dinner: {
@@ -5473,6 +5534,10 @@ export class AdminDashboardController {
               veg: val('dinner.veg'),
               regularZh: val('dinner.regularZh'),
               vegZh: val('dinner.vegZh'),
+              regularDesc: val('dinner.regularDesc'),
+              regularDescZh: val('dinner.regularDescZh'),
+              vegDesc: val('dinner.vegDesc'),
+              vegDescZh: val('dinner.vegDescZh'),
               image: val('dinner.image'),
             },
           };
@@ -5629,10 +5694,14 @@ export class AdminDashboardController {
       var out = document.getElementById('bentoMenuSaveResult');
       if (out) out.textContent = 'Saving…';
       try {
-        var saved = await apiPut('/admin/bento-menu', collectBentoMenu());
+        var saved = await apiPut('/admin/bento-menu?week=' + bentoMenuWeek, collectBentoMenu());
         lastBentoMenu = (saved && Array.isArray(saved.weekdays)) ? saved.weekdays : [];
+        if (bentoMenuImportCache) delete bentoMenuImportCache[bentoMenuWeek];
         renderBentoMenu();
-        if (out) out.textContent = 'Saved. Live in the Bento app menu and schedule calendar.';
+        if (out) {
+          out.textContent = 'Saved ' + bentoMenuWeekName(bentoMenuWeek) +
+            '. Live in the Bento app menu' + (bentoMenuWeek === 0 ? ' and schedule calendar.' : '.');
+        }
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -5969,10 +6038,12 @@ export class AdminDashboardController {
 
     async function downloadBentoMenuTemplate() {
       var out = document.getElementById('bentoMenuImportResult');
-      if (out) out.textContent = 'Preparing template…';
+      if (out) out.textContent = 'Preparing 4-week template…';
       try {
-        await apiDownload('/admin/bento-menu/template', 'bento-weekly-menu-template.xlsx');
-        if (out) out.textContent = 'Template downloaded. Edit it, then use Import file.';
+        await apiDownload('/admin/bento-menu/template', 'bento-menu-4-weeks.xlsx');
+        if (out) {
+          out.textContent = 'Template downloaded (Week 1–4 sheets). Edit each tab, then Import file.';
+        }
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -5986,15 +6057,38 @@ export class AdminDashboardController {
         delete headers['Content-Type'];
         var fd = new FormData();
         fd.append('file', file);
-        var res = await fetch('/admin/bento-menu/import', { method: 'POST', headers, body: fd });
+        var res = await fetch(
+          '/admin/bento-menu/import?week=' + bentoMenuWeek,
+          { method: 'POST', headers, body: fd },
+        );
         if (!res.ok) {
           var txt = await res.text();
           throw new Error('Import failed (' + res.status + '): ' + txt);
         }
         var data = await res.json();
+        if (data && Array.isArray(data.weeks) && data.weeks.length > 0) {
+          bentoMenuImportCache = bentoMenuImportCache || {};
+          data.weeks.forEach(function (w) {
+            bentoMenuImportCache[w.weekIndex] = w.weekdays || [];
+            if (w.weekStart && w.weekEnd) {
+              bentoMenuWeekRange[w.weekIndex] = bentoMenuFmtRange(w.weekStart, w.weekEnd);
+            }
+          });
+          lastBentoMenu = bentoMenuImportCache[bentoMenuWeek] || [];
+          renderBentoMenu();
+          renderBentoMenuWeekTabs();
+          var names = data.weeks.map(function (w) { return bentoMenuWeekName(w.weekIndex); }).join(', ');
+          if (out) {
+            out.textContent = 'Loaded ' + names + ' from ' + (file.name || 'file') +
+              '. Review each week tab, then Save menu to publish.';
+          }
+          return;
+        }
         lastBentoMenu = (data && Array.isArray(data.weekdays)) ? data.weekdays : [];
         renderBentoMenu();
-        if (out) out.textContent = 'Loaded ' + lastBentoMenu.length + ' day(s) from ' + (file.name || 'file') + '. Review the table above, then click Save menu to publish.';
+        if (out) {
+          out.textContent = 'Loaded ' + lastBentoMenu.length + ' day(s). Review the table, then Save menu.';
+        }
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -7397,6 +7491,19 @@ export class AdminDashboardController {
         loadBentoMenu().catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
+    Array.prototype.forEach.call(document.querySelectorAll('.bentoMenuWeekBtn'), function (btn) {
+      btn.addEventListener('click', function () {
+        var wk = parseInt(btn.getAttribute('data-week'), 10) || 0;
+        if (wk === bentoMenuWeek) return;
+        bentoMenuWeek = wk;
+        var imp = document.getElementById('bentoMenuImportResult');
+        if (imp) imp.textContent = '';
+        var sv = document.getElementById('bentoMenuSaveResult');
+        if (sv) sv.textContent = '';
+        renderBentoMenuWeekTabs();
+        loadBentoMenu().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    });
     var bentoMenuSaveBtn = document.getElementById('bentoMenuSaveBtn');
     if (bentoMenuSaveBtn) {
       bentoMenuSaveBtn.addEventListener('click', function () {

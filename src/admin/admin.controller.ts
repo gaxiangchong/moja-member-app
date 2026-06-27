@@ -55,6 +55,13 @@ import {
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
+import {
+  addDaysUtc,
+  BENTO_DISPLAY_WEEKS,
+  displayWeekStartIsos,
+  formatDateOnly,
+  parseDateOnly,
+} from '../bento/bento-weekly.util';
 import { BentoPackagesService } from '../bento/bento-packages.service';
 import { BentoSettingsService } from '../bento/bento-settings.service';
 import { BentoVoucherService } from '../bento-vouchers/bento-voucher.service';
@@ -444,39 +451,73 @@ export class AdminController {
 
   @Get('bento-menu')
   @RequirePermissions(P.VOUCHER_READ)
-  getBentoMenu() {
-    return this.bentoMenu.getConfig();
+  getBentoMenu(@Query('week') week?: string) {
+    const ctx = this.resolveBentoMenuWeek(week);
+    if (!ctx) return this.bentoMenu.getConfig();
+    return { ...ctx, ...this.bentoMenu.getWeekConfig(ctx.weekStart) };
   }
 
   @Put('bento-menu')
   @RequirePermissions(P.VOUCHER_UPDATE)
-  updateBentoMenu(@Body() dto: UpdateBentoMenuDto) {
-    return this.bentoMenu.setConfig(dto);
+  updateBentoMenu(@Body() dto: UpdateBentoMenuDto, @Query('week') week?: string) {
+    const ctx = this.resolveBentoMenuWeek(week);
+    if (!ctx) return this.bentoMenu.setConfig(dto);
+    return { ...ctx, ...this.bentoMenu.setWeekConfig(ctx.weekStart, dto) };
   }
 
-  /** Download an .xlsx template pre-filled with the current weekly menu. */
+  /** Map a `week` query (0–3 = Week 1–4) to its Monday/Sunday ISO range. */
+  private resolveBentoMenuWeek(
+    week?: string,
+  ): { weekIndex: number; weekStart: string; weekEnd: string } | null {
+    if (week == null || week === '') return null;
+    const idx = Number.parseInt(week, 10);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= BENTO_DISPLAY_WEEKS) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_BAD_WEEK',
+        message: `week must be 0–${BENTO_DISPLAY_WEEKS - 1} (Week 1–${BENTO_DISPLAY_WEEKS}).`,
+      });
+    }
+    const weekStart = displayWeekStartIsos(BENTO_DISPLAY_WEEKS)[idx];
+    const weekEnd = formatDateOnly(addDaysUtc(parseDateOnly(weekStart), 6));
+    return { weekIndex: idx, weekStart, weekEnd };
+  }
+
+  /** Download a 4-sheet .xlsx template (Week 1–Week 4). */
   @Get('bento-menu/template')
   @RequirePermissions(P.VOUCHER_READ)
   async downloadBentoMenuTemplate() {
     const buffer = await this.bentoMenu.buildTemplateBuffer();
     return new StreamableFile(buffer, {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: 'attachment; filename="bento-weekly-menu-template.xlsx"',
+      disposition: 'attachment; filename="bento-menu-4-weeks.xlsx"',
     });
   }
 
   /**
-   * Parse an uploaded .xlsx/.csv menu file and return the normalized config for
-   * review. Does not persist — the admin saves via PUT /admin/bento-menu after
-   * checking the loaded values.
+   * Parse an uploaded file. Multi-sheet .xlsx maps each "Week N" tab to calendar
+   * week N; single-sheet / .csv uses `?week=` as fallback. Does not persist —
+   * admin reviews each tab then saves.
    */
   @Post('bento-menu/import')
   @RequirePermissions(P.VOUCHER_UPDATE)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
   )
-  importBentoMenu(@UploadedFile() file: Express.Multer.File) {
-    return this.bentoMenu.parseUploadToConfig(file);
+  async importBentoMenu(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('week') week?: string,
+  ) {
+    const ctx = this.resolveBentoMenuWeek(week);
+    const fallbackIdx = ctx?.weekIndex ?? 0;
+    const parsed = await this.bentoMenu.parseUploadToWeeks(file, fallbackIdx);
+    return {
+      weeks: parsed.map((w) => ({
+        weekIndex: w.weekIndex,
+        weekStart: w.weekStart,
+        weekEnd: formatDateOnly(addDaysUtc(parseDateOnly(w.weekStart), 6)),
+        weekdays: w.config.weekdays,
+      })),
+    };
   }
 
   /** Upload a dish photo; returns its public URL to store on the menu + save. */

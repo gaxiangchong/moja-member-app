@@ -331,15 +331,23 @@ export async function fetchPaymentIntentStatus(
 export type WeeklyMenuMeal = {
   title: string;
   description: string;
-  /** Regular / non-vegetarian dish (English). */
+  /** Regular / non-vegetarian main dish (English). */
   dish: string;
-  /** Vegetarian dish (English). */
+  /** Vegetarian main dish (English). */
   dishVeg: string;
-  /** Regular dish in Chinese (optional). */
+  /** Regular main dish in Chinese (optional). */
   dishZh: string;
-  /** Vegetarian dish in Chinese (optional). */
+  /** Vegetarian main dish in Chinese (optional). */
   dishVegZh: string;
-  /** Meal photo URL (empty = show the icon tile). */
+  /** Regular dish description (English). */
+  dishDesc: string;
+  /** Regular dish description in Chinese (optional). */
+  dishDescZh: string;
+  /** Vegetarian dish description (English). */
+  dishVegDesc: string;
+  /** Vegetarian dish description in Chinese (optional). */
+  dishVegDescZh: string;
+  /** Meal photo URL (empty = client shows the icon tile). */
   image: string;
 };
 
@@ -353,16 +361,21 @@ export type WeeklyMenuDay = {
   dinner: WeeklyMenuMeal;
 };
 
+export type WeeklyMenuWeek = {
+  weekStart: string;
+  weekEnd: string;
+  minScheduleLeadDays: number;
+  days: WeeklyMenuDay[];
+};
+
 export type WeeklyMenuPayload = {
   weekStart: string;
   optedIn: boolean | null;
   showPrompt: boolean;
-  menu: {
-    weekStart: string;
-    weekEnd: string;
-    minScheduleLeadDays: number;
-    days: WeeklyMenuDay[];
-  };
+  /** Current week's menu (kept for backward compatibility). */
+  menu: WeeklyMenuWeek;
+  /** Consecutive weeks the app can scroll through (this week, next week, …). */
+  weeks?: WeeklyMenuWeek[];
   minScheduleLeadDays: number;
 };
 

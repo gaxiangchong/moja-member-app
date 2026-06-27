@@ -20,6 +20,11 @@
   --success: #15803d;
   --danger: #b91c1c;
   --shadow: 0 20px 50px rgba(39, 28, 21, 0.1);
+  --serif: 'Noto Serif SC', 'Songti SC', 'STSong', Georgia, 'Times New Roman', serif;
+  --script: 'Ma Shan Zheng', 'Brush Script MT', cursive;
+  --menu-gold: #c9a14a;
+  --menu-cream: #fdf6ea;
+  --menu-cream-2: #f8ecd9;
 }
 
 * {
@@ -2585,6 +2590,50 @@ button {
   margin-bottom: 12px;
 }
 
+/* ---- Menu week nav (arrows beside the date range) ---- */
+.wkMenuHeroNav {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.wkMenuHeroArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 161, 74, 0.4);
+  background: rgba(201, 161, 74, 0.1);
+  color: var(--menu-gold);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 140ms;
+}
+
+.wkMenuHeroArrow:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wkMenuHeroArrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wkMenuHeroWeekLabel {
+  font-family: var(--serif);
+  margin-right: 6px;
+  color: var(--text);
+}
+
 /* ---- Menu diet toggle ---- */
 .menuDietSwitch {
   display: flex;
@@ -2616,16 +2665,22 @@ button {
 
 /* Vegetarian mode tints the day cards green */
 .wkMenuDay.veg {
-  border-color: #bbf7d0;
+  border-color: #cdeccd;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #f4fbf2 0%, transparent 55%),
+    linear-gradient(135deg, #f6fbf2 0%, #e9f5e3 100%);
 }
 
-.wkMenuDay.veg .wkMenuDayHead {
-  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-  border-bottom-color: #bbf7d0;
+.wkMenuDay.veg .wkMenuDayRail {
+  border-right-color: rgba(22, 101, 52, 0.16);
 }
 
-.wkMenuDay.veg .wkMenuDayPill {
-  color: #166534;
+.wkMenuDay.veg .wkMenuDayAbbr {
+  color: #15803d;
+}
+
+.wkMenuDay.veg .wkMenuDayZh {
+  color: #3f6b48;
 }
 
 .wkMenuDay.veg .wkMenuMeal.lunch .wkMenuMealIcon,
@@ -2635,6 +2690,7 @@ button {
 
 .wkMenuDay.veg .wkMenuMealLabel {
   color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
 }
 
 /* Bottom sheet */
@@ -2833,6 +2889,90 @@ button {
 }
 
 /* ---- Weekly menu tab ---- */
+.wkMenuSection {
+  background:
+    radial-gradient(140% 80% at 50% -10%, #fffaf2 0%, transparent 60%),
+    linear-gradient(180deg, #fffdf9 0%, #fdf6ea 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: 26px;
+}
+
+/* Decorative botanical sprig used around the hero title */
+.wkMenuHeroSprig {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 24'%3E%3Cg fill='%23c9a14a'%3E%3Cellipse cx='20' cy='8' rx='5.5' ry='2.2' transform='rotate(-32 20 8)'/%3E%3Cellipse cx='32' cy='7' rx='5.5' ry='2.2' transform='rotate(-32 32 7)'/%3E%3Cellipse cx='44' cy='8' rx='5.5' ry='2.2' transform='rotate(-32 44 8)'/%3E%3Cellipse cx='26' cy='18' rx='5.5' ry='2.2' transform='rotate(32 26 18)'/%3E%3Cellipse cx='38' cy='18' rx='5.5' ry='2.2' transform='rotate(32 38 18)'/%3E%3Ccircle cx='58' cy='13' r='2.4'/%3E%3C/g%3E%3Cpath d='M4 13 H56' stroke='%23c9a14a' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.9;
+}
+
+.wkMenuHeroSprig.flip {
+  transform: scaleX(-1);
+}
+
+.wkMenuHero {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 12px;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.wkMenuHeroTitle {
+  font-family: var(--serif);
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin: 0;
+}
+
+.wkMenuHeroSub,
+.wkMenuHeroRange,
+.wkMenuHeroNotice {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.wkMenuHeroSub {
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.wkMenuHeroRange {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--menu-gold);
+}
+
+.wkMenuHeroNotice {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 161, 74, 0.4);
+  background: rgba(201, 161, 74, 0.1);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #8a6d2f;
+}
+
+.wkMenuHeroNoticeLeaf {
+  font-size: 0.85rem;
+}
+
 .wkMenuList {
   list-style: none;
   padding: 0;
@@ -2842,13 +2982,33 @@ button {
   gap: 14px;
 }
 
-/* Each day is an elevated card with a header strip and meal rows */
+/* Each day is a warm cream card: day rail on the left, meals on the right */
 .wkMenuDay {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #fffaf1 0%, transparent 55%),
+    linear-gradient(135deg, var(--menu-cream) 0%, var(--menu-cream-2) 100%);
+  border: 1px solid var(--border-strong);
   border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(45, 26, 14, 0.04), 0 8px 20px rgba(45, 26, 14, 0.05);
+  box-shadow: 0 1px 2px rgba(45, 26, 14, 0.04), 0 10px 24px rgba(122, 88, 33, 0.07);
+}
+
+/* Faint botanical watermark behind the day rail */
+.wkMenuDay::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  bottom: -10px;
+  width: 96px;
+  height: 96px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23c9a14a' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M14 60 C 22 40 26 24 24 6'/%3E%3Cpath d='M24 16 C 16 14 11 18 9 24 C 17 25 22 22 24 16Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 28 C 16 26 11 30 9 36 C 17 37 22 34 24 28Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 22 C 32 20 37 24 39 30 C 31 31 26 28 24 22Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 34 C 32 32 37 36 39 42 C 31 43 26 40 24 34Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.1;
+  pointer-events: none;
 }
 
 .wkMenuDayToday {
@@ -2857,44 +3017,58 @@ button {
 }
 
 .wkMenuDayClosed {
-  opacity: 0.65;
+  opacity: 0.7;
 }
 
-.wkMenuDayHead {
+/* Left rail with the weekday */
+.wkMenuDayRail {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--surface-strong);
-  border-bottom: 1px solid var(--border);
+  justify-content: center;
+  gap: 3px;
+  padding: 16px 6px;
+  border-right: 1px solid rgba(201, 161, 74, 0.22);
 }
 
-.wkMenuDayToday .wkMenuDayHead {
-  background: linear-gradient(135deg, #fff4e6, #ffe2c2);
-  border-bottom-color: rgba(249, 115, 22, 0.25);
+.wkMenuDayAbbr {
+  font-family: var(--serif);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--menu-gold);
 }
 
-.wkMenuDayPill {
-  font-size: 0.95rem;
-  font-weight: 800;
+.wkMenuDayZh {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 600;
   color: var(--text);
-  letter-spacing: 0.01em;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
 }
 
-.wkMenuDayToday .wkMenuDayPill {
+.wkMenuDayToday .wkMenuDayRail {
+  border-right-color: rgba(249, 115, 22, 0.3);
+}
+
+.wkMenuDayToday .wkMenuDayAbbr,
+.wkMenuDayToday .wkMenuDayZh {
   color: var(--primary);
 }
 
 .wkMenuDayTag {
-  margin-left: auto;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--muted);
-  background: rgba(122, 106, 90, 0.13);
-  padding: 4px 10px;
+  background: rgba(122, 106, 90, 0.14);
+  padding: 3px 7px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .wkMenuDayTodayTag {
@@ -2905,30 +3079,51 @@ button {
 .wkMenuMeals {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 7px;
+  padding: 8px;
 }
 
-/* Grab-style row: thumbnail tile + label + dish name */
+.wkMenuDaySidesNote {
+  margin: 4px 10px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(201, 161, 74, 0.08);
+  border: 1px dashed rgba(201, 161, 74, 0.35);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: center;
+}
+
+.wkMenuDay.veg .wkMenuDaySidesNote {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.28);
+  color: #3f6b48;
+}
+
+.wkMenuMeals .wkMenuMeal + .wkMenuMeal {
+  border-top: 1px dashed rgba(201, 161, 74, 0.3);
+}
+
+/* Meal row: thumbnail tile + meal tag + dish name + description */
 .wkMenuMeal {
   display: flex;
   align-items: center;
   gap: 13px;
-  padding: 9px 10px;
-  border-radius: 14px;
+  padding: 11px 8px;
 }
 
 .wkMenuMealIcon {
-  width: 90px;
-  height: 90px;
-  border-radius: 18px;
+  width: 76px;
+  height: 76px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2.6rem;
+  font-size: 2.2rem;
   flex-shrink: 0;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(45, 26, 14, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(45, 26, 14, 0.06);
 }
 
 .wkMenuMealPhoto {
@@ -2949,27 +3144,84 @@ button {
 .wkMenuMealContent {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 4px;
   min-width: 0;
 }
 
 .wkMenuMealLabel {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.06em;
   color: var(--accent);
+  background: rgba(249, 115, 22, 0.1);
+  padding: 2px 9px;
+  border-radius: 999px;
 }
 
 .wkMenuMeal.dinner .wkMenuMealLabel {
   color: #6d5bd0;
+  background: rgba(109, 91, 208, 0.1);
 }
 
 .wkMenuMealText {
-  font-size: 0.95rem;
+  font-family: var(--serif);
+  font-size: 1.12rem;
   font-weight: 600;
   color: var(--text);
-  line-height: 1.3;
+  line-height: 1.25;
+}
+
+.wkMenuMealDesc {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Text-only mode (VITE_MENU_SHOW_IMAGES=false): no photo tile, full-width text */
+.wkMenuMeals.textOnly {
+  padding: 6px 14px;
+}
+
+.wkMenuMeal.textOnly {
+  position: relative;
+  align-items: flex-start;
+  gap: 0;
+  padding: 13px 0 13px 16px;
+}
+
+.wkMenuMeal.textOnly::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15px;
+  bottom: 15px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.wkMenuMeal.dinner.textOnly::before {
+  background: #6d5bd0;
+}
+
+.wkMenuDay.veg .wkMenuMeal.textOnly::before {
+  background: #16a34a;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealContent {
+  gap: 5px;
+  width: 100%;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealText {
+  font-size: 1.2rem;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealDesc {
+  font-size: 0.82rem;
 }
 
 .wkMenuClosedNote {
@@ -2977,7 +3229,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 18px 16px;
+  padding: 22px 16px;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--muted);
@@ -2985,6 +3237,62 @@ button {
 
 .wkMenuClosedIcon {
   font-size: 1.1rem;
+}
+
+/* ---- Weekly menu footer banner ---- */
+.wkMenuFooter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(201, 161, 74, 0.32);
+  background: linear-gradient(135deg, #fbf2e2 0%, #f6e9d2 100%);
+}
+
+.wkMenuFooterIcon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.wkMenuFooterCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wkMenuFooterTitle {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #6d4a31;
+}
+
+.wkMenuFooterSub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.wkMenuFooterScript {
+  font-family: var(--script);
+  font-size: 1.45rem;
+  line-height: 1.2;
+  color: var(--accent);
+  transform: rotate(-3deg);
+  max-width: 100%;
+}
+
+.wkMenuFooterNote {
+  margin: 12px 2px 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 
 /* ---- Schedule summary view ---- */

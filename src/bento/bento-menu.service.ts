@@ -9,6 +9,13 @@ import {
 } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import {
+  addDaysUtc,
+  BENTO_DISPLAY_WEEKS,
+  displayWeekStartIsos,
+  formatDateOnly,
+  parseDateOnly,
+} from './bento-weekly.util';
 
 /** Mon–Sun weekday codes used as stable keys for the weekly menu. */
 export const BENTO_WEEKDAY_CODES = [
@@ -32,23 +39,39 @@ export const BENTO_MENU_TEMPLATE_HEADERS = [
   'Closed (yes/no)',
   'Lunch Regular (EN)',
   'Lunch Regular (中文)',
+  'Lunch Regular Desc (EN)',
+  'Lunch Regular Desc (中文)',
   'Lunch Vegetarian (EN)',
   'Lunch Vegetarian (中文)',
+  'Lunch Veg Desc (EN)',
+  'Lunch Veg Desc (中文)',
   'Dinner Regular (EN)',
   'Dinner Regular (中文)',
+  'Dinner Regular Desc (EN)',
+  'Dinner Regular Desc (中文)',
   'Dinner Vegetarian (EN)',
   'Dinner Vegetarian (中文)',
+  'Dinner Veg Desc (EN)',
+  'Dinner Veg Desc (中文)',
 ] as const;
 
 export type BentoMealDishes = {
-  /** Regular / non-vegetarian dish name (English). */
+  /** Regular / non-vegetarian main dish name (English). */
   regular: string;
-  /** Vegetarian dish name (English). */
+  /** Vegetarian main dish name (English). */
   veg: string;
-  /** Regular dish name in Chinese (optional). */
+  /** Regular main dish in Chinese (optional). */
   regularZh: string;
-  /** Vegetarian dish name in Chinese (optional). */
+  /** Vegetarian main dish in Chinese (optional). */
   vegZh: string;
+  /** Regular dish description (English). */
+  regularDesc: string;
+  /** Regular dish description in Chinese (optional). */
+  regularDescZh: string;
+  /** Vegetarian dish description (English). */
+  vegDesc: string;
+  /** Vegetarian dish description in Chinese (optional). */
+  vegDescZh: string;
   /** Photo for this meal (shown in the client thumbnail). Internal
    * `/uploads/bento-menu/…` path or an http(s) URL; empty = use icon tile. */
   image: string;
@@ -65,11 +88,27 @@ export type BentoMenuConfig = {
   weekdays: BentoWeekdayMenu[];
 };
 
+/**
+ * On-disk shape. `weekdays` is the recurring default/template (also the source
+ * of the closed-weekday pattern that drives scheduling). `weeks` holds optional
+ * per-week dish/photo overrides keyed by that week's Monday (YYYY-MM-DD).
+ */
+type BentoMenuStore = {
+  template: BentoMenuConfig;
+  weeks: Record<string, BentoMenuConfig>;
+};
+
+const ISO_WEEK_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 const EMPTY_DISHES: BentoMealDishes = {
   regular: '',
   veg: '',
   regularZh: '',
   vegZh: '',
+  regularDesc: '',
+  regularDescZh: '',
+  vegDesc: '',
+  vegDescZh: '',
   image: '',
 };
 
@@ -149,6 +188,12 @@ const DEFAULT_CONFIG: BentoMenuConfig = {
   ],
 };
 
+export type BentoMenuImportWeek = {
+  weekIndex: number;
+  weekStart: string;
+  config: BentoMenuConfig;
+};
+
 /**
  * File-backed store for the customer-facing weekly bento menu. Intentionally
  * dependency-light (no Prisma / payments) so it can be shared by both the bento
@@ -174,13 +219,17 @@ export class BentoMenuService {
 
   private sanitizeDishes(raw: unknown, fallback: BentoMealDishes): BentoMealDishes {
     const obj = (raw ?? {}) as Partial<BentoMealDishes>;
-    const clean = (v: unknown, fb: string) =>
-      typeof v === 'string' ? v.trim().slice(0, 200) : fb;
+    const clean = (v: unknown, fb: string, max = 200) =>
+      typeof v === 'string' ? v.trim().slice(0, max) : fb;
     return {
       regular: clean(obj.regular, fallback.regular),
       veg: clean(obj.veg, fallback.veg),
       regularZh: clean(obj.regularZh, fallback.regularZh),
       vegZh: clean(obj.vegZh, fallback.vegZh),
+      regularDesc: clean(obj.regularDesc, fallback.regularDesc, 500),
+      regularDescZh: clean(obj.regularDescZh, fallback.regularDescZh, 500),
+      vegDesc: clean(obj.vegDesc, fallback.vegDesc, 500),
+      vegDescZh: clean(obj.vegDescZh, fallback.vegDescZh, 500),
       image:
         obj.image !== undefined
           ? sanitizeMenuImageUrl(obj.image)
@@ -213,22 +262,104 @@ export class BentoMenuService {
     };
   }
 
-  getConfig(): BentoMenuConfig {
+  /** Read the full store (template + per-week overrides), tolerating the legacy
+   * shape where the file only held `{ weekdays: [...] }`. */
+  private readStore(): BentoMenuStore {
     const p = this.filePath();
-    if (!existsSync(p)) return this.cloneDefault();
+    if (!existsSync(p)) return { template: this.cloneDefault(), weeks: {} };
     try {
-      const parsed = JSON.parse(readFileSync(p, 'utf-8'));
-      return this.normalize(parsed);
+      const parsed = JSON.parse(readFileSync(p, 'utf-8')) as {
+        weekdays?: unknown;
+        weeks?: Record<string, unknown>;
+      };
+      const template = this.normalize(parsed);
+      const weeks: Record<string, BentoMenuConfig> = {};
+      if (parsed && typeof parsed.weeks === 'object' && parsed.weeks) {
+        for (const [iso, cfg] of Object.entries(parsed.weeks)) {
+          if (ISO_WEEK_RE.test(iso)) weeks[iso] = this.normalize(cfg);
+        }
+      }
+      return { template, weeks };
     } catch {
-      return this.cloneDefault();
+      return { template: this.cloneDefault(), weeks: {} };
     }
   }
 
-  setConfig(input: unknown): BentoMenuConfig {
-    const next = this.normalize(input);
+  private writeStore(store: BentoMenuStore): void {
     mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
-    return next;
+    const weekEntries = Object.entries(store.weeks);
+    const out: { weekdays: BentoWeekdayMenu[]; weeks?: Record<string, BentoMenuConfig> } = {
+      weekdays: store.template.weekdays,
+    };
+    if (weekEntries.length > 0) {
+      out.weeks = Object.fromEntries(
+        weekEntries.map(([iso, cfg]) => [iso, { weekdays: cfg.weekdays }]),
+      );
+    }
+    writeFileSync(this.filePath(), JSON.stringify(out, null, 2), 'utf-8');
+  }
+
+  /** Recurring default/template. Also the canonical source for closed weekdays
+   * used by the scheduling rules — unchanged contract for existing callers. */
+  getConfig(): BentoMenuConfig {
+    return this.readStore().template;
+  }
+
+  setConfig(input: unknown): BentoMenuConfig {
+    const store = this.readStore();
+    store.template = this.normalize(input);
+    this.writeStore(store);
+    return store.template;
+  }
+
+  /**
+   * Effective menu for a specific week (its Monday in YYYY-MM-DD): per-week dish
+   * overrides when present, otherwise the recurring template. The `closed` flag
+   * always comes from the template so closed weekdays stay consistent with
+   * scheduling across every week.
+   */
+  getWeekConfig(weekStartIso: string): BentoMenuConfig {
+    const { template, weeks } = this.readStore();
+    const override = weeks[weekStartIso];
+    if (!override) return template;
+    const tplByDay = new Map(template.weekdays.map((d) => [d.weekday, d]));
+    const ovByDay = new Map(override.weekdays.map((d) => [d.weekday, d]));
+    return {
+      weekdays: BENTO_WEEKDAY_CODES.map((code) => {
+        const tpl = tplByDay.get(code)!;
+        const ov = ovByDay.get(code);
+        return {
+          weekday: code,
+          closed: tpl.closed,
+          lunch: ov?.lunch ?? tpl.lunch,
+          dinner: ov?.dinner ?? tpl.dinner,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Save dish/photo overrides for a specific week. Closed-weekday edits are
+   * applied to the shared template because closed weekdays drive scheduling for
+   * all weeks (not just the edited one).
+   */
+  setWeekConfig(weekStartIso: string, input: unknown): BentoMenuConfig {
+    if (!ISO_WEEK_RE.test(weekStartIso)) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_BAD_WEEK',
+        message: 'Invalid week start date.',
+      });
+    }
+    const store = this.readStore();
+    const incoming = this.normalize(input);
+    store.weeks[weekStartIso] = { weekdays: incoming.weekdays };
+    const tplByDay = new Map(store.template.weekdays.map((d) => [d.weekday, d]));
+    for (const d of incoming.weekdays) {
+      const tpl = tplByDay.get(d.weekday);
+      if (tpl) tpl.closed = d.closed;
+    }
+    this.writeStore(store);
+    return this.getWeekConfig(weekStartIso);
   }
 
   /**
@@ -276,45 +407,67 @@ export class BentoMenuService {
 
   // --- Spreadsheet template download + import (review-then-save flow) ---
 
-  /** Build an .xlsx template pre-filled with the current menu for the admin to
-   * edit and re-upload. One row per weekday (Mon–Sun). */
+  /** Build a 4-sheet .xlsx template (Week 1–Week 4), each pre-filled with that
+   * calendar week's effective menu. */
   async buildTemplateBuffer(): Promise<Buffer> {
-    const config = this.getConfig();
+    const weekStarts = displayWeekStartIsos(BENTO_DISPLAY_WEEKS);
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Moja Admin';
     wb.created = new Date();
-    const ws = wb.addWorksheet('Bento Weekly Menu');
-    ws.addRow([...BENTO_MENU_TEMPLATE_HEADERS]);
-    for (const d of config.weekdays) {
+
+    for (let i = 0; i < weekStarts.length; i += 1) {
+      const weekStartIso = weekStarts[i];
+      const weekEndIso = formatDateOnly(
+        addDaysUtc(parseDateOnly(weekStartIso), 6),
+      );
+      const config = this.getWeekConfig(weekStartIso);
+      const ws = wb.addWorksheet(`Week ${i + 1}`);
       ws.addRow([
-        d.weekday,
-        d.closed ? 'yes' : 'no',
-        d.lunch.regular,
-        d.lunch.regularZh,
-        d.lunch.veg,
-        d.lunch.vegZh,
-        d.dinner.regular,
-        d.dinner.regularZh,
-        d.dinner.veg,
-        d.dinner.vegZh,
+        `Week ${i + 1}: ${weekStartIso} — ${weekEndIso} (Mon–Sun). Edit dishes below.`,
       ]);
+      ws.getRow(1).font = { italic: true, color: { argb: 'FF666666' } };
+      ws.addRow([...BENTO_MENU_TEMPLATE_HEADERS]);
+      for (const d of config.weekdays) {
+        ws.addRow([
+          d.weekday,
+          d.closed ? 'yes' : 'no',
+          d.lunch.regular,
+          d.lunch.regularZh,
+          d.lunch.regularDesc,
+          d.lunch.regularDescZh,
+          d.lunch.veg,
+          d.lunch.vegZh,
+          d.lunch.vegDesc,
+          d.lunch.vegDescZh,
+          d.dinner.regular,
+          d.dinner.regularZh,
+          d.dinner.regularDesc,
+          d.dinner.regularDescZh,
+          d.dinner.veg,
+          d.dinner.vegZh,
+          d.dinner.vegDesc,
+          d.dinner.vegDescZh,
+        ]);
+      }
+      ws.getRow(2).font = { bold: true };
+      ws.columns = BENTO_MENU_TEMPLATE_HEADERS.map((_, col) => ({
+        width: col === 0 ? 8 : col === 1 ? 16 : 26,
+      }));
     }
-    ws.getRow(1).font = { bold: true };
-    ws.columns = BENTO_MENU_TEMPLATE_HEADERS.map((_, i) => ({
-      width: i === 0 ? 8 : i === 1 ? 16 : 26,
-    }));
+
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);
   }
 
   /**
-   * Parse an uploaded .xlsx or .csv file into a normalized menu config. Does
-   * NOT persist — the caller (admin UI) loads the result into the editor so the
-   * admin can review before saving via the existing PUT /admin/bento-menu.
+   * Parse an uploaded file into one config per sheet (Week 1–4). Multi-sheet
+   * .xlsx maps sheet names to weeks; single-sheet .xlsx / .csv uses
+   * `fallbackWeekIndex` (default 0).
    */
-  async parseUploadToConfig(
+  async parseUploadToWeeks(
     file?: Express.Multer.File,
-  ): Promise<BentoMenuConfig> {
+    fallbackWeekIndex = 0,
+  ): Promise<BentoMenuImportWeek[]> {
     if (!file || !file.buffer || file.buffer.length === 0) {
       throw new BadRequestException({
         code: 'BENTO_MENU_IMPORT_EMPTY',
@@ -324,24 +477,106 @@ export class BentoMenuService {
     const isCsv =
       (file.originalname || '').toLowerCase().endsWith('.csv') ||
       file.mimetype === 'text/csv';
-    let rows: string[][];
+    const weekStarts = displayWeekStartIsos(BENTO_DISPLAY_WEEKS);
+
+    if (isCsv) {
+      let rows: string[][];
+      try {
+        rows = await this.readRowsFromBuffer(file.buffer, true);
+      } catch {
+        throw new BadRequestException({
+          code: 'BENTO_MENU_IMPORT_UNREADABLE',
+          message: 'Could not read the CSV file.',
+        });
+      }
+      const idx = this.clampWeekIndex(fallbackWeekIndex);
+      return [
+        {
+          weekIndex: idx,
+          weekStart: weekStarts[idx],
+          config: this.parseRowsToConfig(rows, weekStarts[idx]),
+        },
+      ];
+    }
+
+    let sheets: Array<{ name: string; rows: string[][] }>;
     try {
-      rows = await this.readRows(file.buffer, isCsv);
+      sheets = await this.readAllSheets(file.buffer);
     } catch {
       throw new BadRequestException({
         code: 'BENTO_MENU_IMPORT_UNREADABLE',
         message:
-          'Could not read the file. Upload the unmodified .xlsx/.csv template.',
+          'Could not read the file. Upload the 4-week .xlsx template or a .csv.',
       });
     }
 
-    // The template is text-only — preserve any photos already uploaded for each
-    // day/meal so a CSV/xlsx import doesn't wipe them.
-    const current = new Map(
-      this.getConfig().weekdays.map((d) => [d.weekday, d]),
-    );
+    const parsed: BentoMenuImportWeek[] = [];
+    for (const sheet of sheets) {
+      const weekIndex = this.parseSheetNameToWeekIndex(sheet.name);
+      if (weekIndex == null) continue;
+      parsed.push({
+        weekIndex,
+        weekStart: weekStarts[weekIndex],
+        config: this.parseRowsToConfig(sheet.rows, weekStarts[weekIndex]),
+      });
+    }
 
+    if (parsed.length === 0 && sheets.length === 1) {
+      const idx = this.clampWeekIndex(fallbackWeekIndex);
+      parsed.push({
+        weekIndex: idx,
+        weekStart: weekStarts[idx],
+        config: this.parseRowsToConfig(sheets[0].rows, weekStarts[idx]),
+      });
+    }
+
+    if (parsed.length === 0) {
+      throw new BadRequestException({
+        code: 'BENTO_MENU_IMPORT_NO_SHEETS',
+        message:
+          'No Week 1–4 sheets found. Name each tab "Week 1", "Week 2", etc., or use the downloaded template.',
+      });
+    }
+
+    parsed.sort((a, b) => a.weekIndex - b.weekIndex);
+    return parsed;
+  }
+
+  /** @deprecated Use parseUploadToWeeks — kept for single-week callers. */
+  async parseUploadToConfig(
+    file?: Express.Multer.File,
+    weekStartIso?: string,
+  ): Promise<BentoMenuConfig> {
+    const weekStarts = displayWeekStartIsos(BENTO_DISPLAY_WEEKS);
+    const fallbackIdx = weekStartIso
+      ? Math.max(0, weekStarts.indexOf(weekStartIso))
+      : 0;
+    const weeks = await this.parseUploadToWeeks(file, fallbackIdx);
+    return weeks[0].config;
+  }
+
+  private clampWeekIndex(idx: number): number {
+    if (!Number.isInteger(idx) || idx < 0) return 0;
+    return Math.min(idx, BENTO_DISPLAY_WEEKS - 1);
+  }
+
+  private parseSheetNameToWeekIndex(name: string): number | null {
+    const s = (name || '').trim().toLowerCase();
+    const m = /^week\s*(\d+)$/.exec(s);
+    if (!m) return null;
+    const n = Number.parseInt(m[1], 10);
+    if (!Number.isInteger(n) || n < 1 || n > BENTO_DISPLAY_WEEKS) return null;
+    return n - 1;
+  }
+
+  private parseRowsToConfig(
+    rows: string[][],
+    weekStartIso: string,
+  ): BentoMenuConfig {
+    const baseConfig = this.getWeekConfig(weekStartIso);
+    const current = new Map(baseConfig.weekdays.map((d) => [d.weekday, d]));
     const dataRows = this.stripHeaderRow(rows);
+    const extended = dataRows.some((r) => r.length >= 14);
     const weekdays: BentoWeekdayMenu[] = [];
     for (const r of dataRows) {
       const code = this.normalizeWeekday(r[0] ?? '');
@@ -350,20 +585,52 @@ export class BentoMenuService {
       weekdays.push({
         weekday: code,
         closed: this.parseClosedCell(r[1] ?? ''),
-        lunch: {
-          regular: (r[2] ?? '').trim(),
-          regularZh: (r[3] ?? '').trim(),
-          veg: (r[4] ?? '').trim(),
-          vegZh: (r[5] ?? '').trim(),
-          image: existing?.lunch.image ?? '',
-        },
-        dinner: {
-          regular: (r[6] ?? '').trim(),
-          regularZh: (r[7] ?? '').trim(),
-          veg: (r[8] ?? '').trim(),
-          vegZh: (r[9] ?? '').trim(),
-          image: existing?.dinner.image ?? '',
-        },
+        lunch: extended
+          ? {
+              regular: (r[2] ?? '').trim(),
+              regularZh: (r[3] ?? '').trim(),
+              regularDesc: (r[4] ?? '').trim(),
+              regularDescZh: (r[5] ?? '').trim(),
+              veg: (r[6] ?? '').trim(),
+              vegZh: (r[7] ?? '').trim(),
+              vegDesc: (r[8] ?? '').trim(),
+              vegDescZh: (r[9] ?? '').trim(),
+              image: existing?.lunch.image ?? '',
+            }
+          : {
+              regular: (r[2] ?? '').trim(),
+              regularZh: (r[3] ?? '').trim(),
+              regularDesc: existing?.lunch.regularDesc ?? '',
+              regularDescZh: existing?.lunch.regularDescZh ?? '',
+              veg: (r[4] ?? '').trim(),
+              vegZh: (r[5] ?? '').trim(),
+              vegDesc: existing?.lunch.vegDesc ?? '',
+              vegDescZh: existing?.lunch.vegDescZh ?? '',
+              image: existing?.lunch.image ?? '',
+            },
+        dinner: extended
+          ? {
+              regular: (r[10] ?? '').trim(),
+              regularZh: (r[11] ?? '').trim(),
+              regularDesc: (r[12] ?? '').trim(),
+              regularDescZh: (r[13] ?? '').trim(),
+              veg: (r[14] ?? '').trim(),
+              vegZh: (r[15] ?? '').trim(),
+              vegDesc: (r[16] ?? '').trim(),
+              vegDescZh: (r[17] ?? '').trim(),
+              image: existing?.dinner.image ?? '',
+            }
+          : {
+              regular: (r[6] ?? '').trim(),
+              regularZh: (r[7] ?? '').trim(),
+              regularDesc: existing?.dinner.regularDesc ?? '',
+              regularDescZh: existing?.dinner.regularDescZh ?? '',
+              veg: (r[8] ?? '').trim(),
+              vegZh: (r[9] ?? '').trim(),
+              vegDesc: existing?.dinner.vegDesc ?? '',
+              vegDescZh: existing?.dinner.vegDescZh ?? '',
+              image: existing?.dinner.image ?? '',
+            },
       });
     }
     if (weekdays.length === 0) {
@@ -376,7 +643,10 @@ export class BentoMenuService {
     return this.normalize({ weekdays });
   }
 
-  private async readRows(buffer: Buffer, isCsv: boolean): Promise<string[][]> {
+  private async readRowsFromBuffer(
+    buffer: Buffer,
+    isCsv: boolean,
+  ): Promise<string[][]> {
     if (isCsv) {
       const parsed = parseCsv(buffer.toString('utf8'), {
         skip_empty_lines: true,
@@ -385,21 +655,27 @@ export class BentoMenuService {
       }) as unknown[][];
       return parsed.map((r) => r.map((c) => this.cellToString(c)));
     }
+    const sheets = await this.readAllSheets(buffer);
+    return sheets[0]?.rows ?? [];
+  }
+
+  private async readAllSheets(
+    buffer: Buffer,
+  ): Promise<Array<{ name: string; rows: string[][] }>> {
     const wb = new ExcelJS.Workbook();
-    // Multer buffer is a Uint8Array-backed Buffer; exceljs typings are strict.
     // @ts-expect-error Buffer/Uint8Array mismatch between @types/node and exceljs
     await wb.xlsx.load(buffer);
-    const ws = wb.worksheets[0];
-    if (!ws) return [];
-    const out: string[][] = [];
-    ws.eachRow({ includeEmpty: false }, (row) => {
-      const vals: string[] = [];
-      for (let c = 1; c <= BENTO_MENU_TEMPLATE_HEADERS.length; c += 1) {
-        vals.push(this.cellToString(row.getCell(c).value));
-      }
-      out.push(vals);
+    return wb.worksheets.map((ws) => {
+      const rows: string[][] = [];
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        const vals: string[] = [];
+        for (let c = 1; c <= BENTO_MENU_TEMPLATE_HEADERS.length; c += 1) {
+          vals.push(this.cellToString(row.getCell(c).value));
+        }
+        rows.push(vals);
+      });
+      return { name: ws.name, rows };
     });
-    return out;
   }
 
   private cellToString(v: unknown): string {
@@ -422,8 +698,15 @@ export class BentoMenuService {
 
   private stripHeaderRow(rows: string[][]): string[][] {
     if (rows.length === 0) return rows;
-    const first = (rows[0][0] ?? '').trim().toLowerCase();
-    return first === 'day' || first === 'weekday' ? rows.slice(1) : rows;
+    const out: string[][] = [];
+    for (const row of rows) {
+      const first = (row[0] ?? '').trim().toLowerCase();
+      if (first === 'day' || first === 'weekday') continue;
+      if (first.startsWith('week starting') || first.startsWith('week:')) continue;
+      if (/^week\s*\d+:/.test(first)) continue;
+      out.push(row);
+    }
+    return out;
   }
 
   private normalizeWeekday(raw: string): BentoWeekdayCode | null {

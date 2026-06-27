@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { assetUrl, fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
+import { MENU_SHOW_IMAGES } from '../env';
 import { useI18n } from '../lib/i18n/context';
 import { isTodayIso, parseDateOnly } from '../lib/dateUtils';
 import { LaunchAnnouncement } from './LaunchAnnouncement';
@@ -27,6 +28,7 @@ export function MenuTab({ onOrderNow }: Props) {
   const [data, setData] = useState<WeeklyMenuPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [showVeg, setShowVeg] = useState(false);
+  const [activeWeek, setActiveWeek] = useState(0);
 
   useEffect(() => {
     void fetchWeeklyOptInStatus()
@@ -54,19 +56,56 @@ export function MenuTab({ onOrderNow }: Props) {
     );
   }
 
+  const weeks = data.weeks && data.weeks.length > 0 ? data.weeks : [data.menu];
+  const weekIdx = Math.min(activeWeek, weeks.length - 1);
+  const week = weeks[weekIdx];
+
   return (
     <>
       <LaunchAnnouncement />
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2>{t('menu.title')}</h2>
-            <p className="caption">{formatRangeDate(data.menu.weekStart)} — {formatRangeDate(data.menu.weekEnd)}</p>
+      <section className="section wkMenuSection">
+        <header className="wkMenuHero">
+          <span className="wkMenuHeroSprig" aria-hidden="true" />
+          <h2 className="wkMenuHeroTitle">{t('menu.title')}</h2>
+          <span className="wkMenuHeroSprig flip" aria-hidden="true" />
+          <p className="wkMenuHeroSub">{t('menu.heroSub')}</p>
+          <div className="wkMenuHeroNav">
+            {weeks.length > 1 && (
+              <button
+                type="button"
+                className="wkMenuHeroArrow"
+                onClick={() => setActiveWeek(weekIdx - 1)}
+                disabled={weekIdx === 0}
+                aria-label={t('menu.prevWeek')}
+              >
+                ‹
+              </button>
+            )}
+            <span className="wkMenuHeroRange">
+              {weeks.length > 1 && (
+                <span className="wkMenuHeroWeekLabel">
+                  {t('menu.weekLabel', { n: weekIdx + 1 })}
+                </span>
+              )}
+              {formatRangeDate(week.weekStart)} — {formatRangeDate(week.weekEnd)}
+            </span>
+            {weeks.length > 1 && (
+              <button
+                type="button"
+                className="wkMenuHeroArrow"
+                onClick={() => setActiveWeek(weekIdx + 1)}
+                disabled={weekIdx >= weeks.length - 1}
+                aria-label={t('menu.nextWeekNav')}
+              >
+                ›
+              </button>
+            )}
           </div>
-          <div className="menuHeaderRight">
-            <span className="sectionBadge">{t('menu.badge')}</span>
-          </div>
-        </div>
+          <span className="wkMenuHeroNotice">
+            <span className="wkMenuHeroNoticeLeaf" aria-hidden="true">🌿</span>
+            {t('menu.notice')}
+          </span>
+        </header>
 
         <div className="menuDietSwitch">
           <button
@@ -92,7 +131,7 @@ export function MenuTab({ onOrderNow }: Props) {
         )}
 
         <ul className="wkMenuList">
-          {data.menu.days.map((day) => {
+          {week.days.map((day) => {
             const dayLabel = lang === 'zh' ? (WEEKDAY_ZH[day.weekday] ?? day.weekday) : day.weekday;
             const isClosed = day.closed ?? day.isSunday;
             const isToday = isTodayIso(day.date);
@@ -110,13 +149,31 @@ export function MenuTab({ onOrderNow }: Props) {
                   : meal.dishVeg || meal.dish;
               return showVeg ? veg : regular;
             };
+            const descFor = (meal: {
+              dishDesc?: string;
+              dishDescZh?: string;
+              dishVegDesc?: string;
+              dishVegDescZh?: string;
+            }) => {
+              if (showVeg) {
+                return lang === 'zh' && (meal.dishVegDescZh ?? '').trim()
+                  ? meal.dishVegDescZh!
+                  : (meal.dishVegDesc ?? '');
+              }
+              return lang === 'zh' && (meal.dishDescZh ?? '').trim()
+                ? meal.dishDescZh!
+                : (meal.dishDesc ?? '');
+            };
+            const enWeekday = (day.weekday || '').slice(0, 3).toUpperCase();
+            const zhWeekday = WEEKDAY_ZH[day.weekday] ?? '';
             return (
               <li
                 key={day.date}
                 className={`wkMenuDay${isClosed ? ' wkMenuDayClosed' : ''}${isToday ? ' wkMenuDayToday' : ''}${showVeg ? ' veg' : ''}`}
               >
-                <div className="wkMenuDayHead">
-                  <span className="wkMenuDayPill">{dayLabel}</span>
+                <div className="wkMenuDayRail">
+                  <span className="wkMenuDayAbbr">{enWeekday || dayLabel}</span>
+                  {zhWeekday && <span className="wkMenuDayZh">{zhWeekday}</span>}
                   {isToday && <span className="wkMenuDayTag wkMenuDayTodayTag">{t('common.today')}</span>}
                   {isClosed && <span className="wkMenuDayTag">{t('common.closed')}</span>}
                 </div>
@@ -126,35 +183,45 @@ export function MenuTab({ onOrderNow }: Props) {
                     {t('weeklyOptIn.kitchenClosed')}
                   </div>
                 ) : (
-                  <div className="wkMenuMeals">
-                    <div className="wkMenuMeal lunch">
-                      <span className="wkMenuMealIcon">
-                        {day.lunch.image
-                          ? <img src={assetUrl(day.lunch.image)} alt="" className="wkMenuMealPhoto" loading="lazy" />
-                          : '🌞'}
-                      </span>
-                      <div className="wkMenuMealContent">
-                        <strong className="wkMenuMealLabel">{t('common.lunch')}</strong>
-                        <span className="wkMenuMealText">{dishFor(day.lunch)}</span>
+                  <div className={`wkMenuMeals${MENU_SHOW_IMAGES ? '' : ' textOnly'}`}>
+                    {([
+                      { key: 'lunch' as const, meal: day.lunch, icon: '🌞', label: t('common.lunch') },
+                      { key: 'dinner' as const, meal: day.dinner, icon: '🌙', label: t('common.dinner') },
+                    ]).map(({ key, meal, icon, label }) => (
+                      <div className={`wkMenuMeal ${key}${MENU_SHOW_IMAGES ? '' : ' textOnly'}`} key={key}>
+                        {MENU_SHOW_IMAGES && (
+                          <span className="wkMenuMealIcon">
+                            {meal.image
+                              ? <img src={assetUrl(meal.image)} alt="" className="wkMenuMealPhoto" loading="lazy" />
+                              : icon}
+                          </span>
+                        )}
+                        <div className="wkMenuMealContent">
+                          <span className="wkMenuMealLabel">{label}</span>
+                          <strong className="wkMenuMealText">{dishFor(meal)}</strong>
+                          {descFor(meal)?.trim() && (
+                            <span className="wkMenuMealDesc">{descFor(meal)}</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="wkMenuMeal dinner">
-                      <span className="wkMenuMealIcon">
-                        {day.dinner.image
-                          ? <img src={assetUrl(day.dinner.image)} alt="" className="wkMenuMealPhoto" loading="lazy" />
-                          : '🌙'}
-                      </span>
-                      <div className="wkMenuMealContent">
-                        <strong className="wkMenuMealLabel">{t('common.dinner')}</strong>
-                        <span className="wkMenuMealText">{dishFor(day.dinner)}</span>
-                      </div>
-                    </div>
+                    ))}
+                    <p className="wkMenuDaySidesNote">{t('menu.sidesNote')}</p>
                   </div>
                 )}
               </li>
             );
           })}
         </ul>
+
+        <footer className="wkMenuFooter">
+          <span className="wkMenuFooterIcon" aria-hidden="true">👨‍🍳</span>
+          <div className="wkMenuFooterCopy">
+            <strong className="wkMenuFooterTitle">{t('menu.footerTitle')}</strong>
+            <span className="wkMenuFooterSub">{t('menu.footerSub')}</span>
+          </div>
+          <span className="wkMenuFooterScript">{t('menu.footerScript')}</span>
+        </footer>
+        <p className="wkMenuFooterNote">{t('menu.footerNote')}</p>
       </section>
 
       <div className="menuOrderCta">
