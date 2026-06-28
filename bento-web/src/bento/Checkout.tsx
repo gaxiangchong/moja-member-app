@@ -36,6 +36,7 @@ export function Checkout({ draft, onSuccess }: Props) {
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
 
   const isTrialPack = draft.packageCode === 'NEWCOMER_3';
+  const isSingleMeal = draft.packageCode === 'ONE_TIME';
   const sets = isTrialPack ? 1 : groupBuy ? qty : 1;
   const canCheckout =
     Boolean(draft.packageCode) &&
@@ -66,6 +67,13 @@ export function Checkout({ draft, onSuccess }: Props) {
   }, [isTrialPack, groupBuy]);
 
   useEffect(() => {
+    if (isSingleMeal && appliedCode) {
+      setAppliedCode(null);
+      setPromoInput('');
+    }
+  }, [isSingleMeal, appliedCode]);
+
+  useEffect(() => {
     if (!draft.packageCode) {
       setQuote(null);
       return;
@@ -79,14 +87,14 @@ export function Checkout({ draft, onSuccess }: Props) {
       riceType: draft.riceType,
       includeDrinkAddon: draft.includeDrinkAddon,
       sets,
-      voucherCode: appliedCode ?? undefined,
+      voucherCode: isSingleMeal ? undefined : appliedCode ?? undefined,
     })
       .then((q) => { if (!cancelled) { setQuote(q); setError(null); } })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : t('checkout.errorQuote'));
       });
     return () => { cancelled = true; };
-  }, [draft, sets, appliedCode, t]);
+  }, [draft, sets, appliedCode, isSingleMeal, t]);
 
   const handlePay = async () => {
     if (!draft.packageCode || !quote) return;
@@ -102,7 +110,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       includeDrinkAddon: draft.includeDrinkAddon,
       channelCode: paymentsDemoMode ? undefined : channelCode || undefined,
       sets,
-      voucherCode: appliedVoucher ? appliedCode ?? undefined : undefined,
+      voucherCode: isSingleMeal || !appliedVoucher ? undefined : appliedCode ?? undefined,
     };
 
     try {
@@ -157,6 +165,7 @@ export function Checkout({ draft, onSuccess }: Props) {
     EXPIRED: 'checkout.promoError.expired',
     CAPACITY_FULL: 'checkout.promoError.capacityFull',
     MIN_SPEND: 'checkout.promoError.minSpend',
+    PACKAGE_NOT_ELIGIBLE: 'checkout.promoError.packageNotEligible',
   };
   const voucherErrorText = voucherError
     ? t(PROMO_ERROR_KEYS[voucherError] ?? 'checkout.promoError.generic')
@@ -233,6 +242,9 @@ export function Checkout({ draft, onSuccess }: Props) {
             </p>
           )}
 
+          {isSingleMeal ? (
+            <p className="promoSingleMealNote">{t('checkout.promoSingleMealNote')}</p>
+          ) : (
           <div className="promoSection">
             <label className="fieldLabel" htmlFor="promoCode">{t('checkout.promoLabel')}</label>
             {appliedVoucher ? (
@@ -272,6 +284,7 @@ export function Checkout({ draft, onSuccess }: Props) {
             )}
             {voucherErrorText && <p className="err promoError">{voucherErrorText}</p>}
           </div>
+          )}
 
           {(lunchPart || dinnerPart) && (
             <p className="caption" style={{ marginTop: 6 }}>

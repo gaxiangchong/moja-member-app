@@ -566,18 +566,23 @@ export class BentoService implements OnModuleInit {
     } | null = null;
     let voucherError: string | null = null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
-      const result = await this.bentoVouchers.validateForQuote(
-        dto.voucherCode,
-        subtotalCents,
-      );
-      if (result.ok) {
-        voucher = {
-          code: result.code,
-          discountCents: result.discountCents,
-          newTotalCents: result.newTotalCents,
-        };
+      const packageBlock = this.voucherPackageBlockReason(pkg.code);
+      if (packageBlock) {
+        voucherError = packageBlock;
       } else {
-        voucherError = result.reason;
+        const result = await this.bentoVouchers.validateForQuote(
+          dto.voucherCode,
+          subtotalCents,
+        );
+        if (result.ok) {
+          voucher = {
+            code: result.code,
+            discountCents: result.discountCents,
+            newTotalCents: result.newTotalCents,
+          };
+        } else {
+          voucherError = result.reason;
+        }
       }
     }
 
@@ -627,6 +632,14 @@ export class BentoService implements OnModuleInit {
     let redemption: { redemptionId: string; discountCents: number } | null =
       null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
+      const packageBlock = this.voucherPackageBlockReason(pkg.code);
+      if (packageBlock) {
+        throw new BadRequestException({
+          code: 'BENTO_VOUCHER_PACKAGE_NOT_ELIGIBLE',
+          message:
+            'Promo codes apply to subscription plans only, not single meals.',
+        });
+      }
       const reserved = await this.bentoVouchers.reserve(
         dto.voucherCode,
         customerId,
@@ -831,6 +844,11 @@ export class BentoService implements OnModuleInit {
       });
     }
     return this.mapSubscription(row);
+  }
+
+  /** Promo codes apply to subscription plans only (not single-meal ONE_TIME). */
+  private voucherPackageBlockReason(code: BentoPackageCode): string | null {
+    return code === BentoPackageCode.ONE_TIME ? 'PACKAGE_NOT_ELIGIBLE' : null;
   }
 
   private async resolvePackage(code: BentoPackageCode): Promise<BentoPackage> {
