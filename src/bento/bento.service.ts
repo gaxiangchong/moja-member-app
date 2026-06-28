@@ -906,6 +906,12 @@ export class BentoService implements OnModuleInit {
     dto: BentoQuoteDto,
   ): Promise<void> {
     if (pkg.code === BentoPackageCode.NEWCOMER_3) {
+      if ((dto.sets ?? 1) > 1) {
+        throw new BadRequestException({
+          code: 'BENTO_NEWCOMER_SINGLE_SET_ONLY',
+          message: 'Trial pack is limited to one set per first-time bento customer.',
+        });
+      }
       if (dto.mealOption !== BentoMealOption.LUNCH) {
         throw new BadRequestException({
           code: 'BENTO_NEWCOMER_LUNCH_ONLY',
