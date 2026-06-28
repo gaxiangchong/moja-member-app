@@ -8,10 +8,29 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   CustomerStatus,
+  PerksCriteriaKind,
+  PerksProgramKind,
   Prisma,
   VoucherStatus,
   WalletTxnType,
 } from '@prisma/client';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
+import { randomInt } from 'node:crypto';
+import * as bcrypt from 'bcrypt';
+
+// Voucher-definition image uploads land on the same persistent disk mounted
+// at <cwd>/data/ as the home-ad carousel uploads. See docs/DEPLOYMENT.md §6.1.
+// Served by app.useStaticAssets in src/main.ts under /uploads/.
+const VOUCHER_IMAGE_PUBLIC_PREFIX = '/uploads/voucher-defs/';
+const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
@@ -20,16 +39,29 @@ import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
+import { stringify } from 'csv-stringify/sync';
+import { ReportingSettingsService } from './reporting-settings.service';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
+import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
 import type { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
 import type { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
+import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
+import type {
+  BentoMemberFunnelResult,
+  BentoTransactionRow,
+  SalesAnalyticsQueryDto,
+  SalesAnalyticsResult,
+} from './dto/sales-analytics-query.dto';
 import type { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
+import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
+import type { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
+import type { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 
 function dtoHas<T extends object>(dto: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(dto, key);
@@ -53,6 +85,164 @@ function startOfLocalMonth(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
 
+function perksDateOnly(isoDate: string): Date {
+  const s = isoDate.trim().slice(0, 10);
+  const d = new Date(`${s}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) {
+    throw new BadRequestException({
+      code: 'INVALID_DATE',
+      message: 'Invalid campaign date',
+    });
+  }
+  return d;
+}
+
+function validatePerksCampaignRuleFields(input: {
+  programKind: PerksProgramKind;
+  criteriaKind: PerksCriteriaKind;
+  campaignStartDate: Date;
+  campaignEndDate: Date;
+  minPurchaseAmountSen: number | null;
+  rebateValueSen: number | null;
+  minWalletTopupSen: number | null;
+  withinDaysOfSignup: number | null;
+  minReferralCount: number | null;
+  inactiveDays: number | null;
+  minMemberTier: string | null;
+  definitionPointsCost: number | null;
+}) {
+  const end = input.campaignEndDate.getTime();
+  const start = input.campaignStartDate.getTime();
+  if (end < start) {
+    throw new BadRequestException({
+      code: 'PERKS_CAMPAIGN_DATES',
+      message: 'Campaign end date must be on or after start date',
+    });
+  }
+
+  if (input.programKind === PerksProgramKind.VOUCHER_REBATE) {
+    if (input.rebateValueSen == null || input.rebateValueSen < 1) {
+      throw new BadRequestException({
+        code: 'PERKS_REBATE_REQUIRED',
+        message:
+          'Voucher rebate rules require a rebate value greater than RM 0',
+      });
+    }
+  } else if (input.rebateValueSen != null && input.rebateValueSen > 0) {
+    throw new BadRequestException({
+      code: 'PERKS_REBATE_FORBIDDEN',
+      message: 'Rebate value applies only to voucher (cash rebate) programs',
+    });
+  }
+
+  if (input.programKind === PerksProgramKind.REWARD_POINTS_REDEEM) {
+    if (input.criteriaKind !== PerksCriteriaKind.CAMPAIGN_WINDOW_ONLY) {
+      throw new BadRequestException({
+        code: 'PERKS_POINTS_CRITERIA',
+        message: 'Points-catalog rewards use criteria “Campaign window only”',
+      });
+    }
+    const pc = input.definitionPointsCost;
+    if (pc == null || pc < 1) {
+      throw new BadRequestException({
+        code: 'PERKS_POINTS_COST',
+        message:
+          'Pick a voucher definition with a points cost (catalog redeemable)',
+      });
+    }
+  }
+
+  switch (input.criteriaKind) {
+    case PerksCriteriaKind.CAMPAIGN_WINDOW_ONLY:
+      break;
+    case PerksCriteriaKind.NEW_MEMBER_WITHIN_DAYS:
+      if (input.withinDaysOfSignup == null || input.withinDaysOfSignup < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_WITHIN_DAYS',
+          message: 'Enter within-days for new member criteria',
+        });
+      }
+      break;
+    case PerksCriteriaKind.SINGLE_PURCHASE_MIN_RM:
+      if (
+        input.minPurchaseAmountSen == null ||
+        input.minPurchaseAmountSen < 1
+      ) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_PURCHASE',
+          message: 'Enter minimum purchase (RM) for single-order criteria',
+        });
+      }
+      break;
+    case PerksCriteriaKind.TIER_AND_PURCHASE_MIN_RM:
+      if (
+        input.minPurchaseAmountSen == null ||
+        input.minPurchaseAmountSen < 1
+      ) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_PURCHASE',
+          message: 'Enter minimum purchase (RM) for tier + purchase criteria',
+        });
+      }
+      if (!input.minMemberTier?.trim()) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_TIER',
+          message: 'Select minimum member tier (Silver / Gold / Platinum)',
+        });
+      }
+      break;
+    case PerksCriteriaKind.BIRTHDAY_DURING_CAMPAIGN:
+      break;
+    case PerksCriteriaKind.WALLET_TOPUP_MIN_RM:
+      if (input.minWalletTopupSen == null || input.minWalletTopupSen < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_TOPUP',
+          message: 'Enter minimum wallet top-up (RM)',
+        });
+      }
+      break;
+    case PerksCriteriaKind.REFERRALS_MIN_COUNT:
+      if (input.minReferralCount == null || input.minReferralCount < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_MIN_REFERRALS',
+          message: 'Enter minimum successful referrals',
+        });
+      }
+      break;
+    case PerksCriteriaKind.REENGAGEMENT_INACTIVE_DAYS:
+      if (input.inactiveDays == null || input.inactiveDays < 1) {
+        throw new BadRequestException({
+          code: 'PERKS_INACTIVE_DAYS',
+          message: 'Enter inactive days for re-engagement criteria',
+        });
+      }
+      break;
+    default:
+      throw new BadRequestException({
+        code: 'PERKS_CRITERIA',
+        message: 'Unsupported criteria kind',
+      });
+  }
+}
+
+function daysUntilBirthdayUtc(birthday: Date | null): number | null {
+  if (!birthday) return null;
+  const now = new Date();
+  const m = birthday.getUTCMonth();
+  const d = birthday.getUTCDate();
+  const y = now.getUTCFullYear();
+  let next = Date.UTC(y, m, d);
+  const todayUtc = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  if (next < todayUtc) {
+    next = Date.UTC(y + 1, m, d);
+  }
+  return Math.round((next - todayUtc) / (24 * 60 * 60 * 1000));
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -62,7 +252,19 @@ export class AdminService {
     private readonly wallet: WalletService,
     private readonly config: ConfigService,
     private readonly phoneNormalizer: PhoneNormalizerService,
+    private readonly reportingSettings: ReportingSettingsService,
   ) {}
+
+  /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
+  private salesFloor(): Date | null {
+    return this.reportingSettings.getSalesStartDate();
+  }
+
+  /** Raise a range's lower bound to the sales cutoff when one is configured. */
+  private clampFrom(from: Date): Date {
+    const floor = this.salesFloor();
+    return floor && floor.getTime() > from.getTime() ? floor : from;
+  }
 
   private buildCustomerWhere(
     q: AdminListCustomersQueryDto,
@@ -113,19 +315,42 @@ export class AdminService {
     const take = Math.min(Math.max(pageSize, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const where = this.buildCustomerWhere(query);
+    const dir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: dir };
+    switch (query.sortBy) {
+      case 'lastLoginAt':
+        orderBy = { lastLoginAt: dir };
+        break;
+      case 'points':
+        orderBy = { wallet: { pointsCached: dir } };
+        break;
+      case 'spent':
+        orderBy = { storedWallet: { lifetimeSpentCents: dir } };
+        break;
+      case 'name':
+        orderBy = { displayName: dir };
+        break;
+      case 'referrals':
+        orderBy = { referredMembers: { _count: dir } };
+        break;
+      default:
+        orderBy = { createdAt: dir };
+    }
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           wallet: true,
+          storedWallet: { select: { lifetimeSpentCents: true } },
           vouchers: {
             where: { status: 'ISSUED' },
             select: { id: true },
           },
+          _count: { select: { referredMembers: true } },
         },
       }),
       this.prisma.customer.count({ where }),
@@ -146,7 +371,11 @@ export class AdminService {
         marketingConsent: c.marketingConsent,
         tags: c.tags,
         lastLoginAt: c.lastLoginAt,
+        lastVisitAt: c.lastLoginAt,
+        birthdayDaysUntil: daysUntilBirthdayUtc(c.birthday),
         pointsBalance: c.wallet?.pointsCached ?? 0,
+        lifetimeSpentCents: c.storedWallet?.lifetimeSpentCents ?? 0,
+        referralsMade: c._count.referredMembers,
         activeVoucherCount: c.vouchers.length,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
@@ -157,17 +386,114 @@ export class AdminService {
     };
   }
 
+  /**
+   * Export all customers matching the same filters/sort as {@link listCustomers}
+   * (no pagination, capped) as a CSV string for download.
+   */
+  async exportCustomersCsv(query: AdminListCustomersQueryDto): Promise<string> {
+    const where = this.buildCustomerWhere(query);
+    const dir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: dir };
+    switch (query.sortBy) {
+      case 'lastLoginAt':
+        orderBy = { lastLoginAt: dir };
+        break;
+      case 'points':
+        orderBy = { wallet: { pointsCached: dir } };
+        break;
+      case 'spent':
+        orderBy = { storedWallet: { lifetimeSpentCents: dir } };
+        break;
+      case 'name':
+        orderBy = { displayName: dir };
+        break;
+      case 'referrals':
+        orderBy = { referredMembers: { _count: dir } };
+        break;
+      default:
+        orderBy = { createdAt: dir };
+    }
+
+    const items = await this.prisma.customer.findMany({
+      where,
+      orderBy,
+      take: 50_000,
+      include: {
+        wallet: { select: { pointsCached: true } },
+        storedWallet: { select: { lifetimeSpentCents: true } },
+        _count: { select: { referredMembers: true } },
+      },
+    });
+
+    const iso = (d: Date | null | undefined) => (d ? d.toISOString() : '');
+    const records = items.map((c) => ({
+      phone: c.phoneE164,
+      name: c.displayName ?? '',
+      email: c.email ?? '',
+      status: c.status,
+      member_tier: c.memberTier,
+      signup_source: c.signupSource,
+      marketing_consent: c.marketingConsent ? 'yes' : 'no',
+      points_balance: c.wallet?.pointsCached ?? 0,
+      lifetime_spent_rm: ((c.storedWallet?.lifetimeSpentCents ?? 0) / 100).toFixed(
+        2,
+      ),
+      referrals_made: c._count.referredMembers,
+      tags: (c.tags ?? []).join('; '),
+      birthday: c.birthday ? c.birthday.toISOString().slice(0, 10) : '',
+      gender: c.gender ?? '',
+      preferred_store: c.preferredStore ?? '',
+      created_at: iso(c.createdAt),
+      last_login_at: iso(c.lastLoginAt),
+    }));
+
+    return stringify(records, {
+      header: true,
+      columns: [
+        'phone',
+        'name',
+        'email',
+        'status',
+        'member_tier',
+        'signup_source',
+        'marketing_consent',
+        'points_balance',
+        'lifetime_spent_rm',
+        'referrals_made',
+        'tags',
+        'birthday',
+        'gender',
+        'preferred_store',
+        'created_at',
+        'last_login_at',
+      ],
+    });
+  }
+
+  async listCustomerOrders(customerId: string, limit = 40) {
+    await this.getCustomer(customerId);
+    const take = Math.min(Math.max(limit, 1), 100);
+    return this.prisma.customerOrder.findMany({
+      where: { customerId },
+      orderBy: { placedAt: 'desc' },
+      take,
+      include: { lines: true },
+    });
+  }
+
   async getCustomer(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
         wallet: true,
+        storedWallet: { select: { lifetimeSpentCents: true } },
         ledgerEntries: { take: 20, orderBy: { createdAt: 'desc' } },
         vouchers: {
           take: 30,
           orderBy: { updatedAt: 'desc' },
           include: { definition: true },
         },
+        _count: { select: { referredMembers: true } },
       },
     });
     if (!customer) {
@@ -176,7 +502,71 @@ export class AdminService {
         message: 'Member not found',
       });
     }
-    return customer;
+
+    // Derived email-verification status: the member has at some point completed
+    // an email OTP for their *current* email address. No dedicated column.
+    let emailVerifiedAt: string | null = null;
+    const currentEmail = customer.email?.trim().toLowerCase();
+    if (currentEmail) {
+      const usedEmailOtp = await this.prisma.otpChallenge.findFirst({
+        where: {
+          customerId: customer.id,
+          deliveryChannel: 'email',
+          usedAt: { not: null },
+          email: { equals: currentEmail, mode: 'insensitive' },
+        },
+        orderBy: { usedAt: 'desc' },
+        select: { usedAt: true },
+      });
+      emailVerifiedAt = usedEmailOtp?.usedAt
+        ? usedEmailOtp.usedAt.toISOString()
+        : null;
+    }
+
+    const { loginPinHash, ...safe } = customer;
+    return {
+      ...safe,
+      hasLoginPin: Boolean(loginPinHash),
+      emailVerified: emailVerifiedAt !== null,
+      emailVerifiedAt,
+    };
+  }
+
+  /**
+   * Admin-assisted login rescue: set a fresh 6-digit login PIN for a member who
+   * can't receive their OTP. Reuses the existing PIN-login path — once set,
+   * `loginLookup` reports `hasPin` and the member signs in with phone + PIN.
+   * The PIN is returned once (plaintext) for the admin to read out, and stored
+   * only as a bcrypt hash.
+   */
+  async setCustomerLoginPin(
+    id: string,
+    auth: AdminAuthState,
+  ): Promise<{ pin: string }> {
+    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+
+    const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const loginPinHash = await bcrypt.hash(pin, 12);
+    await this.prisma.customer.update({
+      where: { id },
+      data: { loginPinHash },
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'customer.login_pin_set_by_admin',
+      entityType: 'customer',
+      entityId: id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+
+    return { pin };
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {
@@ -195,8 +585,14 @@ export class AdminService {
     auth: AdminAuthState,
   ) {
     const base = auditActorBase(auth);
-    const canProfile = hasPermission(auth.permissions, P.CUSTOMER_WRITE_PROFILE);
-    const canIdentity = hasPermission(auth.permissions, P.CUSTOMER_WRITE_IDENTITY);
+    const canProfile = hasPermission(
+      auth.permissions,
+      P.CUSTOMER_WRITE_PROFILE,
+    );
+    const canIdentity = hasPermission(
+      auth.permissions,
+      P.CUSTOMER_WRITE_IDENTITY,
+    );
     const canPhone = hasPermission(auth.permissions, P.CUSTOMER_PHONE_CHANGE);
     if (!canProfile && !canIdentity && !canPhone) {
       throw new ForbiddenException({
@@ -258,7 +654,8 @@ export class AdminService {
       }
       if (phoneChanging) {
         const allow =
-          this.config.get<string>('ADMIN_ALLOW_PHONE_CHANGE', 'false')
+          this.config
+            .get<string>('ADMIN_ALLOW_PHONE_CHANGE', 'false')
             .toLowerCase()
             .trim() === 'true';
         if (!allow) {
@@ -489,7 +886,9 @@ export class AdminService {
       reason: dto.reason,
       createdByType: 'admin',
       createdBy: auth.actorLabel,
-      metadata: dto.campaignCode ? { campaignCode: dto.campaignCode } : undefined,
+      metadata: dto.campaignCode
+        ? { campaignCode: dto.campaignCode }
+        : undefined,
     });
     const summary = await this.wallet.getSummary(customerId);
 
@@ -552,6 +951,14 @@ export class AdminService {
     const weekStart = startOfLocalWeekMonday(now);
     const monthStart = startOfLocalMonth(now);
     const monthNumber = now.getMonth() + 1;
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Sales reporting cutoff: never count commerce dated before salesStartDate.
+    const salesFloor = this.reportingSettings.getSalesStartDate();
+    const commerceStart =
+      salesFloor && salesFloor.getTime() > thirtyDaysAgo.getTime()
+        ? salesFloor
+        : thirtyDaysAgo;
 
     const [
       members,
@@ -568,6 +975,8 @@ export class AdminService {
       recentVouchers,
       recentLedger,
       birthdayThisMonth,
+      ordersLast30Days,
+      ordersGmv30,
     ] = await this.prisma.$transaction([
       this.prisma.customer.count(),
       this.prisma.customer.count({ where: { status: CustomerStatus.ACTIVE } }),
@@ -626,6 +1035,13 @@ export class AdminService {
         WHERE birthday IS NOT NULL
         AND EXTRACT(MONTH FROM birthday::date) = ${monthNumber}
       `,
+      this.prisma.customerOrder.count({
+        where: { placedAt: { gte: commerceStart } },
+      }),
+      this.prisma.customerOrder.aggregate({
+        where: { placedAt: { gte: commerceStart } },
+        _sum: { totalCents: true },
+      }),
     ]);
 
     const voucherStats: Record<string, number> = {};
@@ -665,6 +1081,10 @@ export class AdminService {
       },
       otpVerifiedCount: otpVerified._count.id,
       birthdayMembersThisMonth: Number(birthdayThisMonth[0]?.count ?? 0n),
+      commerce: {
+        ordersLast30Days: ordersLast30Days,
+        gmvLast30DaysCents: ordersGmv30._sum.totalCents ?? 0,
+      },
       memberSalesContribution: null,
       recentRegistrations: recentCustomers,
       recentVoucherActivity: recentVouchers.map((v) => ({
@@ -699,6 +1119,19 @@ export class AdminService {
         title: dto.title,
         description: dto.description ?? null,
         pointsCost: dto.pointsCost ?? null,
+        rebateValueSen: dto.rebateValueSen ?? null,
+        minSpendSen: dto.minSpendSen ?? null,
+        imageUrl: dto.imageUrl?.trim() || null,
+        rewardCategory: dto.rewardCategory?.trim() || null,
+        showInRewardsCatalog: dto.showInRewardsCatalog ?? false,
+        rewardSortOrder: dto.rewardSortOrder ?? 0,
+        rewardValidFrom: dto.rewardValidFrom
+          ? new Date(dto.rewardValidFrom)
+          : null,
+        rewardValidUntil: dto.rewardValidUntil
+          ? new Date(dto.rewardValidUntil)
+          : null,
+        maxTotalIssued: dto.maxTotalIssued ?? null,
       },
     });
 
@@ -715,7 +1148,8 @@ export class AdminService {
   }
 
   private goodwillVoucherCodeSet(): Set<string> {
-    const raw = this.config.get<string>('SUPPORT_GOODWILL_VOUCHER_CODES', '') ?? '';
+    const raw =
+      this.config.get<string>('SUPPORT_GOODWILL_VOUCHER_CODES', '') ?? '';
     return new Set(
       raw
         .split(',')
@@ -740,9 +1174,59 @@ export class AdminService {
     }
     const data: Prisma.VoucherDefinitionUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
-    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.description !== undefined) {
+      data.description =
+        dto.description && String(dto.description).trim()
+          ? String(dto.description).trim()
+          : null;
+    }
     if (dto.pointsCost !== undefined) data.pointsCost = dto.pointsCost;
+    if (dto.rebateValueSen !== undefined) {
+      data.rebateValueSen =
+        dto.rebateValueSen == null ? null : dto.rebateValueSen;
+    }
+    if (dto.minSpendSen !== undefined) {
+      data.minSpendSen = dto.minSpendSen == null ? null : dto.minSpendSen;
+    }
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.imageUrl !== undefined) {
+      const newUrl = dto.imageUrl?.trim() ? dto.imageUrl.trim() : null;
+      // If we're replacing a previously uploaded local image with a different
+      // URL (or clearing it), delete the orphan file from disk so the
+      // persistent volume doesn't accumulate dead uploads.
+      if (
+        before.imageUrl &&
+        before.imageUrl !== newUrl &&
+        before.imageUrl.startsWith(VOUCHER_IMAGE_PUBLIC_PREFIX)
+      ) {
+        this.tryRemoveLocalVoucherImage(before.imageUrl);
+      }
+      data.imageUrl = newUrl;
+    }
+    if (dto.rewardCategory !== undefined) {
+      data.rewardCategory = dto.rewardCategory?.trim()
+        ? dto.rewardCategory.trim()
+        : null;
+    }
+    if (dto.showInRewardsCatalog !== undefined) {
+      data.showInRewardsCatalog = dto.showInRewardsCatalog;
+    }
+    if (dto.rewardSortOrder !== undefined) {
+      data.rewardSortOrder = dto.rewardSortOrder;
+    }
+    if (dto.rewardValidFrom !== undefined) {
+      data.rewardValidFrom = dto.rewardValidFrom
+        ? new Date(dto.rewardValidFrom)
+        : null;
+    }
+    if (dto.rewardValidUntil !== undefined) {
+      data.rewardValidUntil = dto.rewardValidUntil
+        ? new Date(dto.rewardValidUntil)
+        : null;
+    }
+    if (dto.maxTotalIssued !== undefined) {
+      data.maxTotalIssued = dto.maxTotalIssued;
+    }
     const updated = await this.prisma.voucherDefinition.update({
       where: { id },
       data,
@@ -753,6 +1237,13 @@ export class AdminService {
       description: v.description,
       pointsCost: v.pointsCost,
       isActive: v.isActive,
+      imageUrl: v.imageUrl,
+      rewardCategory: v.rewardCategory,
+      showInRewardsCatalog: v.showInRewardsCatalog,
+      rewardSortOrder: v.rewardSortOrder,
+      rewardValidFrom: v.rewardValidFrom,
+      rewardValidUntil: v.rewardValidUntil,
+      maxTotalIssued: v.maxTotalIssued,
     });
     await this.audit.log({
       ...auditActorBase(auth),
@@ -763,6 +1254,105 @@ export class AdminService {
       afterValue: snap(updated) as object,
     });
     return updated;
+  }
+
+  // ----- Voucher-definition image uploads (persistent disk) ---------------
+  // Stored under <cwd>/data/uploads/voucher-defs/ and served via /uploads/...
+  // Mirrors the home-ad slide upload pattern in src/home-ads/home-ads.service.
+
+  private voucherImagesDir(): string {
+    return resolve(process.cwd(), 'data', 'uploads', 'voucher-defs');
+  }
+
+  /**
+   * Best-effort delete of a previously uploaded voucher image when its public
+   * URL is being replaced. Silently ignores non-local URLs (e.g. external CDN
+   * links the admin pasted into the URL field) and missing files.
+   */
+  private tryRemoveLocalVoucherImage(url: string | null | undefined): void {
+    if (!url) return;
+    if (!url.startsWith(VOUCHER_IMAGE_PUBLIC_PREFIX)) return;
+    const name = url.substring(VOUCHER_IMAGE_PUBLIC_PREFIX.length);
+    if (!/^[a-z0-9._-]+$/i.test(name)) return;
+    const p = resolve(this.voucherImagesDir(), name);
+    try {
+      if (existsSync(p)) unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async attachVoucherDefinitionImage(
+    id: string,
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname?: string;
+      size: number;
+    },
+  ) {
+    if (!file || !file.buffer || !file.buffer.length) {
+      throw new BadRequestException('No file provided');
+    }
+    if (file.size > VOUCHER_IMAGE_MAX_BYTES) {
+      throw new BadRequestException(
+        `Image too large. Max ${Math.round(
+          VOUCHER_IMAGE_MAX_BYTES / 1024 / 1024,
+        )} MB.`,
+      );
+    }
+    const ext =
+      VOUCHER_IMAGE_ALLOWED_MIME[String(file.mimetype || '').toLowerCase()] ||
+      (file.originalname ? extname(file.originalname).toLowerCase() : '');
+    const allowedExts = new Set(Object.values(VOUCHER_IMAGE_ALLOWED_MIME));
+    if (!ext || !allowedExts.has(ext)) {
+      throw new BadRequestException(
+        'Unsupported image type. Use PNG, JPEG, WEBP, or GIF.',
+      );
+    }
+
+    const before = await this.prisma.voucherDefinition.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message: 'Voucher definition not found',
+      });
+    }
+
+    mkdirSync(this.voucherImagesDir(), { recursive: true });
+    const filename = `${id}-${Date.now()}${ext}`;
+    const diskPath = resolve(this.voucherImagesDir(), filename);
+    writeFileSync(diskPath, file.buffer);
+
+    const publicUrl = `${VOUCHER_IMAGE_PUBLIC_PREFIX}${filename}`;
+    const updated = await this.prisma.voucherDefinition.update({
+      where: { id },
+      data: { imageUrl: publicUrl },
+    });
+
+    if (before.imageUrl && before.imageUrl !== publicUrl) {
+      this.tryRemoveLocalVoucherImage(before.imageUrl);
+    }
+    return updated;
+  }
+
+  async clearVoucherDefinitionImage(id: string) {
+    const before = await this.prisma.voucherDefinition.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message: 'Voucher definition not found',
+      });
+    }
+    if (before.imageUrl) this.tryRemoveLocalVoucherImage(before.imageUrl);
+    return this.prisma.voucherDefinition.update({
+      where: { id },
+      data: { imageUrl: null },
+    });
   }
 
   async assignCustomerVoucher(
@@ -946,6 +1536,49 @@ export class AdminService {
     const monthAgo = new Date();
     monthAgo.setDate(monthAgo.getDate() - 30);
 
+    const now = new Date();
+    const utcDayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const utcDayEnd = new Date(utcDayStart);
+    utcDayEnd.setUTCDate(utcDayEnd.getUTCDate() + 1);
+    const utcMonthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const utcMonthEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
+    const utcYearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const utcYearEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+
+    // Sales reporting cutoff: exclude spend dated before salesStartDate.
+    const salesFloor = this.salesFloor();
+    const topSpenderFloor = salesFloor
+      ? Prisma.sql`WHERE o.placed_at >= ${salesFloor}`
+      : Prisma.empty;
+    const topSpenderSql = (from: Date, to: Date) => {
+      const f = this.clampFrom(from);
+      return this.prisma.$queryRaw<
+        {
+          customer_id: string;
+          phone_e164: string;
+          display_name: string | null;
+          spent_cents: bigint;
+        }[]
+      >`
+        SELECT o.customer_id AS customer_id,
+               MAX(c.phone_e164) AS phone_e164,
+               MAX(c.display_name) AS display_name,
+               SUM(o.total_cents)::bigint AS spent_cents
+        FROM customer_orders o
+        INNER JOIN customers c ON c.id = o.customer_id
+        WHERE o.placed_at >= ${f} AND o.placed_at < ${to}
+        GROUP BY o.customer_id
+        ORDER BY spent_cents DESC
+        LIMIT 10
+      `;
+    };
+
     const [
       overview,
       bySource,
@@ -954,13 +1587,22 @@ export class AdminService {
       importCount,
       exportCount,
       adjCount,
+      signupsByDay,
+      topSpenders,
+      topSpendersToday,
+      topSpendersThisMonth,
+      topSpendersThisYear,
+      topReferrers,
+      topProducts,
     ] = await Promise.all([
       this.getOverviewStats(),
       this.prisma.customer.groupBy({
         by: ['signupSource'],
         _count: { _all: true },
       }),
-      this.prisma.customer.count({ where: { status: CustomerStatus.SUSPENDED } }),
+      this.prisma.customer.count({
+        where: { status: CustomerStatus.SUSPENDED },
+      }),
       this.prisma.storedWallet.aggregate({
         _sum: {
           balanceCents: true,
@@ -986,6 +1628,68 @@ export class AdminService {
           createdAt: { gte: monthAgo },
         },
       }),
+      this.prisma.$queryRaw<{ day: Date; referred: bigint; organic: bigint }[]>`
+        SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date AS day,
+               COUNT(*) FILTER (WHERE referred_by_customer_id IS NOT NULL)::bigint AS referred,
+               COUNT(*) FILTER (WHERE referred_by_customer_id IS NULL)::bigint AS organic
+        FROM customers
+        WHERE created_at >= ${monthAgo}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      this.prisma.$queryRaw<
+        {
+          customer_id: string;
+          phone_e164: string;
+          display_name: string | null;
+          spent_cents: bigint;
+        }[]
+      >`
+        SELECT o.customer_id AS customer_id,
+               MAX(c.phone_e164) AS phone_e164,
+               MAX(c.display_name) AS display_name,
+               SUM(o.total_cents)::bigint AS spent_cents
+        FROM customer_orders o
+        INNER JOIN customers c ON c.id = o.customer_id
+        ${topSpenderFloor}
+        GROUP BY o.customer_id
+        ORDER BY spent_cents DESC
+        LIMIT 10
+      `,
+      topSpenderSql(utcDayStart, utcDayEnd),
+      topSpenderSql(utcMonthStart, utcMonthEnd),
+      topSpenderSql(utcYearStart, utcYearEnd),
+      this.prisma.customer.findMany({
+        take: 10,
+        where: { referredMembers: { some: {} } },
+        orderBy: { referredMembers: { _count: 'desc' } },
+        select: {
+          id: true,
+          phoneE164: true,
+          displayName: true,
+          referralCode: true,
+          _count: { select: { referredMembers: true } },
+        },
+      }),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT l.product_id AS product_id,
+               MAX(l.name) AS name,
+               SUM(l.qty)::bigint AS qty_sold,
+               COUNT(DISTINCT o.id)::bigint AS order_count
+        FROM customer_order_lines l
+        INNER JOIN customer_orders o ON o.id = l.order_id
+        WHERE o.placed_at >= ${this.clampFrom(monthAgo)}
+        GROUP BY l.product_id
+        ORDER BY qty_sold DESC
+        LIMIT 10
+      `,
     ]);
 
     return {
@@ -1006,6 +1710,1333 @@ export class AdminService {
         exportRuns: exportCount,
         manualWalletOrLoyaltyAdjustments: adjCount,
       },
+      marketing: {
+        signupsByDay: signupsByDay.map((r) => {
+          const referred = Number(r.referred);
+          const organic = Number(r.organic);
+          return {
+            date: r.day.toISOString().slice(0, 10),
+            newMembers: referred + organic,
+            referredSignups: referred,
+            organicSignups: organic,
+          };
+        }),
+        topSpenders: topSpenders.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersToday: topSpendersToday.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersThisMonth: topSpendersThisMonth.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topSpendersThisYear: topSpendersThisYear.map((r) => ({
+          id: r.customer_id,
+          phoneE164: r.phone_e164,
+          displayName: r.display_name,
+          lifetimeSpentCents: Number(r.spent_cents),
+        })),
+        topReferrers: topReferrers.map((c) => ({
+          id: c.id,
+          phoneE164: c.phoneE164,
+          displayName: c.displayName,
+          referralCode: c.referralCode,
+          referralsSignedUp: c._count.referredMembers,
+        })),
+        topProducts: topProducts.map((p) => ({
+          productId: p.product_id,
+          name: p.name,
+          qtySold: Number(p.qty_sold),
+          orders: Number(p.order_count),
+        })),
+      },
     };
+  }
+
+  async getSalesAnalytics(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<SalesAnalyticsResult> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from and to must be valid ISO dates',
+      });
+    }
+    if (from.getTime() >= to.getTime()) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from must be before to',
+      });
+    }
+    const maxMs = 800 * 86400000;
+    if (to.getTime() - from.getTime() > maxMs) {
+      throw new BadRequestException({
+        code: 'RANGE_TOO_LARGE',
+        message: 'Date range cannot exceed 800 days',
+      });
+    }
+
+    const bucket = query.bucket ?? 'month';
+    const category = query.category ?? 'cake';
+
+    // Apply the configured sales reporting cutoff: nothing dated before
+    // salesStartDate counts toward GMV. If the whole window is before the
+    // cutoff, return a zeroed result instead of querying.
+    const flooredFrom = this.clampFrom(from);
+    if (flooredFrom.getTime() >= to.getTime()) {
+      return this.buildSalesAnalyticsResult({
+        from: flooredFrom,
+        to,
+        bucket,
+        category,
+        now,
+        seriesRows: [],
+        topProducts: [],
+        paidCount: 0,
+        totalGmv: 0,
+        openPlaced: 0,
+        loyaltyNeg: 0,
+        loyaltyPos: 0,
+        walletSpend: 0,
+        walletTopUp: 0,
+        vouchersRedeemed: 0,
+        vouchersIssued: 0,
+      });
+    }
+
+    if (category === 'bento') {
+      return this.getBentoSalesAnalytics(flooredFrom, to, bucket, now);
+    }
+    return this.getCakeSalesAnalytics(flooredFrom, to, bucket, now);
+  }
+
+  private async getCakeSalesAnalytics(
+    from: Date,
+    to: Date,
+    bucket: 'day' | 'week' | 'month',
+    now: Date,
+  ): Promise<SalesAnalyticsResult> {
+    const trunc = bucket;
+    const paidStatusFilter = Prisma.sql`o.status NOT IN ('pending_payment', 'cancelled')`;
+
+    const bucketSeries = () => {
+      if (trunc === 'week') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('week', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(o.total_cents)::bigint AS gmv_cents
+          FROM customer_orders o
+          WHERE ${paidStatusFilter}
+            AND o.placed_at >= ${from}
+            AND o.placed_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      if (trunc === 'month') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('month', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(o.total_cents)::bigint AS gmv_cents
+          FROM customer_orders o
+          WHERE ${paidStatusFilter}
+            AND o.placed_at >= ${from}
+            AND o.placed_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      return this.prisma.$queryRaw<
+        { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+      >`
+        SELECT date_trunc('day', (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS order_count,
+               SUM(o.total_cents)::bigint AS gmv_cents
+        FROM customer_orders o
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `;
+    };
+
+    const [
+      seriesRows,
+      topProducts,
+      paidRow,
+      openPlaced,
+      loyaltyNeg,
+      loyaltyPos,
+      walletSpend,
+      walletTopUp,
+      vouchersRedeemed,
+      vouchersIssued,
+    ] = await Promise.all([
+      bucketSeries(),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          revenue_cents: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT l.product_id AS product_id,
+               MAX(l.name) AS name,
+               SUM(l.qty)::bigint AS qty_sold,
+               SUM(l.unit_price_cents * l.qty)::bigint AS revenue_cents,
+               COUNT(DISTINCT o.id)::bigint AS order_count
+        FROM customer_order_lines l
+        INNER JOIN customer_orders o ON o.id = l.order_id
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
+        GROUP BY l.product_id
+        ORDER BY qty_sold DESC
+        LIMIT 25
+      `,
+      this.prisma.$queryRaw<{ cnt: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+        FROM customer_orders o
+        WHERE ${paidStatusFilter}
+          AND o.placed_at >= ${from}
+          AND o.placed_at < ${to}
+      `,
+      this.prisma.customerOrder.count({
+        where: {
+          status: { notIn: ['pending_payment', 'cancelled', 'completed'] },
+          placedAt: { gte: from, lt: to },
+        },
+      }),
+      this.prisma.loyaltyLedgerEntry.aggregate({
+        where: {
+          deltaPoints: { lt: 0 },
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { deltaPoints: true },
+      }),
+      this.prisma.loyaltyLedgerEntry.aggregate({
+        where: {
+          deltaPoints: { gt: 0 },
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { deltaPoints: true },
+      }),
+      this.prisma.storedWalletLedgerEntry.aggregate({
+        where: {
+          type: WalletTxnType.SPEND,
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { amountCents: true },
+      }),
+      this.prisma.storedWalletLedgerEntry.aggregate({
+        where: {
+          type: WalletTxnType.TOPUP,
+          createdAt: { gte: from, lt: to },
+        },
+        _sum: { amountCents: true },
+      }),
+      this.prisma.customerVoucher.count({
+        where: {
+          status: VoucherStatus.REDEEMED,
+          redeemedAt: { gte: from, lt: to },
+        },
+      }),
+      this.prisma.customerVoucher.count({
+        where: {
+          issuedAt: { gte: from, lt: to },
+        },
+      }),
+    ]);
+
+    const paidCount = Number(paidRow[0]?.cnt ?? 0n);
+    const totalGmv = Number(paidRow[0]?.gmv ?? 0n);
+
+    return this.buildSalesAnalyticsResult({
+      from,
+      to,
+      bucket,
+      category: 'cake',
+      now,
+      seriesRows,
+      topProducts,
+      paidCount,
+      totalGmv,
+      openPlaced,
+      loyaltyNeg: loyaltyNeg._sum.deltaPoints ?? 0,
+      loyaltyPos: loyaltyPos._sum.deltaPoints ?? 0,
+      walletSpend: walletSpend._sum.amountCents ?? 0,
+      walletTopUp: walletTopUp._sum.amountCents ?? 0,
+      vouchersRedeemed,
+      vouchersIssued,
+    });
+  }
+
+  private async getBentoSalesAnalytics(
+    from: Date,
+    to: Date,
+    bucket: 'day' | 'week' | 'month',
+    now: Date,
+  ): Promise<SalesAnalyticsResult> {
+    const trunc = bucket;
+
+    const bucketSeries = () => {
+      if (trunc === 'week') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('week', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(pi.amount_cents)::bigint AS gmv_cents
+          FROM payment_intents pi
+          WHERE pi.purpose = 'bento_subscription'
+            AND pi.status = 'SUCCEEDED'
+            AND pi.updated_at >= ${from}
+            AND pi.updated_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      if (trunc === 'month') {
+        return this.prisma.$queryRaw<
+          { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+        >`
+          SELECT date_trunc('month', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+                 COUNT(*)::bigint AS order_count,
+                 SUM(pi.amount_cents)::bigint AS gmv_cents
+          FROM payment_intents pi
+          WHERE pi.purpose = 'bento_subscription'
+            AND pi.status = 'SUCCEEDED'
+            AND pi.updated_at >= ${from}
+            AND pi.updated_at < ${to}
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
+      }
+      return this.prisma.$queryRaw<
+        { period_start: Date; order_count: bigint; gmv_cents: bigint }[]
+      >`
+        SELECT date_trunc('day', (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS order_count,
+               SUM(pi.amount_cents)::bigint AS gmv_cents
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `;
+    };
+
+    const [seriesRows, topProducts, paidRow] = await Promise.all([
+      bucketSeries(),
+      this.prisma.$queryRaw<
+        {
+          product_id: string;
+          name: string;
+          qty_sold: bigint;
+          revenue_cents: bigint;
+          order_count: bigint;
+        }[]
+      >`
+        SELECT bp.code AS product_id,
+               MAX(bp.label) AS name,
+               COUNT(*)::bigint AS qty_sold,
+               SUM(pi.amount_cents)::bigint AS revenue_cents,
+               COUNT(DISTINCT pi.id)::bigint AS order_count
+        FROM payment_intents pi
+        INNER JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
+        INNER JOIN bento_packages bp ON bp.id = bs.package_id
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+        GROUP BY bp.code
+        ORDER BY qty_sold DESC
+        LIMIT 25
+      `,
+      this.prisma.$queryRaw<{ cnt: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${from}
+          AND pi.updated_at < ${to}
+      `,
+    ]);
+
+    const paidCount = Number(paidRow[0]?.cnt ?? 0n);
+    const totalGmv = Number(paidRow[0]?.gmv ?? 0n);
+
+    return this.buildSalesAnalyticsResult({
+      from,
+      to,
+      bucket,
+      category: 'bento',
+      now,
+      seriesRows,
+      topProducts,
+      paidCount,
+      totalGmv,
+      openPlaced: 0,
+      loyaltyNeg: 0,
+      loyaltyPos: 0,
+      walletSpend: 0,
+      walletTopUp: 0,
+      vouchersRedeemed: 0,
+      vouchersIssued: 0,
+    });
+  }
+
+  /**
+   * Marketing funnel for the Bento member app: how many members registered vs
+   * how many actually paid for a bento plan. "Registered" = every customer
+   * (the Bento app shares the main member login, so there is no separate bento
+   * signup source). "Paid" reuses the same SUCCEEDED bento_subscription payment
+   * predicate as {@link getBentoSalesAnalytics} so the numbers stay consistent.
+   */
+  async getBentoMemberFunnel(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<BentoMemberFunnelResult> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from and to must be valid ISO dates',
+      });
+    }
+    if (from.getTime() >= to.getTime()) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'from must be before to',
+      });
+    }
+    const bucket = query.bucket ?? 'month';
+    // bucket is validated to one of day/week/month by the DTO, so it is safe to
+    // splice into the date_trunc unit literal via Prisma.raw.
+    const truncUnit = Prisma.raw(`'${bucket}'`);
+    const bentoPaid = Prisma.sql`pi.purpose = 'bento_subscription' AND pi.status = 'SUCCEEDED'`;
+    // Sales reporting cutoff: exclude payments before salesStartDate from the
+    // money figures. Member-count queries keep their real (uncut) values.
+    const floor = this.salesFloor();
+    const paidFloor = floor
+      ? Prisma.sql`AND pi.updated_at >= ${floor}`
+      : Prisma.empty;
+    const rangeFrom = this.clampFrom(from);
+
+    const [
+      totalMembers,
+      newMembers,
+      paidRow,
+      rangeRow,
+      regSeries,
+      paySeries,
+    ] = await Promise.all([
+      this.prisma.customer.count(),
+      this.prisma.customer.count({
+        where: { createdAt: { gte: from, lt: to } },
+      }),
+      this.prisma.$queryRaw<
+        { members: bigint; payments: bigint; gmv: bigint }[]
+      >`
+        SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
+               COUNT(*)::bigint AS payments,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid} ${paidFloor}
+      `,
+      this.prisma.$queryRaw<
+        { members: bigint; payments: bigint; gmv: bigint }[]
+      >`
+        SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
+               COUNT(*)::bigint AS payments,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid}
+          AND pi.updated_at >= ${rangeFrom}
+          AND pi.updated_at < ${to}
+      `,
+      this.prisma.$queryRaw<{ period_start: Date; cnt: bigint }[]>`
+        SELECT date_trunc(${truncUnit}, (c.created_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS cnt
+        FROM customers c
+        WHERE c.created_at >= ${from}
+          AND c.created_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      this.prisma.$queryRaw<
+        { period_start: Date; cnt: bigint; gmv: bigint }[]
+      >`
+        SELECT date_trunc(${truncUnit}, (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+               COUNT(*)::bigint AS cnt,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE ${bentoPaid}
+          AND pi.updated_at >= ${rangeFrom}
+          AND pi.updated_at < ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+    ]);
+
+    const paidMembers = Number(paidRow[0]?.members ?? 0n);
+    const payingTransactions = Number(paidRow[0]?.payments ?? 0n);
+    const totalGmvCents = Number(paidRow[0]?.gmv ?? 0n);
+
+    // Merge the two per-bucket series on period_start.
+    const byPeriod = new Map<
+      string,
+      { registrations: number; payments: number; gmvCents: number }
+    >();
+    for (const r of regSeries) {
+      const key = r.period_start.toISOString();
+      const e = byPeriod.get(key) ?? {
+        registrations: 0,
+        payments: 0,
+        gmvCents: 0,
+      };
+      e.registrations = Number(r.cnt);
+      byPeriod.set(key, e);
+    }
+    for (const r of paySeries) {
+      const key = r.period_start.toISOString();
+      const e = byPeriod.get(key) ?? {
+        registrations: 0,
+        payments: 0,
+        gmvCents: 0,
+      };
+      e.payments = Number(r.cnt);
+      e.gmvCents = Number(r.gmv);
+      byPeriod.set(key, e);
+    }
+    const series = Array.from(byPeriod.entries())
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([periodStart, v]) => ({ periodStart, ...v }));
+
+    return {
+      meta: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        bucket,
+        generatedAt: now.toISOString(),
+      },
+      totals: {
+        totalMembers,
+        paidMembers,
+        payingTransactions,
+        totalGmvCents,
+        conversionRate: totalMembers > 0 ? paidMembers / totalMembers : 0,
+      },
+      inRange: {
+        newMembers,
+        newPaidMembers: Number(rangeRow[0]?.members ?? 0n),
+        payments: Number(rangeRow[0]?.payments ?? 0n),
+        gmvCents: Number(rangeRow[0]?.gmv ?? 0n),
+      },
+      series,
+    };
+  }
+
+  /**
+   * Bento-only transaction ledger: recent successful bento payments joined to
+   * the member and the package they bought. Ordered newest-first.
+   */
+  async listBentoTransactions(
+    query: SalesAnalyticsQueryDto,
+  ): Promise<{ transactions: BentoTransactionRow[] }> {
+    const now = new Date();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 86400000);
+    const hasRange =
+      !Number.isNaN(from.getTime()) &&
+      !Number.isNaN(to.getTime()) &&
+      from.getTime() < to.getTime();
+    const rangeFilter = hasRange
+      ? Prisma.sql`AND pi.updated_at >= ${from} AND pi.updated_at < ${to}`
+      : Prisma.empty;
+    // Hide test-phase transactions dated before the sales reporting cutoff.
+    const floor = this.salesFloor();
+    const floorFilter = floor
+      ? Prisma.sql`AND pi.updated_at >= ${floor}`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        payment_intent_id: string;
+        paid_at: Date;
+        customer_id: string | null;
+        display_name: string | null;
+        phone_e164: string | null;
+        package_code: string | null;
+        package_label: string | null;
+        meal_option: string | null;
+        amount_cents: bigint;
+      }[]
+    >`
+      SELECT pi.id AS payment_intent_id,
+             pi.updated_at AS paid_at,
+             c.id AS customer_id,
+             c.display_name AS display_name,
+             c.phone_e164 AS phone_e164,
+             bp.code AS package_code,
+             bp.label AS package_label,
+             bs.meal_option AS meal_option,
+             pi.amount_cents AS amount_cents
+      FROM payment_intents pi
+      LEFT JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
+      LEFT JOIN bento_packages bp ON bp.id = bs.package_id
+      LEFT JOIN customers c ON c.id = pi.customer_id
+      WHERE pi.purpose = 'bento_subscription'
+        AND pi.status = 'SUCCEEDED'
+        ${rangeFilter}
+        ${floorFilter}
+      ORDER BY pi.updated_at DESC
+      LIMIT 100
+    `;
+
+    return {
+      transactions: rows.map((r) => ({
+        paymentIntentId: r.payment_intent_id,
+        paidAt: r.paid_at.toISOString(),
+        customerId: r.customer_id,
+        customerName: r.display_name,
+        customerPhone: r.phone_e164,
+        packageCode: r.package_code,
+        packageLabel: r.package_label,
+        mealOption: r.meal_option,
+        amountCents: Number(r.amount_cents),
+      })),
+    };
+  }
+
+  private buildSalesAnalyticsResult(params: {
+    from: Date;
+    to: Date;
+    bucket: 'day' | 'week' | 'month';
+    category: 'cake' | 'bento';
+    now: Date;
+    seriesRows: { period_start: Date; order_count: bigint; gmv_cents: bigint }[];
+    topProducts: {
+      product_id: string;
+      name: string;
+      qty_sold: bigint;
+      revenue_cents: bigint;
+      order_count: bigint;
+    }[];
+    paidCount: number;
+    totalGmv: number;
+    openPlaced: number;
+    loyaltyNeg: number;
+    loyaltyPos: number;
+    walletSpend: number;
+    walletTopUp: number;
+    vouchersRedeemed: number;
+    vouchersIssued: number;
+  }): SalesAnalyticsResult {
+    const pointsRedeemedPeriod = Math.abs(params.loyaltyNeg);
+    const pointsIssuedPeriod = params.loyaltyPos;
+    const walletSpendCents = Math.abs(params.walletSpend);
+
+    const series = params.seriesRows.map((r) => ({
+      periodStart: r.period_start.toISOString(),
+      orderCount: Number(r.order_count),
+      gmvCents: Number(r.gmv_cents),
+    }));
+
+    const top = params.topProducts.map((p) => ({
+      productId: p.product_id,
+      name: p.name,
+      qtySold: Number(p.qty_sold),
+      revenueCents: Number(p.revenue_cents),
+      orders: Number(p.order_count),
+    }));
+
+    return {
+      meta: {
+        from: params.from.toISOString(),
+        to: params.to.toISOString(),
+        bucket: params.bucket,
+        category: params.category,
+        generatedAt: params.now.toISOString(),
+      },
+      series,
+      topProducts: top,
+      bestSeller: top[0] ?? null,
+      summary: {
+        completedOrders: params.paidCount,
+        totalGmvCents: params.totalGmv,
+        averageOrderValueCents:
+          params.paidCount > 0
+            ? Math.round(params.totalGmv / params.paidCount)
+            : 0,
+        openOrdersPlacedInRange: params.openPlaced,
+        loyaltyPointsIssuedInRange: pointsIssuedPeriod,
+        loyaltyPointsRedeemedInRange: pointsRedeemedPeriod,
+        storedWalletSpendCentsInRange: walletSpendCents,
+        storedWalletTopUpCentsInRange: params.walletTopUp,
+        vouchersIssuedInRange: params.vouchersIssued,
+        vouchersRedeemedInRange: params.vouchersRedeemed,
+      },
+    };
+  }
+
+  salesAnalyticsToCsv(payload: SalesAnalyticsResult): string {
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const lines: string[] = [];
+    lines.push('kind,key,value');
+    lines.push(['meta', 'from', payload.meta.from].map(esc).join(','));
+    lines.push(['meta', 'to', payload.meta.to].map(esc).join(','));
+    lines.push(['meta', 'bucket', payload.meta.bucket].map(esc).join(','));
+    lines.push(['meta', 'category', payload.meta.category].map(esc).join(','));
+    lines.push(
+      ['meta', 'generatedAt', payload.meta.generatedAt].map(esc).join(','),
+    );
+    for (const [k, v] of Object.entries(payload.summary)) {
+      lines.push(['summary', k, v].map(esc).join(','));
+    }
+    lines.push('');
+    lines.push('periodStart,orderCount,gmvCents');
+    for (const row of payload.series) {
+      lines.push(
+        [row.periodStart, row.orderCount, row.gmvCents].map(esc).join(','),
+      );
+    }
+    lines.push('');
+    lines.push('productId,name,qtySold,revenueCents,orders');
+    for (const p of payload.topProducts) {
+      lines.push(
+        [p.productId, p.name, p.qtySold, p.revenueCents, p.orders]
+          .map(esc)
+          .join(','),
+      );
+    }
+    if (payload.bestSeller) {
+      lines.push('');
+      lines.push('bestSellerKey,value');
+      const b = payload.bestSeller;
+      lines.push(['productId', b.productId].map(esc).join(','));
+      lines.push(['name', b.name].map(esc).join(','));
+      lines.push(['qtySold', b.qtySold].map(esc).join(','));
+      lines.push(['revenueCents', b.revenueCents].map(esc).join(','));
+      lines.push(['orders', b.orders].map(esc).join(','));
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  private fulfillmentSummaryStrings(raw: Prisma.JsonValue | null): string[] {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.filter((x): x is string => typeof x === 'string');
+    }
+    return [];
+  }
+
+  private maskOrderPhone(phone: string | null | undefined): string {
+    const p = (phone ?? '').trim();
+    if (p.length < 5) return p || '—';
+    return `···${p.slice(-4)}`;
+  }
+
+  async listCommerceOrders(query: AdminListOrdersQueryDto) {
+    const take = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const where: Prisma.CustomerOrderWhereInput = {};
+    const st = query.status ?? 'all';
+    if (st === 'placed') where.status = 'placed';
+    else if (st === 'completed') where.status = 'completed';
+
+    const parseDayStart = (iso: string) =>
+      iso.length >= 10
+        ? new Date(`${iso.slice(0, 10)}T00:00:00.000Z`)
+        : new Date(iso);
+    const parseDayExclusiveEnd = (iso: string) => {
+      const d = parseDayStart(iso);
+      if (iso.length >= 10) {
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      return d;
+    };
+
+    const from = query.from ? parseDayStart(query.from) : undefined;
+    const toEx = query.to ? parseDayExclusiveEnd(query.to) : undefined;
+
+    if (from || toEx) {
+      if (query.dateField === 'completed' && st === 'completed') {
+        where.AND = [
+          { status: 'completed' },
+          {
+            OR: [
+              {
+                completedAt: {
+                  ...(from ? { gte: from } : {}),
+                  ...(toEx ? { lt: toEx } : {}),
+                },
+              },
+              {
+                AND: [
+                  { completedAt: null },
+                  {
+                    placedAt: {
+                      ...(from ? { gte: from } : {}),
+                      ...(toEx ? { lt: toEx } : {}),
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+      } else {
+        where.placedAt = {
+          ...(from ? { gte: from } : {}),
+          ...(toEx ? { lt: toEx } : {}),
+        };
+      }
+    }
+
+    if (query.productId?.trim()) {
+      where.lines = { some: { productId: query.productId.trim() } };
+    } else if (query.productContains?.trim()) {
+      const q = query.productContains.trim();
+      where.lines = {
+        some: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { productId: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      };
+    }
+
+    const sort = query.sort ?? 'placed_desc';
+    let orderBy: Prisma.CustomerOrderOrderByWithRelationInput = {
+      placedAt: 'desc',
+    };
+    if (sort === 'placed_asc') orderBy = { placedAt: 'asc' };
+    else if (sort === 'total_desc') orderBy = { totalCents: 'desc' };
+    else if (sort === 'total_asc') orderBy = { totalCents: 'asc' };
+    else if (sort === 'completed_desc') orderBy = { completedAt: 'desc' };
+    else if (sort === 'completed_asc') orderBy = { completedAt: 'asc' };
+
+    const rows = await this.prisma.customerOrder.findMany({
+      where,
+      orderBy,
+      take,
+      include: {
+        customer: { select: { id: true, phoneE164: true, displayName: true } },
+        lines: { orderBy: { id: 'asc' } },
+      },
+    });
+
+    return {
+      orders: rows.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        placedAt: o.placedAt.toISOString(),
+        completedAt: o.completedAt?.toISOString() ?? null,
+        totalCents: o.totalCents,
+        status: o.status,
+        fulfillmentSummary: this.fulfillmentSummaryStrings(
+          o.fulfillmentSummary,
+        ),
+        customerDisplayName: o.customer.displayName,
+        customerPhoneMasked: this.maskOrderPhone(o.customer.phoneE164),
+        lineCount: o.lines.length,
+        lines: o.lines.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          name: l.name,
+          variantLabel: l.variantLabel,
+          unitPriceCents: l.unitPriceCents,
+          qty: l.qty,
+        })),
+      })),
+    };
+  }
+
+  async getDailyCommerceReport(dateStr: string) {
+    const day = new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
+    const next = new Date(day);
+    next.setUTCDate(next.getUTCDate() + 1);
+    // Apply the sales reporting cutoff: a day fully before salesStartDate yields
+    // an empty (>= start AND < next) window and therefore zeroed totals.
+    const floor = this.salesFloor();
+    const start = floor && floor.getTime() > day.getTime() ? floor : day;
+
+    const closed = await this.prisma.dailySalesClose.findUnique({
+      where: { businessDate: day },
+    });
+
+    const items = await this.prisma.$queryRaw<
+      {
+        product_id: string;
+        name: string;
+        qty_sold: bigint;
+        revenue_cents: bigint;
+      }[]
+    >`
+      SELECT l.product_id AS product_id,
+             MAX(l.name) AS name,
+             SUM(l.qty)::bigint AS qty_sold,
+             SUM(l.unit_price_cents * l.qty)::bigint AS revenue_cents
+      FROM customer_order_lines l
+      INNER JOIN customer_orders o ON o.id = l.order_id
+      WHERE o.status = 'completed'
+        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
+        AND COALESCE(o.completed_at, o.placed_at) < ${next}
+      GROUP BY l.product_id
+      ORDER BY qty_sold DESC
+    `;
+
+    const totals = await this.prisma.$queryRaw<
+      { orders: bigint; gmv: bigint }[]
+    >`
+      SELECT COUNT(*)::bigint AS orders,
+             COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+      FROM customer_orders o
+      WHERE o.status = 'completed'
+        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
+        AND COALESCE(o.completed_at, o.placed_at) < ${next}
+    `;
+
+    return {
+      date: day.toISOString().slice(0, 10),
+      closed: !!closed,
+      closedAt: closed?.closedAt.toISOString() ?? null,
+      completedOrders: Number(totals[0]?.orders ?? 0n),
+      totalGmvCents: Number(totals[0]?.gmv ?? 0n),
+      items: items.map((r) => ({
+        productId: r.product_id,
+        name: r.name,
+        qtySold: Number(r.qty_sold),
+        revenueCents: Number(r.revenue_cents),
+      })),
+    };
+  }
+
+  async closeDailyCommerce(dateStr: string, auth: AdminAuthState) {
+    const day = new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
+    const existing = await this.prisma.dailySalesClose.findUnique({
+      where: { businessDate: day },
+    });
+    if (existing) {
+      return {
+        date: day.toISOString().slice(0, 10),
+        closedAt: existing.closedAt.toISOString(),
+        alreadyClosed: true as const,
+      };
+    }
+    const row = await this.prisma.dailySalesClose.create({
+      data: { businessDate: day },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'commerce.daily_closed',
+      entityType: 'daily_sales_close',
+      entityId: row.id,
+      metadata: { businessDate: day.toISOString().slice(0, 10) } as object,
+    });
+    return {
+      date: day.toISOString().slice(0, 10),
+      closedAt: row.closedAt.toISOString(),
+      alreadyClosed: false as const,
+    };
+  }
+
+  listVoucherPushRules() {
+    return this.prisma.voucherPushRule.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
+        },
+      },
+    });
+  }
+
+  async createVoucherPushRule(
+    dto: CreateVoucherPushRuleDto,
+    auth: AdminAuthState,
+  ) {
+    await this.prisma.voucherDefinition.findUniqueOrThrow({
+      where: { id: dto.voucherDefinitionId },
+    });
+    const created = await this.prisma.voucherPushRule.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        isActive: dto.isActive ?? true,
+        sortOrder: dto.sortOrder ?? 0,
+        triggerType: dto.triggerType,
+        triggerConfig: dto.triggerConfig as Prisma.InputJsonValue,
+        voucherDefinitionId: dto.voucherDefinitionId,
+        maxGrantsPerCustomer: dto.maxGrantsPerCustomer ?? null,
+        cooldownDays: dto.cooldownDays ?? null,
+      },
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher_push_rule.created',
+      entityType: 'voucher_push_rule',
+      entityId: created.id,
+      afterValue: {
+        name: created.name,
+        triggerType: created.triggerType,
+      } as object,
+    });
+    return created;
+  }
+
+  async updateVoucherPushRule(
+    id: string,
+    dto: UpdateVoucherPushRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const before = await this.prisma.voucherPushRule.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'VOUCHER_PUSH_RULE_NOT_FOUND',
+        message: 'Voucher push rule not found',
+      });
+    }
+    if (dto.voucherDefinitionId) {
+      await this.prisma.voucherDefinition.findUniqueOrThrow({
+        where: { id: dto.voucherDefinitionId },
+      });
+    }
+    const data: Prisma.VoucherPushRuleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.description !== undefined) {
+      data.description = dto.description?.trim() || null;
+    }
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    if (dto.triggerType !== undefined) data.triggerType = dto.triggerType;
+    if (dto.triggerConfig !== undefined) {
+      data.triggerConfig = dto.triggerConfig as Prisma.InputJsonValue;
+    }
+    if (dto.voucherDefinitionId !== undefined) {
+      data.voucherDefinition = {
+        connect: { id: dto.voucherDefinitionId },
+      };
+    }
+    if (dto.maxGrantsPerCustomer !== undefined) {
+      data.maxGrantsPerCustomer = dto.maxGrantsPerCustomer;
+    }
+    if (dto.cooldownDays !== undefined) {
+      data.cooldownDays = dto.cooldownDays;
+    }
+    const updated = await this.prisma.voucherPushRule.update({
+      where: { id },
+      data,
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher_push_rule.updated',
+      entityType: 'voucher_push_rule',
+      entityId: id,
+      beforeValue: {
+        name: before.name,
+        triggerType: before.triggerType,
+        isActive: before.isActive,
+      } as object,
+      afterValue: {
+        name: updated.name,
+        triggerType: updated.triggerType,
+        isActive: updated.isActive,
+      } as object,
+    });
+    return updated;
+  }
+
+  listPerksCampaignRules() {
+    return this.prisma.perksCampaignRule.findMany({
+      orderBy: [{ campaignStartDate: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+  }
+
+  async createPerksCampaignRule(
+    dto: CreatePerksCampaignRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const def = await this.prisma.voucherDefinition.findUnique({
+      where: { id: dto.voucherDefinitionId },
+      select: { id: true, pointsCost: true },
+    });
+    if (!def) {
+      throw new BadRequestException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message:
+          'Voucher definition not found. Select a valid voucher/reward series before creating this campaign rule.',
+      });
+    }
+    const start = perksDateOnly(dto.campaignStartDate);
+    const end = perksDateOnly(dto.campaignEndDate);
+    validatePerksCampaignRuleFields({
+      programKind: dto.programKind,
+      criteriaKind: dto.criteriaKind,
+      campaignStartDate: start,
+      campaignEndDate: end,
+      minPurchaseAmountSen: dto.minPurchaseAmountSen ?? null,
+      rebateValueSen: dto.rebateValueSen ?? null,
+      minWalletTopupSen: dto.minWalletTopupSen ?? null,
+      withinDaysOfSignup: dto.withinDaysOfSignup ?? null,
+      minReferralCount: dto.minReferralCount ?? null,
+      inactiveDays: dto.inactiveDays ?? null,
+      minMemberTier: dto.minMemberTier?.trim() || null,
+      definitionPointsCost: def.pointsCost,
+    });
+    const created = await this.prisma.perksCampaignRule.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        isActive: dto.isActive ?? true,
+        programKind: dto.programKind,
+        criteriaKind: dto.criteriaKind,
+        campaignStartDate: start,
+        campaignEndDate: end,
+        minPurchaseAmountSen: dto.minPurchaseAmountSen ?? null,
+        rebateValueSen: dto.rebateValueSen ?? null,
+        minWalletTopupSen: dto.minWalletTopupSen ?? null,
+        withinDaysOfSignup: dto.withinDaysOfSignup ?? null,
+        minReferralCount: dto.minReferralCount ?? null,
+        inactiveDays: dto.inactiveDays ?? null,
+        minMemberTier: dto.minMemberTier?.trim() || null,
+        voucherDefinitionId: dto.voucherDefinitionId,
+        maxGrantsPerCustomer: dto.maxGrantsPerCustomer ?? null,
+      },
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'perks_campaign_rule.created',
+      entityType: 'perks_campaign_rule',
+      entityId: created.id,
+      afterValue: {
+        name: created.name,
+        programKind: created.programKind,
+      } as object,
+    });
+    return created;
+  }
+
+  async updatePerksCampaignRule(
+    id: string,
+    dto: UpdatePerksCampaignRuleDto,
+    auth: AdminAuthState,
+  ) {
+    const before = await this.prisma.perksCampaignRule.findUnique({
+      where: { id },
+      include: {
+        voucherDefinition: { select: { pointsCost: true } },
+      },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'PERKS_CAMPAIGN_RULE_NOT_FOUND',
+        message: 'Perks campaign rule not found',
+      });
+    }
+    const defId = dto.voucherDefinitionId ?? before.voucherDefinitionId;
+    const def = await this.prisma.voucherDefinition.findUnique({
+      where: { id: defId },
+      select: { id: true, pointsCost: true },
+    });
+    if (!def) {
+      throw new BadRequestException({
+        code: 'VOUCHER_DEFINITION_NOT_FOUND',
+        message:
+          'Voucher definition not found. Select a valid voucher/reward series before updating this campaign rule.',
+      });
+    }
+    const programKind = dto.programKind ?? before.programKind;
+    const criteriaKind = dto.criteriaKind ?? before.criteriaKind;
+    const start =
+      dto.campaignStartDate != null
+        ? perksDateOnly(dto.campaignStartDate)
+        : before.campaignStartDate;
+    const end =
+      dto.campaignEndDate != null
+        ? perksDateOnly(dto.campaignEndDate)
+        : before.campaignEndDate;
+    validatePerksCampaignRuleFields({
+      programKind,
+      criteriaKind,
+      campaignStartDate: start,
+      campaignEndDate: end,
+      minPurchaseAmountSen:
+        dto.minPurchaseAmountSen !== undefined
+          ? dto.minPurchaseAmountSen
+          : before.minPurchaseAmountSen,
+      rebateValueSen:
+        dto.rebateValueSen !== undefined
+          ? dto.rebateValueSen
+          : before.rebateValueSen,
+      minWalletTopupSen:
+        dto.minWalletTopupSen !== undefined
+          ? dto.minWalletTopupSen
+          : before.minWalletTopupSen,
+      withinDaysOfSignup:
+        dto.withinDaysOfSignup !== undefined
+          ? dto.withinDaysOfSignup
+          : before.withinDaysOfSignup,
+      minReferralCount:
+        dto.minReferralCount !== undefined
+          ? dto.minReferralCount
+          : before.minReferralCount,
+      inactiveDays:
+        dto.inactiveDays !== undefined ? dto.inactiveDays : before.inactiveDays,
+      minMemberTier:
+        dto.minMemberTier !== undefined
+          ? dto.minMemberTier?.trim() || null
+          : before.minMemberTier,
+      definitionPointsCost: def.pointsCost,
+    });
+    const data: Prisma.PerksCampaignRuleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.description !== undefined) {
+      data.description = dto.description?.trim() || null;
+    }
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.programKind !== undefined) data.programKind = dto.programKind;
+    if (dto.criteriaKind !== undefined) data.criteriaKind = dto.criteriaKind;
+    if (dto.campaignStartDate !== undefined) {
+      data.campaignStartDate = start;
+    }
+    if (dto.campaignEndDate !== undefined) {
+      data.campaignEndDate = end;
+    }
+    if (dto.minPurchaseAmountSen !== undefined) {
+      data.minPurchaseAmountSen = dto.minPurchaseAmountSen;
+    }
+    if (dto.rebateValueSen !== undefined) {
+      data.rebateValueSen = dto.rebateValueSen;
+    }
+    if (dto.minWalletTopupSen !== undefined) {
+      data.minWalletTopupSen = dto.minWalletTopupSen;
+    }
+    if (dto.withinDaysOfSignup !== undefined) {
+      data.withinDaysOfSignup = dto.withinDaysOfSignup;
+    }
+    if (dto.minReferralCount !== undefined) {
+      data.minReferralCount = dto.minReferralCount;
+    }
+    if (dto.inactiveDays !== undefined) {
+      data.inactiveDays = dto.inactiveDays;
+    }
+    if (dto.minMemberTier !== undefined) {
+      data.minMemberTier = dto.minMemberTier?.trim() || null;
+    }
+    if (dto.voucherDefinitionId !== undefined) {
+      data.voucherDefinition = { connect: { id: dto.voucherDefinitionId } };
+    }
+    if (dto.maxGrantsPerCustomer !== undefined) {
+      data.maxGrantsPerCustomer = dto.maxGrantsPerCustomer;
+    }
+    const updated = await this.prisma.perksCampaignRule.update({
+      where: { id },
+      data,
+      include: {
+        voucherDefinition: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            showInRewardsCatalog: true,
+            pointsCost: true,
+          },
+        },
+      },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'perks_campaign_rule.updated',
+      entityType: 'perks_campaign_rule',
+      entityId: id,
+      beforeValue: { name: before.name, isActive: before.isActive } as object,
+      afterValue: { name: updated.name, isActive: updated.isActive } as object,
+    });
+    return updated;
   }
 }

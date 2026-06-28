@@ -54,7 +54,9 @@ export class ImportExportController {
 
   @Post('import/preview/:kind')
   @RequirePermissions(P.IMPORT_PREVIEW)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }),
+  )
   preview(
     @Param('kind') kindRaw: string,
     @UploadedFile() file: Express.Multer.File,

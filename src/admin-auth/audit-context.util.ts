@@ -12,7 +12,8 @@ export function auditActorBase(auth: AdminAuthState): {
     actorType: 'admin',
     actorId: auth.actorLabel,
     adminUserId: auth.kind === 'user' ? (auth.adminUserId ?? null) : null,
-    adminRole: auth.kind === 'user' && auth.role != null ? String(auth.role) : null,
+    adminRole:
+      auth.kind === 'user' && auth.role != null ? String(auth.role) : null,
     ipAddress: auth.ip ?? null,
   };
 }

@@ -8,13 +8,32 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
+import { ReportingSettingsModule } from './reporting-settings.module';
+import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
+import { HomeAdsModule } from '../home-ads/home-ads.module';
+import { EmployeesModule } from '../employees/employees.module';
+import { AdminEmployeesController } from './admin-employees.controller';
+import { BentoMenuModule } from '../bento/bento-menu.module';
+import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 
 @Module({
-  imports: [AdminAuthModule, LoyaltyModule, CustomersModule, WalletModule],
+  imports: [
+    AdminAuthModule,
+    LoyaltyModule,
+    CustomersModule,
+    WalletModule,
+    ShopCatalogModule,
+    HomeAdsModule,
+    EmployeesModule,
+    BentoMenuModule,
+    ReportingSettingsModule,
+    BentoVoucherModule,
+  ],
   controllers: [
     AdminController,
     AdminApprovalsController,
     AdminReportsController,
+    AdminEmployeesController,
   ],
   providers: [AdminService, ApprovalsService],
 })

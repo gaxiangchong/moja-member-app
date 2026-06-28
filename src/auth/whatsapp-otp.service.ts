@@ -1,9 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { envFlagTrue } from '../config/env-flags';
+
+type Provider = 'meta' | 'twilio';
 
 /**
- * Sends login OTP via Meta WhatsApp Cloud API when credentials are set.
- * @see https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages
+ * Sends login OTP via WhatsApp. Two providers are supported and selected via
+ * `WHATSAPP_PROVIDER` (default `meta`):
+ *
+ * - `meta`   — Meta WhatsApp Cloud API (Graph API).
+ *              @see https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages
+ * - `twilio` — Twilio Programmable Messaging over WhatsApp.
+ *              @see https://www.twilio.com/docs/whatsapp/api
  */
 @Injectable()
 export class WhatsappOtpService {
@@ -12,6 +20,46 @@ export class WhatsappOtpService {
   constructor(private readonly config: ConfigService) {}
 
   isConfigured(): boolean {
+    return this.resolveProvider() === 'twilio'
+      ? this.isTwilioConfigured()
+      : this.isMetaConfigured();
+  }
+
+  async sendOtp(phoneE164: string, code: string): Promise<void> {
+    if (this.resolveProvider() === 'twilio') {
+      await this.sendViaTwilio(phoneE164, code);
+      return;
+    }
+    await this.sendViaMeta(phoneE164, code);
+  }
+
+  private resolveProvider(): Provider {
+    const raw = this.config
+      .get<string>('WHATSAPP_PROVIDER', 'meta')
+      .trim()
+      .toLowerCase();
+    return raw === 'twilio' ? 'twilio' : 'meta';
+  }
+
+  /**
+   * When unset, defaults to `true` so Meta **authentication** OTP templates work
+   * (code must appear in body + url button). Explicit `false` for body-only utility templates.
+   */
+  private resolveMetaIncludeAuthButton(): boolean {
+    const raw = this.config.get<string>(
+      'WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON',
+    );
+    if (raw === undefined || raw.trim() === '') {
+      return true;
+    }
+    return envFlagTrue(raw);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Meta WhatsApp Cloud API
+  // ---------------------------------------------------------------------------
+
+  private isMetaConfigured(): boolean {
     const token = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
     const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
     return Boolean(token?.trim() && phoneNumberId?.trim());
@@ -20,7 +68,7 @@ export class WhatsappOtpService {
   /**
    * `phoneE164` e.g. +6591234567 → WhatsApp `to` is digits only (no +).
    */
-  async sendOtp(phoneE164: string, code: string): Promise<void> {
+  private async sendViaMeta(phoneE164: string, code: string): Promise<void> {
     const token = this.config.getOrThrow<string>('WHATSAPP_ACCESS_TOKEN');
     const phoneNumberId = this.config.getOrThrow<string>(
       'WHATSAPP_PHONE_NUMBER_ID',
@@ -34,17 +82,32 @@ export class WhatsappOtpService {
       throw new Error('Invalid phone for WhatsApp delivery');
     }
 
-    const templateName = this.config.get<string>('WHATSAPP_OTP_TEMPLATE_NAME');
-    const templateLang = this.config.get<string>(
-      'WHATSAPP_OTP_TEMPLATE_LANG',
-      'en',
-    );
+    const templateName = this.config
+      .get<string>('WHATSAPP_OTP_TEMPLATE_NAME')
+      ?.trim();
+    const templateLang =
+      this.config.get<string>('WHATSAPP_OTP_TEMPLATE_LANG', 'en')?.trim() ||
+      'en';
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+
+    /**
+     * Meta authentication (OTP) templates with a copy-code / one-tap button require
+     * the same code in both `body` and `button` components. See:
+     * https://developers.facebook.com/docs/whatsapp/business-management-api/authentication-templates/copy-code-button-authentication-templates/
+     * Utility templates with only `{{1}}` in the body should set
+     * `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON=false`.
+     */
+    const includeAuthButton = templateName
+      ? this.resolveMetaIncludeAuthButton()
+      : false;
+
+    const otpTextParam = { type: 'text' as const, text: code };
 
     const body = templateName
       ? {
           messaging_product: 'whatsapp',
+          recipient_type: 'individual',
           to,
           type: 'template',
           template: {
@@ -53,8 +116,18 @@ export class WhatsappOtpService {
             components: [
               {
                 type: 'body',
-                parameters: [{ type: 'text', text: code }],
+                parameters: [otpTextParam],
               },
+              ...(includeAuthButton
+                ? [
+                    {
+                      type: 'button' as const,
+                      sub_type: 'url' as const,
+                      index: '0',
+                      parameters: [otpTextParam],
+                    },
+                  ]
+                : []),
             ],
           },
         }
@@ -78,8 +151,92 @@ export class WhatsappOtpService {
 
     if (!res.ok) {
       const text = await res.text();
-      this.logger.error(`WhatsApp API error ${res.status}: ${text}`);
+      this.logger.error(`WhatsApp (Meta) API error ${res.status}: ${text}`);
       throw new Error(`WhatsApp send failed: ${res.status}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Twilio WhatsApp (Programmable Messaging)
+  // ---------------------------------------------------------------------------
+
+  private isTwilioConfigured(): boolean {
+    const sid = this.config.get<string>('TWILIO_ACCOUNT_SID');
+    const token = this.config.get<string>('TWILIO_AUTH_TOKEN');
+    const from = this.config.get<string>('TWILIO_WHATSAPP_FROM')?.trim();
+    const mss = this.config.get<string>('TWILIO_MESSAGING_SERVICE_SID')?.trim();
+    return Boolean(sid?.trim() && token?.trim() && (from || mss));
+  }
+
+  /**
+   * Sends the OTP through Twilio's Messages API on the WhatsApp channel.
+   * Supports either a direct `From=whatsapp:+…` sender or a Messaging Service SID.
+   * When `TWILIO_WHATSAPP_CONTENT_SID` is set, a pre-approved Content template
+   * is used with `{{1}}` bound to the OTP code; otherwise a plain-text `Body`
+   * is sent (which only works within the 24h customer-initiated window or in the
+   * Twilio WhatsApp Sandbox).
+   */
+  private async sendViaTwilio(phoneE164: string, code: string): Promise<void> {
+    const accountSid = this.config.getOrThrow<string>('TWILIO_ACCOUNT_SID');
+    const authToken = this.config.getOrThrow<string>('TWILIO_AUTH_TOKEN');
+    const from = this.config.get<string>('TWILIO_WHATSAPP_FROM')?.trim();
+    const messagingServiceSid = this.config
+      .get<string>('TWILIO_MESSAGING_SERVICE_SID')
+      ?.trim();
+    if (!from && !messagingServiceSid) {
+      throw new Error(
+        'Twilio sender not set: define TWILIO_WHATSAPP_FROM or TWILIO_MESSAGING_SERVICE_SID',
+      );
+    }
+
+    const digits = phoneE164.replace(/\D/g, '');
+    if (!digits) {
+      throw new Error('Invalid phone for WhatsApp delivery');
+    }
+    const toE164 = phoneE164.startsWith('+') ? phoneE164 : `+${digits}`;
+
+    const contentSid = this.config
+      .get<string>('TWILIO_WHATSAPP_CONTENT_SID')
+      ?.trim();
+
+    const params = new URLSearchParams();
+    params.set('To', `whatsapp:${toE164}`);
+    if (messagingServiceSid) {
+      params.set('MessagingServiceSid', messagingServiceSid);
+    } else if (from) {
+      params.set(
+        'From',
+        from.startsWith('whatsapp:') ? from : `whatsapp:${from}`,
+      );
+    }
+    if (contentSid) {
+      params.set('ContentSid', contentSid);
+      params.set('ContentVariables', JSON.stringify({ '1': code }));
+    } else {
+      params.set(
+        'Body',
+        `Your Moja verification code is ${code}. Do not share it with anyone. It expires in a few minutes.`,
+      );
+    }
+
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(
+      accountSid,
+    )}/Messages.json`;
+    const basic = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logger.error(`Twilio WhatsApp API error ${res.status}: ${text}`);
+      throw new Error(`Twilio WhatsApp send failed: ${res.status}`);
     }
   }
 }

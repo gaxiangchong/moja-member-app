@@ -1,0 +1,3669 @@
+/* ============================================================
+   bento-ui.css — Design tokens & visual polish layer
+   Loaded after App.css; these rules take precedence.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bg: #fff9f5;
+  --surface: #ffffff;
+  --surface-strong: #fff7ed;
+  --surface-soft: #fff2e5;
+  --border: #ede8e0;
+  --border-strong: #f0d8c4;
+  --text: #2d1a0e;
+  --muted: #7a6a5a;
+  --primary: #c2410c;
+  --primary-soft: #ffedd5;
+  --accent: #f97316;
+  --success: #15803d;
+  --danger: #b91c1c;
+  --shadow: 0 20px 50px rgba(39, 28, 21, 0.1);
+  --serif: 'Noto Serif SC', 'Songti SC', 'STSong', Georgia, 'Times New Roman', serif;
+  --script: 'Ma Shan Zheng', 'Brush Script MT', cursive;
+  --menu-gold: #c9a14a;
+  --menu-cream: #fdf6ea;
+  --menu-cream-2: #f8ecd9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Logged-in shell: prevent document scroll (stops nav bar jumping on mobile). */
+html.bento-shell-locked,
+html.bento-shell-locked body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.bento-shell-locked #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at top left, rgba(249, 115, 22, 0.1) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom right, rgba(194, 65, 12, 0.07) 0%, transparent 40%),
+    linear-gradient(180deg, #fff9f5 0%, #fff4ec 100%);
+  color: var(--text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: none;
+}
+
+/* ---- Shell ---- */
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+/* Logged-in layout: pin app to viewport; only main scrolls */
+.appShell {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: 100vw;
+  height: var(--app-vh, 100dvh);
+  max-height: var(--app-vh, 100dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.appShell .shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
+  touch-action: pan-y;
+}
+
+.shell {
+  flex: 1;
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 16px 110px;
+}
+
+/* Capacity urgency (post-payment / scheduling) */
+.capacityUrgencyNotice {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #7c2d12;
+}
+
+.capacityUrgencyNotice strong {
+  font-weight: 800;
+}
+
+.capacityUrgencyNoticeBanner {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(22, 101, 52, 0.15);
+  color: #14532d;
+  font-size: 0.82rem;
+}
+
+.capacityUrgencyCard {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1px solid #fdba74;
+}
+
+.capacityUrgencyCard .capacityUrgencyNotice {
+  color: #9a3412;
+}
+
+/* Checkout — purchase blocked by capacity */
+.purchaseCapacityBlock {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.purchaseCapacityBlockPaused {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.purchaseCapacityTitle {
+  margin: 0 0 6px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #991b1b;
+}
+
+.purchaseCapacityBlockPaused .purchaseCapacityTitle {
+  color: #9a3412;
+}
+
+.purchaseCapacityBody,
+.purchaseCapacityAction {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+
+.purchaseCapacityBlockPaused .purchaseCapacityBody,
+.purchaseCapacityBlockPaused .purchaseCapacityAction {
+  color: #9a3412;
+}
+
+.purchaseCapacityAction {
+  margin-bottom: 0;
+}
+
+.purchaseCapacityBody strong,
+.purchaseCapacityAction strong {
+  font-weight: 800;
+}
+
+/* ---- Bottom tabs — enhanced ---- */
+.bottomTabs {
+  flex-shrink: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(237, 232, 224, 0.9);
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 20px rgba(43, 33, 24, 0.06);
+  /* Never use fixed positioning — nav is a flex footer inside .appShell */
+  position: relative;
+}
+
+.bottomTabsInner {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  width: min(520px, 100%);
+  margin: 0 auto;
+}
+
+.bottomTabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  background: transparent;
+  color: #a09080;
+  font-size: 0.62rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  letter-spacing: 0.01em;
+}
+
+.bottomTabs button:hover {
+  background: #fff2e8;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bottomTabs button:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.tabIcon {
+  font-size: 1.4rem;
+  line-height: 1;
+  display: block;
+}
+
+.bottomTabs button.active {
+  color: var(--primary);
+  background: linear-gradient(150deg, #fff2e8, #ffdfc9);
+  box-shadow: 0 6px 18px rgba(194, 65, 12, 0.18);
+}
+
+/* ---- Section card ---- */
+.section {
+  background: var(--surface);
+  border-radius: 22px;
+  padding: 20px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgba(43, 33, 24, 0.04);
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.sectionBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---- Hero card ---- */
+.heroCard {
+  background: linear-gradient(145deg, #fff4eb 0%, #ffe8d3 60%, #ffd4b5 100%);
+  border: 1px solid rgba(194, 65, 12, 0.14);
+  padding: 24px;
+  border-radius: 28px;
+  box-shadow: 0 16px 48px rgba(194, 65, 12, 0.12);
+}
+
+.heroCard h1 {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  letter-spacing: -0.04em;
+  color: #2d1a0e;
+}
+
+.heroCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.heroStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.heroStat {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(194, 65, 12, 0.1);
+  border-radius: 16px;
+  padding: 12px 8px;
+  text-align: center;
+  backdrop-filter: blur(4px);
+}
+
+.heroStatLabel {
+  color: #8a6b57;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* ---- Plan summary ---- */
+.planSummary {
+  background: var(--surface-strong);
+  border: 1px solid var(--border-strong);
+}
+
+.planSummaryHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.planSummaryHeader h2 {
+  margin: 0;
+  font-size: 1.18rem;
+}
+
+.planPrice {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.planDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.planDetailItem {
+  border: 1px solid #f5d2bb;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+}
+
+.planDetailItem span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.planDetailItem strong {
+  font-size: 0.95rem;
+}
+
+.planSummaryFooter {
+  margin-top: 16px;
+}
+
+/* ---- Package cards ---- */
+.pkgGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.pkgCard {
+  border-radius: 22px;
+  padding: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #fffbf6 100%);
+  border: 2px solid rgba(237, 232, 224, 0.95);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pkgCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px rgba(43, 33, 24, 0.09);
+}
+
+.pkgCard.active {
+  border-color: var(--primary);
+  background: linear-gradient(180deg, #fff7ed, #fff0e0);
+  box-shadow: 0 10px 32px rgba(194, 65, 12, 0.2);
+}
+
+.pkgCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pkgCardHeader strong {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.pkgNote {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.pkgMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  color: #6d4a31;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.pkgBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pkgBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fff2df;
+  color: #92350d;
+  font-size: 0.73rem;
+  font-weight: 600;
+}
+
+/* ---- Package comparison table ---- */
+.pkgTblWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+  padding: 0 4px 2px;
+}
+
+.pkgTbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px 0;
+  /* No min-width: keep all 3 plans visible on mobile without horizontal scroll. */
+  table-layout: fixed;
+}
+
+/* Sticky feature label column */
+.pkgTblRowLabel {
+  width: 52px;
+  min-width: 52px;
+  padding: 9px 6px 9px 0;
+  text-align: left;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: normal;
+  line-height: 1.2;
+  vertical-align: middle;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+
+/* Column header */
+.pkgTblHead {
+  padding: 12px 4px 8px;
+  text-align: center;
+  min-width: 0;
+  background: #f6f3ef;
+  border-top: 2px solid transparent;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  vertical-align: top;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pkgTblHead.selected {
+  background: linear-gradient(170deg, #fff7ed 0%, #ffecd5 100%);
+  border-top-color: var(--primary);
+  border-left-color: var(--primary);
+  border-right-color: var(--primary);
+}
+
+.pkgTblHead.newcomer {
+  background: #f0fdf4;
+}
+
+.pkgTblHead.newcomer.selected {
+  background: linear-gradient(170deg, #f0fdf4, #dcfce7);
+  border-top-color: #22c55e;
+  border-left-color: #22c55e;
+  border-right-color: #22c55e;
+}
+
+.pkgTblName {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.pkgTblStarterBadge {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pkgTblMealTier {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  text-align: center;
+}
+
+.pkgTblMealTier--value {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.pkgTblMealTier--good {
+  background: linear-gradient(135deg, #ffedd5, #fed7aa);
+  color: #c2410c;
+  box-shadow: 0 1px 4px rgba(194, 65, 12, 0.12);
+}
+
+.pkgTblMealTier--super {
+  background: linear-gradient(135deg, #fde68a, #fbbf24);
+  color: #92400e;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.28);
+}
+
+/* Body cells */
+.pkgTblRow:nth-child(odd) .pkgTblCell   { background: #f6f3ef; }
+.pkgTblRow:nth-child(even) .pkgTblCell  { background: #f0ece7; }
+
+.pkgTblCell {
+  padding: 9px 3px;
+  text-align: center;
+  font-size: 0.82rem;
+  vertical-align: middle;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pkgTblRow:nth-child(odd) .pkgTblCell.selected  { background: #fff7ed; }
+.pkgTblRow:nth-child(even) .pkgTblCell.selected { background: #ffedd5; }
+
+.pkgTblCell.selected {
+  border-left-color: var(--primary);
+  border-right-color: var(--primary);
+}
+
+/* Footer */
+.pkgTblFoot {
+  padding: 10px 4px 12px;
+  text-align: center;
+  background: #f6f3ef;
+  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pkgTblFoot.selected {
+  background: #ffecd5;
+  border-bottom-color: var(--primary);
+  border-left-color: var(--primary);
+  border-right-color: var(--primary);
+}
+
+/* Cell value helpers */
+.pkgTblSub {
+  display: block;
+  font-size: 0.67rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* "was RM18" original price shown above the discounted price */
+.pkgTblWas {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 1.1;
+  margin-bottom: 1px;
+  white-space: nowrap;
+}
+
+.pkgTblWas s {
+  text-decoration: line-through;
+}
+
+.pkgTblSaveBadge {
+  display: inline-block;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.7rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+  box-shadow: 0 2px 6px rgba(21, 128, 61, 0.3);
+  white-space: normal;
+}
+
+/* Stack "Save" over the amount so the badge is always 2 lines. */
+.pkgTblSaveWord,
+.pkgTblSaveAmt {
+  display: block;
+  text-align: center;
+}
+
+.pkgTblNone {
+  color: #c4b5a8;
+}
+
+/* Select buttons */
+.pkgTblBtn {
+  width: 100%;
+  padding: 8px 2px;
+  border-radius: 999px;
+  border: 1.5px solid #ddd;
+  background: #fff;
+  color: #6d4a31;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.pkgTblBtn:hover:not(.selected) {
+  border-color: var(--primary);
+  background: #fff7ed;
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.pkgTblBtn.selected {
+  background: linear-gradient(135deg, var(--accent), var(--primary));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.32);
+}
+
+.pkgTblBtn.newcomer.selected {
+  background: linear-gradient(135deg, #4ade80, #15803d);
+  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.28);
+}
+
+/* ---- Meal option / variant cards ---- */
+.mealOptionCard,
+.variantCard {
+  border: 2px solid var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  text-align: left;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease,
+    box-shadow 160ms ease;
+  background: #fff;
+}
+
+.mealOptionCard:hover:not(.disabled),
+.variantCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(43, 33, 24, 0.08);
+}
+
+.mealOptionCard.active,
+.variantCard.active {
+  border-color: var(--primary);
+  background: #fff7ed;
+  box-shadow: 0 6px 18px rgba(194, 65, 12, 0.15);
+}
+
+.mealOptionCard.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mealOptionHeader,
+.menuSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mealOptionTitle,
+.variantTitle {
+  font-weight: 700;
+}
+
+.mealOptionText,
+.variantLabel {
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 0.87rem;
+}
+
+.mealOptionMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #5f4735;
+  font-size: 0.83rem;
+}
+
+.menuSection {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f5e4d5;
+}
+
+.variantGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* ---- Checkout card ---- */
+.checkout {
+  padding-bottom: 8px;
+}
+
+.quoteLines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.quoteLines li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.15rem;
+  margin: 14px 0 0;
+}
+
+/* ---- Buttons ---- */
+.btnPrimary {
+  width: 100%;
+  padding: 15px 20px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--primary));
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  box-shadow: 0 8px 22px rgba(194, 65, 12, 0.3);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(194, 65, 12, 0.38);
+}
+
+.btnSecondary {
+  width: 100%;
+  padding: 13px 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.btnSecondary:hover {
+  border-color: var(--primary);
+  background: #fff7ed;
+}
+
+/* ---- Newcomer promo card ---- */
+.newcomerPromoCard {
+  background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 2px solid #86efac;
+  border-radius: 20px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  transition: box-shadow 150ms;
+}
+
+.newcomerPromoCard.selected {
+  border-color: #22c55e;
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.2);
+}
+
+.newcomerPromoInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.newcomerPromoEyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #15803d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.newcomerPromoTitle {
+  font-size: 0.97rem;
+  font-weight: 700;
+  color: #166534;
+}
+
+.newcomerPromoDesc {
+  font-size: 0.77rem;
+  color: #16a34a;
+  line-height: 1.4;
+}
+
+.newcomerPromoPrice {
+  margin-top: 4px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #166534;
+  line-height: 1;
+}
+
+.newcomerPromoSub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #15803d;
+}
+
+.newcomerPromoBtn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid #22c55e;
+  background: #fff;
+  color: #166534;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+  white-space: nowrap;
+}
+
+.newcomerPromoBtn:hover {
+  background: #22c55e;
+  color: #fff;
+}
+
+.newcomerPromoBtn.selected {
+  background: linear-gradient(135deg, #4ade80, #15803d);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.28);
+}
+
+/* ---- Single meal card ---- */
+.singleMealSection {
+  margin-top: 4px;
+}
+
+.singleMealCard {
+  background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 100%);
+  border: 2px solid #fdba74;
+  border-radius: 20px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  transition: box-shadow 150ms;
+}
+
+.singleMealCard.selected {
+  border-color: #f97316;
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.2);
+}
+
+.singleMealInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.singleMealEyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #c2410c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.singleMealTitle {
+  font-size: 0.97rem;
+  font-weight: 700;
+  color: #9a3412;
+}
+
+.singleMealDesc {
+  font-size: 0.77rem;
+  color: #c2410c;
+  line-height: 1.4;
+}
+
+.singleMealPrice {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #9a3412;
+  margin-top: 4px;
+}
+
+.singleMealSub {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #c2410c;
+}
+
+.singleMealBtn {
+  flex-shrink: 0;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 2px solid #fb923c;
+  background: #fff;
+  color: #c2410c;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+
+.singleMealBtn:hover {
+  background: #fb923c;
+  color: #fff;
+}
+
+.singleMealBtn.selected {
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.28);
+}
+
+/* ---- Meal toggle cards ---- */
+.mealToggleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.mealToggleCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 16px 12px 14px;
+  border-radius: 16px;
+  border: 2px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  text-align: center;
+  transition: all 160ms ease;
+}
+
+.mealToggleCard:hover:not(.unavail):not(.locked) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(43, 33, 24, 0.08);
+}
+
+.mealToggleCard.active {
+  border-color: var(--primary);
+  background: linear-gradient(160deg, #fff7ed, #ffedd5);
+  box-shadow: 0 4px 16px rgba(194, 65, 12, 0.15);
+}
+
+.mealToggleCard.unavail {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.mealToggleCard.locked {
+  cursor: default;
+}
+
+.mealToggleCheckmark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.62rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 160ms;
+}
+
+.mealToggleCard.active .mealToggleCheckmark {
+  opacity: 1;
+}
+
+.mealToggleEmoji {
+  font-size: 1.9rem;
+  line-height: 1;
+  display: block;
+}
+
+.mealToggleTitle {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+
+.mealToggleSub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  display: block;
+  line-height: 1.4;
+}
+
+.mealToggleTag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f5f3f0;
+  color: #9a8778;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ---- Group buy ---- */
+.groupBuySection {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #f0e4d4;
+}
+
+.groupBuyToggleLabel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.groupBuyToggleInput {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.groupBuyToggleTrack {
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e0d5cb;
+  position: relative;
+  transition: background 160ms;
+}
+
+.groupBuyToggleInput:checked + .groupBuyToggleTrack {
+  background: var(--primary);
+}
+
+.groupBuyToggleThumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 160ms;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.groupBuyToggleInput:checked + .groupBuyToggleTrack .groupBuyToggleThumb {
+  transform: translateX(20px);
+}
+
+.groupBuyToggleText {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.groupBuyToggleDesc {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.groupBuyQtyRow {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #fff7ed;
+  border-radius: 14px;
+  border: 1px solid #ffd4a3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.groupBuyQtyLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #6d4a31;
+}
+
+.groupBuyQtyControl {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.qtyBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1.5px solid var(--primary);
+  background: #fff;
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 140ms;
+  line-height: 1;
+}
+
+.qtyBtn:hover:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+}
+
+.qtyBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.qtyValue {
+  font-size: 1.25rem;
+  font-weight: 800;
+  min-width: 28px;
+  text-align: center;
+  color: var(--text);
+}
+
+.groupBuyCalc {
+  font-size: 0.82rem;
+  color: #6d4a31;
+  white-space: nowrap;
+}
+
+.groupBuyCalc strong {
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+/* ---- Checkout quote sets row ---- */
+.quoteSetsRow {
+  border-top: 1px solid #f0e4d4 !important;
+  font-weight: 700;
+  color: var(--text) !important;
+}
+
+.quoteVoucherRow {
+  color: #15803d !important;
+  font-weight: 600;
+}
+
+/* ---- Promo code ---- */
+.promoSection {
+  margin-top: 14px;
+}
+
+.promoInputRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.promoInput {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.promoApplyBtn.btnSecondary {
+  flex: 0 0 auto;
+  width: auto;
+  white-space: nowrap;
+  padding: 9px 18px;
+  font-size: 0.9rem;
+}
+
+.promoApplied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  border-radius: 12px;
+}
+
+.promoAppliedTag {
+  font-weight: 700;
+  color: #15803d;
+  letter-spacing: 0.04em;
+}
+
+.promoRemoveBtn {
+  border: none;
+  background: transparent;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  padding: 2px 4px;
+}
+
+.promoError {
+  margin-top: 6px;
+}
+
+.promoSingleMealNote {
+  margin-top: 14px;
+  font-size: 0.88rem;
+  color: var(--muted, #6b7280);
+  line-height: 1.45;
+}
+
+/* ---- Compact meal / variant cards ---- */
+.mealOptionCard,
+.variantCard {
+  padding: 12px 14px;
+  min-height: 0;
+  gap: 6px;
+  border-radius: 14px;
+}
+
+.mealOptionTitle,
+.variantTitle {
+  font-size: 0.9rem;
+}
+
+.mealOptionText,
+.variantLabel {
+  font-size: 0.8rem;
+}
+
+.mealOptionMeta {
+  font-size: 0.77rem;
+}
+
+.optionGrid {
+  gap: 8px;
+}
+
+.variantGrid {
+  gap: 8px;
+}
+
+.menuSection {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.menuSectionHeader h3 {
+  margin: 0 0 2px;
+  font-size: 0.9rem;
+}
+
+/* ---- Checkout page ---- */
+.checkoutPage {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.checkoutPageNav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 16px;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.backBtn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #fff7ed;
+}
+
+.checkoutPageTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---- Text helpers ---- */
+.err {
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
+.hint {
+  color: var(--success);
+  font-size: 0.88rem;
+}
+
+/* ---- Subscription cards ---- */
+.subCard {
+  border: 1.5px solid #e9ddd0;
+  border-radius: 22px;
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fff7f0 100%);
+  transition: box-shadow 150ms ease;
+}
+
+.subCard:hover {
+  box-shadow: 0 8px 24px rgba(43, 33, 24, 0.07);
+}
+
+.subHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.statusPill {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-ACTIVE {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-PENDING_PAYMENT {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.deliveryMini {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+}
+
+.deliveryMini li {
+  margin: 4px 0;
+}
+
+/* ---- Account form ---- */
+.accountForm label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 14px 0 6px;
+}
+
+.accountForm input {
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-size: 0.95rem;
+  transition: border-color 140ms ease;
+}
+
+.accountForm input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.linkBtn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ---- Calendar scheduler ---- */
+.calHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.calCreditsRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.calCredit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #f5f0ea;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #5f4735;
+}
+
+.calCredit.done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.calMonthNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.calMonthName {
+  font-size: 0.98rem;
+  font-weight: 700;
+  flex: 1;
+  text-align: center;
+}
+
+.calNavBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-size: 1.15rem;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 140ms;
+  line-height: 1;
+}
+
+.calNavBtn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.calNavBtn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.calDayHeaders {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+
+.calDayHeader {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 3px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.calGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.calCell {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  transition: all 130ms ease;
+  position: relative;
+  padding: 0;
+  cursor: default;
+}
+
+.calCell.calPad {
+  pointer-events: none;
+}
+
+.calCell.calOutside {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.calCell.calAvailable {
+  cursor: pointer;
+  background: #f5f0ea;
+}
+
+.calCell.calAvailable:hover {
+  background: #ffd8b4;
+  transform: scale(1.1);
+}
+
+.calCell.calScheduled {
+  cursor: pointer;
+  background: var(--primary);
+  box-shadow: 0 3px 10px rgba(194, 65, 12, 0.3);
+}
+
+.calCell.calScheduled:hover {
+  background: var(--accent);
+  transform: scale(1.08);
+}
+
+.calCell.calSunday,
+.calCell.calTooSoon {
+  pointer-events: none;
+}
+
+.calCell.calFull {
+  pointer-events: none;
+  background: #e8e4df;
+  cursor: not-allowed;
+}
+
+.calCell.calFull .calDayNum {
+  color: #b0a598;
+  font-weight: 500;
+}
+
+.calFullTag {
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #9a8b7e;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.calDayNum {
+  font-size: 0.83rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+}
+
+.calCell.calSunday .calDayNum,
+.calCell.calTooSoon .calDayNum {
+  color: #cbbfb4;
+  font-weight: 400;
+}
+
+.calCell.calScheduled .calDayNum {
+  color: #fff;
+  margin-top: 1px;
+}
+
+.calDot {
+  font-size: 0.28rem;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1;
+  letter-spacing: 1px;
+}
+
+/* Range-start pending state */
+.calCell.calRangeStart {
+  cursor: pointer;
+  background: #fff7ed;
+  border: 2px dashed var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+  animation: calPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes calPulse {
+  0%, 100% { transform: scale(1); box-shadow: none; }
+  50% { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(194, 65, 12, 0.15); }
+}
+
+/* Range hint bar */
+.calRangeHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: #fff7ed;
+  border-radius: 12px;
+  border: 1.5px solid #ffd4a3;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6d4a31;
+}
+
+.calRangeCancel {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: #ffd4a3;
+  color: #6d4a31;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.calTip {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+/* Range bottom sheet extras */
+.calSheetRangeInfo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.calSheetRangeBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Group-buy ×N dot (slightly larger so text is readable) */
+.calCell.calScheduled .calDot {
+  font-size: 0.55rem;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+/* Past consumed days */
+.calCell.calConsumed {
+  background: #e8e3dd;
+  pointer-events: none;
+}
+
+.calCell.calConsumed .calDayNum {
+  color: #a09080;
+  font-weight: 400;
+}
+
+.calCell.calConsumed .calDot {
+  color: rgba(100, 90, 80, 0.5);
+}
+
+/* Past days with nothing scheduled */
+.calCell.calPastEmpty {
+  pointer-events: none;
+}
+
+.calCell.calPastEmpty .calDayNum {
+  color: #d4cdc6;
+  font-weight: 400;
+}
+
+/* Scheduled but locked (after 5pm D-1) */
+.calCell.calScheduledLocked {
+  background: #f5a572;
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.calCell.calScheduledLocked .calDayNum {
+  color: #fff;
+}
+
+/* Save success banner (legacy — replaced by pickup reminder) */
+.calSavedBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(145deg, #f0fdf4, #dcfce7);
+  border-radius: 12px;
+  border: 1.5px solid #86efac;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #166534;
+  margin-bottom: 14px;
+}
+
+/* Pickup reminder notification */
+.pickupReminderNotification {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: linear-gradient(145deg, #fffbeb, #fef3c7);
+  border-radius: 16px;
+  border: 1.5px solid #fcd34d;
+  box-shadow: 0 8px 24px rgba(180, 83, 9, 0.08);
+}
+
+.pickupReminderNotificationConfirmed {
+  background: linear-gradient(145deg, #f0fdf4, #dcfce7);
+  border-color: #86efac;
+  box-shadow: 0 8px 24px rgba(22, 101, 52, 0.08);
+}
+
+.pickupReminderIcon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 12px;
+}
+
+.pickupReminderBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.pickupReminderTitle {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #78350f;
+  line-height: 1.35;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderTitle {
+  color: #166534;
+}
+
+.pickupReminderText {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #92400e;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderText {
+  color: #15803d;
+}
+
+.pickupReminderAddress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 12px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: #44403c;
+}
+
+.pickupReminderAddressHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.pickupMapLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #166534;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(22, 101, 52, 0.18);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.pickupMapLink:hover {
+  background: #dcfce7;
+  transform: scale(1.04);
+}
+
+.pickupMapLink:active {
+  transform: scale(0.98);
+}
+
+.pickupMapIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.pickupReminderAddressLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #78716c;
+  margin-bottom: 2px;
+}
+
+.pickupReminderAddress strong {
+  font-size: 0.9rem;
+  color: #1c1917;
+}
+
+.pickupReminderIdBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  border: 1.5px dashed #86efac;
+}
+
+.pickupReminderNotificationConfirmed .pickupReminderIdBlock {
+  border-color: #4ade80;
+}
+
+.pickupReminderIdRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.pickupReminderId {
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #166534;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  flex-shrink: 0;
+}
+
+.pickupIdColorCodes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pickupIdPackTotal {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #44403c;
+  white-space: nowrap;
+}
+
+.pickupReminderIdHint {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #15803d;
+}
+
+.pickupReminderQrBlock {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pickupReminderQrImg {
+  border-radius: 10px;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  background: #fff;
+}
+
+.pickupReminderQrLoading,
+.pickupReminderQrHint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #57534e;
+}
+
+.pickupPackColorSummary {
+  margin-top: 8px;
+}
+
+.pickupPackColorSummary.compact {
+  margin-top: 6px;
+}
+
+.pickupPackColorSummary.compact .pickupPackLegendHint {
+  display: none;
+}
+
+.pickupPackTotal {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.pickupPackLegendHint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #78716c;
+}
+
+.packColorRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.packColorRows.inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.packColorRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.packColorRow.inline {
+  gap: 4px;
+}
+
+.packColorDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 36px;
+}
+
+.packColorDots.inline {
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.packDot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.packDot-orange {
+  background: #f97316;
+}
+
+.packDot-green {
+  background: #22c55e;
+}
+
+.packDot-brown {
+  background: #92400e;
+}
+
+.packDot-blue {
+  background: #3b82f6;
+}
+
+.packColorMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.packColorLabel {
+  font-size: 0.82rem;
+  color: #44403c;
+}
+
+.packColorCount {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.packColorRow.inline .packColorCount {
+  font-size: 0.8rem;
+}
+
+.pickupUpcomingList li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pickupUpcomingSummary {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background: #faf8f5;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.pickupUpcomingTitle {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.pickupUpcomingList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pickupUpcomingList li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.pickupUpcomingDate {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pickupUpcomingMeals {
+  font-size: 0.8rem;
+  color: #78716c;
+}
+
+.pickupEditBtn {
+  width: 100%;
+}
+
+.calLockPolicy {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  color: #92400e;
+  line-height: 1.45;
+}
+
+.scheduleWarningDialog {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 120;
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 18px 16px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1.5px solid #fecaca;
+  box-shadow: 0 20px 50px rgba(39, 28, 21, 0.18);
+}
+
+.scheduleWarningDialog h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: #991b1b;
+}
+
+.scheduleWarningDialog p {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #44403c;
+}
+
+/* Credit summary block */
+.calCreditsSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #faf8f5;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+
+.calCreditBlock {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.calCreditIcon {
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.calCreditDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.calCreditLabel {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.calCreditNumbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.calCreditUsed {
+  font-size: 0.74rem;
+  color: #9a8778;
+  background: #f0ece7;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.calCreditUpcoming {
+  font-size: 0.74rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.calCreditWarn {
+  font-size: 0.74rem;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.calCreditDone {
+  font-size: 0.74rem;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* Unscheduled warning banner */
+.calUnschedWarn {
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-radius: 12px;
+  border: 1.5px solid #fde68a;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+
+.calViewToggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f5f0ea;
+  border: 1px solid var(--border);
+}
+
+.calViewBtn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #7c6a5a;
+  cursor: pointer;
+  transition: background 140ms, color 140ms;
+}
+
+.calViewBtn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.calListView {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.calListRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.calListRowOff {
+  opacity: 0.72;
+  background: #faf7f3;
+}
+
+.calListRowFull {
+  opacity: 0.85;
+  background: #ece8e4;
+  border-color: #ddd6ce;
+}
+
+.calListRowFull .calListStatus {
+  color: #9a8b7e;
+  font-weight: 700;
+}
+
+.calListRowSelected {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.calListDate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 92px;
+}
+
+.calListDateIso {
+  font-size: 0.72rem;
+  color: #9a8b7d;
+}
+
+.calListStatus {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #92400e;
+}
+
+.calListMeals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  align-items: flex-end;
+}
+
+.calListMeal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.calListMealLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-width: 72px;
+  text-align: right;
+}
+
+.calListQtyReadonly {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ---- Calendar action row ---- */
+.calActionRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.calActionRow .btnPrimary {
+  flex: 2;
+}
+
+.calClearBtn {
+  flex: 1;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+
+.calClearBtn:hover {
+  background: #fef2f2 !important;
+  border-color: #b91c1c !important;
+}
+
+/* ---- Sheet meal rows with qty steppers ---- */
+.calSheetMealRows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.calSheetMealRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.calSheetMealRow + .calSheetMealRow {
+  border-top: 1px solid var(--border);
+}
+
+.calSheetMealInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.calSheetMealEmoji {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.calSheetMealName {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.calSheetMealSub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.calSheetQtyControl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.calSheetQtyBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 130ms ease;
+}
+
+.calSheetQtyBtn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #fff7ed;
+}
+
+.calSheetQtyBtn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.calSheetQtyValue {
+  font-size: 1.2rem;
+  font-weight: 800;
+  min-width: 26px;
+  text-align: center;
+  color: #bbb;
+}
+
+.calSheetQtyValue.active {
+  color: var(--primary);
+}
+
+/* ---- Menu language toggle ---- */
+.menuHeaderRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.menuLangToggle {
+  display: flex;
+  gap: 2px;
+  background: #f5f0ea;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+.menuLangBtn {
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 130ms;
+  white-space: nowrap;
+}
+
+.menuLangBtn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(43, 33, 24, 0.1);
+}
+
+.menuLangRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+/* ---- Menu week nav (arrows beside the date range) ---- */
+.wkMenuHeroNav {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.wkMenuHeroArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 161, 74, 0.4);
+  background: rgba(201, 161, 74, 0.1);
+  color: var(--menu-gold);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 140ms;
+}
+
+.wkMenuHeroArrow:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wkMenuHeroArrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wkMenuHeroWeekLabel {
+  font-family: var(--serif);
+  margin-right: 6px;
+  color: var(--text);
+}
+
+/* ---- Menu diet toggle ---- */
+.menuDietSwitch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  background: #f5f0ea;
+  padding: 4px;
+  border-radius: 14px;
+}
+
+.menuDietBtn {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.menuDietBtn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(43, 33, 24, 0.08);
+}
+
+/* Vegetarian mode tints the day cards green */
+.wkMenuDay.veg {
+  border-color: #cdeccd;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #f4fbf2 0%, transparent 55%),
+    linear-gradient(135deg, #f6fbf2 0%, #e9f5e3 100%);
+}
+
+.wkMenuDay.veg .wkMenuDayRail {
+  border-right-color: rgba(22, 101, 52, 0.16);
+}
+
+.wkMenuDay.veg .wkMenuDayAbbr {
+  color: #15803d;
+}
+
+.wkMenuDay.veg .wkMenuDayZh {
+  color: #3f6b48;
+}
+
+.wkMenuDay.veg .wkMenuMeal.lunch .wkMenuMealIcon,
+.wkMenuDay.veg .wkMenuMeal.dinner .wkMenuMealIcon {
+  background: linear-gradient(135deg, #dcfce7, #a7f3d0);
+}
+
+.wkMenuDay.veg .wkMenuMealLabel {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+/* Bottom sheet */
+.calOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 40;
+  backdrop-filter: blur(2px);
+}
+
+.calBottomSheet {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 100%);
+  background: #fff;
+  border-radius: 28px 28px 0 0;
+  padding: 12px 20px calc(104px + env(safe-area-inset-bottom));
+  z-index: 50;
+  box-shadow: 0 -8px 40px rgba(43, 33, 24, 0.14);
+  animation: calSheetUp 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes calSheetUp {
+  from { transform: translateX(-50%) translateY(100%); }
+  to   { transform: translateX(-50%) translateY(0); }
+}
+
+.calSheetHandle {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: #ddd4c8;
+  margin: 0 auto 18px;
+}
+
+.calSheetDate {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  margin: 0 0 18px;
+}
+
+.calSheetMeals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.calMealBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 12px;
+  border-radius: 18px;
+  border: 2px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  text-align: center;
+  transition: all 160ms ease;
+}
+
+.calMealBtn:hover:not(:disabled):not(.noCredit) {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.calMealBtn.active {
+  border-color: var(--primary);
+  background: linear-gradient(160deg, #fff7ed, #ffedd5);
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.15);
+}
+
+.calMealBtn.noCredit,
+.calMealBtn:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.calMealEmoji {
+  font-size: 2rem;
+  line-height: 1;
+  display: block;
+}
+
+.calMealLabel {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+
+.calMealSub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: block;
+  line-height: 1.3;
+}
+
+.checkoutDisclaimerModal h3 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.checkoutDisclaimerBody {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #57534e;
+}
+
+.checkoutDisclaimerAgree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkoutDisclaimerAgree input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.checkoutDisclaimerActions {
+  display: flex;
+  gap: 10px;
+}
+
+.checkoutDisclaimerActions .btnPrimary,
+.checkoutDisclaimerActions .btnSecondary {
+  margin-top: 0;
+  flex: 1;
+}
+
+/* ---- Account language & actions ---- */
+.accountLangSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.accountLangLabel {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.accountLangToggle.menuLangToggle {
+  flex-shrink: 0;
+}
+
+.accountSaveBtn {
+  background: #fff;
+  color: var(--danger);
+  border: 2px solid var(--danger);
+  box-shadow: none;
+}
+
+.accountSaveBtn:hover:not(:disabled) {
+  background: #fef2f2;
+  box-shadow: none;
+  transform: none;
+}
+
+.accountLogoutBtn {
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  margin-top: 24px;
+}
+
+.accountLogoutBtn:hover {
+  background: #991b1b;
+  border-color: transparent;
+}
+
+.authLangRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+/* ---- Weekly menu tab ---- */
+.wkMenuSection {
+  background:
+    radial-gradient(140% 80% at 50% -10%, #fffaf2 0%, transparent 60%),
+    linear-gradient(180deg, #fffdf9 0%, #fdf6ea 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: 26px;
+}
+
+/* Decorative botanical sprig used around the hero title */
+.wkMenuHeroSprig {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 24'%3E%3Cg fill='%23c9a14a'%3E%3Cellipse cx='20' cy='8' rx='5.5' ry='2.2' transform='rotate(-32 20 8)'/%3E%3Cellipse cx='32' cy='7' rx='5.5' ry='2.2' transform='rotate(-32 32 7)'/%3E%3Cellipse cx='44' cy='8' rx='5.5' ry='2.2' transform='rotate(-32 44 8)'/%3E%3Cellipse cx='26' cy='18' rx='5.5' ry='2.2' transform='rotate(32 26 18)'/%3E%3Cellipse cx='38' cy='18' rx='5.5' ry='2.2' transform='rotate(32 38 18)'/%3E%3Ccircle cx='58' cy='13' r='2.4'/%3E%3C/g%3E%3Cpath d='M4 13 H56' stroke='%23c9a14a' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.9;
+}
+
+.wkMenuHeroSprig.flip {
+  transform: scaleX(-1);
+}
+
+.wkMenuHero {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 12px;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.wkMenuHeroTitle {
+  font-family: var(--serif);
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin: 0;
+}
+
+.wkMenuHeroSub,
+.wkMenuHeroRange,
+.wkMenuHeroNotice {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.wkMenuHeroSub {
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.wkMenuHeroRange {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--menu-gold);
+}
+
+.wkMenuHeroNotice {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 161, 74, 0.4);
+  background: rgba(201, 161, 74, 0.1);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #8a6d2f;
+}
+
+.wkMenuHeroNoticeLeaf {
+  font-size: 0.85rem;
+}
+
+.wkMenuList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Each day is a warm cream card: day rail on the left, meals on the right */
+.wkMenuDay {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #fffaf1 0%, transparent 55%),
+    linear-gradient(135deg, var(--menu-cream) 0%, var(--menu-cream-2) 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(45, 26, 14, 0.04), 0 10px 24px rgba(122, 88, 33, 0.07);
+}
+
+/* Faint botanical watermark behind the day rail */
+.wkMenuDay::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  bottom: -10px;
+  width: 96px;
+  height: 96px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23c9a14a' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M14 60 C 22 40 26 24 24 6'/%3E%3Cpath d='M24 16 C 16 14 11 18 9 24 C 17 25 22 22 24 16Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 28 C 16 26 11 30 9 36 C 17 37 22 34 24 28Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 22 C 32 20 37 24 39 30 C 31 31 26 28 24 22Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3Cpath d='M24 34 C 32 32 37 36 39 42 C 31 43 26 40 24 34Z' fill='%23c9a14a' fill-opacity='0.5'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.wkMenuDayToday {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.18), 0 12px 26px rgba(249, 115, 22, 0.13);
+}
+
+.wkMenuDayClosed {
+  opacity: 0.7;
+}
+
+/* Left rail with the weekday */
+.wkMenuDayRail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 16px 6px;
+  border-right: 1px solid rgba(201, 161, 74, 0.22);
+}
+
+.wkMenuDayAbbr {
+  font-family: var(--serif);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--menu-gold);
+}
+
+.wkMenuDayZh {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  writing-mode: vertical-rl;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
+}
+
+.wkMenuDayToday .wkMenuDayRail {
+  border-right-color: rgba(249, 115, 22, 0.3);
+}
+
+.wkMenuDayToday .wkMenuDayAbbr,
+.wkMenuDayToday .wkMenuDayZh {
+  color: var(--primary);
+}
+
+.wkMenuDayTag {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: rgba(122, 106, 90, 0.14);
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.wkMenuDayTodayTag {
+  color: #fff !important;
+  background: var(--accent);
+}
+
+.wkMenuMeals {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.wkMenuDaySidesNote {
+  margin: 4px 10px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(201, 161, 74, 0.08);
+  border: 1px dashed rgba(201, 161, 74, 0.35);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: center;
+}
+
+.wkMenuDay.veg .wkMenuDaySidesNote {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.28);
+  color: #3f6b48;
+}
+
+.wkMenuMeals .wkMenuMeal + .wkMenuMeal {
+  border-top: 1px dashed rgba(201, 161, 74, 0.3);
+}
+
+/* Meal row: thumbnail tile + meal tag + dish name + description */
+.wkMenuMeal {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 8px;
+}
+
+.wkMenuMealIcon {
+  width: 76px;
+  height: 76px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(45, 26, 14, 0.06);
+}
+
+.wkMenuMealPhoto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wkMenuMeal.lunch .wkMenuMealIcon {
+  background: linear-gradient(135deg, #fff0d4, #ffd9a3);
+}
+
+.wkMenuMeal.dinner .wkMenuMealIcon {
+  background: linear-gradient(135deg, #eae6ff, #d4c9f7);
+}
+
+.wkMenuMealContent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wkMenuMealLabel {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: rgba(249, 115, 22, 0.1);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.wkMenuMeal.dinner .wkMenuMealLabel {
+  color: #6d5bd0;
+  background: rgba(109, 91, 208, 0.1);
+}
+
+.wkMenuMealText {
+  font-family: var(--serif);
+  font-size: 1.12rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.wkMenuMealDesc {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Text-only mode (VITE_MENU_SHOW_IMAGES=false): no photo tile, full-width text */
+.wkMenuMeals.textOnly {
+  padding: 6px 14px;
+}
+
+.wkMenuMeal.textOnly {
+  position: relative;
+  align-items: flex-start;
+  gap: 0;
+  padding: 13px 0 13px 16px;
+}
+
+.wkMenuMeal.textOnly::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15px;
+  bottom: 15px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.wkMenuMeal.dinner.textOnly::before {
+  background: #6d5bd0;
+}
+
+.wkMenuDay.veg .wkMenuMeal.textOnly::before {
+  background: #16a34a;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealContent {
+  gap: 5px;
+  width: 100%;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealText {
+  font-size: 1.2rem;
+}
+
+.wkMenuMeal.textOnly .wkMenuMealDesc {
+  font-size: 0.82rem;
+}
+
+.wkMenuClosedNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.wkMenuClosedIcon {
+  font-size: 1.1rem;
+}
+
+/* ---- Weekly menu footer banner ---- */
+.wkMenuFooter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(201, 161, 74, 0.32);
+  background: linear-gradient(135deg, #fbf2e2 0%, #f6e9d2 100%);
+}
+
+.wkMenuFooterIcon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.wkMenuFooterCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wkMenuFooterTitle {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #6d4a31;
+}
+
+.wkMenuFooterSub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.wkMenuFooterScript {
+  font-family: var(--script);
+  font-size: 1.45rem;
+  line-height: 1.2;
+  color: var(--accent);
+  transform: rotate(-3deg);
+  max-width: 100%;
+}
+
+.wkMenuFooterNote {
+  margin: 12px 2px 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* ---- Schedule summary view ---- */
+.schedSummaryHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(145deg, #f0fdf4, #dcfce7);
+  border-radius: 16px;
+  border: 1.5px solid #86efac;
+  margin-bottom: 16px;
+}
+
+.schedSummaryIcon {
+  font-size: 1.9rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.schedSummaryList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedSummaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #faf8f5;
+  border: 1px solid var(--border);
+  transition: opacity 150ms;
+}
+
+.schedSummaryRow.locked {
+  opacity: 0.55;
+}
+
+.schedSummaryDate {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.schedSummaryMeals {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.schedLockTag {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.schedEditDayBtn {
+  flex-shrink: 0;
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 140ms;
+}
+
+.schedEditDayBtn:hover {
+  border-color: var(--primary);
+  background: #fff7ed;
+}
+
+.schedSummaryActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---- Menu tab CTA ---- */
+.menuOrderCta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  background: linear-gradient(145deg, #fff7ed, #ffecd5);
+  border-radius: 20px;
+  border: 1.5px solid #ffd4a3;
+  margin-bottom: 14px;
+}
+
+.menuOrderCtaText {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #6d4a31;
+  margin: 0;
+}
+
+.menuOrderCta .btnPrimary {
+  width: auto;
+  padding: 11px 20px;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+/* ---- Purchase history ---- */
+.purchaseHistorySection {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.purchaseHistoryTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--text);
+}
+
+.purchaseList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.purchaseItem {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #faf8f5;
+  border: 1px solid var(--border);
+}
+
+.purchaseItemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.purchaseItemName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.purchaseItemMeta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0 0 3px;
+  line-height: 1.5;
+}
+
+.purchaseItemDate {
+  font-size: 0.74rem;
+  color: #9a8778;
+  margin: 0;
+}
+
+/* ---- Contact us ---- */
+.contactUsSection {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.contactUsTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.contactOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.contactBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 20px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.contactWhatsapp {
+  background: #25d366;
+  color: #fff;
+  border: none;
+}
+
+.contactWhatsapp:hover {
+  background: #1da851;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(37, 211, 102, 0.3);
+}
+
+.contactEmail {
+  background: #fff;
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+.contactEmail:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #fff7ed;
+}
+
+/* ---- Auth screens (keep existing, do not break) ---- */
+.authMain,
+.authCard,
+.authBrand,
+.authOverlay,
+.authSub {
+  /* keep as defined in App.css */
+}
+
+/* ---- Launch announcement (floating, closeable) ---- */
+.launchAnnounceOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(45, 26, 14, 0.45);
+  backdrop-filter: blur(2px);
+  animation: launchFade 200ms ease;
+}
+
+@keyframes launchFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.launchAnnounceCard {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  background: linear-gradient(155deg, #fff4eb 0%, #ffe8d3 70%, #ffd9bd 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: 24px;
+  padding: 26px 22px 22px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: launchPop 240ms cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+@keyframes launchPop {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.launchAnnounceClose {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.launchAnnounceClose:hover {
+  background: #fff;
+  color: var(--text);
+}
+
+.launchAnnounceBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.launchAnnounceTitle {
+  margin: 12px 0 8px;
+  font-size: 1.4rem;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.launchAnnounceText {
+  margin: 0 0 14px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.launchAnnouncePickup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--border-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.launchAnnouncePin {
+  font-size: 1rem;
+}
+
+.launchAnnounceCta {
+  margin-top: 2px;
+}
+
+.launchAnnounceDismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.launchAnnounceDismiss input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}

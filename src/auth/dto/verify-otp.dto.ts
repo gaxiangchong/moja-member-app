@@ -1,4 +1,11 @@
-import { IsString, Length, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class VerifyOtpDto {
   @IsString()
@@ -8,4 +15,14 @@ export class VerifyOtpDto {
   @IsString()
   @Length(4, 8)
   code!: string;
+
+  /** Optional referrer member code (from invite link). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  referralCode?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }

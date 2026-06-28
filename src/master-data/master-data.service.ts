@@ -1,9 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  BusinessRuleKind,
-  MasterEntryCategory,
-  Prisma,
-} from '@prisma/client';
+import { BusinessRuleKind, MasterEntryCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   CreateMasterEntryDto,
@@ -58,7 +54,10 @@ export class MasterDataService {
   private async ensureEntry(id: string) {
     const e = await this.prisma.masterEntry.findUnique({ where: { id } });
     if (!e) {
-      throw new NotFoundException({ code: 'MASTER_ENTRY_NOT_FOUND', message: 'Entry not found' });
+      throw new NotFoundException({
+        code: 'MASTER_ENTRY_NOT_FOUND',
+        message: 'Entry not found',
+      });
     }
     return e;
   }
@@ -102,7 +101,10 @@ export class MasterDataService {
   private async ensureRule(id: string) {
     const r = await this.prisma.businessRule.findUnique({ where: { id } });
     if (!r) {
-      throw new NotFoundException({ code: 'BUSINESS_RULE_NOT_FOUND', message: 'Rule not found' });
+      throw new NotFoundException({
+        code: 'BUSINESS_RULE_NOT_FOUND',
+        message: 'Rule not found',
+      });
     }
     return r;
   }
@@ -110,17 +112,72 @@ export class MasterDataService {
   /** Idempotent baseline vocabulary for tiers, channels, and note categories. */
   async seedDefaults() {
     const entries: CreateMasterEntryDto[] = [
-      { category: MasterEntryCategory.MEMBER_TIER, code: 'standard', label: 'Standard', sortOrder: 10 },
-      { category: MasterEntryCategory.MEMBER_TIER, code: 'gold', label: 'Gold', sortOrder: 20 },
-      { category: MasterEntryCategory.MEMBER_TIER, code: 'vip', label: 'VIP', sortOrder: 30 },
-      { category: MasterEntryCategory.STORE, code: 'online', label: 'Online', sortOrder: 10 },
-      { category: MasterEntryCategory.STORE, code: 'flagship', label: 'Flagship', sortOrder: 20 },
-      { category: MasterEntryCategory.SOURCE_CHANNEL, code: 'otp', label: 'OTP signup', sortOrder: 10 },
-      { category: MasterEntryCategory.SOURCE_CHANNEL, code: 'import', label: 'Import', sortOrder: 20 },
-      { category: MasterEntryCategory.NOTE_CATEGORY, code: 'complaint', label: 'Complaint', sortOrder: 10 },
-      { category: MasterEntryCategory.NOTE_CATEGORY, code: 'goodwill', label: 'Goodwill', sortOrder: 20 },
-      { category: MasterEntryCategory.TAG_VOCAB, code: 'vip', label: 'VIP', sortOrder: 10 },
-      { category: MasterEntryCategory.TAG_VOCAB, code: 'inactive', label: 'Inactive', sortOrder: 20 },
+      {
+        category: MasterEntryCategory.MEMBER_TIER,
+        code: 'standard',
+        label: 'Standard',
+        sortOrder: 10,
+      },
+      {
+        category: MasterEntryCategory.MEMBER_TIER,
+        code: 'gold',
+        label: 'Gold',
+        sortOrder: 20,
+      },
+      {
+        category: MasterEntryCategory.MEMBER_TIER,
+        code: 'vip',
+        label: 'VIP',
+        sortOrder: 30,
+      },
+      {
+        category: MasterEntryCategory.STORE,
+        code: 'online',
+        label: 'Online',
+        sortOrder: 10,
+      },
+      {
+        category: MasterEntryCategory.STORE,
+        code: 'flagship',
+        label: 'Flagship',
+        sortOrder: 20,
+      },
+      {
+        category: MasterEntryCategory.SOURCE_CHANNEL,
+        code: 'otp',
+        label: 'OTP signup',
+        sortOrder: 10,
+      },
+      {
+        category: MasterEntryCategory.SOURCE_CHANNEL,
+        code: 'import',
+        label: 'Import',
+        sortOrder: 20,
+      },
+      {
+        category: MasterEntryCategory.NOTE_CATEGORY,
+        code: 'complaint',
+        label: 'Complaint',
+        sortOrder: 10,
+      },
+      {
+        category: MasterEntryCategory.NOTE_CATEGORY,
+        code: 'goodwill',
+        label: 'Goodwill',
+        sortOrder: 20,
+      },
+      {
+        category: MasterEntryCategory.TAG_VOCAB,
+        code: 'vip',
+        label: 'VIP',
+        sortOrder: 10,
+      },
+      {
+        category: MasterEntryCategory.TAG_VOCAB,
+        code: 'inactive',
+        label: 'Inactive',
+        sortOrder: 20,
+      },
     ];
     for (const e of entries) {
       await this.prisma.masterEntry.upsert({

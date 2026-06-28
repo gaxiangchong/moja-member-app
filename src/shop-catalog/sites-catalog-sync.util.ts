@@ -152,15 +152,21 @@ function productSnapshot(
 
 function diffFields(
   before: Record<string, string>,
-  after: Record<string, string>,
+  fromSites: Record<string, string>,
+  locks: Set<string>,
 ): ShopCatalogSyncFieldChange[] {
   const changes: ShopCatalogSyncFieldChange[] = [];
-  for (const field of Object.keys(after)) {
+  for (const field of Object.keys(fromSites)) {
     const b = before[field] ?? '';
-    const a = after[field] ?? '';
-    if (b !== a) {
-      changes.push({ field, before: b || '(empty)', after: a || '(empty)' });
-    }
+    const a = fromSites[field] ?? '';
+    if (b === a) continue;
+    const locked = locks.has(field);
+    changes.push({
+      field,
+      before: b || '(empty)',
+      after: a || '(empty)',
+      ...(locked ? { locked: true } : {}),
+    });
   }
   return changes;
 }
@@ -182,27 +188,53 @@ const FULL_FIELDS = [
   'description',
 ] as const;
 
+/** Field-level merge: take `fromSites` value unless that field is locked on `existing`. */
+function pickField<K extends keyof ShopCatalogProduct>(
+  existing: ShopCatalogProduct,
+  fromSites: ShopCatalogProduct,
+  field: K,
+  locks: Set<string>,
+): ShopCatalogProduct[K] {
+  return locks.has(field as string) ? existing[field] : fromSites[field];
+}
+
 export function mergeSitesIntoMemberProduct(
   existing: ShopCatalogProduct,
   fromSites: ShopCatalogProduct,
   mode: ShopCatalogSyncMode,
 ): ShopCatalogProduct {
+  const locks = new Set(existing.syncOverrides ?? []);
+
   if (mode === 'full') {
     return {
-      ...fromSites,
+      id: existing.id,
       isActive: existing.isActive,
       sortOrder: existing.sortOrder,
+      syncOverrides: existing.syncOverrides,
+      category: pickField(existing, fromSites, 'category', locks),
+      categoryLabel: pickField(existing, fromSites, 'categoryLabel', locks),
+      name: pickField(existing, fromSites, 'name', locks),
+      shortDescription: pickField(existing, fromSites, 'shortDescription', locks),
+      description: pickField(existing, fromSites, 'description', locks),
+      imageUrl: pickField(existing, fromSites, 'imageUrl', locks),
+      images: pickField(existing, fromSites, 'images', locks),
+      basePriceCents: pickField(existing, fromSites, 'basePriceCents', locks),
+      priceDisplay: pickField(existing, fromSites, 'priceDisplay', locks),
+      variants: pickField(existing, fromSites, 'variants', locks),
+      badge: pickField(existing, fromSites, 'badge', locks),
+      soldOut: pickField(existing, fromSites, 'soldOut', locks),
     };
   }
+
   return {
     ...existing,
-    imageUrl: fromSites.imageUrl,
-    images: fromSites.images,
-    basePriceCents: fromSites.basePriceCents,
-    priceDisplay: fromSites.priceDisplay,
-    variants: fromSites.variants,
-    soldOut: fromSites.soldOut,
-    badge: fromSites.badge,
+    imageUrl: pickField(existing, fromSites, 'imageUrl', locks),
+    images: pickField(existing, fromSites, 'images', locks),
+    basePriceCents: pickField(existing, fromSites, 'basePriceCents', locks),
+    priceDisplay: pickField(existing, fromSites, 'priceDisplay', locks),
+    variants: pickField(existing, fromSites, 'variants', locks),
+    soldOut: pickField(existing, fromSites, 'soldOut', locks),
+    badge: pickField(existing, fromSites, 'badge', locks),
   };
 }
 
@@ -223,6 +255,7 @@ export function buildSyncPreview(
   let toUpdate = 0;
   let toCreate = 0;
   let unchanged = 0;
+  let lockedProducts = 0;
 
   for (const fromSites of sitesProducts) {
     const existing = memberById.get(fromSites.id);
@@ -242,17 +275,31 @@ export function buildSyncPreview(
       continue;
     }
 
-    const merged = mergeSitesIntoMemberProduct(existing, fromSites, mode);
+    const locks = new Set(existing.syncOverrides ?? []);
+    if (locks.size > 0) lockedProducts += 1;
     const beforeSnap = productSnapshot(existing, [...fields]);
-    const afterSnap = productSnapshot(merged, [...fields]);
-    const changes = diffFields(beforeSnap, afterSnap);
-    if (changes.length === 0) {
+    const sitesSnap = productSnapshot(fromSites, [...fields]);
+    const allChanges = diffFields(beforeSnap, sitesSnap, locks);
+    const willActuallyChange = allChanges.some((c) => !c.locked);
+
+    if (allChanges.length === 0) {
       unchanged += 1;
       products.push({
         id: fromSites.id,
         name: existing.name || fromSites.name,
         status: 'unchanged',
         changes: [],
+        ...(locks.size ? { lockedFields: [...locks] } : {}),
+      });
+    } else if (!willActuallyChange) {
+      // Diffs exist but every changed field is locked — sync would do nothing.
+      unchanged += 1;
+      products.push({
+        id: fromSites.id,
+        name: existing.name || fromSites.name,
+        status: 'unchanged',
+        changes: allChanges,
+        lockedFields: [...locks],
       });
     } else {
       toUpdate += 1;
@@ -260,7 +307,8 @@ export function buildSyncPreview(
         id: fromSites.id,
         name: existing.name || fromSites.name,
         status: 'update',
-        changes,
+        changes: allChanges,
+        ...(locks.size ? { lockedFields: [...locks] } : {}),
       });
     }
   }
@@ -280,6 +328,7 @@ export function buildSyncPreview(
       toCreate,
       unchanged,
       onlyInMember,
+      lockedProducts,
     },
     products,
     layoutWouldUpdate: syncLayout,

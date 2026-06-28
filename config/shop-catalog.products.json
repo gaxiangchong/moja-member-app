@@ -40,20 +40,20 @@
     "sortOrder": 10
   },
   {
-    "id": "osmanthus-longan-chantilly",
+    "id": "lemon-yuzu-cake",
     "category": "whole_cakes",
     "categoryLabel": "Premium Cake",
     "name": "Osmanthus Longan Chantilly",
     "shortDescription": "Fragrant osmanthus-infused chantilly cream paired with sweet longan and a delicate floral sponge. Light, elegant, and quietly exotic.",
     "description": "Fragrant osmanthus-infused chantilly cream paired with sweet longan and a delicate floral sponge. Light, elegant, and quietly exotic.",
-    "imageUrl": "/images/products/osmanthus_longan_chantilly.png",
+    "imageUrl": "/images/products/lemon_yuzu_cake_v2.png",
     "images": [
       {
-        "src": "/images/products/osmanthus_longan_chantilly.png",
+        "src": "/images/products/lemon_yuzu_cake_v2.png",
         "alt": "Osmanthus Longan Chantilly"
       },
       {
-        "src": "/images/products/osmanthus_longan_chantilly_v2.png",
+        "src": "/images/products/lemon_yuzu_cake.png",
         "alt": "Osmanthus Longan Chantilly — alternative angle"
       }
     ],
@@ -61,14 +61,14 @@
     "priceDisplay": "RM149.00",
     "variants": [
       {
-        "id": "osmanthus-longan-chantilly__6-inch",
+        "id": "lemon-yuzu-cake__6-inch",
         "label": "6 inch",
         "priceCents": 14900,
         "available": true,
         "priceDisplay": "RM149.00"
       },
       {
-        "id": "osmanthus-longan-chantilly__8-inch",
+        "id": "lemon-yuzu-cake__8-inch",
         "label": "8 inch",
         "priceCents": 20800,
         "available": true,
@@ -198,10 +198,10 @@
     "name": "Jasmine Blanc",
     "shortDescription": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
     "description": "A delicate twist on our Basque cheesecake — infused with fragrant jasmine tea for a floral, elegant finish that lingers on the palate.",
-    "imageUrl": "/images/products/jasmine blanc.png",
+    "imageUrl": "/images/products/jasmine_blanc.png",
     "images": [
       {
-        "src": "/images/products/jasmine blanc.png",
+        "src": "/images/products/jasmine_blanc.png",
         "alt": "Jasmine Blanc"
       }
     ],

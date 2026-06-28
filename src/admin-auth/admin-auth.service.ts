@@ -45,7 +45,8 @@ export class AdminAuthService {
     if (n > 0) {
       throw new BadRequestException({
         code: 'ADMIN_BOOTSTRAP_DONE',
-        message: 'Admin users already exist. Use login or an existing super admin.',
+        message:
+          'Admin users already exist. Use login or an existing super admin.',
       });
     }
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -149,7 +150,10 @@ export class AdminAuthService {
       },
     });
     if (!user) {
-      throw new UnauthorizedException({ code: 'ADMIN_NOT_FOUND', message: 'User not found' });
+      throw new UnauthorizedException({
+        code: 'ADMIN_NOT_FOUND',
+        message: 'User not found',
+      });
     }
     return { kind: 'user' as const, ...user };
   }
@@ -174,7 +178,10 @@ export class AdminAuthService {
       where: { email: dto.email.toLowerCase().trim() },
     });
     if (exists) {
-      throw new ConflictException({ code: 'ADMIN_EMAIL_TAKEN', message: 'Email already in use' });
+      throw new ConflictException({
+        code: 'ADMIN_EMAIL_TAKEN',
+        message: 'Email already in use',
+      });
     }
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.adminUser.create({
@@ -200,7 +207,7 @@ export class AdminAuthService {
       entityType: 'admin_user',
       entityId: user.id,
       adminUserId: actor.adminUserId ?? null,
-      adminRole: actor.role as string | undefined,
+      adminRole: actor.role,
       ipAddress: actor.ip ?? null,
       afterValue: { email: user.email, role: user.role } as object,
       metadata: { createdBy: actor.actorLabel },
@@ -211,7 +218,10 @@ export class AdminAuthService {
   async updateUser(actor: AdminAuthState, id: string, dto: UpdateAdminUserDto) {
     const before = await this.prisma.adminUser.findUnique({ where: { id } });
     if (!before) {
-      throw new NotFoundException({ code: 'ADMIN_USER_NOT_FOUND', message: 'User not found' });
+      throw new NotFoundException({
+        code: 'ADMIN_USER_NOT_FOUND',
+        message: 'User not found',
+      });
     }
     const user = await this.prisma.adminUser.update({
       where: { id },
@@ -238,7 +248,7 @@ export class AdminAuthService {
       entityType: 'admin_user',
       entityId: id,
       adminUserId: actor.adminUserId ?? null,
-      adminRole: actor.role as string | undefined,
+      adminRole: actor.role,
       ipAddress: actor.ip ?? null,
       beforeValue: {
         role: before.role,

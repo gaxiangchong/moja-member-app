@@ -59,33 +59,51 @@ $ npm run test:cov
 
 ## WhatsApp OTP setup guide
 
-This project supports phone login with OTP delivered via WhatsApp (Meta WhatsApp Cloud API).
+This project uses OTP **only for first-time registration and forgot-PIN
+recovery**. Every other sign-in uses the customer's PIN — the OTP endpoint
+returns `USE_PIN_LOGIN` when a registered phone number tries to request a
+fresh OTP without an explicit `purpose=recovery`.
+
+Two providers are supported, selected with `WHATSAPP_PROVIDER`:
+
+- `meta` (default) — Meta WhatsApp Cloud API (Graph API)
+- `twilio` — Twilio Programmable Messaging on the WhatsApp channel
 
 ### 1) Configure environment variables
 
-Set these in `.env`:
+Set these in `.env` (pick **one** provider):
 
 ```env
-# Required for production WhatsApp delivery
+# OTP delivery mode: auto | mock | whatsapp
+OTP_DELIVERY_MODE=whatsapp
+# Optional fixed code for mock mode
+OTP_MOCK_FIXED_CODE=123456
+
+# CORS for client web app
+CLIENT_WEB_ORIGIN=http://localhost:5193
+
+# --- Provider selector ---
+WHATSAPP_PROVIDER=twilio   # or `meta`
+
+# --- Meta WhatsApp Cloud API (when WHATSAPP_PROVIDER=meta) ---
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
-
-# Optional (defaults shown)
 WHATSAPP_GRAPH_API_VERSION=v21.0
 WHATSAPP_OTP_TEMPLATE_NAME=
 WHATSAPP_OTP_TEMPLATE_LANG=en
 
-# CORS for client web app
-CLIENT_WEB_ORIGIN=http://localhost:5173
-
-# OTP delivery mode: auto | mock | whatsapp
-OTP_DELIVERY_MODE=mock
-# Optional fixed code for mock mode
-OTP_MOCK_FIXED_CODE=123456
+# --- Twilio WhatsApp (when WHATSAPP_PROVIDER=twilio) ---
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+# Sender: pick ONE of the two
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+# TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Optional pre-approved Content template (production). {{1}} = OTP code.
+# TWILIO_WHATSAPP_CONTENT_SID=HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Notes:
-- If `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are present, OTP is sent to WhatsApp.
+- If WhatsApp credentials for the selected provider are present, OTP is sent over WhatsApp.
 - In production, if WhatsApp is not configured, OTP request returns `OTP_DELIVERY_NOT_CONFIGURED` (503).
 - In development without WhatsApp config, API returns `_devCode` for testing.
 - `OTP_DELIVERY_MODE=mock` always returns `_devCode` and does not call WhatsApp.
@@ -109,7 +127,7 @@ npm run prisma:migrate
 
 If migration succeeds, your local DB is ready.
 
-### 2) Meta WhatsApp Cloud API prerequisites
+### 2a) Meta WhatsApp Cloud API prerequisites
 
 In Meta Developer console:
 - Create/select an app with WhatsApp product enabled.
@@ -118,13 +136,20 @@ In Meta Developer console:
 - Add recipient numbers to allowed/test recipients (if still in test mode).
 - (Recommended for production) create and approve a message template for OTP.
 
+### 2b) Twilio WhatsApp prerequisites
+
+In the [Twilio Console](https://console.twilio.com):
+- Grab your **Account SID** and **Auth Token** from the dashboard → `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`.
+- **Development (Sandbox)**: open **Messaging → Try it out → Send a WhatsApp message** and note the sandbox number (usually `+14155238886`). Every test phone must first send the join code (e.g. `join hello-world`) from their WhatsApp to that number. Then set `TWILIO_WHATSAPP_FROM=whatsapp:+14155238886`.
+- **Production**: register a WhatsApp Sender under **Messaging → Senders → WhatsApp Senders**. Once approved, set `TWILIO_WHATSAPP_FROM=whatsapp:+<your-approved-number>` — or put the sender in a Messaging Service and use `TWILIO_MESSAGING_SERVICE_SID=MG...` instead.
+- **Production templates**: WhatsApp requires a pre-approved template for business-initiated messages. Create one under **Messaging → Content Template Builder** with a single variable `{{1}}` (the OTP code), get it approved by Meta, and put its SID in `TWILIO_WHATSAPP_CONTENT_SID=HX...`. Plain-text `Body` only works inside the 24h customer-reply window or in the Sandbox.
+
 ### 3) Template vs plain text behavior
 
-The service supports two modes:
-- **Template mode**: set `WHATSAPP_OTP_TEMPLATE_NAME`. The OTP code is injected as body parameter `{{1}}`.
-- **Text mode**: if template name is empty, service sends plain text message.
+- **Meta**: set `WHATSAPP_OTP_TEMPLATE_NAME` to use template mode (`{{1}}` = code in the body); otherwise plain text is sent. For **authentication** templates (copy code / one-tap OTP), Meta requires the same code in a **button** component as well; the API enables that by default when a template name is set (`WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON`, default true). If you use a **utility** template with only a body variable and no OTP button, set `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON=false`.
+- **Twilio**: set `TWILIO_WHATSAPP_CONTENT_SID` to use a Content template (`{{1}}` = code); otherwise plain text is sent.
 
-For production accounts, template mode is usually required by WhatsApp policy.
+For production accounts on either provider, an approved template is required by WhatsApp policy.
 
 ### 4) Test flow
 
@@ -132,22 +157,29 @@ For production accounts, template mode is usually required by WhatsApp policy.
    ```bash
    npm run start:dev
    ```
-2. Request OTP:
+2. (Twilio Sandbox only) From your phone, WhatsApp the join code to `+14155238886` once.
+3. Request OTP:
    - `POST /auth/otp/request`
    - body: `{ "phone": "+65XXXXXXXX" }`
-3. Verify OTP:
+4. Verify OTP:
    - `POST /auth/otp/verify`
    - body: `{ "phone": "+65XXXXXXXX", "code": "123456" }`
 
 ### 5) Troubleshooting
 
-- **No message received**
+- **No message received (Meta)**
   - Confirm `WHATSAPP_ACCESS_TOKEN` is valid and not expired.
   - Confirm phone is in correct international format.
   - Confirm recipient is allowed (sandbox/test mode).
+- **No message received (Twilio)**
+  - Confirm `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` are from the same project.
+  - In Sandbox mode, confirm the recipient has sent the join code to `+14155238886`.
+  - In production, confirm the sender is WhatsApp-approved and either `TWILIO_WHATSAPP_FROM` or `TWILIO_MESSAGING_SERVICE_SID` is set.
+  - Outside the 24h window, a `TWILIO_WHATSAPP_CONTENT_SID` (approved template) is required.
 - **API error from WhatsApp**
-  - Check server logs (`WhatsappOtpService`) for response details.
-  - Verify API version and phone number ID.
+  - Check server logs (`WhatsappOtpService`) for the provider response body.
+  - Meta: verify Graph API version and `WHATSAPP_PHONE_NUMBER_ID`. If the error mentions template components or buttons, confirm `WHATSAPP_OTP_META_INCLUDE_AUTH_BUTTON` matches your template type (auth vs utility).
+  - Twilio: check **Monitor → Logs → Messaging** in the Console for the error code.
 - **Frontend blocked by CORS**
   - Add your web origin to `CLIENT_WEB_ORIGIN` (comma-separated supported).
 
@@ -278,18 +310,21 @@ Local import/export files default under `data/` (gitignored).
 
 For implementation details and client integration, trace controllers under `src/admin/`, `src/segmentation/`, `src/import-export/`, `src/master-data/`, and `src/ui/admin-dashboard.controller.ts`.
 
+### Voucher rewards and push setup
+
+See `docs/voucher-rewards-dashboard-guide.md` for:
+
+- How to create reward vouchers in the dashboard.
+- How to configure voucher push entitlement rules (newcomer/top-up/referral/etc.).
+- How rewards appear in the client app.
+
+Sidebar visibility and the member **Shop** product list are documented there as well (`admin-dashboard.config.json`, `GET /shop/catalog/products`).
+
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+For a step-by-step runbook (API, PostgreSQL / Prisma, `client-web`, `ops-queue-web`, CORS, env vars, health checks, and rollback), see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. Feature-flag and shop SSO rollout steps are in **[docs/rollout-checklist.md](docs/rollout-checklist.md)**.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Generic NestJS hosting notes: [NestJS deployment](https://docs.nestjs.com/deployment).
 
 ## Resources
 

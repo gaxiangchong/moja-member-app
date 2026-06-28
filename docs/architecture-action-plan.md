@@ -23,11 +23,11 @@ This plan translates the current review findings into a practical implementation
 
 ### Tasks
 
-- [ ] Create feature flags:
+- [x] Create feature flags:
   - `FEATURE_SHOP_SSO`
   - `FEATURE_CAMPAIGN_ASYNC`
-- [ ] Add a rollout checklist template for each release.
-- [ ] Add basic dashboard metrics placeholders (success/failure counters).
+- [x] Add a rollout checklist template for each release.
+- [x] Add basic dashboard metrics placeholders (success/failure counters).
 
 ### Deliverables
 
@@ -48,29 +48,29 @@ Allow member users to tap Shop and arrive authenticated in shop without manual l
 
 ### Backend (Member Service)
 
-- [ ] Add endpoint `POST /auth/shop-handoff`
-- [ ] Validate member JWT and issue short-lived one-time handoff token (30-60s)
-- [ ] Include claims: `sub(customerId)`, `aud=shop`, `iss`, `exp`, `jti`
-- [ ] Store `jti` for replay prevention
-- [ ] Add audit logs:
+- [x] Add endpoint `POST /auth/shop-handoff`
+- [x] Validate member JWT and issue short-lived one-time handoff token (30-60s)
+- [x] Include claims: `sub(customerId)`, `aud=shop`, `iss`, `exp`, `jti`
+- [x] Store `jti` for replay prevention
+- [x] Add audit logs:
   - `shop.handoff.requested`
   - `shop.handoff.issued`
 
 ### Backend (Shop Service)
 
-- [ ] Add endpoint `GET /sso/consume?handoff=...`
-- [ ] Validate signature, audience, issuer, expiry, replay
-- [ ] Create secure HttpOnly session cookie
-- [ ] Redirect to catalog/home
-- [ ] On failure, redirect to login with reason code
+- [x] Add endpoint `GET /sso/consume?handoff=...`
+- [x] Validate signature, audience, issuer, expiry, replay
+- [x] Create secure HttpOnly session cookie
+- [x] Redirect to catalog/home
+- [x] On failure, redirect to login with reason code
 
 ### Frontend (Member App)
 
-- [ ] Replace direct external link with:
+- [x] Replace direct external link with:
   - call handoff endpoint
   - open consume URL
-- [ ] Add loading state ("Opening Shop...")
-- [ ] Add user-friendly fallback if SSO fails
+- [x] Add loading state ("Opening Shop...")
+- [x] Add user-friendly fallback if SSO fails
 
 ### Acceptance
 
@@ -87,12 +87,12 @@ Avoid long-running synchronous request path for large campaign pushes.
 
 ### Tasks
 
-- [ ] Convert `runCampaign` to queue-based flow:
+- [x] Convert `runCampaign` to queue-based flow:
   - API creates `campaignRun` + enqueues job
   - worker processes customer batches
-- [ ] Add status endpoint:
+- [x] Add status endpoint:
   - `GET /admin/segments/campaigns/run/:id/status`
-- [ ] Persist progress fields:
+- [x] Persist progress fields:
   - matched, processed, success, failed, startedAt, finishedAt
 - [ ] Add retry policy and dead-letter handling
 
@@ -112,11 +112,11 @@ Ensure repeated campaign runs/retries do not issue duplicate vouchers accidental
 
 ### Tasks
 
-- [ ] Define idempotency identity:
+- [x] Define idempotency identity:
   - `customerId + voucherDefinitionId + campaignRunId` (or equivalent)
-- [ ] Add DB unique constraint/index
-- [ ] Update voucher issuance logic to "insert-or-ignore" semantics
-- [ ] Add conflict logging and summary counters
+- [x] Add DB unique constraint/index
+- [x] Update voucher issuance logic to "insert-or-ignore" semantics
+- [x] Add conflict logging and summary counters
 
 ### Acceptance
 
@@ -164,11 +164,11 @@ Prevent runtime surprises due to missing/misplaced env variables.
 
 ### Tasks
 
-- [ ] Add startup validation for required client env:
+- [x] Add startup validation for required client env:
   - `VITE_API_BASE_URL`
   - `VITE_SHOP_WEB_URL` (if shop button enabled)
-- [ ] Add `.env.development`, `.env.staging`, `.env.production` templates
-- [ ] Add CI check to fail build on missing required env
+- [x] Add `.env.development`, `.env.staging`, `.env.production` templates
+- [x] Add CI check to fail build on missing required env
 
 ### Acceptance
 

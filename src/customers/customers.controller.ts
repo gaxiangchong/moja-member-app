@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Get,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
@@ -26,6 +37,34 @@ export class CustomersController {
   @UseGuards(JwtAuthGuard)
   async meRewards(@CurrentUser() user: AuthUser) {
     return this.customers.getMeRewards(user.customerId);
+  }
+
+  @Get('me/loyalty-history')
+  @UseGuards(JwtAuthGuard)
+  async meLoyaltyHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+  ) {
+    return this.customers.getMyLoyaltyHistory(user.customerId, limit);
+  }
+
+  @Get('me/orders')
+  @UseGuards(JwtAuthGuard)
+  async listMyOrders(
+    @CurrentUser() user: AuthUser,
+    @Query('limit', new DefaultValuePipe(40), ParseIntPipe) limit: number,
+  ) {
+    return this.customers.listMemberOrders(user.customerId, limit);
+  }
+
+  @Post('me/orders')
+  @UseGuards(JwtAuthGuard)
+  async submitMyOrder() {
+    throw new BadRequestException({
+      code: 'ORDER_USE_SHOP_CHECKOUT',
+      message:
+        'Orders are placed from Shop checkout. Complete payment on the Xendit page (or test payment in demo mode).',
+    });
   }
 
   @Get('me/wallet')

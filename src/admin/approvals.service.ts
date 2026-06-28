@@ -4,10 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ApprovalRequestKind,
-  ApprovalRequestStatus,
-} from '@prisma/client';
+import { ApprovalRequestKind, ApprovalRequestStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -31,7 +28,8 @@ export class ApprovalsService {
     if (auth.kind !== 'user' || !auth.adminUserId) {
       throw new ForbiddenException({
         code: 'WALLET_REVERSAL_REQUEST_REQUIRES_USER',
-        message: 'Reversal requests must be submitted by a signed-in admin user.',
+        message:
+          'Reversal requests must be submitted by a signed-in admin user.',
       });
     }
     await this.prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
@@ -121,7 +119,7 @@ export class ApprovalsService {
       createdBy: auth.actorLabel,
     });
     const summary = await this.wallet.getSummary(payload.customerId);
-    const reviewerId = auth.kind === 'user' ? auth.adminUserId ?? null : null;
+    const reviewerId = auth.kind === 'user' ? (auth.adminUserId ?? null) : null;
     await this.prisma.approvalRequest.update({
       where: { id },
       data: {
@@ -177,7 +175,7 @@ export class ApprovalsService {
         message: 'This request is no longer pending',
       });
     }
-    const reviewerId = auth.kind === 'user' ? auth.adminUserId ?? null : null;
+    const reviewerId = auth.kind === 'user' ? (auth.adminUserId ?? null) : null;
     await this.prisma.approvalRequest.update({
       where: { id },
       data: {

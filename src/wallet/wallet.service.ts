@@ -127,12 +127,17 @@ export class WalletService {
         updates.lifetimeTopUpCents = { increment: params.amountCents };
       }
       if (params.type === WalletTxnType.SPEND && params.amountCents < 0) {
-        updates.lifetimeSpentCents = { increment: Math.abs(params.amountCents) };
+        updates.lifetimeSpentCents = {
+          increment: Math.abs(params.amountCents),
+        };
       }
       if (params.type === WalletTxnType.MANUAL_ADJUSTMENT) {
         updates.manualAdjustmentCents = { increment: params.amountCents };
       }
-      if (params.type === WalletTxnType.PROMOTIONAL_BONUS && params.amountCents > 0) {
+      if (
+        params.type === WalletTxnType.PROMOTIONAL_BONUS &&
+        params.amountCents > 0
+      ) {
         updates.promotionalCreditCents = { increment: params.amountCents };
       }
 
@@ -268,7 +273,9 @@ export class WalletService {
       },
     });
 
-    const updates: Prisma.StoredWalletUpdateInput = { balanceCents: balanceAfter };
+    const updates: Prisma.StoredWalletUpdateInput = {
+      balanceCents: balanceAfter,
+    };
     if (params.type === WalletTxnType.TOPUP && params.amountCents > 0) {
       updates.lifetimeTopUpCents = { increment: params.amountCents };
     }
@@ -278,7 +285,10 @@ export class WalletService {
     if (params.type === WalletTxnType.MANUAL_ADJUSTMENT) {
       updates.manualAdjustmentCents = { increment: params.amountCents };
     }
-    if (params.type === WalletTxnType.PROMOTIONAL_BONUS && params.amountCents > 0) {
+    if (
+      params.type === WalletTxnType.PROMOTIONAL_BONUS &&
+      params.amountCents > 0
+    ) {
       updates.promotionalCreditCents = { increment: params.amountCents };
     }
     await tx.storedWallet.update({

@@ -1,0 +1,793 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  completeQueueOrder,
+  fetchQueueOrderDetail,
+  fetchQueueOrders,
+  type QueueOrderDetail,
+  type QueueOrderSummary,
+} from './api';
+import { BentoPickupPanel } from './BentoPickupPanel';
+import { OpsLoginScreen } from './OpsLoginScreen';
+import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
+import { useOpsAuth } from './useOpsAuth';
+import { formatOrderPickupLabel } from './orderRef';
+
+/** Self pickup lines from ShopFlow: `Date: yyyy-mm-dd`, `Time: hh:mm`. */
+function pickupCalendarDay(summary: string[]): string | null {
+  for (const line of summary) {
+    const m = line.match(/Date:\s*(\d{4}-\d{2}-\d{2})/i);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** Sort key: pickup slot when parseable; otherwise order placed time. */
+function pickupSortTimestamp(order: QueueOrderSummary): number {
+  const summary = order.fulfillmentSummary;
+  let dateStr: string | null = null;
+  let timeStr: string | null = null;
+  for (const line of summary) {
+    const dm = line.match(/Date:\s*(\d{4}-\d{2}-\d{2})/i);
+    if (dm) dateStr = dm[1];
+    const tm = line.match(/Time:\s*(\d{1,2}:\d{2})/i);
+    if (tm) timeStr = tm[1];
+  }
+  if (dateStr && timeStr) {
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    const [h, mi] = timeStr.split(':').map(Number);
+    if (Number.isFinite(y) && Number.isFinite(h)) {
+      const t = new Date(y, mo - 1, d, h, mi, 0, 0).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  if (dateStr) {
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    const t = new Date(y, mo - 1, d, 12, 0, 0, 0).getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  return new Date(order.placedAt).getTime();
+}
+
+/** Calendar day used for From/To filter: pickup date, else placed date (yyyy-mm-dd). */
+function calendarDayForPickupFilter(order: QueueOrderSummary): string {
+  const p = pickupCalendarDay(order.fulfillmentSummary);
+  if (p) return p;
+  return order.placedAt.slice(0, 10);
+}
+
+function filterByPickupCalendarDay(
+  list: QueueOrderSummary[],
+  dateFrom: string,
+  dateTo: string,
+): QueueOrderSummary[] {
+  const df = dateFrom.trim();
+  const dt = dateTo.trim();
+  if (!df && !dt) return list;
+  const lo = df || '0000-01-01';
+  const hi = dt || '9999-12-31';
+  return list.filter((o) => {
+    const day = calendarDayForPickupFilter(o);
+    return day >= lo && day <= hi;
+  });
+}
+
+function sortByPickupSlot(
+  list: QueueOrderSummary[],
+  dir: 'asc' | 'desc',
+): QueueOrderSummary[] {
+  return [...list].sort((a, b) => {
+    const ta = pickupSortTimestamp(a);
+    const tb = pickupSortTimestamp(b);
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return dir === 'desc' ? tb - ta : ta - tb;
+  });
+}
+
+/** Must match client-web `IN_STORE_FULFILLMENT_HEAD`. */
+const IN_STORE_EXPEDITE_HEAD = 'In store · prepare now';
+
+function isExpediteOrder(order: QueueOrderSummary): boolean {
+  return order.fulfillmentSummary.some(
+    (line) => line.trim().toLowerCase() === IN_STORE_EXPEDITE_HEAD.toLowerCase(),
+  );
+}
+
+function shopTimeZone(): string {
+  const raw = import.meta.env.VITE_SHOP_TIMEZONE as string | undefined;
+  return raw?.trim() || 'Asia/Kuala_Lumpur';
+}
+
+function shopCalendarYmd(now: Date = new Date()): string {
+  const tz = shopTimeZone();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const mo = parts.find((p) => p.type === 'month')?.value;
+  const d = parts.find((p) => p.type === 'day')?.value;
+  if (!y || !mo || !d) return now.toISOString().slice(0, 10);
+  return `${y}-${mo}-${d}`;
+}
+
+/** yyyy-mm-dd in shop TZ for an instant (e.g. when the order was collected). */
+function shopDateFromIso(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const tz = shopTimeZone();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const mo = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  if (!y || !mo || !day) return iso.slice(0, 10);
+  return `${y}-${mo}-${day}`;
+}
+
+function filterPendingTodayShop(
+  list: QueueOrderSummary[],
+  todayOnly: boolean,
+): QueueOrderSummary[] {
+  if (!todayOnly) return list;
+  const today = shopCalendarYmd();
+  return list.filter((o) => {
+    if (isExpediteOrder(o)) return true;
+    const pickupDay = pickupCalendarDay(o.fulfillmentSummary);
+    if (pickupDay) return pickupDay === today;
+    return calendarDayForPickupFilter(o) === today;
+  });
+}
+
+function splitExpediteScheduled(list: QueueOrderSummary[]): {
+  expedite: QueueOrderSummary[];
+  scheduled: QueueOrderSummary[];
+} {
+  const expedite: QueueOrderSummary[] = [];
+  const scheduled: QueueOrderSummary[] = [];
+  for (const o of list) {
+    (isExpediteOrder(o) ? expedite : scheduled).push(o);
+  }
+  return { expedite, scheduled };
+}
+
+function detailIdFromSearch(): string | null {
+  return new URLSearchParams(window.location.search).get('detail');
+}
+
+function formatRm(cents: number): string {
+  return `RM ${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
+function placedLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function OrderDetailView({
+  orderId,
+  onDismiss,
+}: {
+  orderId: string;
+  /** When set (e.g. in-app modal), replaces window.close(). */
+  onDismiss?: () => void;
+}) {
+  const [apiKey, setApiKey] = useState(() => readStoredKey());
+  const [apiBase, setApiBase] = useState(() => readStoredBase());
+  const [data, setData] = useState<QueueOrderDetail | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    const k = apiKey.trim();
+    const b = apiBase.trim() || defaultBase;
+    if (!k) return;
+    setErr(null);
+    setData(null);
+    fetchQueueOrderDetail(k, orderId, b)
+      .then(setData)
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load'));
+  }, [apiKey, apiBase, orderId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const detailShellClass = `detailShell${onDismiss ? ' detailShell--embedded' : ''}`;
+
+  if (!apiKey.trim()) {
+    return (
+      <OpsLoginScreen
+        title="Order detail"
+        lead="Sign in with the same OPS_QUEUE_API_KEY as the main queue to view this order."
+        onSubmit={async (key, base) => {
+          await fetchQueueOrderDetail(key, orderId, base);
+          try {
+            localStorage.setItem(STORAGE_KEY, key);
+            localStorage.setItem(STORAGE_BASE, base);
+          } catch {
+            /* private mode */
+          }
+          setApiKey(key);
+          setApiBase(base);
+        }}
+        footer={
+          <button
+            type="button"
+            className="ghostBtn"
+            style={{ marginTop: 14 }}
+            onClick={() => (onDismiss ? onDismiss() : window.close())}
+          >
+            {onDismiss ? 'Close' : 'Close window'}
+          </button>
+        }
+      />
+    );
+  }
+
+  if (err) {
+    return (
+      <div className={detailShellClass}>
+        <p className="err">{err}</p>
+        <p className="muted">Check the API key and that this order id exists.</p>
+        <div className="btnRow" style={{ marginTop: 12 }}>
+          <button type="button" className="btnGhost" onClick={() => load()}>
+            Retry
+          </button>
+          <button type="button" className="ghostBtn" onClick={() => (onDismiss ? onDismiss() : window.close())}>
+            {onDismiss ? 'Close' : 'Close window'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className={detailShellClass}>
+        <p className="muted">Loading order…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={detailShellClass}>
+      <header className="detailHead">
+        <div>
+          <h1 id="order-detail-title">Order {formatOrderPickupLabel(data.orderNumber)}</h1>
+          <p className="muted">
+            Placed {placedLabel(data.placedAt)}
+            {data.completedAt ? ` · Collected ${placedLabel(data.completedAt)}` : ''} · Status{' '}
+            <strong>{data.status === 'completed' ? 'Collected' : data.status}</strong>
+          </p>
+        </div>
+        <button type="button" className="ghostBtn" onClick={() => (onDismiss ? onDismiss() : window.close())}>
+          Close
+        </button>
+      </header>
+
+      <div className="detailGrid">
+        <div className="detailBlock">
+          <h2>Customer</h2>
+          <p className="mono">{data.customer.phoneE164}</p>
+          <p>{data.customer.displayName?.trim() || '—'}</p>
+        </div>
+        <div className="detailBlock">
+          <h2>Fulfillment</h2>
+          {data.fulfillmentSummary.length ? (
+            <ul>
+              {data.fulfillmentSummary.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No fulfillment notes on this order.</p>
+          )}
+        </div>
+        <div className="detailBlock">
+          <h2>Lines</h2>
+          <table className="linesTable">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Each</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.lines.map((l) => (
+                <tr key={l.id}>
+                  <td>
+                    {l.name}
+                    {l.variantLabel ? ` (${l.variantLabel})` : ''}
+                  </td>
+                  <td>{l.qty}</td>
+                  <td>{formatRm(l.unitPriceCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Total {formatRm(data.totalCents)}</p>
+        </div>
+        <div className="detailBlock">
+          <h2>Internal</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Order id (full)
+          </p>
+          <p className="mono" style={{ margin: '6px 0 0' }}>
+            {data.id}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function openScanPopup(): void {
+  const u = new URL(window.location.href);
+  u.hash = '#/scan';
+  window.open(
+    u.toString(),
+    'mojaOpsScan',
+    'width=520,height=780,scrollbars=yes,resizable=yes',
+  );
+}
+
+function openTimesheetPopup(): void {
+  const u = new URL(window.location.href);
+  u.hash = '#/timesheet';
+  window.open(
+    u.toString(),
+    'mojaOpsTimesheet',
+    'width=440,height=560,scrollbars=yes,resizable=yes',
+  );
+}
+
+function OrderCard({
+  order,
+  pulse,
+  busy,
+  onDone,
+  onOpenDetail,
+}: {
+  order: QueueOrderSummary;
+  pulse: boolean;
+  busy: boolean;
+  onDone: () => void;
+  onOpenDetail: () => void;
+}) {
+  return (
+    <article className={`orderCard${pulse ? ' orderCard--pulse' : ''}`}>
+      <div className="orderCardHead">
+        <div>
+          <div className="idline">Order {formatOrderPickupLabel(order.orderNumber)}</div>
+          <div className="when">{placedLabel(order.placedAt)}</div>
+        </div>
+        <div className="muted" style={{ fontSize: '0.9rem' }}>
+          {order.customerDisplayName?.trim() || 'Member'} · {order.customerPhoneMasked}
+        </div>
+      </div>
+
+      {order.fulfillmentSummary.length > 0 ? (
+        <div className="pickupBlock">
+          <h3>Pickup / delivery</h3>
+          <ul>
+            {order.fulfillmentSummary.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <table className="linesTable">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.lines.map((l) => (
+            <tr key={l.id}>
+              <td>
+                {l.name}
+                {l.variantLabel ? ` (${l.variantLabel})` : ''}
+              </td>
+              <td>{l.qty}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="orderFoot">
+        <span className="totalBadge">{formatRm(order.totalCents)}</span>
+        <div className="btnRow">
+          <button type="button" className="btnGhost" onClick={onOpenDetail}>
+            View details
+          </button>
+          <button type="button" className="btnPrimary" disabled={busy} onClick={onDone}>
+            {busy ? 'Saving…' : 'Collected'}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function App() {
+  const { state: authState, signIn, signOut, devKeyPrefill } = useOpsAuth();
+  const [detailModalId, setDetailModalId] = useState<string | null>(() => detailIdFromSearch());
+  const apiKey = authState.status === 'authenticated' ? authState.apiKey : '';
+  const apiBase = authState.status === 'authenticated' ? authState.apiBase : readStoredBase();
+
+  const [rawPending, setRawPending] = useState<QueueOrderSummary[]>([]);
+  const [rawHistory, setRawHistory] = useState<QueueOrderSummary[]>([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortPickup, setSortPickup] = useState<'desc' | 'asc'>('asc');
+  const [todayOnly, setTodayOnly] = useState(false);
+  const [pollErr, setPollErr] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<'shop' | 'bento'>('shop');
+  const [pollOk, setPollOk] = useState(false);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [pulseIds, setPulseIds] = useState<Set<string>>(() => new Set());
+  const prevPendingRef = useRef<Set<string>>(new Set());
+
+  const pendingSections = useMemo(() => {
+    const f = filterByPickupCalendarDay(rawPending, dateFrom, dateTo);
+    const g = filterPendingTodayShop(f, todayOnly);
+    const { expedite, scheduled } = splitExpediteScheduled(g);
+    return {
+      expedite: sortByPickupSlot(expedite, sortPickup),
+      scheduled: sortByPickupSlot(scheduled, sortPickup),
+    };
+  }, [rawPending, dateFrom, dateTo, sortPickup, todayOnly]);
+
+  const displayPendingCount =
+    pendingSections.expedite.length + pendingSections.scheduled.length;
+
+  const hasPickupDateFilter = Boolean(dateFrom.trim() || dateTo.trim());
+
+  /** Sidebar: only today’s collected (shop day) unless From/To filters are set — then same pickup-date range as the queue. */
+  const sidebarHistory = useMemo(() => {
+    let list: QueueOrderSummary[];
+    if (!hasPickupDateFilter) {
+      const today = shopCalendarYmd();
+      list = rawHistory.filter(
+        (h) => shopDateFromIso(h.completedAt ?? h.placedAt) === today,
+      );
+    } else {
+      list = filterByPickupCalendarDay(rawHistory, dateFrom, dateTo);
+    }
+    return sortByPickupSlot(list, sortPickup);
+  }, [rawHistory, hasPickupDateFilter, dateFrom, dateTo, sortPickup]);
+
+  const poll = useCallback(async () => {
+    if (!apiKey.trim()) return;
+    try {
+      const data = await fetchQueueOrders(apiKey.trim(), apiBase.trim() || defaultBase);
+      setRawPending(data.pending);
+      setRawHistory(data.history);
+      setPollErr(null);
+      setPollOk(true);
+    } catch (e) {
+      setPollErr(e instanceof Error ? e.message : 'Poll failed');
+      setPollOk(false);
+    }
+  }, [apiKey, apiBase]);
+
+  useEffect(() => {
+    if (!apiKey.trim()) return;
+    void poll();
+    const t = window.setInterval(() => void poll(), 2500);
+    return () => window.clearInterval(t);
+  }, [apiKey, apiBase, poll]);
+
+  useEffect(() => {
+    const next = new Set(rawPending.map((p) => p.id));
+    const prev = prevPendingRef.current;
+    for (const id of next) {
+      if (!prev.has(id)) {
+        setPulseIds((s) => new Set(s).add(id));
+        window.setTimeout(() => {
+          setPulseIds((s) => {
+            const c = new Set(s);
+            c.delete(id);
+            return c;
+          });
+        }, 14000);
+      }
+    }
+    prevPendingRef.current = next;
+  }, [rawPending]);
+
+  const onDisconnect = () => {
+    signOut();
+    setRawPending([]);
+    setRawHistory([]);
+    setPollErr(null);
+    setPollOk(false);
+  };
+
+  const onDone = (id: string) => {
+    setCompletingId(id);
+    completeQueueOrder(apiKey, id, apiBase.trim() || defaultBase)
+      .then(() => {
+        setDetailModalId((openId) => (openId === id ? null : openId));
+        void poll();
+      })
+      .catch((err) => {
+        window.alert(err instanceof Error ? err.message : 'Could not mark order collected');
+      })
+      .finally(() => setCompletingId(null));
+  };
+
+  if (authState.status !== 'authenticated') {
+    return (
+      <OpsLoginScreen
+        title="Order queue"
+        lead="Sign in with the secret configured on the API as OPS_QUEUE_API_KEY before accessing the kitchen queue."
+        checking={authState.status === 'checking'}
+        devKeyPrefill={devKeyPrefill}
+        onSubmit={signIn}
+      />
+    );
+  }
+
+  return (
+    <div className="queueApp">
+      <header className="topBar">
+        <div>
+          <h1>{workspace === 'bento' ? 'Bento pickup' : 'Order queue'}</h1>
+          {workspace === 'shop' ? (
+            <div className={`livePill${pollOk ? ' ok' : ''}`}>
+              <span className="dot" aria-hidden />
+              {pollOk ? 'Live · polling every 2.5s' : 'Connecting…'}
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>
+              Collect today&apos;s scheduled bento meals by pickup code.
+            </p>
+          )}
+        </div>
+        <div className="btnRow">
+          <button
+            type="button"
+            className={workspace === 'shop' ? 'btnPrimary' : 'btnGhost'}
+            onClick={() => setWorkspace('shop')}
+          >
+            Shop queue
+          </button>
+          <button
+            type="button"
+            className={workspace === 'bento' ? 'btnPrimary' : 'btnGhost'}
+            onClick={() => setWorkspace('bento')}
+          >
+            Bento pickup
+          </button>
+          {workspace === 'shop' ? (
+            <>
+              <button type="button" className="btnGhost" onClick={() => openScanPopup()}>
+                Scan QR
+              </button>
+              <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
+                Timesheet
+              </button>
+              <button type="button" className="btnGhost" onClick={() => void poll()}>
+                Refresh now
+              </button>
+            </>
+          ) : null}
+          <button type="button" className="btnGhost" onClick={onDisconnect}>
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      {workspace === 'bento' ? (
+        <BentoPickupPanel apiKey={apiKey} baseUrl={apiBase} />
+      ) : (
+        <>
+      {pollErr ? (
+        <p className="err" style={{ marginBottom: 16 }}>
+          {pollErr}
+        </p>
+      ) : null}
+
+      <section className="queueToolbar" aria-label="Filter and sort by pickup date">
+        <div className="queueToolbarRow">
+          <span className="queueToolbarLabel">Pickup date (self pickup) · sort by slot</span>
+          <label className="queueToolbarField">
+            <span>From</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(ev) => setDateFrom(ev.target.value)}
+              aria-label="Filter from pickup date"
+            />
+          </label>
+          <label className="queueToolbarField">
+            <span>To</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(ev) => setDateTo(ev.target.value)}
+              aria-label="Filter to pickup date"
+            />
+          </label>
+          <label className="queueToolbarField">
+            <span>Sort</span>
+            <select
+              value={sortPickup}
+              onChange={(ev) => setSortPickup(ev.target.value === 'asc' ? 'asc' : 'desc')}
+              aria-label="Sort by pickup slot"
+            >
+              <option value="asc">Soonest pickup first</option>
+              <option value="desc">Latest pickup first</option>
+            </select>
+          </label>
+          <label className="queueToolbarField queueToolbarCheck">
+            <span>Today</span>
+            <input
+              type="checkbox"
+              checked={todayOnly}
+              onChange={(ev) => setTodayOnly(ev.target.checked)}
+              aria-label="Show only today’s pickups plus all in-store expedite"
+            />
+          </label>
+          <button
+            type="button"
+            className="btnGhost"
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+              setSortPickup('asc');
+              setTodayOnly(false);
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+        <p className="queueToolbarHint">
+          Active: {displayPendingCount} of {rawPending.length} · Collected sidebar:{' '}
+          {sidebarHistory.length}
+          {!hasPickupDateFilter
+            ? ` (today = ${shopCalendarYmd()} in ${shopTimeZone()} · earlier days: set From/To)`
+            : ` of ${rawHistory.length} loaded · pickup-date range`}
+          {todayOnly
+            ? ` · Queue “Today”: in-store expedite always included`
+            : ''}
+          {hasPickupDateFilter &&
+            ' · Range uses pickup date on the card; delivery-only uses placed date for the day'}
+        </p>
+      </section>
+
+      <div className="layout">
+        <aside className="sidePanel">
+          <h2>Recent collected</h2>
+          <p className="muted" style={{ fontSize: 13, marginTop: -6, marginBottom: 12 }}>
+            {hasPickupDateFilter
+              ? 'Filtered by pickup From/To. Click a row for details.'
+              : `Today only (${shopCalendarYmd()}, ${shopTimeZone()}). Resets each shop day — set From/To to see earlier collected orders.`}
+          </p>
+          <div className="historyList">
+            {sidebarHistory.length === 0 ? (
+              <p className="muted" style={{ padding: 8 }}>
+                {rawHistory.length === 0
+                  ? 'No collected orders yet.'
+                  : hasPickupDateFilter
+                    ? 'No collected orders match this date range.'
+                    : 'Nothing collected today yet.'}
+              </p>
+            ) : (
+              sidebarHistory.map((h) => (
+                <button
+                  key={h.id}
+                  type="button"
+                  className="historyRow"
+                  onClick={() => setDetailModalId(h.id)}
+                >
+                  <strong>
+                    {formatOrderPickupLabel(h.orderNumber)} · {formatRm(h.totalCents)}
+                  </strong>
+                  <div className="meta">
+                    {placedLabel(h.placedAt)} · {h.customerPhoneMasked}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <div className="mainColumn">
+          {displayPendingCount === 0 ? (
+            <div className="emptyQueue">
+              <p style={{ margin: 0, fontSize: '1.05rem' }}>
+                {rawPending.length === 0
+                  ? 'No active orders in the queue.'
+                  : 'No active orders match the current filters.'}
+              </p>
+              <p className="muted" style={{ margin: '10px 0 0' }}>
+                New member purchases appear here as cards. Mark <strong>Collected</strong> when the
+                member shows their QR or confirms pickup.
+              </p>
+            </div>
+          ) : (
+            <>
+              {pendingSections.expedite.length > 0 ? (
+                <>
+                  <h2 className="queueSectionTitle">Expedite · in store now</h2>
+                  {pendingSections.expedite.map((o) => (
+                    <OrderCard
+                      key={o.id}
+                      order={o}
+                      pulse={pulseIds.has(o.id)}
+                      busy={completingId === o.id}
+                      onDone={() => onDone(o.id)}
+                      onOpenDetail={() => setDetailModalId(o.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+              {pendingSections.scheduled.length > 0 ? (
+                <>
+                  <h2 className="queueSectionTitle">Scheduled · pickup / delivery</h2>
+                  {pendingSections.scheduled.map((o) => (
+                    <OrderCard
+                      key={o.id}
+                      order={o}
+                      pulse={pulseIds.has(o.id)}
+                      busy={completingId === o.id}
+                      onDone={() => onDone(o.id)}
+                      onOpenDetail={() => setDetailModalId(o.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+
+      {detailModalId ? (
+        <div
+          className="detailModalBackdrop"
+          role="presentation"
+          onClick={() => setDetailModalId(null)}
+        >
+          <div
+            className="detailModalPanel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-detail-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <OrderDetailView orderId={detailModalId} onDismiss={() => setDetailModalId(null)} />
+          </div>
+        </div>
+      ) : null}
+        </>
+      )}
+    </div>
+  );
+}

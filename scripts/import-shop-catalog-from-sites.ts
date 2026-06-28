@@ -21,33 +21,30 @@ const catalog = JSON.parse(raw) as SitesCatalog;
 const products = convertSitesCatalog(catalog);
 const layout = sitesCatalogToLayout(catalog);
 
-function writeCatalogFiles(
-  dir: string,
-  productJson: string,
-  layoutJson: string,
-  popularJson: string,
-): void {
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(resolve(dir, 'shop-catalog.products.json'), productJson, 'utf-8');
-  writeFileSync(resolve(dir, 'shop-catalog.layout.json'), layoutJson, 'utf-8');
-  writeFileSync(resolve(dir, 'home-popular.json'), popularJson, 'utf-8');
-}
-
-const productJson = JSON.stringify(products, null, 2);
-const layoutJson = JSON.stringify(layout, null, 2);
-const popularJson = JSON.stringify(
-  {
-    productIds: catalog.homeFeaturedSlugs.slice(0, 5),
-    maxLimit: 5,
-  },
-  null,
-  2,
+const dataDir = resolve(repoRoot, 'config');
+mkdirSync(dataDir, { recursive: true });
+writeFileSync(
+  resolve(dataDir, 'shop-catalog.products.json'),
+  JSON.stringify(products, null, 2),
+  'utf-8',
 );
-
-writeCatalogFiles(resolve(repoRoot, 'config'), productJson, layoutJson, popularJson);
-writeCatalogFiles(resolve(repoRoot, 'data'), productJson, layoutJson, popularJson);
+writeFileSync(
+  resolve(dataDir, 'shop-catalog.layout.json'),
+  JSON.stringify(layout, null, 2),
+  'utf-8',
+);
+writeFileSync(
+  resolve(dataDir, 'home-popular.json'),
+  JSON.stringify(
+    {
+      productIds: catalog.homeFeaturedSlugs.slice(0, 5),
+      maxLimit: 5,
+    },
+    null,
+    2,
+  ),
+  'utf-8',
+);
 
 console.log(`Imported ${products.length} products from ${sitesCatalogPath}`);
-console.log(
-  `Wrote config/ and data/ shop-catalog.products.json, layout (${layout.shopSections.length} sections), home-popular.json`,
-);
+console.log(`Wrote config/shop-catalog.products.json and layout (${layout.shopSections.length} sections)`);

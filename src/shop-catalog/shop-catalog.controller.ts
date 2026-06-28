@@ -26,15 +26,6 @@ export class ShopCatalogController {
     return this.shopCatalog.getPublicLayout();
   }
 
-  /** Single round-trip for the storefront (products + layout). */
-  @Get('catalog/bundle')
-  listCatalogBundle() {
-    return {
-      products: this.shopCatalog.listPublicProducts(),
-      layout: this.shopCatalog.getPublicLayout(),
-    };
-  }
-
   @Get('catalog/featured')
   listFeatured() {
     return this.shopCatalog.listHomeFeaturedProducts();

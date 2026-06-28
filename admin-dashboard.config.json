@@ -1,0 +1,37 @@
+{
+  "menuGroups": {
+    "dashboard": { "showGroup": true, "showSubmenu": true },
+    "customers": { "showGroup": true, "showSubmenu": true },
+    "bento": { "showGroup": true, "showSubmenu": true },
+    "wallet": { "showGroup": false, "showSubmenu": true },
+    "loyalty": { "showGroup": true, "showSubmenu": true },
+    "vouchers": { "showGroup": false, "showSubmenu": true },
+    "campaigns": { "showGroup": false, "showSubmenu": true },
+    "data-tools": { "showGroup": false, "showSubmenu": true },
+    "reports": { "showGroup": true, "showSubmenu": true },
+    "settings": { "showGroup": true, "showSubmenu": true },
+    "audit": { "showGroup": false, "showSubmenu": true }
+  },
+  "menuViews": {
+    "dashboard-overview": true,
+    "dashboard-activity": true,
+    "dashboard-employees": true,
+    "customers-list": true,
+    "customer-orders": true,
+    "reports-sales": true,
+    "bento-overview": true,
+    "bento-sales": true,
+    "bento-menu": true,
+    "bento-pricing": true,
+    "bento-operations": true,
+    "bento-orders": true,
+    "bento-vouchers": true,
+    "vouchers-rewards-hub": true,
+    "settings-shopping-catalog": true,
+    "settings-shop-layout": true,
+    "settings-system": true,
+    "reports-customers": true,
+    "reports-vouchers": true,
+    "reports-loyalty": true
+  }
+}

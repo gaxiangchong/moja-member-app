@@ -15,11 +15,19 @@ import { SegmentationModule } from './segmentation/segmentation.module';
 import { ImportExportModule } from './import-export/import-export.module';
 import { MasterDataModule } from './master-data/master-data.module';
 import { AdminAuthModule } from './admin-auth/admin-auth.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
+import { OpsQueueModule } from './ops-queue/ops-queue.module';
+import { PaymentsModule } from './payments/payments.module';
+import { HomeAdsModule } from './home-ads/home-ads.module';
+import { RewardsWorkflowModule } from './rewards-workflow/rewards-workflow.module';
+import { BentoModule } from './bento/bento.module';
+import { BentoVoucherModule } from './bento-vouchers/bento-voucher.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    MetricsModule,
     ThrottlerModule.forRoot([
       {
         name: 'default',
@@ -40,6 +48,12 @@ import { ShopCatalogModule } from './shop-catalog/shop-catalog.module';
     ImportExportModule,
     MasterDataModule,
     ShopCatalogModule,
+    OpsQueueModule,
+    PaymentsModule,
+    HomeAdsModule,
+    RewardsWorkflowModule,
+    BentoModule,
+    BentoVoucherModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

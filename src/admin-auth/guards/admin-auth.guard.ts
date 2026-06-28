@@ -20,9 +20,9 @@ export class AdminAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<
-      Request & { adminAuth?: AdminAuthState }
-    >();
+    const req = context
+      .switchToHttp()
+      .getRequest<Request & { adminAuth?: AdminAuthState }>();
     const ip =
       String(
         (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
@@ -38,7 +38,7 @@ export class AdminAuthGuard implements CanActivate {
         this.config.getOrThrow<string>('JWT_SECRET');
       let payload: { sub: string; typ?: string };
       try {
-        payload = this.jwt.verify(token, { secret }) as { sub: string; typ?: string };
+        payload = this.jwt.verify(token, { secret });
       } catch {
         throw new UnauthorizedException({
           code: 'ADMIN_TOKEN_INVALID',
