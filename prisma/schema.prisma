@@ -158,6 +158,15 @@ enum VoucherRedemptionStatus {
   EXPIRED
 }
 
+enum CampaignTemplate {
+  WELCOME
+  BIRTHDAY
+  REFERRAL
+  WINBACK
+  SPEND_EARN
+  CUSTOM
+}
+
 /// WhatsApp OTP is tied to registration vs PIN recovery / completing PIN setup.
 enum OtpPurpose {
   REGISTER
@@ -302,6 +311,8 @@ model VoucherCampaign {
   code                   String       @unique
   name                   String
   description            String?
+  template               CampaignTemplate? @map("template")
+  codePrefix             String?      @map("code_prefix") @db.VarChar(16)
   voucherType            VoucherType  @map("voucher_type")
   percentageOff          Int?         @map("percentage_off")
   fixedAmountOff         Int?         @map("fixed_amount_off")
@@ -325,6 +336,7 @@ model VoucherCampaign {
   isActive               Boolean      @default(true) @map("is_active")
   startsAt               DateTime?    @map("starts_at")
   endsAt                 DateTime?    @map("ends_at")
+  voucherValidDays       Int?         @map("voucher_valid_days")
   createdAt              DateTime     @default(now()) @map("created_at")
   updatedAt              DateTime     @updatedAt @map("updated_at")
 

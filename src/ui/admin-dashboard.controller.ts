@@ -29,7 +29,8 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-operations': true,
     'bento-orders': true,
     'bento-vouchers': true,
-    'vouchers-rewards-hub': true,
+    'voucher-campaigns': true,
+    'gift-rewards': true,
     'settings-shopping-catalog': true,
     'settings-shop-layout': true,
     'settings-popular-items': true,
@@ -1064,9 +1065,13 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
               Bonus campaigns
             </button>
-            <button type="button" class="nav-btn nav-sub" data-view="vouchers-rewards-hub">
+            <button type="button" class="nav-btn nav-sub" data-view="voucher-campaigns">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/><path d="M7 12h.01M17 12h.01M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
-              Vouchers &amp; rewards
+              Vouchers
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="gift-rewards">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+              Gift rewards
             </button>
           </div>
         </details>
@@ -1691,360 +1696,330 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="vouchers-rewards-hub" class="tab-panel hidden">
-          <div class="vrh-shell">
-            <div class="vrh-hero">
-              <h2>Vouchers &amp; rewards</h2>
-              <p>Create <strong>voucher series</strong> (offer templates), choose how they appear in the member app, then optionally wire <strong>automation</strong> so qualifying members receive them automatically. Layout follows the familiar POS pattern: <em>general settings → schedule &amp; limits → review</em>, similar to commercial systems such as <a href="https://www.epos.com.sg/knowledge-base-back-end/products/knowledge-base-vouchers/" target="_blank" rel="noopener noreferrer">EPOS voucher configuration</a>.</p>
-            </div>
-            <div class="vrh-tabbar" role="tablist">
-              <button type="button" class="vrh-tab active" data-vrh-pane="overview" role="tab" aria-selected="true">Overview</button>
-              <button type="button" class="vrh-tab" data-vrh-pane="wizard" role="tab" aria-selected="false">New series</button>
-              <button type="button" class="vrh-tab" data-vrh-pane="series" role="tab" aria-selected="false">All series</button>
-              <button type="button" class="vrh-tab" data-vrh-pane="automation" role="tab" aria-selected="false">Automation</button>
-              <button type="button" class="vrh-tab" data-vrh-pane="issued" role="tab" aria-selected="false">Issued to members</button>
-              <button type="button" class="vrh-tab" data-vrh-pane="workflow2" role="tab" aria-selected="false">Workflow V2</button>
-            </div>
-            <div id="vrh-pane-overview" class="vrh-pane">
-              <div class="kpi-panel" style="margin-top:0">
-                <h2>Portfolio snapshot</h2>
-                <div class="kpi-row">
-                  <div class="kpi"><div class="kpi-label">Issued (active)</div><div class="kpi-value" id="vrIssued">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Redeemed</div><div class="kpi-value" id="vrRedeemed">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Expired</div><div class="kpi-value" id="vrExpired">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Void</div><div class="kpi-value" id="vrVoid">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Redemption rate</div><div class="kpi-value" id="vrRate">-</div></div>
-                </div>
-              </div>
-              <div class="info-banner" style="margin-top:16px">
-                <strong>Member app mapping:</strong> <strong>Perks → Rewards</strong> lists series marked for the <em>points catalog</em>. <strong>Perks → Vouchers</strong> shows <em>issued</em> instances only (assign, import, campaign, or automation). Promo / wallet-style series stay out of Rewards unless you explicitly enable the catalog.
-              </div>
-              <div class="sheet" style="margin-top:16px">
-                <div class="sheet-head"><h2>Where to go next</h2></div>
-                <ul class="muted-hint" style="margin:12px 20px 18px;padding-left:18px;line-height:1.65">
-                  <li><strong>New series</strong> — guided 3-step creator (general → schedule &amp; limits → review).</li>
-                  <li><strong>All series</strong> — browse, copy definition IDs, edit catalog &amp; validity.</li>
-                  <li><strong>Automation</strong> — perks campaigns (rebate, free item, points window) using a series ID.</li>
-                  <li><strong>Issued to members</strong> — recent wallet activity for vouchers.</li>
-                </ul>
+        <section id="voucher-campaigns" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshVoucherCampaignsBtn">Refresh</button>
               </div>
             </div>
-            <div id="vrh-pane-wizard" class="vrh-pane hidden">
-              <div class="vrh-stepper" aria-label="Progress">
-                <div class="vrh-step is-current" id="vrhStepInd1">1 · Basics</div>
-                <div class="vrh-step" id="vrhStepInd2">2 · Schedule</div>
-                <div class="vrh-step" id="vrhStepInd3">3 · Review</div>
-              </div>
-              <div id="vrhWizStep1" class="vrh-wiz-card">
-                <p class="muted-hint" style="margin-top:0">Step 1 of 3 — General settings (like EPOS &quot;New voucher configuration&quot; part 1).</p>
-                <div class="form-section"><label for="vrhSeriesTitle">Series name</label><input type="text" id="vrhSeriesTitle" maxlength="200" placeholder="e.g. Weekend 10% off drinks" /></div>
-                <div class="form-section"><label for="vrhSeriesCode">Internal code</label>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <input type="text" id="vrhSeriesCode" maxlength="64" style="flex:1;min-width:160px" placeholder="e.g. WKND_DRINKS_10" />
-                    <button type="button" class="btn-outline" id="vrhSuggestCodeBtn">Suggest code</button>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Create a voucher campaign and push it to your members. Pick a template to pre-fill the common settings, adjust the amount and dates, then create. Members receive the voucher in their app wallet — no codes or IDs to type.
+              </p>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">1 &middot; Pick a template</h3>
+              <div id="vcTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px"></div>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 10px;font-size:14px">2 &middot; Configure &amp; create</h3>
+                <input type="hidden" id="vcTemplate" value="CUSTOM" />
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="vcName">Voucher name</label>
+                    <input type="text" id="vcName" placeholder="e.g. Welcome RM5 off" />
                   </div>
-                  <span class="field-hint">Used as stable reference in imports and reporting. Uppercase letters, numbers, underscores.</span>
-                </div>
-                <div class="form-section"><label for="vrhSeriesDescription">Description (optional)</label><textarea id="vrhSeriesDescription" maxlength="2000" rows="3" placeholder="Shown to staff / members where applicable"></textarea></div>
-                <div class="form-section"><label>Where should this appear?</label></div>
-                <div class="vrh-offer-grid">
-                  <label class="vrh-offer-card is-selected" id="vrhOfferPromoLabel" for="vrhOfferPromo" style="margin:0">
-                    <input type="radio" name="vrhOfferType" id="vrhOfferPromo" value="promo" checked style="position:absolute;opacity:0;width:0;height:0" />
-                    <strong>Promo &amp; wallet</strong>
-                    <span>Not in the points catalog. Use for rebates, goodwill codes, or items issued manually / by automation.</span>
-                  </label>
-                  <label class="vrh-offer-card" id="vrhOfferPointsLabel" for="vrhOfferPoints" style="margin:0">
-                    <input type="radio" name="vrhOfferType" id="vrhOfferPoints" value="points" style="position:absolute;opacity:0;width:0;height:0" />
-                    <strong>Points catalog reward</strong>
-                    <span>Appears under member <strong>Perks → Rewards</strong>. Requires a points price in the next step.</span>
-                  </label>
-                </div>
-                <div class="vrh-wiz-actions">
-                  <button type="button" class="btn-primary" id="vrhWizardNext1">Continue</button>
-                </div>
-              </div>
-              <div id="vrhWizStep2" class="vrh-wiz-card hidden">
-                <p class="muted-hint" style="margin-top:0">Step 2 of 3 — Validity window, presentation, and issuance cap (EPOS-style dates &amp; limited quantity).</p>
-                <div class="form-row-2">
-                  <div class="form-section"><label for="vrhSeriesValidFrom">Valid from</label><input type="date" id="vrhSeriesValidFrom" /></div>
-                  <div class="form-section"><label for="vrhSeriesValidUntil">Valid until</label><input type="date" id="vrhSeriesValidUntil" /></div>
-                </div>
-                <div class="form-row-2">
-                  <div class="form-section"><label for="vrhSeriesCategory">Category (optional)</label><input type="text" id="vrhSeriesCategory" maxlength="64" placeholder="food, drinks, merch…" /></div>
-                  <div class="form-section"><label for="vrhSeriesSort">Sort order</label><input type="number" id="vrhSeriesSort" step="1" value="0" /></div>
-                </div>
-                <div class="form-section"><label for="vrhSeriesImageUrl">Image URL (optional)</label><input type="text" id="vrhSeriesImageUrl" maxlength="2000" placeholder="https://…" /></div>
-                <div class="form-section"><label for="vrhSeriesMaxIssued">Max total issued (optional)</label><input type="number" id="vrhSeriesMaxIssued" min="1" step="1" placeholder="empty = unlimited across the program" /></div>
-                <div class="form-section" id="vrhPointsCostWrap">
-                  <label for="vrhSeriesPoints">Points price</label>
-                  <input type="number" id="vrhSeriesPoints" min="1" step="1" placeholder="Required for points catalog" />
-                </div>
-                <p class="field-hint" style="margin-bottom:0">Targeting (specific tiers, spend thresholds, birthdays) is configured under <strong>Automation</strong> after the series exists — copy the definition ID from <strong>All series</strong>.</p>
-                <div class="vrh-wiz-actions">
-                  <button type="button" class="btn-outline" id="vrhWizardBack2">Back</button>
-                  <button type="button" class="btn-primary" id="vrhWizardNext2">Continue</button>
-                </div>
-              </div>
-              <div id="vrhWizStep3" class="vrh-wiz-card hidden">
-                <p class="muted-hint" style="margin-top:0">Step 3 of 3 — Confirm and create the series.</p>
-                <div id="vrhWizardSummary" class="muted-box" style="font-size:13px;line-height:1.55"></div>
-                <div class="vrh-wiz-actions">
-                  <button type="button" class="btn-outline" id="vrhWizardBack3">Back</button>
-                  <button type="button" class="btn-primary" id="vrhCreateSeriesBtn">Create series</button>
-                </div>
-                <p class="field-hint" id="vrhCreateSeriesResult"></p>
-              </div>
-            </div>
-            <div id="vrh-pane-series" class="vrh-pane hidden">
-              <div class="info-banner" style="margin-top:0">Edit a row to tune catalog visibility, points, imagery, and validity. Use the copy control to grab the definition UUID for automation rules.</div>
-              <div class="sheet">
-                <div class="sheet-head">
-                  <h2>All voucher series</h2>
-                  <div class="sheet-actions">
-                    <button type="button" class="btn-outline" id="refreshVrhSeriesBtn">Refresh</button>
-                  </div>
-                </div>
-                <div class="table-wrap">
-                  <table class="data">
-                    <thead><tr><th>Code</th><th>Title</th><th>ID</th><th>Image</th><th>Points</th><th>Category</th><th>Catalog</th><th>Valid</th><th>Sort</th><th>Max issued</th><th>Status</th><th>Edit</th></tr></thead>
-                    <tbody id="vrHubSeriesBody"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div id="rewardDefEditor" class="sheet hidden" style="margin-top:16px">
-                <div class="sheet-head"><h2>Edit voucher series</h2><button type="button" class="btn-outline" id="rewardDefEditorCancel">Close</button></div>
-                <div style="padding:16px 20px;max-width:560px">
-                  <input type="hidden" id="rdEditId" />
-                  <div class="form-section"><label>Code</label><input type="text" id="rdCode" readonly /></div>
-                  <div class="form-section"><label for="rdTitle">Title</label><input type="text" id="rdTitle" maxlength="200" /></div>
-                  <div class="form-section"><label for="rdDescription">Description</label><textarea id="rdDescription" maxlength="2000"></textarea></div>
-                  <div class="form-row-2">
-                    <div class="form-section"><label for="rdPoints">Points cost</label><input type="number" id="rdPoints" min="0" step="1" /></div>
-                    <div class="form-section"><label for="rdCategory">Category</label><input type="text" id="rdCategory" maxlength="64" placeholder="food, drinks…" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section"><label for="rdDiscountRm">Checkout discount (RM)</label><input type="number" id="rdDiscountRm" min="0" step="0.01" placeholder="e.g. 5.00" /><p class="field-hint">Flat RM off at checkout when redeemed. No campaign needed.</p></div>
-                    <div class="form-section"><label for="rdMinSpendRm">Min. order spend (RM)</label><input type="number" id="rdMinSpendRm" min="0" step="0.01" placeholder="empty = no minimum" /><p class="field-hint">Order subtotal must be at least this to apply.</p></div>
-                  </div>
-                  <div class="form-section"><label for="rdImageUrl">Image URL</label><input type="text" id="rdImageUrl" maxlength="2000" placeholder="https://… or upload below" /></div>
-                  <div class="form-section">
-                    <label for="rdImageFile">Or upload from file</label>
-                    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-                      <div id="rdImageThumb" style="width:160px;height:96px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">No image</div>
-                      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
-                        <input type="file" id="rdImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
-                        <div style="display:flex;gap:8px;flex-wrap:wrap">
-                          <button type="button" class="btn-outline" id="rdImageUploadBtn">Upload image</button>
-                          <button type="button" class="btn-outline" id="rdImageClearBtn">Remove image</button>
-                        </div>
-                        <p class="field-hint">PNG / JPEG / WEBP / GIF, max 3 MB. Stored on the server's persistent disk so it survives redeploys.</p>
-                        <p class="field-hint" id="rdImageResult"></p>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section"><label for="rdValidFrom">Valid from</label><input type="date" id="rdValidFrom" /></div>
-                    <div class="form-section"><label for="rdValidUntil">Valid until</label><input type="date" id="rdValidUntil" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section"><label for="rdSort">Sort order</label><input type="number" id="rdSort" step="1" value="0" /></div>
-                    <div class="form-section"><label for="rdMaxIssued">Max total issued</label><input type="number" id="rdMaxIssued" min="1" step="1" placeholder="empty = unlimited" /></div>
-                  </div>
-                  <div class="form-section"><label><input type="checkbox" id="rdShowCatalog" style="width:auto;margin-right:8px" /> Show in member rewards catalog (points redeem)</label></div>
-                  <div class="form-section"><label><input type="checkbox" id="rdActive" style="width:auto;margin-right:8px" /> Series active</label></div>
-                  <button type="button" class="btn-primary" id="rdSaveBtn">Save changes</button>
-                  <p class="field-hint" id="rdSaveResult"></p>
-                </div>
-              </div>
-            </div>
-            <div id="vrh-pane-automation" class="vrh-pane hidden">
-              <div class="info-banner" style="margin-top:0">
-                <strong>Automation</strong> links a voucher series to business rules (min spend, tier, birthdays, top-ups, referrals, inactivity). Amounts are <strong>RM</strong> in the form; the API stores sen. Paste the <strong>voucher definition ID</strong> from <strong>All series</strong>.
-              </div>
-              <div class="sheet">
-                <div class="sheet-head">
-                  <h2>Perks campaigns</h2>
-                  <div class="sheet-actions">
-                    <button type="button" class="btn-outline" id="refreshPerksCampaignRulesBtn">Refresh</button>
-                  </div>
-                </div>
-                <div style="padding:12px 20px 0;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;border-bottom:1px solid rgba(0,0,0,0.06)">
-                  <div class="form-section" style="margin:0;min-width:220px">
-                    <label for="pcrProgramFilter">Show</label>
-                    <select id="pcrProgramFilter">
-                      <option value="all">All programs</option>
-                      <option value="VOUCHER_REBATE">Voucher (rebate)</option>
-                      <option value="reward">Rewards (free item + points)</option>
+                  <div>
+                    <label for="vcType">Discount type</label>
+                    <select id="vcType">
+                      <option value="FIXED_AMOUNT">RM amount off</option>
+                      <option value="PERCENTAGE">Percentage off</option>
+                      <option value="FREE_ITEM">Free item</option>
+                      <option value="DELIVERY_DISCOUNT">Delivery discount</option>
                     </select>
                   </div>
                 </div>
-                <div class="table-wrap">
-                  <table class="data">
-                    <thead><tr><th>Name</th><th>Program</th><th>Criteria</th><th>Campaign</th><th>Conditions (RM / tier)</th><th>Definition</th><th>Active</th><th>Max / member</th><th>Edit</th></tr></thead>
-                    <tbody id="pcrRulesBody"></tbody>
-                  </table>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div id="vcAmountWrap">
+                    <label for="vcAmount">Amount off (RM)</label>
+                    <input type="text" id="vcAmount" inputmode="decimal" placeholder="5.00" />
+                  </div>
+                  <div id="vcPercentWrap" style="display:none">
+                    <label for="vcPercent">Percentage off (%)</label>
+                    <input type="text" id="vcPercent" inputmode="numeric" placeholder="15" />
+                  </div>
+                  <div>
+                    <label for="vcMinSpend">Min spend (RM, optional)</label>
+                    <input type="text" id="vcMinSpend" inputmode="decimal" placeholder="&mdash;" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="vcStart">Valid from</label>
+                    <input type="date" id="vcStart" />
+                  </div>
+                  <div>
+                    <label for="vcEnd">Campaign ends (optional)</label>
+                    <input type="date" id="vcEnd" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="vcValidDays">Each voucher valid for (days)</label>
+                    <input type="text" id="vcValidDays" inputmode="numeric" placeholder="30" />
+                  </div>
+                  <div>
+                    <label for="vcMaxIssued">Max total issued (optional)</label>
+                    <input type="text" id="vcMaxIssued" inputmode="numeric" placeholder="unlimited" />
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="vcTnc">Terms / note (optional)</label>
+                  <input type="text" id="vcTnc" placeholder="Shown to members in their wallet" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="vcCreateBtn">Create voucher campaign</button>
+                  <span class="field-hint" id="vcCreateResult" style="margin:0"></span>
                 </div>
               </div>
-              <div class="sheet" style="margin-top:16px">
-                <div class="sheet-head"><h2>New campaign</h2></div>
-                <div style="padding:16px 20px;max-width:640px">
-                  <div class="form-section"><label for="pcrName">Name</label><input type="text" id="pcrName" maxlength="200" /></div>
-                  <div class="form-section"><label for="pcrDescription">Description</label><textarea id="pcrDescription" maxlength="2000"></textarea></div>
-                  <div class="form-section"><label><input type="checkbox" id="pcrIsActive" checked style="width:auto;margin-right:8px" /> Active</label></div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrProgramKind">Program</label>
-                      <select id="pcrProgramKind">
-                        <option value="VOUCHER_REBATE">Voucher — cash rebate (use on next purchase)</option>
-                        <option value="REWARD_FREE_ITEM">Reward — free catalog item (auto when criteria match)</option>
-                        <option value="REWARD_POINTS_REDEEM">Reward — points redeem (catalog window only)</option>
-                      </select>
-                    </div>
-                    <div class="form-section" style="margin:0"><label for="pcrCriteriaKind">When to trigger</label>
-                      <select id="pcrCriteriaKind">
-                        <option value="CAMPAIGN_WINDOW_ONLY">During campaign dates only</option>
-                        <option value="NEW_MEMBER_WITHIN_DAYS">New member — within days of signup</option>
-                        <option value="SINGLE_PURCHASE_MIN_RM">Single order — purchase total at least (RM)</option>
-                        <option value="TIER_AND_PURCHASE_MIN_RM">Tier + purchase — min tier and single order ≥ RM</option>
-                        <option value="BIRTHDAY_DURING_CAMPAIGN">Birthday falls inside campaign</option>
-                        <option value="WALLET_TOPUP_MIN_RM">Wallet top-up — at least (RM) in one top-up</option>
-                        <option value="REFERRALS_MIN_COUNT">Referrals — at least N successful referrals</option>
-                        <option value="REENGAGEMENT_INACTIVE_DAYS">Re-engagement — inactive for N days</option>
-                      </select>
-                    </div>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">Your campaigns</h3>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Name</th>
+                      <th>Discount</th>
+                      <th>Issued</th>
+                      <th>Window</th>
+                      <th style="text-align:center">Status</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="voucherCampaignsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="voucherCampaignsListResult"></p>
+
+              <div id="vcIssuePanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-top:14px">
+                <h3 style="margin:0 0 6px;font-size:14px">Push voucher to members &mdash; <span id="vcIssueCampaignName"></span></h3>
+                <p class="field-hint" style="margin-top:0">Issuing creates a voucher in the member's wallet so it shows up in their app. Find one member by phone, or push to every active member at once.</p>
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="vcIssuePhone">Member phone</label>
+                    <input type="text" id="vcIssuePhone" placeholder="e.g. 60123456789" />
                   </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrCampaignStart">Campaign start</label><input type="date" id="pcrCampaignStart" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrCampaignEnd">Campaign end</label><input type="date" id="pcrCampaignEnd" /></div>
+                  <div style="display:flex;align-items:flex-end">
+                    <button type="button" class="btn-primary" id="vcIssueOneBtn">Find &amp; issue</button>
                   </div>
-                  <p class="field-hint" id="pcrCriteriaHint" style="margin:0 0 8px"></p>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrMinPurchaseRm">Min single purchase (RM)</label><input type="number" id="pcrMinPurchaseRm" min="0" step="0.01" placeholder="e.g. 100" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrRebateRm">Rebate value (RM)</label><input type="number" id="pcrRebateRm" min="0" step="0.01" placeholder="voucher rebate only" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrMinTopupRm">Min wallet top-up (RM)</label><input type="number" id="pcrMinTopupRm" min="0" step="0.01" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrWithinDaysSignup">Within days of signup</label><input type="number" id="pcrWithinDaysSignup" min="1" step="1" placeholder="new member criteria" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrMinReferrals">Min referrals</label><input type="number" id="pcrMinReferrals" min="1" step="1" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrInactiveDays">Inactive days</label><input type="number" id="pcrInactiveDays" min="1" step="1" placeholder="re-engagement" /></div>
-                  </div>
-                  <div class="form-section" style="margin:0"><label for="pcrMinTier">Minimum member tier</label>
-                    <select id="pcrMinTier">
-                      <option value="">Any tier</option>
-                      <option value="SILVER">Silver and above</option>
-                      <option value="GOLD">Gold and above</option>
-                      <option value="PLATINUM">Platinum only</option>
-                    </select>
-                  </div>
-                  <div class="form-section"><label for="pcrVoucherDefinitionId">Voucher definition ID</label><input type="text" id="pcrVoucherDefinitionId" placeholder="UUID from All series" /></div>
-                  <div class="form-section"><label for="pcrMaxGrantsPerCustomer">Max grants per member (optional)</label><input type="number" id="pcrMaxGrantsPerCustomer" min="1" step="1" placeholder="empty = unlimited" /></div>
-                  <button type="button" class="btn-primary" id="pcrCreateBtn">Create campaign</button>
-                  <p class="field-hint" id="pcrCreateResult"></p>
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-outline" id="vcIssueAllBtn">Issue to all active members</button>
+                  <button type="button" class="btn-outline" id="vcIssueCloseBtn">Close</button>
+                  <span class="field-hint" id="vcIssueResult" style="margin:0"></span>
                 </div>
               </div>
-              <div id="pcrEditPanel" class="sheet hidden" style="margin-top:16px">
-                <div class="sheet-head"><h2>Edit campaign</h2><button type="button" class="btn-outline" id="pcrEditCancel">Close</button></div>
-                <div style="padding:16px 20px;max-width:640px">
-                  <input type="hidden" id="pcrEditId" />
-                  <div class="form-section"><label for="pcrEditName">Name</label><input type="text" id="pcrEditName" maxlength="200" /></div>
-                  <div class="form-section"><label for="pcrEditDescription">Description</label><textarea id="pcrEditDescription" maxlength="2000"></textarea></div>
-                  <div class="form-section"><label><input type="checkbox" id="pcrEditIsActive" style="width:auto;margin-right:8px" /> Active</label></div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrEditProgramKind">Program</label>
-                      <select id="pcrEditProgramKind">
-                        <option value="VOUCHER_REBATE">Voucher — cash rebate</option>
-                        <option value="REWARD_FREE_ITEM">Reward — free catalog item</option>
-                        <option value="REWARD_POINTS_REDEEM">Reward — points redeem</option>
-                      </select>
-                    </div>
-                    <div class="form-section" style="margin:0"><label for="pcrEditCriteriaKind">When to trigger</label>
-                      <select id="pcrEditCriteriaKind">
-                        <option value="CAMPAIGN_WINDOW_ONLY">During campaign dates only</option>
-                        <option value="NEW_MEMBER_WITHIN_DAYS">New member — within days of signup</option>
-                        <option value="SINGLE_PURCHASE_MIN_RM">Single order — purchase total at least (RM)</option>
-                        <option value="TIER_AND_PURCHASE_MIN_RM">Tier + purchase — min tier and single order ≥ RM</option>
-                        <option value="BIRTHDAY_DURING_CAMPAIGN">Birthday falls inside campaign</option>
-                        <option value="WALLET_TOPUP_MIN_RM">Wallet top-up — at least (RM)</option>
-                        <option value="REFERRALS_MIN_COUNT">Referrals — at least N</option>
-                        <option value="REENGAGEMENT_INACTIVE_DAYS">Re-engagement — inactive N days</option>
-                      </select>
-                    </div>
+
+              <div id="vcEditPanel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-top:14px">
+                <h3 style="margin:0 0 10px;font-size:14px">Edit campaign &mdash; <span id="vcEditCode"></span></h3>
+                <input type="hidden" id="vcEditId" />
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="vcEditName">Name</label>
+                    <input type="text" id="vcEditName" />
                   </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrEditCampaignStart">Campaign start</label><input type="date" id="pcrEditCampaignStart" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrEditCampaignEnd">Campaign end</label><input type="date" id="pcrEditCampaignEnd" /></div>
-                  </div>
-                  <p class="field-hint" id="pcrEditCriteriaHint" style="margin:0 0 8px"></p>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrEditMinPurchaseRm">Min single purchase (RM)</label><input type="number" id="pcrEditMinPurchaseRm" min="0" step="0.01" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrEditRebateRm">Rebate value (RM)</label><input type="number" id="pcrEditRebateRm" min="0" step="0.01" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrEditMinTopupRm">Min wallet top-up (RM)</label><input type="number" id="pcrEditMinTopupRm" min="0" step="0.01" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrEditWithinDaysSignup">Within days of signup</label><input type="number" id="pcrEditWithinDaysSignup" min="1" step="1" /></div>
-                  </div>
-                  <div class="form-row-2">
-                    <div class="form-section" style="margin:0"><label for="pcrEditMinReferrals">Min referrals</label><input type="number" id="pcrEditMinReferrals" min="1" step="1" /></div>
-                    <div class="form-section" style="margin:0"><label for="pcrEditInactiveDays">Inactive days</label><input type="number" id="pcrEditInactiveDays" min="1" step="1" /></div>
-                  </div>
-                  <div class="form-section" style="margin:0"><label for="pcrEditMinTier">Minimum member tier</label>
-                    <select id="pcrEditMinTier">
-                      <option value="">Any tier</option>
-                      <option value="SILVER">Silver and above</option>
-                      <option value="GOLD">Gold and above</option>
-                      <option value="PLATINUM">Platinum only</option>
+                  <div>
+                    <label for="vcEditActive">Status</label>
+                    <select id="vcEditActive">
+                      <option value="true">Active</option>
+                      <option value="false">Paused</option>
                     </select>
                   </div>
-                  <div class="form-section"><label for="pcrEditVoucherDefinitionId">Voucher definition ID</label><input type="text" id="pcrEditVoucherDefinitionId" /></div>
-                  <div class="form-section"><label for="pcrEditMaxGrantsPerCustomer">Max grants per member</label><input type="number" id="pcrEditMaxGrantsPerCustomer" min="1" step="1" placeholder="empty = unlimited" /></div>
-                  <button type="button" class="btn-primary" id="pcrSaveBtn">Save campaign</button>
-                  <p class="field-hint" id="pcrSaveResult"></p>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div id="vcEditAmountWrap">
+                    <label for="vcEditAmount">Amount off (RM)</label>
+                    <input type="text" id="vcEditAmount" inputmode="decimal" />
+                  </div>
+                  <div id="vcEditPercentWrap" style="display:none">
+                    <label for="vcEditPercent">Percentage off (%)</label>
+                    <input type="text" id="vcEditPercent" inputmode="numeric" />
+                  </div>
+                  <div>
+                    <label for="vcEditMinSpend">Min spend (RM)</label>
+                    <input type="text" id="vcEditMinSpend" inputmode="decimal" placeholder="&mdash;" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="vcEditValidDays">Each voucher valid for (days)</label>
+                    <input type="text" id="vcEditValidDays" inputmode="numeric" />
+                  </div>
+                  <div>
+                    <label for="vcEditMaxIssued">Max total issued</label>
+                    <input type="text" id="vcEditMaxIssued" inputmode="numeric" placeholder="unlimited" />
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="vcEditTnc">Terms / note</label>
+                  <input type="text" id="vcEditTnc" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="vcEditSaveBtn">Save changes</button>
+                  <button type="button" class="btn-outline" id="vcEditCancelBtn">Cancel</button>
+                  <span class="field-hint" id="vcEditResult" style="margin:0"></span>
                 </div>
               </div>
             </div>
-            <div id="vrh-pane-issued" class="vrh-pane hidden">
-              <div class="sheet">
-                <div class="sheet-head"><h2>Recently issued vouchers</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAssignedVouchersBtn">Refresh</button></div></div>
-                <p class="muted-hint" style="padding:12px 20px 0;margin:0">Latest member voucher states from the overview feed. Bulk history lives in exports / reporting.</p>
-                <div class="table-wrap">
-                  <table class="data">
-                    <thead><tr><th>Member</th><th>Code</th><th>Status</th><th>Updated</th></tr></thead>
-                    <tbody id="voucherAssignedBody"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="sheet" style="margin-top:16px">
-                <div class="sheet-head"><h2>Exports</h2></div>
-                <div class="muted-box">Use <code>POST /admin/export/run</code> with kind <code>VOUCHERS_ISSUED</code> or <code>VOUCHERS_REDEEMED</code> for full extracts. Voucher KPIs stay on the <strong>Overview</strong> tab.</div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Issued vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="ivRefreshBtn">Refresh</button>
               </div>
             </div>
-            <div id="vrh-pane-workflow2" class="vrh-pane hidden">
-              <div class="info-banner" style="margin-top:0">
-                Rewards Workflow V2 APIs: catalog, campaigns, gift codes, user wallets, points ledger, wallet transactions, redemptions, analytics.
-              </div>
-              <div class="kpi-panel" style="margin-top:16px">
-                <h2>Workflow V2 snapshot</h2>
-                <div class="kpi-row">
-                  <div class="kpi"><div class="kpi-label">Reward catalog</div><div class="kpi-value" id="rwfCatalogCount">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Voucher campaigns</div><div class="kpi-value" id="rwfCampaignCount">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Redemptions total</div><div class="kpi-value" id="rwfRedemptionTotal">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Redemptions confirmed</div><div class="kpi-value" id="rwfRedemptionConfirmed">-</div></div>
-                  <div class="kpi"><div class="kpi-label">Redemptions released</div><div class="kpi-value" id="rwfRedemptionReleased">-</div></div>
+            <div style="padding:12px 20px">
+              <p class="field-hint" style="margin-top:0">Every voucher issued to a member &mdash; search by code, name or phone, filter by status or campaign, and withdraw any unredeemed voucher. Set status to <strong>Used</strong> to see who redeemed.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+                <div>
+                  <label for="ivSearch">Search</label>
+                  <input type="text" id="ivSearch" placeholder="code, name or phone" style="min-width:200px" />
                 </div>
+                <div>
+                  <label for="ivStatus">Status</label>
+                  <select id="ivStatus">
+                    <option value="">All</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="USED">Used (redeemed)</option>
+                    <option value="LOCKED">Locked (in checkout)</option>
+                    <option value="EXPIRED">Expired</option>
+                    <option value="VOID">Withdrawn</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="ivCampaign">Campaign</label>
+                  <select id="ivCampaign"><option value="">All</option></select>
+                </div>
+                <button type="button" class="btn-primary" id="ivApplyBtn">Apply</button>
               </div>
-              <div class="sheet" style="margin-top:16px">
-                <div class="sheet-head">
-                  <h2>Campaign performance</h2>
-                  <div class="sheet-actions">
-                    <button type="button" class="btn-outline" id="refreshRwfBtn">Refresh</button>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Recipient</th>
+                      <th>Phone</th>
+                      <th>Campaign</th>
+                      <th style="text-align:center">Status</th>
+                      <th>Issued</th>
+                      <th>Used / Expiry</th>
+                      <th style="text-align:center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="issuedVouchersBody"></tbody>
+                </table>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap">
+                <button type="button" class="btn-outline" id="ivPrevBtn">Prev</button>
+                <span class="field-hint" id="ivPageInfo" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="ivNextBtn">Next</button>
+                <span class="field-hint" id="ivResult" style="margin:0"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="gift-rewards" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Gift rewards</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshGiftRewardsBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Gift rewards let members spend their points. Create a reward, set the points cost, and link it to a voucher campaign. When a member redeems, the linked voucher lands in their wallet automatically.
+              </p>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 10px;font-size:14px">New reward</h3>
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="grName">Reward name</label>
+                    <input type="text" id="grName" placeholder="e.g. RM10 voucher (100 pts)" />
+                  </div>
+                  <div>
+                    <label for="grPoints">Points cost</label>
+                    <input type="text" id="grPoints" inputmode="numeric" placeholder="100" />
                   </div>
                 </div>
-                <div class="table-wrap">
-                  <table class="data">
-                    <thead><tr><th>Code</th><th>Name</th><th>Vouchers issued</th><th>Rewards linked</th></tr></thead>
-                    <tbody id="rwfCampaignBody"></tbody>
-                  </table>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="grType">Reward type</label>
+                    <select id="grType">
+                      <option value="DISCOUNT_VOUCHER">Discount voucher</option>
+                      <option value="FREE_ITEM">Free item</option>
+                    </select>
+                  </div>
+                  <div id="grCampaignWrap">
+                    <label for="grCampaign">Linked voucher campaign</label>
+                    <select id="grCampaign"><option value="">&mdash; select a campaign &mdash;</option></select>
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="grTnc">Terms (optional)</label>
+                  <input type="text" id="grTnc" placeholder="Shown to members" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="grCreateBtn">Create reward</button>
+                  <span class="field-hint" id="grCreateResult" style="margin:0"></span>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Points</th>
+                      <th>Type</th>
+                      <th>Linked voucher</th>
+                      <th style="text-align:center">Active</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="giftRewardsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="giftRewardsListResult"></p>
+
+              <div id="grEditPanel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-top:14px">
+                <h3 style="margin:0 0 10px;font-size:14px">Edit reward</h3>
+                <input type="hidden" id="grEditId" />
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="grEditName">Reward name</label>
+                    <input type="text" id="grEditName" />
+                  </div>
+                  <div>
+                    <label for="grEditPoints">Points cost</label>
+                    <input type="text" id="grEditPoints" inputmode="numeric" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="grEditActive">Status</label>
+                    <select id="grEditActive">
+                      <option value="true">Active</option>
+                      <option value="false">Hidden</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="grEditCampaign">Linked voucher campaign</label>
+                    <select id="grEditCampaign"><option value="">&mdash; select a campaign &mdash;</option></select>
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="grEditTnc">Terms (optional)</label>
+                  <input type="text" id="grEditTnc" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="grEditSaveBtn">Save changes</button>
+                  <button type="button" class="btn-outline" id="grEditCancelBtn">Cancel</button>
+                  <span class="field-hint" id="grEditResult" style="margin:0"></span>
                 </div>
               </div>
             </div>
@@ -3428,7 +3403,7 @@ export class AdminDashboardController {
       'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders', 'bento-vouchers',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
-      'vouchers-rewards-hub',
+      'voucher-campaigns', 'gift-rewards',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
@@ -3480,7 +3455,8 @@ export class AdminDashboardController {
       'loyalty-transactions': iconLoyalty,
       'loyalty-rules': iconLoyalty,
       'loyalty-campaigns': iconLoyalty,
-      'vouchers-rewards-hub': iconVoucher,
+      'voucher-campaigns': iconVoucher,
+      'gift-rewards': iconLoyalty,
       'campaigns-segments': iconUsers,
       'campaigns-push-voucher': iconVoucher,
       'campaigns-push-points': iconLoyalty,
@@ -3528,7 +3504,8 @@ export class AdminDashboardController {
       'loyalty-transactions': 'Loyalty · Transactions',
       'loyalty-rules': 'Loyalty · Points rules',
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
-      'vouchers-rewards-hub': 'Loyalty · Vouchers & rewards',
+      'voucher-campaigns': 'Loyalty · Vouchers',
+      'gift-rewards': 'Loyalty · Gift rewards',
       'campaigns-segments': 'Campaigns · Customer segments',
       'campaigns-push-voucher': 'Campaigns · Push voucher',
       'campaigns-push-points': 'Campaigns · Push points',
@@ -7031,10 +7008,10 @@ export class AdminDashboardController {
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
       const tasks = [
-        loadOverview(),
+        loadVoucherCampaigns(),
         loadCustomers(),
         loadLoyalty(),
-        loadVouchers(),
+        loadGiftRewards(),
         loadWalletLedger(),
         loadAudit(),
         loadLoginAudit(),
@@ -7090,9 +7067,9 @@ export class AdminDashboardController {
       if (cur) cur.classList.remove('hidden');
       title.textContent = viewTitles[view] || view;
       titleIcon.innerHTML = icons[view] || icons['dashboard-overview'];
-      if (view === 'vouchers-rewards-hub') {
-        vrhShowPane('overview');
-        loadOverview().catch(function () {});
+      if (view === 'voucher-campaigns') {
+        vcInitTemplates();
+        vcInitDates();
       }
     }
 
@@ -7257,7 +7234,6 @@ export class AdminDashboardController {
       });
     });
     document.getElementById('refreshLoyaltyBtn').addEventListener('click', () => loadLoyalty().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshAssignedVouchersBtn').addEventListener('click', () => loadOverview().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshWalletLedgerBtn').addEventListener('click', () => loadWalletLedger().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAudit().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshLoginAuditBtn').addEventListener('click', () => loadLoginAudit().catch((e) => { statusPanel.textContent = e.message; }));
@@ -7466,7 +7442,8 @@ export class AdminDashboardController {
     if (refreshVrhSeriesBtn) {
       refreshVrhSeriesBtn.addEventListener('click', () => loadVouchers().catch((e) => { statusPanel.textContent = e.message; }));
     }
-    document.getElementById('refreshPerksCampaignRulesBtn').addEventListener('click', () => loadPerksCampaignRules().catch((e) => { statusPanel.textContent = e.message; }));
+    var refreshPerksCampaignRulesBtnEl = document.getElementById('refreshPerksCampaignRulesBtn');
+    if (refreshPerksCampaignRulesBtnEl) refreshPerksCampaignRulesBtnEl.addEventListener('click', () => loadPerksCampaignRules().catch((e) => { statusPanel.textContent = e.message; }));
     var pcrProgramFilterEl = document.getElementById('pcrProgramFilter');
     if (pcrProgramFilterEl) {
       pcrProgramFilterEl.addEventListener('change', function () {
@@ -7558,6 +7535,659 @@ export class AdminDashboardController {
         createBentoVoucher();
       });
     }
+
+    /* ===== Vouchers (campaign builder) & Gift rewards ===== */
+    function vcEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    var VC_TEMPLATES = [
+      { key: 'WELCOME', icon: '🎉', label: 'Welcome', type: 'FIXED_AMOUNT', amount: '5.00', validDays: '30', tnc: 'Welcome voucher for new members.' },
+      { key: 'BIRTHDAY', icon: '🎂', label: 'Birthday', type: 'PERCENTAGE', percent: '15', validDays: '7', tnc: 'Birthday treat. Valid 7 days.' },
+      { key: 'REFERRAL', icon: '👥', label: 'Referral', type: 'FIXED_AMOUNT', amount: '10.00', validDays: '60', tnc: 'Thanks for referring a friend!' },
+      { key: 'WINBACK', icon: '🔄', label: 'Win-back', type: 'FIXED_AMOUNT', amount: '8.00', validDays: '14', tnc: 'We miss you! Come back for a treat.' },
+      { key: 'SPEND_EARN', icon: '💰', label: 'Spend & Earn', type: 'PERCENTAGE', percent: '10', minSpend: '50.00', validDays: '30', tnc: 'Spend & earn reward. Min spend applies.' },
+      { key: 'CUSTOM', icon: '✏️', label: 'Custom', type: 'FIXED_AMOUNT', amount: '', validDays: '30', tnc: '' }
+    ];
+    var VC_TRIGGERS = {
+      WELCOME: { type: 'AUTO', criteria: 'NEW_MEMBER' },
+      BIRTHDAY: { type: 'AUTO', criteria: 'BIRTHDAY' },
+      REFERRAL: { type: 'AUTO', criteria: 'REFERRAL_COUNT', thresholdValue: 1 },
+      WINBACK: { type: 'AUTO', criteria: 'INACTIVE_DAYS', thresholdValue: 30 },
+      SPEND_EARN: { type: 'AUTO', criteria: 'MIN_PURCHASE', thresholdValue: 50 },
+      CUSTOM: { type: 'MANUAL' }
+    };
+    var vcTemplatesRendered = false;
+    function vcInitTemplates() {
+      var grid = document.getElementById('vcTemplateGrid');
+      if (!grid || vcTemplatesRendered) return;
+      grid.innerHTML = VC_TEMPLATES.map(function (t) {
+        return '<button type="button" class="btn-outline vc-template-card" data-vc-template="' + vcEsc(t.key) +
+          '" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;text-align:left;height:auto;cursor:pointer">' +
+          '<span style="font-size:20px">' + t.icon + '</span>' +
+          '<strong style="font-size:13px">' + vcEsc(t.label) + '</strong></button>';
+      }).join('');
+      grid.querySelectorAll('.vc-template-card').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          applyVcTemplate(btn.getAttribute('data-vc-template'));
+          grid.querySelectorAll('.vc-template-card').forEach(function (b) {
+            b.style.borderColor = '';
+            b.style.background = '';
+          });
+          btn.style.borderColor = '#2563eb';
+          btn.style.background = '#eff6ff';
+        });
+      });
+      vcTemplatesRendered = true;
+    }
+    function vcSetVal(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val == null ? '' : val;
+    }
+    function applyVcTemplate(key) {
+      var t = null;
+      for (var i = 0; i < VC_TEMPLATES.length; i++) {
+        if (VC_TEMPLATES[i].key === key) { t = VC_TEMPLATES[i]; break; }
+      }
+      if (!t) return;
+      vcSetVal('vcTemplate', t.key);
+      var typeSel = document.getElementById('vcType');
+      if (typeSel) typeSel.value = t.type;
+      vcSyncTypeInputs();
+      vcSetVal('vcAmount', t.amount || '');
+      vcSetVal('vcPercent', t.percent || '');
+      vcSetVal('vcMinSpend', t.minSpend || '');
+      vcSetVal('vcValidDays', t.validDays || '');
+      vcSetVal('vcTnc', t.tnc || '');
+      var nameEl = document.getElementById('vcName');
+      if (nameEl && !nameEl.value && t.key !== 'CUSTOM') {
+        nameEl.value = t.label + ' voucher';
+      }
+    }
+    function vcSyncTypeInputs() {
+      var typeSel = document.getElementById('vcType');
+      var amountWrap = document.getElementById('vcAmountWrap');
+      var percentWrap = document.getElementById('vcPercentWrap');
+      var type = typeSel ? typeSel.value : 'FIXED_AMOUNT';
+      var showPercent = type === 'PERCENTAGE';
+      var showAmount = type === 'FIXED_AMOUNT' || type === 'DELIVERY_DISCOUNT';
+      if (amountWrap) amountWrap.style.display = showAmount ? '' : 'none';
+      if (percentWrap) percentWrap.style.display = showPercent ? '' : 'none';
+    }
+    function vcInitDates() {
+      var startEl = document.getElementById('vcStart');
+      if (startEl && !startEl.value) {
+        startEl.value = new Date().toISOString().slice(0, 10);
+      }
+    }
+    function vcNum(id) {
+      var el = document.getElementById(id);
+      if (!el) return null;
+      var raw = String(el.value || '').trim();
+      if (!raw) return null;
+      var n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    }
+    function vcDiscountLabel(c) {
+      if (c.discountDisplay) return c.discountDisplay;
+      return c.voucherType || '';
+    }
+    function vcStatusBadge(status) {
+      var color = status === 'active' ? '#16a34a'
+        : status === 'scheduled' ? '#2563eb'
+        : status === 'paused' ? '#64748b' : '#94a3b8';
+      return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:#fff;background:' + color + '">' + vcEsc(status) + '</span>';
+    }
+    function vcShortDate(iso) {
+      if (!iso) return '—';
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return d.toISOString().slice(0, 10);
+    }
+    var lastVoucherCampaigns = [];
+    async function loadVoucherCampaigns() {
+      var data = await api('/admin/campaigns');
+      lastVoucherCampaigns = Array.isArray(data) ? data : [];
+      renderVoucherCampaigns();
+    }
+    function renderVoucherCampaigns() {
+      var body = document.getElementById('voucherCampaignsBody');
+      if (!body) return;
+      if (!lastVoucherCampaigns.length) {
+        body.innerHTML = '<tr><td colspan="7" class="muted-hint">No campaigns yet. Pick a template above to create your first one.</td></tr>';
+        return;
+      }
+      body.innerHTML = lastVoucherCampaigns.map(function (c) {
+        var issued = c.totalRedemptionCap
+          ? (c.vouchersIssued + ' / ' + c.totalRedemptionCap)
+          : String(c.vouchersIssued);
+        var window = vcShortDate(c.startsAt) + ' → ' + (c.endsAt ? vcShortDate(c.endsAt) : 'open');
+        var actions =
+          '<button type="button" class="btn-outline vc-push-btn" data-id="' + vcEsc(c.id) + '" data-name="' + vcEsc(c.name) + '" style="padding:3px 8px;font-size:12px">Push</button> ' +
+          '<button type="button" class="btn-outline vc-edit-btn" data-id="' + vcEsc(c.id) + '" style="padding:3px 8px;font-size:12px">Edit</button> ' +
+          '<button type="button" class="btn-outline vc-del-btn" data-id="' + vcEsc(c.id) + '" data-name="' + vcEsc(c.name) + '" style="padding:3px 8px;font-size:12px;color:#dc2626;border-color:#fecaca">Delete</button>';
+        return '<tr>' +
+          '<td><code style="font-size:11px">' + vcEsc(c.code) + '</code></td>' +
+          '<td>' + vcEsc(c.name) + '</td>' +
+          '<td>' + vcEsc(vcDiscountLabel(c)) + '</td>' +
+          '<td>' + vcEsc(issued) + '</td>' +
+          '<td style="font-size:12px">' + vcEsc(window) + '</td>' +
+          '<td style="text-align:center">' + vcStatusBadge(c.status) + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + actions + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    function vcCloseEdit() {
+      var p = document.getElementById('vcEditPanel');
+      if (p) p.style.display = 'none';
+    }
+    function vcCloseIssue() {
+      var p = document.getElementById('vcIssuePanel');
+      if (p) p.style.display = 'none';
+    }
+    async function vcOpenEdit(id) {
+      vcCloseIssue();
+      var out = document.getElementById('vcEditResult');
+      if (out) out.textContent = 'Loading…';
+      try {
+        var c = await api('/admin/campaigns/' + encodeURIComponent(id));
+        document.getElementById('vcEditId').value = c.id;
+        var codeEl = document.getElementById('vcEditCode');
+        if (codeEl) codeEl.textContent = c.code || '';
+        vcSetVal('vcEditName', c.name || '');
+        var actSel = document.getElementById('vcEditActive');
+        if (actSel) actSel.value = c.isActive ? 'true' : 'false';
+        var isPct = c.voucherType === 'PERCENTAGE';
+        var aw = document.getElementById('vcEditAmountWrap');
+        var pw = document.getElementById('vcEditPercentWrap');
+        if (aw) aw.style.display = isPct ? 'none' : '';
+        if (pw) pw.style.display = isPct ? '' : 'none';
+        vcSetVal('vcEditAmount', c.fixedAmountOffRM != null ? c.fixedAmountOffRM : '');
+        vcSetVal('vcEditPercent', c.percentageOff != null ? c.percentageOff : '');
+        vcSetVal('vcEditMinSpend', c.minSpendRM != null ? c.minSpendRM : '');
+        vcSetVal('vcEditValidDays', c.voucherValidDays != null ? c.voucherValidDays : '');
+        vcSetVal('vcEditMaxIssued', c.totalRedemptionCap != null ? c.totalRedemptionCap : '');
+        vcSetVal('vcEditTnc', c.tncText || '');
+        document.getElementById('vcEditPanel').dataset.voucherType = c.voucherType || '';
+        document.getElementById('vcEditPanel').style.display = '';
+        if (out) out.textContent = '';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vcSaveEdit() {
+      var out = document.getElementById('vcEditResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var id = document.getElementById('vcEditId').value;
+        var panel = document.getElementById('vcEditPanel');
+        var type = panel ? panel.dataset.voucherType : '';
+        var payload = {
+          name: String((document.getElementById('vcEditName') || {}).value || '').trim(),
+          isActive: (document.getElementById('vcEditActive') || {}).value === 'true'
+        };
+        if (type === 'PERCENTAGE') {
+          var pct = vcNum('vcEditPercent');
+          if (pct != null) payload.discountPercent = pct;
+        } else {
+          var amt = vcNum('vcEditAmount');
+          if (amt != null) payload.discountAmountRM = amt;
+        }
+        var ms = vcNum('vcEditMinSpend');
+        if (ms != null) payload.minSpendRM = ms;
+        var vd = vcNum('vcEditValidDays');
+        if (vd != null) payload.voucherValidDays = Math.round(vd);
+        var mx = vcNum('vcEditMaxIssued');
+        if (mx != null) payload.maxTotalIssued = Math.round(mx);
+        var tnc = String((document.getElementById('vcEditTnc') || {}).value || '').trim();
+        payload.tncText = tnc;
+        await apiPatch('/admin/campaigns/' + encodeURIComponent(id), payload);
+        if (out) out.textContent = 'Saved.';
+        vcCloseEdit();
+        await loadVoucherCampaigns();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vcDeleteCampaign(id, name) {
+      if (!window.confirm('Delete campaign "' + name + '"? This cannot be undone.')) return;
+      var out = document.getElementById('voucherCampaignsListResult');
+      if (out) out.textContent = 'Deleting…';
+      try {
+        await apiDelete('/admin/campaigns/' + encodeURIComponent(id));
+        if (out) out.textContent = 'Deleted.';
+        await loadVoucherCampaigns();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    function vcOpenIssue(id, name) {
+      vcCloseEdit();
+      var panel = document.getElementById('vcIssuePanel');
+      if (!panel) return;
+      panel.dataset.campaignId = id;
+      var nameEl = document.getElementById('vcIssueCampaignName');
+      if (nameEl) nameEl.textContent = name || '';
+      vcSetVal('vcIssuePhone', '');
+      var out = document.getElementById('vcIssueResult');
+      if (out) out.textContent = '';
+      panel.style.display = '';
+    }
+    async function vcIssueOne() {
+      var panel = document.getElementById('vcIssuePanel');
+      var id = panel ? panel.dataset.campaignId : '';
+      var out = document.getElementById('vcIssueResult');
+      var phone = String((document.getElementById('vcIssuePhone') || {}).value || '').trim();
+      if (!phone) { if (out) out.textContent = 'Enter a member phone.'; return; }
+      if (out) out.textContent = 'Searching…';
+      try {
+        var res = await api('/admin/customers?search=' + encodeURIComponent(phone) + '&pageSize=5');
+        var items = (res && res.items) || [];
+        if (!items.length) throw new Error('No member found for that phone.');
+        var match = items.find(function (m) { return (m.phoneE164 || '').replace(/\\D/g, '').indexOf(phone.replace(/\\D/g, '')) !== -1; }) || items[0];
+        var issued = await apiPost('/admin/campaigns/' + encodeURIComponent(id) + '/issue/' + encodeURIComponent(match.id), { reason: 'admin_manual_issue' });
+        if (out) out.textContent = 'Issued ' + (issued.code || 'voucher') + ' to ' + (match.displayName || match.phoneE164 || 'member') + '.';
+        await loadVoucherCampaigns();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vcIssueAll() {
+      var panel = document.getElementById('vcIssuePanel');
+      var id = panel ? panel.dataset.campaignId : '';
+      var out = document.getElementById('vcIssueResult');
+      if (!window.confirm('Issue this voucher to ALL active members?')) return;
+      if (out) out.textContent = 'Issuing…';
+      try {
+        var res = await apiPost('/admin/campaigns/' + encodeURIComponent(id) + '/issue-all', { reason: 'admin_issue_all' });
+        if (out) out.textContent = 'Issued ' + res.issued + ', skipped ' + res.skipped + ' (already had it), failed ' + res.failed + '.';
+        await loadVoucherCampaigns();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function createVoucherCampaign() {
+      var out = document.getElementById('vcCreateResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var template = String((document.getElementById('vcTemplate') || {}).value || 'CUSTOM');
+        var name = String((document.getElementById('vcName') || {}).value || '').trim();
+        var type = String((document.getElementById('vcType') || {}).value || 'FIXED_AMOUNT');
+        var startRaw = String((document.getElementById('vcStart') || {}).value || '').trim();
+        if (!name) throw new Error('Enter a voucher name.');
+        if (!startRaw) throw new Error('Pick a "Valid from" date.');
+        var payload = {
+          template: template,
+          name: name,
+          voucherType: type,
+          trigger: VC_TRIGGERS[template] || { type: 'MANUAL' },
+          startsAt: new Date(startRaw).toISOString()
+        };
+        if (type === 'PERCENTAGE') {
+          var pct = vcNum('vcPercent');
+          if (pct == null) throw new Error('Enter a percentage.');
+          payload.discountPercent = pct;
+        } else if (type === 'FIXED_AMOUNT' || type === 'DELIVERY_DISCOUNT') {
+          var amt = vcNum('vcAmount');
+          if (amt == null && template !== 'CUSTOM') throw new Error('Enter an amount off.');
+          if (amt != null) payload.discountAmountRM = amt;
+        }
+        var minSpend = vcNum('vcMinSpend');
+        if (minSpend != null) payload.minSpendRM = minSpend;
+        var endRaw = String((document.getElementById('vcEnd') || {}).value || '').trim();
+        if (endRaw) payload.endsAt = new Date(endRaw).toISOString();
+        var validDays = vcNum('vcValidDays');
+        if (validDays != null) payload.voucherValidDays = Math.round(validDays);
+        var maxIssued = vcNum('vcMaxIssued');
+        if (maxIssued != null) payload.maxTotalIssued = Math.round(maxIssued);
+        var tnc = String((document.getElementById('vcTnc') || {}).value || '').trim();
+        if (tnc) payload.tncText = tnc;
+        var created = await apiPost('/admin/campaigns', payload);
+        if (out) out.textContent = 'Created campaign ' + (created.code || '') + '.';
+        ['vcName', 'vcAmount', 'vcPercent', 'vcMinSpend', 'vcEnd', 'vcMaxIssued', 'vcTnc'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        await loadVoucherCampaigns();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
+    var lastGiftRewards = [];
+    var lastGrCampaignMap = {};
+    async function loadGiftRewards() {
+      var rewards = await api('/admin/rewards-workflow/reward-catalog');
+      lastGiftRewards = Array.isArray(rewards) ? rewards : [];
+      var campaigns = [];
+      try { campaigns = await api('/admin/campaigns'); } catch (e) { campaigns = []; }
+      lastGrCampaignMap = {};
+      (campaigns || []).forEach(function (c) { lastGrCampaignMap[c.id] = c; });
+      populateGrCampaigns(campaigns || []);
+      renderGiftRewards();
+    }
+    function populateGrCampaigns(campaigns) {
+      var sel = document.getElementById('grCampaign');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '<option value="">— select a campaign —</option>' +
+        campaigns.map(function (c) {
+          return '<option value="' + vcEsc(c.id) + '">' + vcEsc(c.name) + ' (' + vcEsc(c.code) + ')</option>';
+        }).join('');
+      if (current) sel.value = current;
+    }
+    function renderGiftRewards() {
+      var body = document.getElementById('giftRewardsBody');
+      if (!body) return;
+      if (!lastGiftRewards.length) {
+        body.innerHTML = '<tr><td colspan="6" class="muted-hint">No gift rewards yet. Create one above so members can spend points.</td></tr>';
+        return;
+      }
+      body.innerHTML = lastGiftRewards.map(function (r) {
+        var linked = r.voucherCampaignId && lastGrCampaignMap[r.voucherCampaignId]
+          ? lastGrCampaignMap[r.voucherCampaignId].name
+          : (r.voucherCampaignId ? 'Linked' : '—');
+        var active = r.isActive
+          ? '<span style="color:#16a34a;font-weight:600">Yes</span>'
+          : '<span style="color:#94a3b8">No</span>';
+        var actions =
+          '<button type="button" class="btn-outline gr-edit-btn" data-id="' + vcEsc(r.id) + '" style="padding:3px 8px;font-size:12px">Edit</button> ' +
+          '<button type="button" class="btn-outline gr-del-btn" data-id="' + vcEsc(r.id) + '" data-name="' + vcEsc(r.name) + '" style="padding:3px 8px;font-size:12px;color:#dc2626;border-color:#fecaca">Delete</button>';
+        return '<tr>' +
+          '<td>' + vcEsc(r.name) + '</td>' +
+          '<td>' + vcEsc(String(r.pointsCost)) + '</td>' +
+          '<td style="font-size:12px">' + vcEsc(r.rewardType) + '</td>' +
+          '<td>' + vcEsc(linked) + '</td>' +
+          '<td style="text-align:center">' + active + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + actions + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    function grCloseEdit() {
+      var p = document.getElementById('grEditPanel');
+      if (p) p.style.display = 'none';
+    }
+    function grOpenEdit(id) {
+      var r = lastGiftRewards.find(function (x) { return x.id === id; });
+      if (!r) return;
+      document.getElementById('grEditId').value = r.id;
+      vcSetVal('grEditName', r.name || '');
+      vcSetVal('grEditPoints', r.pointsCost != null ? r.pointsCost : '');
+      var actSel = document.getElementById('grEditActive');
+      if (actSel) actSel.value = r.isActive ? 'true' : 'false';
+      var campSel = document.getElementById('grEditCampaign');
+      if (campSel) {
+        campSel.innerHTML = '<option value="">— select a campaign —</option>' +
+          Object.keys(lastGrCampaignMap).map(function (cid) {
+            var c = lastGrCampaignMap[cid];
+            return '<option value="' + vcEsc(c.id) + '">' + vcEsc(c.name) + ' (' + vcEsc(c.code) + ')</option>';
+          }).join('');
+        campSel.value = r.voucherCampaignId || '';
+      }
+      vcSetVal('grEditTnc', r.tncText || '');
+      var out = document.getElementById('grEditResult');
+      if (out) out.textContent = '';
+      document.getElementById('grEditPanel').style.display = '';
+    }
+    async function grSaveEdit() {
+      var out = document.getElementById('grEditResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var id = document.getElementById('grEditId').value;
+        var points = parseInt(String((document.getElementById('grEditPoints') || {}).value || '').trim(), 10);
+        var payload = {
+          name: String((document.getElementById('grEditName') || {}).value || '').trim(),
+          isActive: (document.getElementById('grEditActive') || {}).value === 'true',
+          voucherCampaignId: String((document.getElementById('grEditCampaign') || {}).value || '').trim() || undefined,
+          tncText: String((document.getElementById('grEditTnc') || {}).value || '').trim()
+        };
+        if (Number.isFinite(points) && points >= 0) payload.pointsCost = points;
+        await apiPatch('/admin/rewards-workflow/reward-catalog/' + encodeURIComponent(id), payload);
+        if (out) out.textContent = 'Saved.';
+        grCloseEdit();
+        await loadGiftRewards();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function grDeleteReward(id, name) {
+      if (!window.confirm('Delete reward "' + name + '"? This cannot be undone.')) return;
+      var out = document.getElementById('giftRewardsListResult');
+      if (out) out.textContent = 'Deleting…';
+      try {
+        await apiDelete('/admin/rewards-workflow/reward-catalog/' + encodeURIComponent(id));
+        if (out) out.textContent = 'Deleted.';
+        await loadGiftRewards();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
+    var ivState = { page: 1, pageSize: 20, total: 0 };
+    function ivVoucherStatusBadge(status) {
+      var map = { ACTIVE: '#16a34a', USED: '#2563eb', LOCKED: '#d97706', EXPIRED: '#94a3b8', VOID: '#64748b' };
+      var label = status === 'VOID' ? 'WITHDRAWN' : status;
+      return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:#fff;background:' + (map[status] || '#94a3b8') + '">' + vcEsc(label) + '</span>';
+    }
+    function ivPopulateCampaignFilter() {
+      var sel = document.getElementById('ivCampaign');
+      if (!sel || !lastVoucherCampaigns.length) return;
+      var current = sel.value;
+      sel.innerHTML = '<option value="">All</option>' +
+        lastVoucherCampaigns.map(function (c) {
+          return '<option value="' + vcEsc(c.id) + '">' + vcEsc(c.name) + '</option>';
+        }).join('');
+      if (current) sel.value = current;
+    }
+    async function loadIssuedVouchers() {
+      var body = document.getElementById('issuedVouchersBody');
+      if (!body) return;
+      ivPopulateCampaignFilter();
+      var search = String((document.getElementById('ivSearch') || {}).value || '').trim();
+      var status = String((document.getElementById('ivStatus') || {}).value || '');
+      var campaignId = String((document.getElementById('ivCampaign') || {}).value || '');
+      var qs = 'page=' + ivState.page + '&pageSize=' + ivState.pageSize;
+      if (search) qs += '&search=' + encodeURIComponent(search);
+      if (status) qs += '&status=' + encodeURIComponent(status);
+      if (campaignId) qs += '&campaignId=' + encodeURIComponent(campaignId);
+      var data = await api('/admin/campaigns/issued-vouchers?' + qs);
+      ivState.total = data.total || 0;
+      renderIssuedVouchers(data.items || []);
+      var info = document.getElementById('ivPageInfo');
+      var from = data.total ? ((ivState.page - 1) * ivState.pageSize + 1) : 0;
+      var to = Math.min(ivState.page * ivState.pageSize, ivState.total);
+      if (info) info.textContent = ivState.total ? (from + '–' + to + ' of ' + ivState.total) : 'No issued vouchers.';
+    }
+    function renderIssuedVouchers(items) {
+      var body = document.getElementById('issuedVouchersBody');
+      if (!body) return;
+      if (!items.length) {
+        body.innerHTML = '<tr><td colspan="8" class="muted-hint">No vouchers match.</td></tr>';
+        return;
+      }
+      body.innerHTML = items.map(function (v) {
+        var recipient = v.customer ? (v.customer.displayName || '—') : '—';
+        var phone = v.customer ? (v.customer.phoneE164 || '') : '';
+        var campaign = v.campaign ? v.campaign.name : '—';
+        var usedExpiry = v.usedAt
+          ? ('Used ' + vcShortDate(v.usedAt))
+          : (v.expiresAt ? ('Expires ' + vcShortDate(v.expiresAt)) : '—');
+        var canWithdraw = v.status !== 'USED' && v.status !== 'VOID';
+        var action = canWithdraw
+          ? '<button type="button" class="btn-outline iv-withdraw-btn" data-id="' + vcEsc(v.id) + '" data-code="' + vcEsc(v.code) + '" style="padding:3px 8px;font-size:12px;color:#dc2626;border-color:#fecaca">Withdraw</button>'
+          : '<span class="muted-hint">—</span>';
+        return '<tr>' +
+          '<td><code style="font-size:11px">' + vcEsc(v.code) + '</code></td>' +
+          '<td>' + vcEsc(recipient) + '</td>' +
+          '<td style="font-size:12px">' + vcEsc(phone) + '</td>' +
+          '<td>' + vcEsc(campaign) + '</td>' +
+          '<td style="text-align:center">' + ivVoucherStatusBadge(v.status) + '</td>' +
+          '<td style="font-size:12px">' + vcEsc(vcShortDate(v.issuedAt)) + '</td>' +
+          '<td style="font-size:12px">' + vcEsc(usedExpiry) + '</td>' +
+          '<td style="text-align:center">' + action + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    async function ivWithdraw(id, code) {
+      if (!window.confirm('Withdraw voucher ' + code + '? The member will no longer be able to use it.')) return;
+      var out = document.getElementById('ivResult');
+      if (out) out.textContent = 'Withdrawing…';
+      try {
+        await apiPost('/admin/campaigns/vouchers/' + encodeURIComponent(id) + '/revoke', { reason: 'admin_withdraw' });
+        if (out) out.textContent = 'Withdrawn ' + code + '.';
+        await loadIssuedVouchers();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    function grSyncType() {
+      var typeSel = document.getElementById('grType');
+      var wrap = document.getElementById('grCampaignWrap');
+      if (!wrap) return;
+      var isVoucher = !typeSel || typeSel.value === 'DISCOUNT_VOUCHER';
+      wrap.style.display = isVoucher ? '' : 'none';
+    }
+    async function createGiftReward() {
+      var out = document.getElementById('grCreateResult');
+      if (out) out.textContent = 'Saving…';
+      try {
+        var name = String((document.getElementById('grName') || {}).value || '').trim();
+        var pointsRaw = String((document.getElementById('grPoints') || {}).value || '').trim();
+        var type = String((document.getElementById('grType') || {}).value || 'DISCOUNT_VOUCHER');
+        var campaignId = String((document.getElementById('grCampaign') || {}).value || '').trim();
+        var tnc = String((document.getElementById('grTnc') || {}).value || '').trim();
+        if (!name) throw new Error('Enter a reward name.');
+        var points = parseInt(pointsRaw, 10);
+        if (!Number.isFinite(points) || points < 0) throw new Error('Enter a valid points cost.');
+        if (type === 'DISCOUNT_VOUCHER' && !campaignId) throw new Error('Pick a voucher campaign to link.');
+        var payload = {
+          code: 'GIFT-' + Date.now().toString(36).toUpperCase(),
+          name: name,
+          rewardType: type,
+          pointsCost: points
+        };
+        if (type === 'DISCOUNT_VOUCHER' && campaignId) payload.voucherCampaignId = campaignId;
+        if (tnc) payload.tncText = tnc;
+        await apiPost('/admin/rewards-workflow/reward-catalog', payload);
+        if (out) out.textContent = 'Reward created.';
+        ['grName', 'grPoints', 'grTnc'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        await loadGiftRewards();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
+    var refreshVoucherCampaignsBtn = document.getElementById('refreshVoucherCampaignsBtn');
+    if (refreshVoucherCampaignsBtn) {
+      refreshVoucherCampaignsBtn.addEventListener('click', function () {
+        loadVoucherCampaigns().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+      });
+    }
+    var vcCreateBtn = document.getElementById('vcCreateBtn');
+    if (vcCreateBtn) {
+      vcCreateBtn.addEventListener('click', function () { createVoucherCampaign(); });
+    }
+    var vcTypeSel = document.getElementById('vcType');
+    if (vcTypeSel) {
+      vcTypeSel.addEventListener('change', vcSyncTypeInputs);
+    }
+    var refreshGiftRewardsBtn = document.getElementById('refreshGiftRewardsBtn');
+    if (refreshGiftRewardsBtn) {
+      refreshGiftRewardsBtn.addEventListener('click', function () {
+        loadGiftRewards().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+      });
+    }
+    var grCreateBtn = document.getElementById('grCreateBtn');
+    if (grCreateBtn) {
+      grCreateBtn.addEventListener('click', function () { createGiftReward(); });
+    }
+    var grTypeSel = document.getElementById('grType');
+    if (grTypeSel) {
+      grTypeSel.addEventListener('change', grSyncType);
+    }
+    var voucherCampaignsBodyEl = document.getElementById('voucherCampaignsBody');
+    if (voucherCampaignsBodyEl) {
+      voucherCampaignsBodyEl.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var pushB = t.closest('.vc-push-btn');
+        if (pushB) { vcOpenIssue(pushB.getAttribute('data-id'), pushB.getAttribute('data-name')); return; }
+        var editB = t.closest('.vc-edit-btn');
+        if (editB) { vcOpenEdit(editB.getAttribute('data-id')); return; }
+        var delB = t.closest('.vc-del-btn');
+        if (delB) { vcDeleteCampaign(delB.getAttribute('data-id'), delB.getAttribute('data-name')); return; }
+      });
+    }
+    var vcEditSaveBtn = document.getElementById('vcEditSaveBtn');
+    if (vcEditSaveBtn) vcEditSaveBtn.addEventListener('click', function () { vcSaveEdit(); });
+    var vcEditCancelBtn = document.getElementById('vcEditCancelBtn');
+    if (vcEditCancelBtn) vcEditCancelBtn.addEventListener('click', vcCloseEdit);
+    var vcIssueOneBtn = document.getElementById('vcIssueOneBtn');
+    if (vcIssueOneBtn) vcIssueOneBtn.addEventListener('click', function () { vcIssueOne(); });
+    var vcIssueAllBtn = document.getElementById('vcIssueAllBtn');
+    if (vcIssueAllBtn) vcIssueAllBtn.addEventListener('click', function () { vcIssueAll(); });
+    var vcIssueCloseBtn = document.getElementById('vcIssueCloseBtn');
+    if (vcIssueCloseBtn) vcIssueCloseBtn.addEventListener('click', vcCloseIssue);
+    var ivRefreshBtn = document.getElementById('ivRefreshBtn');
+    if (ivRefreshBtn) ivRefreshBtn.addEventListener('click', function () {
+      ivState.page = 1;
+      loadIssuedVouchers().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    var ivApplyBtn = document.getElementById('ivApplyBtn');
+    if (ivApplyBtn) ivApplyBtn.addEventListener('click', function () {
+      ivState.page = 1;
+      loadIssuedVouchers().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    var ivSearchEl = document.getElementById('ivSearch');
+    if (ivSearchEl) ivSearchEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ivState.page = 1; loadIssuedVouchers().catch(function () {}); }
+    });
+    var ivStatusEl = document.getElementById('ivStatus');
+    if (ivStatusEl) ivStatusEl.addEventListener('change', function () {
+      ivState.page = 1;
+      loadIssuedVouchers().catch(function () {});
+    });
+    var ivCampaignEl = document.getElementById('ivCampaign');
+    if (ivCampaignEl) ivCampaignEl.addEventListener('change', function () {
+      ivState.page = 1;
+      loadIssuedVouchers().catch(function () {});
+    });
+    var ivPrevBtn = document.getElementById('ivPrevBtn');
+    if (ivPrevBtn) ivPrevBtn.addEventListener('click', function () {
+      if (ivState.page > 1) { ivState.page--; loadIssuedVouchers().catch(function () {}); }
+    });
+    var ivNextBtn = document.getElementById('ivNextBtn');
+    if (ivNextBtn) ivNextBtn.addEventListener('click', function () {
+      if (ivState.page * ivState.pageSize < ivState.total) { ivState.page++; loadIssuedVouchers().catch(function () {}); }
+    });
+    var issuedVouchersBodyEl = document.getElementById('issuedVouchersBody');
+    if (issuedVouchersBodyEl) issuedVouchersBodyEl.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var b = t.closest('.iv-withdraw-btn');
+      if (b) ivWithdraw(b.getAttribute('data-id'), b.getAttribute('data-code'));
+    });
+    var giftRewardsBodyEl = document.getElementById('giftRewardsBody');
+    if (giftRewardsBodyEl) {
+      giftRewardsBodyEl.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var editB = t.closest('.gr-edit-btn');
+        if (editB) { grOpenEdit(editB.getAttribute('data-id')); return; }
+        var delB = t.closest('.gr-del-btn');
+        if (delB) { grDeleteReward(delB.getAttribute('data-id'), delB.getAttribute('data-name')); return; }
+      });
+    }
+    var grEditSaveBtn = document.getElementById('grEditSaveBtn');
+    if (grEditSaveBtn) grEditSaveBtn.addEventListener('click', function () { grSaveEdit(); });
+    var grEditCancelBtn = document.getElementById('grEditCancelBtn');
+    if (grEditCancelBtn) grEditCancelBtn.addEventListener('click', grCloseEdit);
     var bentoVouchersBody = document.getElementById('bentoVouchersBody');
     if (bentoVouchersBody) {
       bentoVouchersBody.addEventListener('change', function (ev) {
@@ -8054,7 +8684,8 @@ export class AdminDashboardController {
       document.getElementById('rdSaveResult').textContent = '';
     });
 
-    document.getElementById('rewardDefEditorCancel').addEventListener('click', () => {
+    var rewardDefEditorCancelBtn = document.getElementById('rewardDefEditorCancel');
+    if (rewardDefEditorCancelBtn) rewardDefEditorCancelBtn.addEventListener('click', () => {
       document.getElementById('rewardDefEditor').classList.add('hidden');
     });
 
@@ -8134,7 +8765,8 @@ export class AdminDashboardController {
       }
     });
 
-    document.getElementById('rdSaveBtn').addEventListener('click', () => {
+    var rdSaveBtnEl = document.getElementById('rdSaveBtn');
+    if (rdSaveBtnEl) rdSaveBtnEl.addEventListener('click', () => {
       var id = document.getElementById('rdEditId').value;
       var out = document.getElementById('rdSaveResult');
       if (!id) return;
@@ -8166,7 +8798,8 @@ export class AdminDashboardController {
         .catch(function (err) { out.textContent = err.message; });
     });
 
-    document.getElementById('pcrRulesBody').addEventListener('click', (e) => {
+    var pcrRulesBodyEl = document.getElementById('pcrRulesBody');
+    if (pcrRulesBodyEl) pcrRulesBodyEl.addEventListener('click', (e) => {
       var btn = e.target.closest('.pcr-edit-btn');
       if (!btn) return;
       var id = btn.getAttribute('data-id');
@@ -8202,11 +8835,13 @@ export class AdminDashboardController {
       pcrRefreshCriteriaHint(true);
     });
 
-    document.getElementById('pcrEditCancel').addEventListener('click', () => {
+    var pcrEditCancelEl = document.getElementById('pcrEditCancel');
+    if (pcrEditCancelEl) pcrEditCancelEl.addEventListener('click', () => {
       document.getElementById('pcrEditPanel').classList.add('hidden');
     });
 
-    document.getElementById('pcrCreateBtn').addEventListener('click', () => {
+    var pcrCreateBtnEl = document.getElementById('pcrCreateBtn');
+    if (pcrCreateBtnEl) pcrCreateBtnEl.addEventListener('click', () => {
       var out = document.getElementById('pcrCreateResult');
       var name = document.getElementById('pcrName').value.trim();
       var vid = document.getElementById('pcrVoucherDefinitionId').value.trim();
@@ -8262,7 +8897,8 @@ export class AdminDashboardController {
         .catch(function (err) { out.textContent = err.message; });
     });
 
-    document.getElementById('pcrSaveBtn').addEventListener('click', () => {
+    var pcrSaveBtnEl = document.getElementById('pcrSaveBtn');
+    if (pcrSaveBtnEl) pcrSaveBtnEl.addEventListener('click', () => {
       var id = document.getElementById('pcrEditId').value;
       var out = document.getElementById('pcrSaveResult');
       if (!id) return;
@@ -8842,8 +9478,17 @@ export class AdminDashboardController {
               statusPanel.textContent = err.message || String(err);
             });
           }
-          if (view === 'vouchers-rewards-hub' && isConnected) {
-            loadVouchers().catch(function (err) {
+          if (view === 'voucher-campaigns' && isConnected) {
+            vcInitTemplates();
+            vcInitDates();
+            loadVoucherCampaigns()
+              .then(function () { return loadIssuedVouchers(); })
+              .catch(function (err) {
+                statusPanel.textContent = err.message || String(err);
+              });
+          }
+          if (view === 'gift-rewards' && isConnected) {
+            loadGiftRewards().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

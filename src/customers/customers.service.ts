@@ -30,6 +30,67 @@ function fulfillmentSummaryLinesFromJson(
   return [];
 }
 
+/**
+ * Collapse a new-model voucher lifecycle status into the simple status string
+ * the member app's voucher tabs understand (ACTIVE / USED / EXPIRED / VOID).
+ * A LOCKED voucher (held by an in-progress checkout) is shown as ACTIVE.
+ */
+function mapNewVoucherStatus(status: string): string {
+  switch (status) {
+    case 'LOCKED':
+      return 'ACTIVE';
+    default:
+      return status;
+  }
+}
+
+type CampaignDiscountShape = {
+  rebateValueSen: number | null;
+  minSpendSen: number | null;
+  percentageOff: number | null;
+};
+
+/**
+ * Derive the member-facing discount fields from a voucher campaign so the
+ * client can render and price both fixed-amount and percentage vouchers.
+ */
+function campaignVoucherDiscount(
+  campaign: {
+    voucherType: string;
+    fixedAmountOff: number | null;
+    deliveryDiscountAmount: number | null;
+    percentageOff: number | null;
+    minSpend: number | null;
+  } | null,
+): CampaignDiscountShape {
+  if (!campaign) {
+    return { rebateValueSen: null, minSpendSen: null, percentageOff: null };
+  }
+  const minSpendSen = campaign.minSpend ?? null;
+  switch (campaign.voucherType) {
+    case 'FIXED_AMOUNT':
+      return {
+        rebateValueSen: campaign.fixedAmountOff ?? null,
+        minSpendSen,
+        percentageOff: null,
+      };
+    case 'DELIVERY_DISCOUNT':
+      return {
+        rebateValueSen: campaign.deliveryDiscountAmount ?? null,
+        minSpendSen,
+        percentageOff: null,
+      };
+    case 'PERCENTAGE':
+      return {
+        rebateValueSen: null,
+        minSpendSen,
+        percentageOff: campaign.percentageOff ?? null,
+      };
+    default:
+      return { rebateValueSen: null, minSpendSen, percentageOff: null };
+  }
+}
+
 @Injectable()
 export class CustomersService {
   private readonly logger = new Logger(CustomersService.name);
@@ -419,40 +480,57 @@ export class CustomersService {
   }
 
   async getMeRewards(customerId: string) {
-    const [wallet, vouchers, rewardCatalog] = await this.prisma.$transaction([
-      this.prisma.loyaltyWallet.findUnique({
-        where: { customerId },
-      }),
-      this.prisma.customerVoucher.findMany({
-        where: { customerId, status: 'ISSUED' },
-        include: {
-          definition: {
-            select: {
-              id: true,
-              code: true,
-              title: true,
-              description: true,
-              pointsCost: true,
+    const [wallet, vouchers, rewardCatalog, newVouchers, newRewards] =
+      await this.prisma.$transaction([
+        this.prisma.loyaltyWallet.findUnique({
+          where: { customerId },
+        }),
+        this.prisma.customerVoucher.findMany({
+          where: { customerId, status: 'ISSUED' },
+          include: {
+            definition: {
+              select: {
+                id: true,
+                code: true,
+                title: true,
+                description: true,
+                pointsCost: true,
+              },
             },
           },
-        },
-        orderBy: { issuedAt: 'desc' },
-      }),
-      this.prisma.voucherDefinition.findMany({
-        where: memberRewardsCatalogWhere(),
-        select: {
-          id: true,
-          code: true,
-          title: true,
-          description: true,
-          pointsCost: true,
-          isActive: true,
-          imageUrl: true,
-          rewardCategory: true,
-        },
-        orderBy: [{ rewardSortOrder: 'asc' }, { createdAt: 'desc' }],
-      }),
-    ]);
+          orderBy: { issuedAt: 'desc' },
+        }),
+        this.prisma.voucherDefinition.findMany({
+          where: memberRewardsCatalogWhere(),
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            description: true,
+            pointsCost: true,
+            isActive: true,
+            imageUrl: true,
+            rewardCategory: true,
+          },
+          orderBy: [{ rewardSortOrder: 'asc' }, { createdAt: 'desc' }],
+        }),
+        // New campaign model: vouchers issued to this member's wallet.
+        this.prisma.voucher.findMany({
+          where: { customerId, visibleInWallet: true },
+          include: { voucherCampaign: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        // New campaign model: points-catalog rewards (linked to a campaign).
+        this.prisma.rewardCatalog.findMany({
+          where: {
+            isActive: true,
+            visibleInRewardsWallet: true,
+            voucherCampaignId: { not: null },
+          },
+          include: { voucherCampaign: true },
+          orderBy: [{ createdAt: 'desc' }],
+        }),
+      ]);
 
     const definitionIds = [
       ...vouchers.map((v) => v.definition.id),
@@ -467,6 +545,7 @@ export class CustomersService {
       return {
         rebateValueSen: m?.rebateValueSen ?? null,
         minSpendSen: m?.minSpendSen ?? null,
+        percentageOff: null as number | null,
       };
     };
 
@@ -474,20 +553,72 @@ export class CustomersService {
       wallet: {
         pointsBalance: wallet?.pointsCached ?? 0,
       },
-      vouchers: vouchers.map((v) => ({
-        id: v.id,
-        status: v.status,
-        issuedAt: v.issuedAt,
-        expiresAt: v.expiresAt,
-        definition: {
-          ...v.definition,
-          ...withDiscount(v.definition.id),
-        },
-      })),
-      rewards: rewardCatalog.map((r) => ({
-        ...r,
-        ...withDiscount(r.id),
-      })),
+      vouchers: [
+        ...vouchers.map((v) => ({
+          id: v.id,
+          status: v.status as string,
+          issuedAt: v.issuedAt,
+          expiresAt: v.expiresAt,
+          definition: {
+            ...v.definition,
+            ...withDiscount(v.definition.id),
+          },
+        })),
+        ...newVouchers.map((v) => {
+          const d = campaignVoucherDiscount(v.voucherCampaign);
+          let description = v.voucherCampaign?.description ?? null;
+          // Surface a "usable from" note for birthday (and other future-dated)
+          // vouchers so the member understands why they can't redeem it yet.
+          const validFrom = (v.metadata as { validFrom?: string } | null)
+            ?.validFrom;
+          if (validFrom) {
+            const from = new Date(validFrom);
+            if (!Number.isNaN(from.getTime()) && from.getTime() > Date.now()) {
+              const fromLabel = from.toISOString().slice(0, 10);
+              description = `Usable from ${fromLabel}.${description ? ' ' + description : ''}`;
+            }
+          }
+          return {
+            id: v.id,
+            status: mapNewVoucherStatus(v.status),
+            issuedAt: v.createdAt,
+            expiresAt: v.expiresAt,
+            definition: {
+              id: v.id,
+              code: v.code,
+              title: v.name,
+              description,
+              pointsCost: null as number | null,
+              rebateValueSen: d.rebateValueSen,
+              minSpendSen: d.minSpendSen,
+              percentageOff: d.percentageOff,
+            },
+          };
+        }),
+      ],
+      rewards: [
+        ...rewardCatalog.map((r) => ({
+          ...r,
+          ...withDiscount(r.id),
+        })),
+        // Only surface new rewards that resolve to a fixed cash discount so
+        // every listed reward is redeemable at checkout.
+        ...newRewards
+          .filter((r) => r.voucherCampaign?.voucherType === 'FIXED_AMOUNT')
+          .map((r) => ({
+            id: r.id,
+            code: r.code,
+            title: r.name,
+            description: r.description,
+            pointsCost: r.pointsCost,
+            isActive: r.isActive,
+            imageUrl: null as string | null,
+            rewardCategory: null as string | null,
+            rebateValueSen: r.voucherCampaign?.fixedAmountOff ?? null,
+            minSpendSen: r.voucherCampaign?.minSpend ?? null,
+            percentageOff: null as number | null,
+          })),
+      ],
     };
   }
 

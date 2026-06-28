@@ -63,7 +63,7 @@ type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
 // Account page "My Vouchers" stat card, and the "Vouchers & rewards"
 // activity row link. The underlying voucher data fetch and types are kept
 // intact so re-enabling is just this one flag flip.
-const SHOW_VOUCHERS = false;
+const SHOW_VOUCHERS = true;
 type RewardFilter = 'all' | 'food' | 'drinks';
 type PaymentResult =
   | { status: 'success'; orderNumber: string | null }
@@ -1625,14 +1625,14 @@ function App() {
 
                   <button
                     type="button"
-                    className="rewardsHomeCta"
+                    className="pmCard homeSummaryCard"
                     onClick={() => {
                       setPerksSub('rewards');
                       setTab('perks');
                     }}
                     aria-label={`Rewards catalog, ${featuredRewardsCount} available`}
                   >
-                    <span className="rewardsHomeCtaIcon" aria-hidden>
+                    <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="3" y="8" width="18" height="13" rx="1" />
                         <path d="M12 8v13" />
@@ -1640,21 +1640,13 @@ function App() {
                         <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
                       </svg>
                     </span>
-                    <span className="rewardsHomeCtaBody">
-                      <span className="rewardsHomeCtaEyebrow">Rewards Catalog</span>
-                      <span className="rewardsHomeCtaTitle">
+                    <span className="homeSummaryText">
+                      <span className="homeSummaryLabel">Rewards</span>
+                      <span className="homeSummaryValue">
                         {featuredRewardsCount > 0
-                          ? `${featuredRewardsCount} ${featuredRewardsCount === 1 ? 'reward' : 'rewards'} available`
-                          : 'Browse rewards'}
+                          ? `${featuredRewardsCount} ${featuredRewardsCount === 1 ? 'Reward' : 'Rewards'}`
+                          : 'Browse'}
                       </span>
-                      <span className="rewardsHomeCtaSubtitle">
-                        Redeem your points for café treats &amp; perks
-                      </span>
-                    </span>
-                    <span className="rewardsHomeCtaChevron" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 6l6 6-6 6" />
-                      </svg>
                     </span>
                   </button>
                 </div>

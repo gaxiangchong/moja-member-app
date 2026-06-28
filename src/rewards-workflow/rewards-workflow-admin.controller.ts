@@ -1,8 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -17,6 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AdminCreateRewardCatalogDto } from './dto/admin-create-reward-catalog.dto';
 import { AdminCreateVoucherCampaignDto } from './dto/admin-create-voucher-campaign.dto';
 import { AdminImportGiftCodesDto } from './dto/admin-import-gift-codes.dto';
+import { AdminUpdateRewardCatalogDto } from './dto/admin-update-reward-catalog.dto';
 
 @Controller('admin/rewards-workflow')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -50,6 +55,59 @@ export class RewardsWorkflowAdminController {
         isActive: dto.isActive ?? true,
       },
     });
+  }
+
+  @Patch('reward-catalog/:id')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  async updateRewardCatalog(
+    @Param('id') id: string,
+    @Body() dto: AdminUpdateRewardCatalogDto,
+    @CurrentAdmin() _auth: AdminAuthState,
+  ) {
+    const existing = await this.prisma.rewardCatalog.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Reward not found.');
+    return this.prisma.rewardCatalog.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description.trim() || null }
+          : {}),
+        ...(dto.pointsCost !== undefined ? { pointsCost: dto.pointsCost } : {}),
+        ...(dto.voucherCampaignId !== undefined
+          ? { voucherCampaignId: dto.voucherCampaignId || null }
+          : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(dto.visibleInRewardsWallet !== undefined
+          ? { visibleInRewardsWallet: dto.visibleInRewardsWallet }
+          : {}),
+        ...(dto.tncText !== undefined
+          ? { tncText: dto.tncText.trim() || null }
+          : {}),
+      },
+    });
+  }
+
+  @Delete('reward-catalog/:id')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  async deleteRewardCatalog(
+    @Param('id') id: string,
+    @CurrentAdmin() _auth: AdminAuthState,
+  ) {
+    const existing = await this.prisma.rewardCatalog.findUnique({
+      where: { id },
+      include: { _count: { select: { userRewards: true } } },
+    });
+    if (!existing) throw new NotFoundException('Reward not found.');
+    if (existing._count.userRewards > 0) {
+      throw new BadRequestException(
+        `Cannot delete: ${existing._count.userRewards} member(s) already redeemed this reward. Deactivate it instead.`,
+      );
+    }
+    await this.prisma.rewardCatalog.delete({ where: { id } });
+    return { deleted: true };
   }
 
   @Get('voucher-campaigns')

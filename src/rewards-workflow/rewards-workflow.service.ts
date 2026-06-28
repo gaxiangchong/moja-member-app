@@ -9,7 +9,7 @@ import {
   VoucherRedemptionStatus,
   WalletTxnFlowType,
 } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 type VoucherValidationInput = {
@@ -169,7 +169,15 @@ export class RewardsWorkflowService {
 
       let voucherId: string | null = null;
       if (reward.voucherCampaignId) {
-        const generatedCode = `RV-${randomUUID().slice(0, 12).toUpperCase()}`;
+        const campaign = await tx.voucherCampaign.findUnique({
+          where: { id: reward.voucherCampaignId },
+        });
+        const prefix = campaign?.codePrefix ?? 'RV';
+        const shortId = randomBytes(3).toString('hex').toUpperCase().slice(0, 5);
+        const generatedCode = `${prefix}-${shortId}`;
+        const expiresAt = campaign?.voucherValidDays
+          ? new Date(Date.now() + campaign.voucherValidDays * 86_400_000)
+          : null;
         const voucher = await tx.voucher.create({
           data: {
             customerId,
@@ -177,6 +185,8 @@ export class RewardsWorkflowService {
             code: generatedCode,
             name: reward.name,
             status: VoucherLifecycleStatus.ACTIVE,
+            expiresAt,
+            usageLimitPerUser: campaign?.usageLimitPerUser ?? null,
             visibleInWallet: true,
           },
         });
@@ -230,6 +240,16 @@ export class RewardsWorkflowService {
       }
       if (voucher.expiresAt && voucher.expiresAt.getTime() <= now) {
         throw new BadRequestException('Voucher is expired.');
+      }
+      const validFromRaw = (voucher.metadata as { validFrom?: string } | null)
+        ?.validFrom;
+      if (validFromRaw) {
+        const validFrom = new Date(validFromRaw);
+        if (!Number.isNaN(validFrom.getTime()) && validFrom.getTime() > now) {
+          throw new BadRequestException(
+            `This voucher can be used from ${validFrom.toISOString().slice(0, 10)}.`,
+          );
+        }
       }
       if (
         voucher.status === VoucherLifecycleStatus.LOCKED &&

@@ -12,14 +12,27 @@ export function checkoutIssuedVouchers(data: MemberRewardsPayload | null | undef
       if (v.expiresAt && new Date(v.expiresAt).getTime() <= now) return false;
       return true;
     })
-    .map((v) => ({
-      id: v.id,
-      code: v.definition.code,
-      title: v.definition.title,
-      discountType: 'fixed' as const,
-      value: Math.max(0, v.definition.rebateValueSen ?? 0),
-      minSpendSen: v.definition.minSpendSen ?? null,
-    }));
+    .map((v) => {
+      const pct = v.definition.percentageOff ?? 0;
+      if (pct > 0) {
+        return {
+          id: v.id,
+          code: v.definition.code,
+          title: v.definition.title,
+          discountType: 'percent' as const,
+          value: Math.max(0, Math.min(pct, 100)),
+          minSpendSen: v.definition.minSpendSen ?? null,
+        };
+      }
+      return {
+        id: v.id,
+        code: v.definition.code,
+        title: v.definition.title,
+        discountType: 'fixed' as const,
+        value: Math.max(0, v.definition.rebateValueSen ?? 0),
+        minSpendSen: v.definition.minSpendSen ?? null,
+      };
+    });
 }
 
 /** Match a typed code against issued vouchers in the member wallet (case-insensitive). */

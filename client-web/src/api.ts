@@ -702,6 +702,7 @@ export type MemberRewardsPayload = {
       pointsCost: number | null;
       rebateValueSen?: number | null;
       minSpendSen?: number | null;
+      percentageOff?: number | null;
     };
   }>;
   rewards: Array<{
@@ -715,6 +716,7 @@ export type MemberRewardsPayload = {
     rewardCategory?: string | null;
     rebateValueSen?: number | null;
     minSpendSen?: number | null;
+    percentageOff?: number | null;
   }>;
 };
 

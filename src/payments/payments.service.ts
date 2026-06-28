@@ -1376,10 +1376,12 @@ export class PaymentsService {
       select: { id: true, title: true, pointsCost: true },
     });
     if (!def) {
-      throw new NotFoundException({
-        code: 'REWARD_NOT_FOUND',
-        message: 'Reward is not available.',
-      });
+      // New campaign model: reward catalog entry linked to a voucher campaign.
+      return this.resolveNewRewardCatalogDiscount(
+        customerId,
+        definitionId,
+        subtotalCents,
+      );
     }
     const pointsCost = def.pointsCost ?? 0;
     if (pointsCost <= 0) {
@@ -1404,6 +1406,76 @@ export class PaymentsService {
       });
     }
     const discountCents = discountCentsFromRebate(subtotalCents, meta);
+    if (discountCents <= 0) {
+      throw new BadRequestException({
+        code: 'REWARD_NO_DISCOUNT',
+        message:
+          'This reward has no discount value configured. Contact support if this looks wrong.',
+      });
+    }
+    return { discountCents, pointsCost };
+  }
+
+  /**
+   * Resolve a points-catalog reward from the new campaign model
+   * (`RewardCatalog` linked to a `VoucherCampaign`). Deducts no points here —
+   * `finalizeShopPromotions` does that on payment success. Mirrors the legacy
+   * one-step "redeem at checkout" UX so members spend points for an instant
+   * cash discount rather than a two-step voucher issue.
+   */
+  private async resolveNewRewardCatalogDiscount(
+    customerId: string,
+    rewardCatalogId: string,
+    subtotalCents: number,
+  ): Promise<{ discountCents: number; pointsCost: number }> {
+    const reward = await this.prisma.rewardCatalog.findFirst({
+      where: {
+        id: rewardCatalogId,
+        isActive: true,
+        visibleInRewardsWallet: true,
+      },
+      include: { voucherCampaign: true },
+    });
+    if (!reward) {
+      throw new NotFoundException({
+        code: 'REWARD_NOT_FOUND',
+        message: 'Reward is not available.',
+      });
+    }
+    const pointsCost = reward.pointsCost ?? 0;
+    if (pointsCost <= 0) {
+      throw new BadRequestException({
+        code: 'REWARD_NOT_REDEEMABLE',
+        message: 'This reward cannot be redeemed with points.',
+      });
+    }
+    const wallet = await this.loyalty.getWalletSummary(customerId);
+    if (wallet.pointsBalance < pointsCost) {
+      throw new BadRequestException({
+        code: 'INSUFFICIENT_POINTS',
+        message: 'Not enough points for this reward.',
+      });
+    }
+    const campaign = reward.voucherCampaign;
+    const minSpend = campaign?.minSpend ?? null;
+    if (minSpend != null && subtotalCents < minSpend) {
+      throw new BadRequestException({
+        code: 'REWARD_MIN_SPEND',
+        message: 'Order does not meet the minimum spend for this reward.',
+      });
+    }
+    let discountCents = 0;
+    if (campaign?.voucherType === 'FIXED_AMOUNT') {
+      discountCents = Math.min(campaign.fixedAmountOff ?? 0, subtotalCents);
+    } else if (campaign?.voucherType === 'PERCENTAGE') {
+      const pct = Math.max(0, Math.min(campaign.percentageOff ?? 0, 100));
+      discountCents = Math.floor((subtotalCents * pct) / 100);
+    } else if (campaign?.voucherType === 'DELIVERY_DISCOUNT') {
+      discountCents = Math.min(
+        campaign.deliveryDiscountAmount ?? 0,
+        subtotalCents,
+      );
+    }
     if (discountCents <= 0) {
       throw new BadRequestException({
         code: 'REWARD_NO_DISCOUNT',
