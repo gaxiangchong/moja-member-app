@@ -2201,6 +2201,24 @@
   color: #00348d;
 }
 
+.shareReward {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(249, 115, 22, 0.08));
+  border: 1px solid rgba(249, 115, 22, 0.28);
+  border-radius: 14px;
+}
+.shareReward .shareRewardIcon { font-size: 20px; line-height: 1.3; }
+.shareReward p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7c2d12;
+}
+.shareReward strong { color: #9a3412; }
+
 .shareQr {
   display: grid;
   justify-items: center;
@@ -2212,6 +2230,109 @@
   height: 160px;
   border-radius: 14px;
   border: 1px solid #e4d7c9;
+}
+
+/* --- Member QR (scan at the counter to collect points) ----------------- */
+.memberQrCta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 52, 141, 0.12);
+  border-radius: 16px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 10px 24px -18px rgba(0, 52, 141, 0.4);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.memberQrCta:active { transform: translateY(1px); }
+.memberQrCtaIcon {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00348d, #0a59c9);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.memberQrCtaIcon svg { width: 24px; height: 24px; }
+.memberQrCtaText { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.memberQrCtaTitle { font-size: 15px; font-weight: 700; color: #0f172a; }
+.memberQrCtaSub { font-size: 12px; color: #64748b; }
+.memberQrCtaChevron { flex: 0 0 auto; font-size: 22px; color: #94a3b8; line-height: 1; }
+
+.memberQrOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.memberQrCard {
+  position: relative;
+  width: min(360px, 100%);
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 26px 22px 20px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  box-shadow: 0 25px 60px -20px rgba(0, 0, 0, 0.5);
+}
+.memberQrCloseX {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  border: none;
+  background: transparent;
+  font-size: 26px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.memberQrName { margin: 4px 0 0; font-size: 18px; font-weight: 700; color: #0f172a; text-align: center; }
+.memberQrHint { margin: 0; font-size: 13px; color: #64748b; text-align: center; }
+.memberQrImg {
+  width: 240px;
+  height: 240px;
+  border-radius: 16px;
+  border: 1px solid #e4d7c9;
+  image-rendering: pixelated;
+}
+.memberQrImg--empty {
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  font-size: 13px;
+  background: #f8fafc;
+  image-rendering: auto;
+}
+.memberQrMeta { display: grid; justify-items: center; gap: 2px; margin-top: 4px; }
+.memberQrMetaLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+.memberQrMetaValue { font-size: 16px; font-weight: 700; color: #00348d; }
+.memberQrCloseBtn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: #00348d;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .shareActions {

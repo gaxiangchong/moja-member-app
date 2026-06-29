@@ -561,6 +561,7 @@ function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [phoneQrUrl, setPhoneQrUrl] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [memberQrOpen, setMemberQrOpen] = useState(false);
   const [voucherTab, setVoucherTab] = useState<VoucherTab>('ACTIVE');
   const [rewardQuery, setRewardQuery] = useState('');
   const [rewardFilter, setRewardFilter] = useState<RewardFilter>('all');
@@ -1554,13 +1555,23 @@ function App() {
               <>
                 <header className="pmTopBar">
                   <h2>Hi {memberName}</h2>
-                  <button type="button" className="iconBtn" onClick={() => setShareOpen(true)} aria-label="Share app">
+                  <button type="button" className="iconBtn" onClick={() => setMemberQrOpen(true)} aria-label="Show my member QR">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="18" cy="5" r="3" />
-                      <circle cx="6" cy="12" r="3" />
-                      <circle cx="18" cy="19" r="3" />
-                      <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
-                      <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <path d="M14 14h3v3" />
+                      <path d="M21 14v7h-7" />
+                      <path d="M18 18h.01" />
+                    </svg>
+                  </button>
+                  <button type="button" className="iconBtn" onClick={() => setShareOpen(true)} aria-label="Invite friends and earn an RM5 voucher">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="8" width="18" height="4" rx="1" />
+                      <path d="M12 8v13" />
+                      <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
+                      <path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8" />
+                      <path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8" />
                     </svg>
                   </button>
                 </header>
@@ -1872,6 +1883,29 @@ function App() {
                       : 'You have reached the top tier'}
                   </p>
                 </Card>
+
+                <button
+                  type="button"
+                  className="memberQrCta"
+                  onClick={() => setMemberQrOpen(true)}
+                  aria-label="Show my member QR code"
+                >
+                  <span className="memberQrCtaIcon" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <path d="M14 14h3v3" />
+                      <path d="M21 14v7h-7" />
+                      <path d="M18 18h.01" />
+                    </svg>
+                  </span>
+                  <span className="memberQrCtaText">
+                    <span className="memberQrCtaTitle">Show my member QR</span>
+                    <span className="memberQrCtaSub">Let the cashier scan to collect points</span>
+                  </span>
+                  <span className="memberQrCtaChevron" aria-hidden>›</span>
+                </button>
 
                 <div className="homeSummaryRow accountStatRow">
                   {SHOW_VOUCHERS && (
@@ -2274,11 +2308,56 @@ function App() {
             </div>
           )}
 
+          {memberQrOpen && (
+            <div
+              className="memberQrOverlay"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setMemberQrOpen(false)}
+            >
+              <div className="memberQrCard" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="memberQrCloseX"
+                  aria-label="Close"
+                  onClick={() => setMemberQrOpen(false)}
+                >
+                  ×
+                </button>
+                <h3 className="memberQrName">{memberName}</h3>
+                <p className="memberQrHint">Show this to the cashier to collect your points</p>
+                {phoneQrUrl ? (
+                  <img src={phoneQrUrl} alt="Member QR code" className="memberQrImg" />
+                ) : (
+                  <div className="memberQrImg memberQrImg--empty">Generating…</div>
+                )}
+                <div className="memberQrMeta">
+                  <span className="memberQrMetaLabel">Member ID</span>
+                  <code className="memberQrMetaValue">{profile.phoneE164}</code>
+                </div>
+                <button
+                  type="button"
+                  className="memberQrCloseBtn"
+                  onClick={() => setMemberQrOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
           {shareOpen && (
             <div className="shareOverlay" role="dialog" aria-modal="true">
               <div className="shareSheet">
                 <SectionHeader title="Invite Friends" />
                 <p className="caption">Invite your friends to join Moja and enjoy bakery rewards together.</p>
+                <div className="shareReward">
+                  <span className="shareRewardIcon" aria-hidden>🎁</span>
+                  <p>
+                    Share with a friend and you&rsquo;ll get an <strong>RM5 voucher</strong> — redeemable on a
+                    minimum spend of <strong>RM30 per bill</strong>.
+                  </p>
+                </div>
                 <Card className="shareCodeCard">
                   <p className="caption">Referral code</p>
                   <h3>{profile.referralCode?.trim() || '—'}</h3>
