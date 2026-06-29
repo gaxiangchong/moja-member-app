@@ -16,6 +16,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RewardsWorkflowService } from '../rewards-workflow/rewards-workflow.service';
 import { BentoVoucherService } from '../bento-vouchers/bento-voucher.service';
 import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
+import type {
+  ShopCatalogProduct,
+  ShopCatalogProductVariant,
+} from '../shop-catalog/shop-catalog.service';
+import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import {
   discountCentsFromRebate,
   loadDefinitionDiscountMap,
@@ -47,6 +52,7 @@ export class PaymentsService {
     private readonly rewardsWorkflow: RewardsWorkflowService,
     private readonly receiptEmail: ReceiptEmailService,
     private readonly bentoVoucher: BentoVoucherService,
+    private readonly shopCatalog: ShopCatalogService,
   ) {}
 
   private memberPublicBase(): string {
@@ -367,7 +373,8 @@ export class PaymentsService {
     let voucherLockToken: string | null = null;
     let customerVoucherId: string | null = null;
     let rewardPointsCost: number | null = null;
-    const subtotalCents = this.computeSubtotal(dto);
+    const checkoutOrder = this.resolveShopOrderCatalogPricing(dto);
+    const subtotalCents = this.computeSubtotal(checkoutOrder);
 
     if (voucherId && rewardDefinitionId) {
       throw new BadRequestException({
@@ -393,7 +400,7 @@ export class PaymentsService {
           voucherId,
           orderTotalCents: subtotalCents,
           orderType: this.resolveOrderTypeFromSummary(dto.fulfillmentSummary),
-          productIds: dto.lines.map((l) => l.productId),
+          productIds: checkoutOrder.lines.map((l) => l.productId),
           idempotencyKey,
         });
         voucherLockToken = lock.lockToken;
@@ -413,8 +420,8 @@ export class PaymentsService {
       }
     }
 
-    dto.discountCents = discountCents;
-    dto.totalCents = Math.max(0, subtotalCents - discountCents);
+    checkoutOrder.discountCents = discountCents;
+    checkoutOrder.totalCents = Math.max(0, subtotalCents - discountCents);
 
     const promoFinalize = async (orderId: string) => {
       await this.finalizeShopPromotions({
@@ -430,7 +437,7 @@ export class PaymentsService {
     if (this.isDemoMode()) {
       const order = await this.customers.createPendingMemberOrder(
         customerId,
-        dto,
+        checkoutOrder,
       );
       await promoFinalize(order.id);
       return {
@@ -443,10 +450,10 @@ export class PaymentsService {
       };
     }
 
-    if (dto.totalCents === 0) {
+    if (checkoutOrder.totalCents === 0) {
       const order = await this.customers.createPendingMemberOrder(
         customerId,
-        dto,
+        checkoutOrder,
       );
       await this.customers.finalizeShopOrderAfterPayment(order.id);
       await promoFinalize(order.id);
@@ -495,14 +502,14 @@ export class PaymentsService {
 
     const order = await this.customers.createPendingMemberOrder(
       customerId,
-      dto,
+      checkoutOrder,
     );
     const referenceId = randomUUID();
     const base = this.memberPublicBase();
     const successUrl = `${base}/?tab=shop&shopPayment=success&orderNumber=${encodeURIComponent(String(order.orderNumber))}`;
     const failureUrl = `${base}/?tab=shop&shopPayment=failed`;
 
-    const requestAmount = dto.totalCents / 100;
+    const requestAmount = checkoutOrder.totalCents / 100;
 
     const paymentMetadata: Record<string, string> = {
       customerId: String(customerId),
@@ -546,7 +553,7 @@ export class PaymentsService {
         customerId,
         referenceId,
         purpose: 'shop_order',
-        amountCents: dto.totalCents,
+        amountCents: checkoutOrder.totalCents,
         currency,
         country,
         channelCode,
@@ -585,7 +592,7 @@ export class PaymentsService {
       channelCode,
       country,
       currency,
-      amountCents: dto.totalCents,
+      amountCents: checkoutOrder.totalCents,
       subtotalCents,
       discountCents,
       voucherId,
@@ -1318,6 +1325,88 @@ export class PaymentsService {
       (sum, line) => sum + line.unitPriceCents * line.qty,
       0,
     );
+  }
+
+  private resolveShopOrderCatalogPricing(
+    dto: SubmitMemberOrderDto,
+  ): SubmitMemberOrderDto {
+    const productsById = new Map(
+      this.shopCatalog.listPublicProducts().map((product) => [
+        product.id,
+        product,
+      ]),
+    );
+
+    return {
+      ...dto,
+      lines: dto.lines.map((line) =>
+        this.resolveShopOrderLineCatalogPricing(line, productsById),
+      ),
+    };
+  }
+
+  private resolveShopOrderLineCatalogPricing(
+    line: SubmitMemberOrderDto['lines'][number],
+    productsById: Map<string, ShopCatalogProduct>,
+  ): SubmitMemberOrderDto['lines'][number] {
+    const productId = line.productId.trim();
+    const product = productsById.get(productId);
+    if (!product || product.soldOut) {
+      throw new BadRequestException({
+        code: 'SHOP_PRODUCT_UNAVAILABLE',
+        message:
+          'One or more cart items are no longer available. Refresh your cart and try again.',
+      });
+    }
+
+    const requestedVariantLabel = line.variantLabel?.trim() || null;
+    const variant = this.resolveShopOrderVariant(product, requestedVariantLabel);
+    const unitPriceCents = Math.floor(
+      variant ? variant.priceCents : product.basePriceCents,
+    );
+    if (line.unitPriceCents !== unitPriceCents) {
+      throw new BadRequestException({
+        code: 'SHOP_PRICE_CHANGED',
+        message:
+          'One or more cart item prices have changed. Refresh your cart and try again.',
+      });
+    }
+
+    return {
+      productId: product.id,
+      name: product.name,
+      variantLabel: variant ? variant.label : null,
+      unitPriceCents,
+      qty: line.qty,
+      imageUrl: product.imageUrl || null,
+    };
+  }
+
+  private resolveShopOrderVariant(
+    product: ShopCatalogProduct,
+    requestedVariantLabel: string | null,
+  ): ShopCatalogProductVariant | null {
+    const variants = product.variants ?? [];
+    if (variants.length === 0) {
+      if (requestedVariantLabel) {
+        throw new BadRequestException({
+          code: 'SHOP_VARIANT_UNAVAILABLE',
+          message:
+            'One or more cart item options are no longer available. Refresh your cart and try again.',
+        });
+      }
+      return null;
+    }
+
+    const variant = variants.find((v) => v.label.trim() === requestedVariantLabel);
+    if (!variant || variant.available === false) {
+      throw new BadRequestException({
+        code: 'SHOP_VARIANT_UNAVAILABLE',
+        message:
+          'One or more cart item options are no longer available. Refresh your cart and try again.',
+      });
+    }
+    return variant;
   }
 
   private async resolveCustomerVoucherDiscount(

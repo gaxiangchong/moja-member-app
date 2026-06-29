@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
+import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { PaymentsController, WebhooksController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { XenditApiService } from './xendit-api.service';
@@ -21,6 +22,7 @@ import { XenditApiService } from './xendit-api.service';
     RewardsWorkflowModule,
     NotificationsModule,
     BentoVoucherModule,
+    ShopCatalogModule,
   ],
   controllers: [PaymentsController, WebhooksController],
   providers: [PaymentsService, XenditApiService],
