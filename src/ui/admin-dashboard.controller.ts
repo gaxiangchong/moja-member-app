@@ -689,6 +689,21 @@ export class AdminDashboardController {
       gap: 10px;
       flex-shrink: 0;
     }
+    /* Sortable / filterable data table (shop catalog) */
+    th.sc-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sc-sortable:hover { color: var(--brand, #2563eb); }
+    .sc-sort-ind { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+    tr.sc-filter-row th { padding-top: 6px; padding-bottom: 6px; background: #f8fafc; }
+    tr.sc-filter-row input, tr.sc-filter-row select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 5px 7px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      font-weight: 400;
+    }
     .form-section { margin-bottom: 14px; }
     .form-section:last-child { margin-bottom: 0; }
     .form-section label {
@@ -715,6 +730,41 @@ export class AdminDashboardController {
     }
     @media (max-width: 520px) {
       .form-row-2 { grid-template-columns: 1fr; }
+    }
+    /* Aligned campaign config form: two columns of label:input pairs where the
+       inputs line up on a fixed label gutter. */
+    .vc-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 28px;
+      max-width: 780px;
+    }
+    .vc-form .vc-field {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+    .vc-form .vc-field--full { grid-column: 1 / -1; }
+    .vc-form .vc-field label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin: 0;
+      line-height: 1.25;
+    }
+    .vc-form .vc-field input,
+    .vc-form .vc-field select {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    @media (max-width: 640px) {
+      .vc-form { grid-template-columns: 1fr; }
+      .vc-form .vc-field { grid-template-columns: 130px 1fr; }
     }
     .hidden { display: none !important; }
     body.login-locked { overflow: hidden; }
@@ -1713,14 +1763,14 @@ export class AdminDashboardController {
               <div id="vcTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px"></div>
 
               <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
-                <h3 style="margin:0 0 10px;font-size:14px">2 &middot; Configure &amp; create</h3>
+                <h3 style="margin:0 0 12px;font-size:14px">2 &middot; Configure &amp; create</h3>
                 <input type="hidden" id="vcTemplate" value="CUSTOM" />
-                <div class="form-row-2" style="gap:12px;max-width:680px">
-                  <div>
+                <div class="vc-form">
+                  <div class="vc-field">
                     <label for="vcName">Voucher name</label>
                     <input type="text" id="vcName" placeholder="e.g. Welcome RM5 off" />
                   </div>
-                  <div>
+                  <div class="vc-field">
                     <label for="vcType">Discount type</label>
                     <select id="vcType">
                       <option value="FIXED_AMOUNT">RM amount off</option>
@@ -1729,46 +1779,40 @@ export class AdminDashboardController {
                       <option value="DELIVERY_DISCOUNT">Delivery discount</option>
                     </select>
                   </div>
-                </div>
-                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
-                  <div id="vcAmountWrap">
+                  <div class="vc-field" id="vcAmountWrap">
                     <label for="vcAmount">Amount off (RM)</label>
                     <input type="text" id="vcAmount" inputmode="decimal" placeholder="5.00" />
                   </div>
-                  <div id="vcPercentWrap" style="display:none">
+                  <div class="vc-field" id="vcPercentWrap" style="display:none">
                     <label for="vcPercent">Percentage off (%)</label>
                     <input type="text" id="vcPercent" inputmode="numeric" placeholder="15" />
                   </div>
-                  <div>
-                    <label for="vcMinSpend">Min spend (RM, optional)</label>
-                    <input type="text" id="vcMinSpend" inputmode="decimal" placeholder="&mdash;" />
+                  <div class="vc-field">
+                    <label for="vcMinSpend">Min spend (RM)</label>
+                    <input type="text" id="vcMinSpend" inputmode="decimal" placeholder="optional" />
                   </div>
-                </div>
-                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
-                  <div>
+                  <div class="vc-field">
                     <label for="vcStart">Valid from</label>
                     <input type="date" id="vcStart" />
                   </div>
-                  <div>
-                    <label for="vcEnd">Campaign ends (optional)</label>
+                  <div class="vc-field">
+                    <label for="vcEnd">Campaign ends</label>
                     <input type="date" id="vcEnd" />
                   </div>
-                </div>
-                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
-                  <div>
-                    <label for="vcValidDays">Each voucher valid for (days)</label>
+                  <div class="vc-field">
+                    <label for="vcValidDays">Voucher valid (days)</label>
                     <input type="text" id="vcValidDays" inputmode="numeric" placeholder="30" />
                   </div>
-                  <div>
-                    <label for="vcMaxIssued">Max total issued (optional)</label>
+                  <div class="vc-field">
+                    <label for="vcMaxIssued">Max total issued</label>
                     <input type="text" id="vcMaxIssued" inputmode="numeric" placeholder="unlimited" />
                   </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="vcTnc">Terms / note</label>
+                    <input type="text" id="vcTnc" placeholder="Shown to members in their wallet (optional)" />
+                  </div>
                 </div>
-                <div style="margin-top:8px;max-width:680px">
-                  <label for="vcTnc">Terms / note (optional)</label>
-                  <input type="text" id="vcTnc" placeholder="Shown to members in their wallet" />
-                </div>
-                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                   <button type="button" class="btn-primary" id="vcCreateBtn">Create voucher campaign</button>
                   <span class="field-hint" id="vcCreateResult" style="margin:0"></span>
                 </div>
@@ -1813,50 +1857,46 @@ export class AdminDashboardController {
               </div>
 
               <div id="vcEditPanel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-top:14px">
-                <h3 style="margin:0 0 10px;font-size:14px">Edit campaign &mdash; <span id="vcEditCode"></span></h3>
+                <h3 style="margin:0 0 12px;font-size:14px">Edit campaign &mdash; <span id="vcEditCode"></span></h3>
                 <input type="hidden" id="vcEditId" />
-                <div class="form-row-2" style="gap:12px;max-width:680px">
-                  <div>
+                <div class="vc-form">
+                  <div class="vc-field">
                     <label for="vcEditName">Name</label>
                     <input type="text" id="vcEditName" />
                   </div>
-                  <div>
+                  <div class="vc-field">
                     <label for="vcEditActive">Status</label>
                     <select id="vcEditActive">
                       <option value="true">Active</option>
                       <option value="false">Paused</option>
                     </select>
                   </div>
-                </div>
-                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
-                  <div id="vcEditAmountWrap">
+                  <div class="vc-field" id="vcEditAmountWrap">
                     <label for="vcEditAmount">Amount off (RM)</label>
                     <input type="text" id="vcEditAmount" inputmode="decimal" />
                   </div>
-                  <div id="vcEditPercentWrap" style="display:none">
+                  <div class="vc-field" id="vcEditPercentWrap" style="display:none">
                     <label for="vcEditPercent">Percentage off (%)</label>
                     <input type="text" id="vcEditPercent" inputmode="numeric" />
                   </div>
-                  <div>
+                  <div class="vc-field">
                     <label for="vcEditMinSpend">Min spend (RM)</label>
-                    <input type="text" id="vcEditMinSpend" inputmode="decimal" placeholder="&mdash;" />
+                    <input type="text" id="vcEditMinSpend" inputmode="decimal" placeholder="optional" />
                   </div>
-                </div>
-                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
-                  <div>
-                    <label for="vcEditValidDays">Each voucher valid for (days)</label>
+                  <div class="vc-field">
+                    <label for="vcEditValidDays">Voucher valid (days)</label>
                     <input type="text" id="vcEditValidDays" inputmode="numeric" />
                   </div>
-                  <div>
+                  <div class="vc-field">
                     <label for="vcEditMaxIssued">Max total issued</label>
                     <input type="text" id="vcEditMaxIssued" inputmode="numeric" placeholder="unlimited" />
                   </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="vcEditTnc">Terms / note</label>
+                    <input type="text" id="vcEditTnc" />
+                  </div>
                 </div>
-                <div style="margin-top:8px;max-width:680px">
-                  <label for="vcEditTnc">Terms / note</label>
-                  <input type="text" id="vcEditTnc" />
-                </div>
-                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                   <button type="button" class="btn-primary" id="vcEditSaveBtn">Save changes</button>
                   <button type="button" class="btn-outline" id="vcEditCancelBtn">Cancel</button>
                   <span class="field-hint" id="vcEditResult" style="margin:0"></span>
@@ -2472,10 +2512,27 @@ export class AdminDashboardController {
 
         <section id="settings-shopping-catalog" class="tab-panel hidden">
           <div class="sheet">
-            <div class="sheet-head"><h2>Shopping catalog</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshShopCatalogBtn">Refresh</button></div></div>
+            <div class="sheet-head"><h2>Shopping catalog</h2><div class="sheet-actions"><button type="button" class="btn-primary" id="scAddProductBtn">+ New product</button><button type="button" class="btn-outline" id="refreshShopCatalogBtn">Refresh</button></div></div>
             <div class="table-wrap">
               <table class="data">
-                <thead><tr><th>Name</th><th>Category</th><th>Price</th><th>Sort</th><th>Visible</th><th>Edit</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th class="sc-sortable" data-sort="name">Name <span class="sc-sort-ind" data-ind="name"></span></th>
+                    <th class="sc-sortable" data-sort="category">Category <span class="sc-sort-ind" data-ind="category"></span></th>
+                    <th class="sc-sortable" data-sort="price">Price <span class="sc-sort-ind" data-ind="price"></span></th>
+                    <th class="sc-sortable" data-sort="sort">Sort <span class="sc-sort-ind" data-ind="sort"></span></th>
+                    <th class="sc-sortable" data-sort="visible">Visible <span class="sc-sort-ind" data-ind="visible"></span></th>
+                    <th>Edit</th>
+                  </tr>
+                  <tr class="sc-filter-row">
+                    <th><input type="text" id="scFilterName" placeholder="Filter name…" /></th>
+                    <th><select id="scFilterCategory"><option value="">All</option></select></th>
+                    <th><input type="text" id="scFilterPrice" placeholder="Filter price…" /></th>
+                    <th><input type="text" id="scFilterSort" placeholder="Filter…" /></th>
+                    <th><select id="scFilterVisible"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>
+                    <th></th>
+                  </tr>
+                </thead>
                 <tbody id="shopCatalogBody"></tbody>
               </table>
             </div>
@@ -2535,9 +2592,13 @@ export class AdminDashboardController {
               </div>
             </div>
           </div>
-          <div class="sheet" style="margin-top:16px">
-            <div class="sheet-head"><h2>Edit product</h2></div>
-            <div style="padding:16px 20px;max-width:640px">
+          <div id="scModalBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
+          <div id="scModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="scModalTitle" style="width:min(760px, calc(100vw - 24px))">
+            <div class="modal-head">
+              <h2 id="scModalTitle">Edit product</h2>
+              <button type="button" class="icon-btn" id="scModalClose" aria-label="Close" style="margin:0">&times;</button>
+            </div>
+            <div class="modal-body">
               <input type="hidden" id="scId" />
               <div class="form-row-2">
                 <div class="form-section"><label for="scIdVisible">Product ID (slug)</label><input type="text" id="scIdVisible" placeholder="e.g. caramel-espresso-gateau" /></div>
@@ -2624,11 +2685,11 @@ export class AdminDashboardController {
                 <button type="button" class="btn-outline" id="scResetOverridesBtn">Allow sync to overwrite this product</button>
                 <p class="field-hint" id="scResetOverridesResult"></p>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
-                <button type="button" class="btn-outline" id="scNewBtn">New product</button>
-              </div>
               <p class="field-hint" id="scSaveResult"></p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn-outline" id="scModalCancel">Cancel</button>
+              <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
             </div>
           </div>
         </section>
@@ -6113,12 +6174,90 @@ export class AdminDashboardController {
       }
     }
 
+    var scTableState = { sortKey: null, sortDir: 'asc', filters: { name: '', category: '', price: '', sort: '', visible: '' } };
+    function scPriceNumeric(p) {
+      if (Array.isArray(p.variants) && p.variants.length) {
+        var avail = p.variants.filter(function (v) { return v.available !== false && v.priceCents > 0; });
+        if (avail.length) return Math.min.apply(null, avail.map(function (v) { return v.priceCents; }));
+        return 0;
+      }
+      return p.basePriceCents || 0;
+    }
+    function scPriceText(p) {
+      if (Array.isArray(p.variants) && p.variants.length) {
+        return p.variants.map(function (v) {
+          return (v.label || '') + ' ' + (v.priceDisplay || ('RM' + ((v.priceCents || 0) / 100).toFixed(2)));
+        }).join(' ');
+      }
+      return 'RM' + ((p.basePriceCents || 0) / 100).toFixed(2) + ' ' + (p.priceDisplay || '');
+    }
+    function scSortValue(p, key) {
+      if (key === 'name') return (p.name || '').toLowerCase();
+      if (key === 'category') return (p.categoryLabel || p.category || '').toLowerCase();
+      if (key === 'price') return scPriceNumeric(p);
+      if (key === 'sort') return p.sortOrder != null ? p.sortOrder : 0;
+      if (key === 'visible') return p.isActive ? 1 : 0;
+      return '';
+    }
+    function scApplyFilterSort(list) {
+      var f = scTableState.filters;
+      var out = list.filter(function (p) {
+        if (f.name && (p.name || '').toLowerCase().indexOf(f.name.toLowerCase()) === -1) return false;
+        if (f.category && (p.categoryLabel || p.category || '').toLowerCase().indexOf(f.category.toLowerCase()) === -1) return false;
+        if (f.price && scPriceText(p).toLowerCase().indexOf(f.price.toLowerCase()) === -1) return false;
+        if (f.sort && String(p.sortOrder != null ? p.sortOrder : '').indexOf(f.sort) === -1) return false;
+        if (f.visible === 'yes' && !p.isActive) return false;
+        if (f.visible === 'no' && p.isActive) return false;
+        return true;
+      });
+      if (scTableState.sortKey) {
+        var key = scTableState.sortKey;
+        var dir = scTableState.sortDir === 'desc' ? -1 : 1;
+        out = out.slice().sort(function (a, b) {
+          var av = scSortValue(a, key), bv = scSortValue(b, key);
+          if (av < bv) return -1 * dir;
+          if (av > bv) return 1 * dir;
+          return 0;
+        });
+      }
+      return out;
+    }
+    function scUpdateSortIndicators() {
+      var inds = document.querySelectorAll('.sc-sort-ind');
+      for (var i = 0; i < inds.length; i++) {
+        var k = inds[i].getAttribute('data-ind');
+        inds[i].textContent = (scTableState.sortKey === k)
+          ? (scTableState.sortDir === 'desc' ? '▼' : '▲')
+          : '';
+      }
+    }
+    function scPopulateCategoryFilter() {
+      var sel = document.getElementById('scFilterCategory');
+      if (!sel) return;
+      var current = sel.value;
+      var cats = [];
+      (lastShopCatalogProducts || []).forEach(function (p) {
+        var c = p.categoryLabel || p.category || '';
+        if (c && cats.indexOf(c) === -1) cats.push(c);
+      });
+      cats.sort();
+      sel.innerHTML = '<option value="">All</option>' + cats.map(function (c) {
+        return '<option value="' + fmt(c) + '">' + fmt(c) + '</option>';
+      }).join('');
+      if (current) sel.value = current;
+    }
     async function loadShopCatalog() {
       const data = await api('/admin/shop-catalog/products');
       lastShopCatalogProducts = data || [];
-      const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      scPopulateCategoryFilter();
+      renderShopCatalog();
+    }
+    function renderShopCatalog() {
+      var body = document.getElementById('shopCatalogBody');
+      if (!body) return;
+      const editSvg ='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       const trashSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
-      document.getElementById('shopCatalogBody').innerHTML = (data || []).map(function (p) {
+      body.innerHTML = scApplyFilterSort(lastShopCatalogProducts || []).map(function (p) {
         var priceCell;
         if (Array.isArray(p.variants) && p.variants.length > 0) {
           priceCell = p.variants.map(function (v) {
@@ -6136,7 +6275,8 @@ export class AdminDashboardController {
           : '';
         return '<tr><td>' + fmt(p.name) + lockBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button> <button type="button" class="icon-btn sc-delete-btn" data-id="' + fmt(p.id) + '" data-name="' + fmt(p.name) + '" title="Delete product">' + trashSvg + '</button></td></tr>';
-      }).join('') || '<tr><td colspan="6">No products</td></tr>';
+      }).join('') || '<tr><td colspan="6" class="muted-hint">No products match.</td></tr>';
+      scUpdateSortIndicators();
     }
 
     var lastScSyncPreview = null;
@@ -7196,6 +7336,10 @@ export class AdminDashboardController {
       if (e.key === 'Escape' && !document.getElementById('editMemberModal').classList.contains('hidden')) {
         closeEditMemberModal();
       }
+      var scModalEl = document.getElementById('scModal');
+      if (e.key === 'Escape' && scModalEl && !scModalEl.classList.contains('hidden')) {
+        closeScModal();
+      }
     });
     document.getElementById('refreshCustomersBtn').addEventListener('click', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
     var exportCustomersBtn = document.getElementById('exportCustomersBtn');
@@ -7462,6 +7606,35 @@ export class AdminDashboardController {
       loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; });
       scRefreshSitesCatalogFileHint().catch(function () {});
     });
+    // Shop catalog column sort (click header) + per-column filters.
+    var scSortHeaders = document.querySelectorAll('th.sc-sortable');
+    for (var scH = 0; scH < scSortHeaders.length; scH++) {
+      scSortHeaders[scH].addEventListener('click', function () {
+        var key = this.getAttribute('data-sort');
+        if (!key) return;
+        if (scTableState.sortKey === key) {
+          scTableState.sortDir = scTableState.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          scTableState.sortKey = key;
+          scTableState.sortDir = 'asc';
+        }
+        renderShopCatalog();
+      });
+    }
+    function scBindFilter(id, key) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var ev = el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(ev, function () {
+        scTableState.filters[key] = el.value || '';
+        renderShopCatalog();
+      });
+    }
+    scBindFilter('scFilterName', 'name');
+    scBindFilter('scFilterCategory', 'category');
+    scBindFilter('scFilterPrice', 'price');
+    scBindFilter('scFilterSort', 'sort');
+    scBindFilter('scFilterVisible', 'visible');
     var refreshBentoMenuBtn = document.getElementById('refreshBentoMenuBtn');
     if (refreshBentoMenuBtn) {
       refreshBentoMenuBtn.addEventListener('click', function () {
@@ -9158,9 +9331,24 @@ export class AdminDashboardController {
       if (imgOut) imgOut.textContent = '';
       scSetImageFraming(p.imageOffsetX, p.imageOffsetY, p.imageScale);
       scRenderOverridesPanel(p);
+      var scModalTitleEl = document.getElementById('scModalTitle');
+      if (scModalTitleEl) scModalTitleEl.textContent = 'Edit product — ' + (p.name || '');
+      openScModal();
     });
 
-    document.getElementById('scNewBtn').addEventListener('click', () => {
+    function openScModal() {
+      var bd = document.getElementById('scModalBackdrop');
+      var md = document.getElementById('scModal');
+      if (bd) bd.classList.remove('hidden');
+      if (md) md.classList.remove('hidden');
+    }
+    function closeScModal() {
+      var bd = document.getElementById('scModalBackdrop');
+      var md = document.getElementById('scModal');
+      if (bd) bd.classList.add('hidden');
+      if (md) md.classList.add('hidden');
+    }
+    function scResetProductForm() {
       document.getElementById('scId').value = '';
       document.getElementById('scIdVisible').value = '';
       document.getElementById('scIdVisible').readOnly = false;
@@ -9184,7 +9372,21 @@ export class AdminDashboardController {
       if (imgOut) imgOut.textContent = '';
       scSetImageFraming(50, 50, 1);
       scRenderOverridesPanel(null);
+    }
+
+    var scAddProductBtn = document.getElementById('scAddProductBtn');
+    if (scAddProductBtn) scAddProductBtn.addEventListener('click', function () {
+      scResetProductForm();
+      var scModalTitleEl = document.getElementById('scModalTitle');
+      if (scModalTitleEl) scModalTitleEl.textContent = 'New product';
+      openScModal();
     });
+    var scModalCloseBtn = document.getElementById('scModalClose');
+    if (scModalCloseBtn) scModalCloseBtn.addEventListener('click', closeScModal);
+    var scModalCancelBtn = document.getElementById('scModalCancel');
+    if (scModalCancelBtn) scModalCancelBtn.addEventListener('click', closeScModal);
+    var scModalBackdropEl = document.getElementById('scModalBackdrop');
+    if (scModalBackdropEl) scModalBackdropEl.addEventListener('click', closeScModal);
 
     var scResetOverridesBtn = document.getElementById('scResetOverridesBtn');
     if (scResetOverridesBtn) scResetOverridesBtn.addEventListener('click', async function () {
@@ -9308,6 +9510,7 @@ export class AdminDashboardController {
       req
         .then(function () {
           out.textContent = id ? 'Updated.' : 'Created.';
+          closeScModal();
           return loadShopCatalog();
         })
         .catch(function (err) { out.textContent = err.message; });

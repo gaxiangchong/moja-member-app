@@ -134,7 +134,7 @@ export const translations: Record<Lang, Dict> = {
     'launch.body':
       'Grab your meals fresh! Lunch pickup is available from 12pm – 2pm, and dinner pickup is from 6pm – 8pm.\n Please time your arrival within these windows so we can hand over your food perfectly hot and fresh.', 
 
-    'launch.pickup': 'Place your order now',
+    'launch.pickup': '🎁 New User? Get RM10 OFF with code: WELCOME10',
     'launch.gotIt': 'Got it',
     'launch.dontShowAgain': "Don't show this again",
 
@@ -530,10 +530,10 @@ export const translations: Record<Lang, Dict> = {
     'menu.footerScript': '好好吃饭，照顾好自己。',
     'menu.footerNote': '* 蔬菜可能因市场供应情况而更换，以实际供应为准。',
 
-    'launch.badge': '🔔通稿',
+    'launch.badge': '🔔通告',
     'launch.title': '取餐时间通知！',
     'launch.body': '为了确保您的餐点以最完美、最温热的状态送到您手中，我们调整了自取时间段, 午餐自取时间为 12pm – 2pm，晚餐自取时间为 6pm – 8pm。请在指定时间内前来取餐哦。',
-    'launch.pickup': '现在就预订您的专属美味吧！',
+    'launch.pickup': '🎁 新用户立减 RM10｜优惠码：WELCOME10',
     'launch.gotIt': '知道了',
     'launch.dontShowAgain': '不再显示',
 
