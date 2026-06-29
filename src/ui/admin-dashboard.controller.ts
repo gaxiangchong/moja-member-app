@@ -7148,6 +7148,7 @@ export class AdminDashboardController {
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
       const tasks = [
+        loadOverview(),
         loadVoucherCampaigns(),
         loadCustomers(),
         loadLoyalty(),
