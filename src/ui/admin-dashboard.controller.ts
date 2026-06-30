@@ -5887,7 +5887,7 @@ export class AdminDashboardController {
       btn.disabled = true;
       btn.textContent = 'Refunding…';
       try {
-        await api('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/refund', { method: 'POST' });
+        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/refund', {});
         // Drop the refunded member from the in-memory list and re-render.
         bentoAwaitRows = bentoAwaitRows.filter(function (r) { return r.subscriptionId !== id; });
         renderBentoAwaiting(bentoAwaitRows);
