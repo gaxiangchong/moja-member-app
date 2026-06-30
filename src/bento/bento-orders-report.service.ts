@@ -46,6 +46,7 @@ export type BentoKitchenPackRow = {
  * yet — the admin's "to chase" list for a WhatsApp reminder.
  */
 export type BentoAwaitingScheduleRow = {
+  subscriptionId: string;
   customerName: string;
   email: string;
   phoneE164: string;
@@ -85,6 +86,7 @@ export class BentoOrdersReportService {
         ...this.reportingSettings.createdAtCutoffWhere(),
       },
       select: {
+        id: true,
         mealOption: true,
         mealCreditsTotal: true,
         createdAt: true,
@@ -108,6 +110,7 @@ export class BentoOrdersReportService {
     };
 
     return subs.map((s) => ({
+      subscriptionId: s.id,
       customerName: s.customer.displayName?.trim() || '—',
       email: s.customer.email?.trim() || '—',
       phoneE164: s.customer.phoneE164,

@@ -38,7 +38,7 @@ export function MySubscriptions() {
   }, []);
 
   const visibleItems = items.filter(
-    (sub) => !['CANCELLED', 'EXPIRED', 'TERMINATED', 'DELETED', 'INACTIVE'].includes(sub.status),
+    (sub) => !['CANCELLED', 'EXPIRED', 'TERMINATED', 'DELETED', 'INACTIVE', 'REFUNDED'].includes(sub.status),
   );
   const needsSchedule = visibleItems.find((s) => s.needsSchedule);
 

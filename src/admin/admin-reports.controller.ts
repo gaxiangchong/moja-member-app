@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Res,
@@ -107,5 +108,14 @@ export class AdminReportsController {
     }
 
     return this.bentoOrdersReport.getCounts(from, to);
+  }
+
+  @Post('bento-subscriptions/:id/refund')
+  @RequirePermissions(P.REPORT_VIEW)
+  markBentoSubscriptionRefunded(
+    @Param('id') id: string,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.markBentoSubscriptionRefunded(id, auth);
   }
 }

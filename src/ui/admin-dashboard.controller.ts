@@ -3114,10 +3114,11 @@ export class AdminDashboardController {
                       <th>Meals</th>
                       <th>Credits</th>
                       <th>Purchased</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody id="bentoAwaitBody">
-                    <tr><td colspan="8" class="muted-hint">Click Load orders to see who's awaiting scheduling.</td></tr>
+                    <tr><td colspan="9" class="muted-hint">Click Load orders to see who's awaiting scheduling.</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -5858,7 +5859,7 @@ export class AdminDashboardController {
       if (selAll) selAll.checked = false;
       if (!body) return;
       if (!bentoAwaitRows.length) {
-        body.innerHTML = '<tr><td colspan="8" class="muted-hint">🎉 Everyone with an active plan has scheduled their pickup.</td></tr>';
+        body.innerHTML = '<tr><td colspan="9" class="muted-hint">🎉 Everyone with an active plan has scheduled their pickup.</td></tr>';
         bentoAwaitSyncButtons();
         return;
       }
@@ -5872,9 +5873,30 @@ export class AdminDashboardController {
           + '<td>' + bentoEsc(r.mealOption) + '</td>'
           + '<td>' + bentoEsc(r.mealCredits) + '</td>'
           + '<td>' + bentoEsc(r.purchasedAt) + '</td>'
+          + '<td><button type="button" class="btn-outline bento-await-refund" data-id="' + bentoEsc(r.subscriptionId) + '" data-name="' + bentoEsc(r.customerName) + '">Mark refunded</button></td>'
           + '</tr>';
       }).join('');
       bentoAwaitSyncButtons();
+    }
+    async function bentoMarkRefunded(btn) {
+      var id = btn.getAttribute('data-id');
+      var name = btn.getAttribute('data-name') || 'this member';
+      if (!id) return;
+      if (!window.confirm('Mark ' + name + ' as refunded? This removes them from scheduling and the kitchen reports.')) return;
+      var out = document.getElementById('bentoAwaitCopyResult');
+      btn.disabled = true;
+      btn.textContent = 'Refunding…';
+      try {
+        await api('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/refund', { method: 'POST' });
+        // Drop the refunded member from the in-memory list and re-render.
+        bentoAwaitRows = bentoAwaitRows.filter(function (r) { return r.subscriptionId !== id; });
+        renderBentoAwaiting(bentoAwaitRows);
+        if (out) out.textContent = 'Marked ' + name + ' as refunded and removed from scheduling.';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Mark refunded';
+        if (out) out.textContent = (e && e.message) ? e.message : String(e);
+      }
     }
     function bentoCopyText(text, okMsg) {
       var out = document.getElementById('bentoAwaitCopyResult');
@@ -8411,6 +8433,10 @@ export class AdminDashboardController {
           }
           bentoAwaitSyncButtons();
         }
+      });
+      bentoAwaitBodyEl.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('button.bento-await-refund') : null;
+        if (btn) bentoMarkRefunded(btn);
       });
     }
     var bentoAwaitSelectAllEl = document.getElementById('bentoAwaitSelectAll');

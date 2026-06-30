@@ -203,6 +203,7 @@ enum BentoSubscriptionStatus {
   ACTIVE
   CANCELLED
   COMPLETED
+  REFUNDED
 }
 
 enum BentoDeliveryStatus {

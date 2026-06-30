@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  BentoSubscriptionStatus,
   CustomerStatus,
   PerksCriteriaKind,
   PerksProgramKind,
@@ -2674,6 +2675,41 @@ export class AdminService {
       closedAt: row.closedAt.toISOString(),
       alreadyClosed: false as const,
     };
+  }
+
+  /**
+   * Mark a bento subscription as REFUNDED. Used by the "Awaiting scheduling"
+   * panel to clear members who were already refunded outside the app — once
+   * refunded the subscription is no longer ACTIVE, so it drops off the
+   * awaiting-schedule and kitchen reports.
+   */
+  async markBentoSubscriptionRefunded(id: string, auth: AdminAuthState) {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    if (sub.status === BentoSubscriptionStatus.REFUNDED) {
+      return { id: sub.id, status: sub.status, alreadyRefunded: true as const };
+    }
+    const updated = await this.prisma.bentoSubscription.update({
+      where: { id: sub.id },
+      data: { status: BentoSubscriptionStatus.REFUNDED },
+      select: { id: true, status: true },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'bento.subscription_refunded',
+      entityType: 'bento_subscription',
+      entityId: updated.id,
+      metadata: { previousStatus: sub.status } as object,
+    });
+    return { id: updated.id, status: updated.status, alreadyRefunded: false as const };
   }
 
   listVoucherPushRules() {
