@@ -367,7 +367,7 @@ export function Checkout({ draft, onSuccess }: Props) {
         type="button"
         className={`btnPrimary${paymentsDemoMode ? ' btnDemo' : ''}`}
         disabled={!canCheckout || loading}
-        onClick={openTakeawayDisclaimer}
+        onClick={isSingleMeal ? () => void handlePay() : openTakeawayDisclaimer}
         style={{ marginTop: 14 }}
       >
         {loading
