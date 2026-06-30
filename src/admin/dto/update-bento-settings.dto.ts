@@ -35,6 +35,12 @@ export class UpdateBentoSettingsDto {
   minScheduleLeadDays?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  scheduleCutoffHour?: number;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   closedDates?: string[];

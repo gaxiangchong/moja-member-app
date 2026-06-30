@@ -21,6 +21,8 @@ import { AdminDailyCommerceDateDto } from './dto/admin-daily-commerce.dto';
 import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
+import { BentoService } from '../bento/bento.service';
+import { BentoScheduleDto } from '../bento/dto/bento-subscription.dto';
 
 @Controller('admin/reports')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -28,6 +30,7 @@ export class AdminReportsController {
   constructor(
     private readonly admin: AdminService,
     private readonly bentoOrdersReport: BentoOrdersReportService,
+    private readonly bento: BentoService,
   ) {}
 
   @Get('dashboard')
@@ -117,5 +120,18 @@ export class AdminReportsController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.markBentoSubscriptionRefunded(id, auth);
+  }
+
+  /**
+   * Schedule pickup days on a customer's behalf. Runs with admin override so
+   * staff can resolve missed-cutoff / closed-day complaints from the dashboard.
+   */
+  @Post('bento-subscriptions/:id/schedule')
+  @RequirePermissions(P.REPORT_VIEW)
+  scheduleBentoSubscription(
+    @Param('id') id: string,
+    @Body() dto: BentoScheduleDto,
+  ) {
+    return this.bento.adminScheduleDeliveries(id, dto);
   }
 }

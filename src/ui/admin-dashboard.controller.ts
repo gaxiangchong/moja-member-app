@@ -2881,9 +2881,14 @@ export class AdminDashboardController {
                 Optional. Members cannot schedule pickups before this date (combined with lead days below). Leave empty for no launch date.
               </p>
               <label for="bentoMinScheduleLeadDays" style="margin-top:14px">Min schedule lead (days)</label>
-              <input type="number" id="bentoMinScheduleLeadDays" min="0" max="30" step="1" value="2" style="max-width:120px" />
+              <input type="number" id="bentoMinScheduleLeadDays" min="0" max="30" step="1" value="1" style="max-width:120px" />
               <p class="field-hint" style="margin-top:4px">
-                Pickup must be at least this many days after today (e.g. 2 = day after tomorrow at earliest).
+                Pickup must be at least this many days after today (e.g. 1 = tomorrow at earliest, 2 = day after tomorrow).
+              </p>
+              <label for="bentoScheduleCutoffHour" style="margin-top:14px">Daily order cutoff (hour, 0–23)</label>
+              <input type="number" id="bentoScheduleCutoffHour" min="0" max="23" step="1" value="18" style="max-width:120px" />
+              <p class="field-hint" style="margin-top:4px">
+                Malaysia time. After this hour the nearest lead day closes. With lead = 1 and cutoff = 18, members can book tomorrow only before 6pm today; after 6pm the earliest becomes the day after.
               </p>
               <label for="bentoClosedDates" style="margin-top:14px">Extra closed dates</label>
               <textarea id="bentoClosedDates" rows="3" placeholder="2026-12-25&#10;2026-01-01" style="max-width:320px;font-family:inherit"></textarea>
@@ -3095,7 +3100,7 @@ export class AdminDashboardController {
               <div class="bento-await-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:26px 0 6px">
                 <div>
                   <h3 style="margin:0">Awaiting scheduling <span id="bentoAwaitCount" class="bento-await-badge">0</span></h3>
-                  <p class="field-hint" style="margin:2px 0 0">Paid members who haven't booked a pickup day. Select people to chase, then copy WhatsApp links or phone numbers.</p>
+                  <p class="field-hint" style="margin:2px 0 0">Paid members who haven't booked a pickup day. Use <strong>Schedule</strong> to book pickups on their behalf, or select people to chase and copy WhatsApp links / phone numbers.</p>
                 </div>
                 <div class="sheet-actions" style="flex-wrap:wrap">
                   <button type="button" class="btn-outline" id="bentoAwaitCopyWa" disabled>Copy WhatsApp links</button>
@@ -3453,6 +3458,28 @@ export class AdminDashboardController {
     <div class="modal-footer">
       <button type="button" class="btn-outline" id="editMemberCancel">Cancel</button>
       <button type="button" class="btn-primary" id="editMemberSave">Save changes</button>
+    </div>
+  </div>
+
+  <div id="bentoSchedBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
+  <div id="bentoSchedModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="bentoSchedTitle" style="width:min(620px, calc(100vw - 24px))">
+    <div class="modal-head">
+      <h2 id="bentoSchedTitle">Schedule pickup</h2>
+      <button type="button" class="icon-btn" id="bentoSchedClose" aria-label="Close" style="margin:0">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="field-hint" style="margin-top:0" id="bentoSchedSubInfo">—</p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px">
+        <strong>Admin override.</strong> Booking here ignores the daily cutoff, lead time, closed days and the daily capacity cap — use it to fix missed-cutoff complaints, but make sure the kitchen can handle these days.
+      </div>
+      <div id="bentoSchedRows"></div>
+      <button type="button" class="btn-outline" id="bentoSchedAddDay" style="margin-top:4px">+ Add pickup day</button>
+      <p class="field-hint" id="bentoSchedTotals" style="margin-top:12px;font-weight:600">—</p>
+      <p class="field-hint" id="bentoSchedResult" style="margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-outline" id="bentoSchedCancel">Cancel</button>
+      <button type="button" class="btn-primary" id="bentoSchedSave">Save schedule</button>
     </div>
   </div>
 
@@ -5661,6 +5688,7 @@ export class AdminDashboardController {
       var blockEl = document.getElementById('bentoBlockNewOrders');
       var launchEl = document.getElementById('bentoEarliestPickupDate');
       var leadEl = document.getElementById('bentoMinScheduleLeadDays');
+      var cutoffEl = document.getElementById('bentoScheduleCutoffHour');
       var closedEl = document.getElementById('bentoClosedDates');
       var envHint = document.getElementById('bentoSettingsEnvHint');
       if (!capEl) return;
@@ -5677,6 +5705,9 @@ export class AdminDashboardController {
         }
         if (leadEl && cfg && typeof cfg.minScheduleLeadDays === 'number') {
           leadEl.value = String(cfg.minScheduleLeadDays);
+        }
+        if (cutoffEl && cfg && typeof cfg.scheduleCutoffHour === 'number') {
+          cutoffEl.value = String(cfg.scheduleCutoffHour);
         }
         if (closedEl && cfg && Array.isArray(cfg.closedDates)) {
           closedEl.value = cfg.closedDates.join('\\n');
@@ -5700,14 +5731,17 @@ export class AdminDashboardController {
       var blockEl = document.getElementById('bentoBlockNewOrders');
       var launchEl = document.getElementById('bentoEarliestPickupDate');
       var leadEl = document.getElementById('bentoMinScheduleLeadDays');
+      var cutoffEl = document.getElementById('bentoScheduleCutoffHour');
       var closedEl = document.getElementById('bentoClosedDates');
       if (!capEl) return;
       if (out) out.textContent = 'Saving…';
       try {
         var n = parseInt(String(capEl.value), 10);
         if (!n || n < 1) throw new Error('Enter a capacity of at least 1 pack.');
-        var leadDays = leadEl ? parseInt(String(leadEl.value), 10) : 2;
-        if (!Number.isFinite(leadDays) || leadDays < 0) leadDays = 2;
+        var leadDays = leadEl ? parseInt(String(leadEl.value), 10) : 1;
+        if (!Number.isFinite(leadDays) || leadDays < 0) leadDays = 1;
+        var cutoffHour = cutoffEl ? parseInt(String(cutoffEl.value), 10) : 18;
+        if (!Number.isFinite(cutoffHour) || cutoffHour < 0 || cutoffHour > 23) cutoffHour = 18;
         var closedDates = [];
         if (closedEl && closedEl.value) {
           closedDates = closedEl.value.split(/\\r?\\n/).map(function (line) {
@@ -5719,6 +5753,7 @@ export class AdminDashboardController {
           blockNewOrders: blockEl ? blockEl.checked : false,
           earliestPickupDate: launchEl && launchEl.value.trim() ? launchEl.value.trim() : null,
           minScheduleLeadDays: leadDays,
+          scheduleCutoffHour: cutoffHour,
           closedDates: closedDates,
         });
         if (out) out.textContent = 'Saved. Daily limit is ' + (saved.effectiveDailyCapacityPacks || n) + ' packs.' +
@@ -5873,7 +5908,9 @@ export class AdminDashboardController {
           + '<td>' + bentoEsc(r.mealOption) + '</td>'
           + '<td>' + bentoEsc(r.mealCredits) + '</td>'
           + '<td>' + bentoEsc(r.purchasedAt) + '</td>'
-          + '<td><button type="button" class="btn-outline bento-await-refund" data-id="' + bentoEsc(r.subscriptionId) + '" data-name="' + bentoEsc(r.customerName) + '">Mark refunded</button></td>'
+          + '<td style="white-space:nowrap">'
+          + '<button type="button" class="btn-primary bento-await-schedule" data-i="' + i + '">Schedule</button> '
+          + '<button type="button" class="btn-outline bento-await-refund" data-id="' + bentoEsc(r.subscriptionId) + '" data-name="' + bentoEsc(r.customerName) + '">Mark refunded</button></td>'
           + '</tr>';
       }).join('');
       bentoAwaitSyncButtons();
@@ -5898,6 +5935,146 @@ export class AdminDashboardController {
         if (out) out.textContent = (e && e.message) ? e.message : String(e);
       }
     }
+
+    // --- Schedule-for-customer modal -------------------------------------
+    var bentoSchedSub = null; // the awaiting row currently being scheduled
+
+    function bentoSchedTomorrowIso() {
+      var d = new Date();
+      d.setDate(d.getDate() + 1);
+      function p(n) { return (n < 10 ? '0' : '') + n; }
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+    function bentoSchedHasLunch() {
+      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'LUNCH' || bentoSchedSub.mealOptionCode === 'BOTH');
+    }
+    function bentoSchedHasDinner() {
+      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'DINNER' || bentoSchedSub.mealOptionCode === 'BOTH');
+    }
+    function bentoSchedAddRow(dateIso) {
+      var host = document.getElementById('bentoSchedRows');
+      if (!host) return;
+      var qtyStyle = 'width:64px;text-align:center';
+      var lunch = bentoSchedHasLunch()
+        ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Lunch'
+          + '<input type="number" min="0" max="50" value="1" class="bento-sched-lunch" style="' + qtyStyle + '" /></label>'
+        : '';
+      var dinner = bentoSchedHasDinner()
+        ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Dinner'
+          + '<input type="number" min="0" max="50" value="1" class="bento-sched-dinner" style="' + qtyStyle + '" /></label>'
+        : '';
+      var div = document.createElement('div');
+      div.className = 'bento-sched-row';
+      div.style.cssText = 'display:flex;gap:10px;align-items:flex-end;margin-bottom:8px';
+      div.innerHTML = '<label style="flex:1;display:flex;flex-direction:column;font-size:12px;color:#475569">Pickup date'
+        + '<input type="date" value="' + (dateIso || '') + '" class="bento-sched-date" /></label>'
+        + lunch + dinner
+        + '<button type="button" class="btn-outline bento-sched-remove" aria-label="Remove day" style="padding:8px 12px">&times;</button>';
+      host.appendChild(div);
+      bentoSchedUpdateTotals();
+    }
+    function bentoSchedUpdateTotals() {
+      var totals = document.getElementById('bentoSchedTotals');
+      if (!totals || !bentoSchedSub) return;
+      var lunch = 0, dinner = 0;
+      document.querySelectorAll('#bentoSchedRows .bento-sched-row').forEach(function (row) {
+        var l = row.querySelector('.bento-sched-lunch');
+        var d = row.querySelector('.bento-sched-dinner');
+        lunch += l ? Math.max(0, parseInt(l.value, 10) || 0) : 0;
+        dinner += d ? Math.max(0, parseInt(d.value, 10) || 0) : 0;
+      });
+      var parts = [];
+      if (bentoSchedHasLunch()) parts.push('Lunch ' + lunch + ' / ' + bentoSchedSub.lunchCredits);
+      if (bentoSchedHasDinner()) parts.push('Dinner ' + dinner + ' / ' + bentoSchedSub.dinnerCredits);
+      var over = (bentoSchedHasLunch() && lunch > bentoSchedSub.lunchCredits)
+        || (bentoSchedHasDinner() && dinner > bentoSchedSub.dinnerCredits);
+      totals.textContent = 'Allocated — ' + parts.join(' · ') + (over ? '  (over plan credits)' : '');
+      totals.style.color = over ? '#b91c1c' : '#475569';
+    }
+    function bentoOpenSchedModal(row) {
+      bentoSchedSub = row;
+      var info = document.getElementById('bentoSchedSubInfo');
+      if (info) {
+        info.textContent = row.customerName + ' · ' + row.packageLabel + ' · ' + row.mealOption
+          + ' · ' + row.mealCredits + ' credit(s)';
+      }
+      var result = document.getElementById('bentoSchedResult');
+      if (result) { result.textContent = ''; }
+      var host = document.getElementById('bentoSchedRows');
+      if (host) { host.innerHTML = ''; }
+      bentoSchedAddRow(bentoSchedTomorrowIso());
+      document.getElementById('bentoSchedBackdrop').classList.remove('hidden');
+      document.getElementById('bentoSchedModal').classList.remove('hidden');
+    }
+    function bentoCloseSchedModal() {
+      document.getElementById('bentoSchedBackdrop').classList.add('hidden');
+      document.getElementById('bentoSchedModal').classList.add('hidden');
+      bentoSchedSub = null;
+    }
+    function bentoSchedCollectSlots() {
+      var slots = [];
+      var bad = false;
+      document.querySelectorAll('#bentoSchedRows .bento-sched-row').forEach(function (row) {
+        var dateEl = row.querySelector('.bento-sched-date');
+        var date = dateEl ? dateEl.value : '';
+        var l = row.querySelector('.bento-sched-lunch');
+        var d = row.querySelector('.bento-sched-dinner');
+        var lunchQty = l ? Math.max(0, parseInt(l.value, 10) || 0) : 0;
+        var dinnerQty = d ? Math.max(0, parseInt(d.value, 10) || 0) : 0;
+        if (lunchQty <= 0 && dinnerQty <= 0) return; // skip empty rows
+        if (!date) { bad = true; return; }
+        slots.push({
+          date: date,
+          includeLunch: lunchQty > 0,
+          includeDinner: dinnerQty > 0,
+          lunchQty: lunchQty,
+          dinnerQty: dinnerQty,
+        });
+      });
+      return { slots: slots, bad: bad };
+    }
+    function bentoSchedFriendlyError(e) {
+      var raw = (e && e.message) ? e.message : String(e);
+      var brace = raw.indexOf('{');
+      if (brace >= 0) {
+        try {
+          var parsed = JSON.parse(raw.slice(brace));
+          if (parsed && parsed.message) return parsed.message;
+        } catch (_) { /* fall through */ }
+      }
+      return raw;
+    }
+    async function bentoSchedSubmit() {
+      if (!bentoSchedSub) return;
+      var result = document.getElementById('bentoSchedResult');
+      var saveBtn = document.getElementById('bentoSchedSave');
+      var collected = bentoSchedCollectSlots();
+      if (collected.bad) {
+        if (result) { result.style.color = '#b91c1c'; result.textContent = 'Every pickup day with meals needs a date.'; }
+        return;
+      }
+      if (!collected.slots.length) {
+        if (result) { result.style.color = '#b91c1c'; result.textContent = 'Add at least one day with a lunch or dinner.'; }
+        return;
+      }
+      var id = bentoSchedSub.subscriptionId;
+      var name = bentoSchedSub.customerName;
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+      if (result) { result.style.color = '#475569'; result.textContent = 'Saving…'; }
+      try {
+        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/schedule', { slots: collected.slots });
+        bentoCloseSchedModal();
+        var out = document.getElementById('bentoAwaitCopyResult');
+        if (out) out.textContent = 'Scheduled ' + collected.slots.length + ' pickup day(s) for ' + name + '.';
+        // Refresh both the scheduled and awaiting tables.
+        previewBentoOrders().catch(function () {});
+      } catch (e) {
+        if (result) { result.style.color = '#b91c1c'; result.textContent = bentoSchedFriendlyError(e); }
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save schedule'; }
+      }
+    }
+
     function bentoCopyText(text, okMsg) {
       var out = document.getElementById('bentoAwaitCopyResult');
       function done(ok) { if (out) out.textContent = ok ? okMsg : ('Copy failed. Text:\\n' + text); }
@@ -7363,6 +7540,10 @@ export class AdminDashboardController {
       if (e.key === 'Escape' && scModalEl && !scModalEl.classList.contains('hidden')) {
         closeScModal();
       }
+      var bentoSchedModalEsc = document.getElementById('bentoSchedModal');
+      if (e.key === 'Escape' && bentoSchedModalEsc && !bentoSchedModalEsc.classList.contains('hidden')) {
+        bentoCloseSchedModal();
+      }
     });
     document.getElementById('refreshCustomersBtn').addEventListener('click', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
     var exportCustomersBtn = document.getElementById('exportCustomersBtn');
@@ -8435,9 +8616,43 @@ export class AdminDashboardController {
         }
       });
       bentoAwaitBodyEl.addEventListener('click', function (e) {
-        var btn = e.target && e.target.closest ? e.target.closest('button.bento-await-refund') : null;
-        if (btn) bentoMarkRefunded(btn);
+        if (!e.target || !e.target.closest) return;
+        var refundBtn = e.target.closest('button.bento-await-refund');
+        if (refundBtn) { bentoMarkRefunded(refundBtn); return; }
+        var schedBtn = e.target.closest('button.bento-await-schedule');
+        if (schedBtn) {
+          var i = parseInt(schedBtn.getAttribute('data-i'), 10);
+          if (!isNaN(i) && bentoAwaitRows[i]) bentoOpenSchedModal(bentoAwaitRows[i]);
+        }
       });
+    }
+    var bentoSchedModalEl = document.getElementById('bentoSchedModal');
+    if (bentoSchedModalEl) {
+      document.getElementById('bentoSchedBackdrop').addEventListener('click', bentoCloseSchedModal);
+      document.getElementById('bentoSchedClose').addEventListener('click', bentoCloseSchedModal);
+      document.getElementById('bentoSchedCancel').addEventListener('click', bentoCloseSchedModal);
+      document.getElementById('bentoSchedAddDay').addEventListener('click', function () {
+        bentoSchedAddRow(bentoSchedTomorrowIso());
+      });
+      document.getElementById('bentoSchedSave').addEventListener('click', function () {
+        bentoSchedSubmit().catch(function () {});
+      });
+      var bentoSchedRowsEl = document.getElementById('bentoSchedRows');
+      if (bentoSchedRowsEl) {
+        bentoSchedRowsEl.addEventListener('click', function (e) {
+          var rm = e.target && e.target.closest ? e.target.closest('button.bento-sched-remove') : null;
+          if (!rm) return;
+          var row = rm.closest('.bento-sched-row');
+          if (row) row.parentNode.removeChild(row);
+          bentoSchedUpdateTotals();
+        });
+        bentoSchedRowsEl.addEventListener('input', function (e) {
+          if (e.target && e.target.classList &&
+              (e.target.classList.contains('bento-sched-lunch') || e.target.classList.contains('bento-sched-dinner'))) {
+            bentoSchedUpdateTotals();
+          }
+        });
+      }
     }
     var bentoAwaitSelectAllEl = document.getElementById('bentoAwaitSelectAll');
     if (bentoAwaitSelectAllEl) {

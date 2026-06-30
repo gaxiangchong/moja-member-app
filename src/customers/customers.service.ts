@@ -20,6 +20,30 @@ import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 
+/**
+ * Product-interest tags stored in Customer.tags[] for targeted marketing.
+ * A member tagged with both 'bento' and 'cake' is effectively "both" — there
+ * is no separate value; the combination is the array containing both. These
+ * plug into the existing segmentation tag filters (tags && / tags @>).
+ */
+export const INTEREST_TAGS = ['bento', 'cake'] as const;
+export type InterestTag = (typeof INTEREST_TAGS)[number];
+
+/** Maps an originating app/source to its product-interest tag. */
+export function interestTagForSource(
+  source: string | null | undefined,
+): InterestTag | null {
+  switch (source?.trim().toLowerCase()) {
+    case 'bento':
+      return 'bento';
+    case 'cake':
+    case 'client':
+      return 'cake';
+    default:
+      return null;
+  }
+}
+
 function fulfillmentSummaryLinesFromJson(
   raw: Prisma.JsonValue | null,
 ): string[] {
@@ -291,9 +315,15 @@ export class CustomersService {
    */
   async ensureCustomerForPhone(
     phoneE164: string,
-    opts?: { referralCode?: string | null; email?: string | null },
+    opts?: {
+      referralCode?: string | null;
+      email?: string | null;
+      /** Originating app ('bento' | 'cake'); seeds the interest tag at signup. */
+      source?: string | null;
+    },
   ) {
     const normalizedEmail = opts?.email?.trim().toLowerCase() || null;
+    const initialInterestTag = interestTagForSource(opts?.source);
     const existing = await this.findByPhoneE164(phoneE164);
     if (existing) {
       await this.loyalty.ensureWallet(existing.id);
@@ -329,6 +359,7 @@ export class CustomersService {
         phoneE164,
         status: CustomerStatus.DRAFT,
         ...(normalizedEmail ? { email: normalizedEmail } : {}),
+        ...(initialInterestTag ? { tags: [initialInterestTag] } : {}),
         referralCode,
         referredByCustomerId: referredById,
       },
@@ -338,6 +369,33 @@ export class CustomersService {
     await this.ensureKitchenPickupCode(customer.id);
     this.syncToSalesplay(customer);
     return customer;
+  }
+
+  /**
+   * Adds a product-interest tag to a member (idempotent). Called when a member
+   * signs up from an app or completes a purchase, so the tag set reflects which
+   * product lines they care about — a member with both 'bento' and 'cake' is
+   * "both". Best-effort: never throws, since callers fire it from payment
+   * webhooks where a tag write must not roll back a successful purchase.
+   */
+  async addInterestTag(customerId: string, tag: InterestTag): Promise<void> {
+    try {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { tags: true },
+      });
+      if (!customer || customer.tags.includes(tag)) return;
+      await this.prisma.customer.update({
+        where: { id: customerId },
+        data: { tags: { set: Array.from(new Set([...customer.tags, tag])) } },
+      });
+    } catch (err) {
+      this.logger.error(
+        `addInterestTag(${tag}) failed for member ${customerId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /** Fire-and-forget SalesPlay upsert that also stores the returned customer id. */

@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { BentoDeliveryStatus, BentoSubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
+import { splitMealCredits } from './bento-pricing.service';
 import {
   addDaysUtc,
   formatDateOnly,
@@ -53,7 +54,13 @@ export type BentoAwaitingScheduleRow = {
   pickupId: string;
   packageLabel: string;
   mealOption: string;
+  /** Raw enum (LUNCH | DINNER | BOTH) so the admin scheduler can split credits. */
+  mealOptionCode: string;
   mealCredits: number;
+  /** Lunch packs the plan allows (mealCredits split by mealOption). */
+  lunchCredits: number;
+  /** Dinner packs the plan allows. */
+  dinnerCredits: number;
   purchasedAt: string;
 };
 
@@ -109,17 +116,23 @@ export class BentoOrdersReportService {
       BOTH: 'Lunch + Dinner',
     };
 
-    return subs.map((s) => ({
-      subscriptionId: s.id,
-      customerName: s.customer.displayName?.trim() || '—',
-      email: s.customer.email?.trim() || '—',
-      phoneE164: s.customer.phoneE164,
-      pickupId: s.customer.kitchenPickupCode?.trim() || '—',
-      packageLabel: s.package.label,
-      mealOption: mealOptionLabel[s.mealOption] ?? s.mealOption,
-      mealCredits: s.mealCreditsTotal,
-      purchasedAt: formatDateOnly(s.createdAt),
-    }));
+    return subs.map((s) => {
+      const split = splitMealCredits(s.mealCreditsTotal, s.mealOption);
+      return {
+        subscriptionId: s.id,
+        customerName: s.customer.displayName?.trim() || '—',
+        email: s.customer.email?.trim() || '—',
+        phoneE164: s.customer.phoneE164,
+        pickupId: s.customer.kitchenPickupCode?.trim() || '—',
+        packageLabel: s.package.label,
+        mealOption: mealOptionLabel[s.mealOption] ?? s.mealOption,
+        mealOptionCode: s.mealOption,
+        mealCredits: s.mealCreditsTotal,
+        lunchCredits: split.lunchCredits,
+        dinnerCredits: split.dinnerCredits,
+        purchasedAt: formatDateOnly(s.createdAt),
+      };
+    });
   }
 
   async getCounts(fromIso: string, toIso: string): Promise<{

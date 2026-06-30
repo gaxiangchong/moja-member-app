@@ -1,6 +1,8 @@
 /** UTC date helpers for bento calendar (YYYY-MM-DD). */
 
-export const BENTO_MIN_SCHEDULE_LEAD_DAYS = 2;
+// Fallback only — the server's earliestSchedulableDate (which also applies the
+// 5pm day-before cutoff) is the source of truth once schedule rules load.
+export const BENTO_MIN_SCHEDULE_LEAD_DAYS = 1;
 
 export function parseDateOnly(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number);

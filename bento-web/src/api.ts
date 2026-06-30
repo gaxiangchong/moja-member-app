@@ -102,6 +102,8 @@ export async function verifyOtp(phone: string, code: string, email?: string) {
     body: JSON.stringify({
       phone,
       code,
+      // This is the bento app — seed the member's product-interest tag.
+      source: 'bento',
       ...(email?.trim() ? { email: email.trim() } : {}),
     }),
   });

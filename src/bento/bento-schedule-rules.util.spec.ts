@@ -43,6 +43,45 @@ describe('bento-schedule-rules.util', () => {
     );
   });
 
+  it('allows tomorrow before the 6pm Malaysia cutoff (1-day lead, default)', () => {
+    // No scheduleCutoffHour set → default 18 (6pm).
+    const settings: BentoSettings = {
+      dailyCapacityPacks: 50,
+      minScheduleLeadDays: 1,
+    };
+    // 2026-06-10 17:30 MYT (= 09:30 UTC) — before 6pm → tomorrow bookable.
+    const ref = new Date('2026-06-10T09:30:00Z');
+    expect(formatDateOnly(resolveMinSchedulableDate(settings, ref))).toBe(
+      '2026-06-11',
+    );
+  });
+
+  it('pushes earliest to the day after once past the 6pm cutoff', () => {
+    const settings: BentoSettings = {
+      dailyCapacityPacks: 50,
+      minScheduleLeadDays: 1,
+      scheduleCutoffHour: 18,
+    };
+    // 2026-06-10 18:30 MYT (= 10:30 UTC) — past 6pm → day after tomorrow.
+    const ref = new Date('2026-06-10T10:30:00Z');
+    expect(formatDateOnly(resolveMinSchedulableDate(settings, ref))).toBe(
+      '2026-06-12',
+    );
+  });
+
+  it('uses Malaysia local day, not UTC, for the lead baseline', () => {
+    const settings: BentoSettings = {
+      dailyCapacityPacks: 50,
+      minScheduleLeadDays: 1,
+      scheduleCutoffHour: 18,
+    };
+    // 2026-06-10 17:00 UTC = 2026-06-11 01:00 MYT → local day is the 11th.
+    const ref = new Date('2026-06-10T17:00:00Z');
+    expect(formatDateOnly(resolveMinSchedulableDate(settings, ref))).toBe(
+      '2026-06-12',
+    );
+  });
+
   it('respects admin closed weekdays from menu config', () => {
     const settings: BentoSettings = { dailyCapacityPacks: 50 };
     const rules = buildScheduleRulesInput(

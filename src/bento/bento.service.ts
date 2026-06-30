@@ -704,10 +704,36 @@ export class BentoService implements OnModuleInit {
     }
   }
 
+  /**
+   * Schedule pickup days on behalf of a customer from the admin dashboard.
+   * Runs with `adminOverride`, which bypasses the lead-time/cutoff, the
+   * package window, closed weekdays/dates, and the daily capacity cap — so
+   * staff can resolve "I missed the cutoff" / "it won't let me pick that day"
+   * complaints. Credit limits, meal-option, and locked (already-delivered)
+   * days are still enforced. Throws NotFoundException if the subscription
+   * does not exist.
+   */
+  async adminScheduleDeliveries(subscriptionId: string, dto: BentoScheduleDto) {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id: subscriptionId },
+      select: { customerId: true },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    return this.scheduleDeliveries(sub.customerId, subscriptionId, dto, {
+      adminOverride: true,
+    });
+  }
+
   async scheduleDeliveries(
     customerId: string,
     subscriptionId: string,
     dto: BentoScheduleDto,
+    options: { adminOverride?: boolean } = {},
   ) {
     let sub = await this.prisma.bentoSubscription.findFirst({
       where: { id: subscriptionId, customerId },
@@ -743,9 +769,12 @@ export class BentoService implements OnModuleInit {
       sub.lunchCredits,
       sub.dinnerCredits,
       dto.slots,
+      options,
     );
 
-    await this.assertDailyCapacity(subscriptionId, rows);
+    if (!options.adminOverride) {
+      await this.assertDailyCapacity(subscriptionId, rows);
+    }
 
     this.assertLockedDeliveriesUnchanged(sub.deliveries, rows);
 
@@ -931,6 +960,7 @@ export class BentoService implements OnModuleInit {
     lunchCredits: number,
     dinnerCredits: number,
     slots: BentoScheduleSlotDto[],
+    options: { adminOverride?: boolean } = {},
   ): Array<{
     deliveryDate: Date;
     includesLunch: boolean;
@@ -952,36 +982,41 @@ export class BentoService implements OnModuleInit {
 
       const d = parseDateOnly(slot.date);
 
-      if (d < earliest) {
-        throw new BadRequestException({
-          code: 'BENTO_SCHEDULE_TOO_SOON',
-          message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
-        });
-      }
-      if (d > windowEnd) {
-        throw new BadRequestException({
-          code: 'BENTO_DATE_OUT_OF_WINDOW',
-          message: `Pickup date ${slot.date} is outside your scheduling window.`,
-        });
-      }
-      const blockReason = schedulablePickupReason(d, rules);
-      if (blockReason === 'weekday_closed') {
-        throw new BadRequestException({
-          code: 'BENTO_WEEKDAY_CLOSED',
-          message: `${slot.date} is not available for pickup.`,
-        });
-      }
-      if (blockReason === 'date_closed') {
-        throw new BadRequestException({
-          code: 'BENTO_DATE_CLOSED',
-          message: `${slot.date} is closed for pickup.`,
-        });
-      }
-      if (blockReason === 'too_soon') {
-        throw new BadRequestException({
-          code: 'BENTO_SCHEDULE_TOO_SOON',
-          message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
-        });
+      // Admin override skips the time/closed-day gates so staff can fix
+      // missed-cutoff and closed-day complaints; credit/meal-option checks
+      // below still apply.
+      if (!options.adminOverride) {
+        if (d < earliest) {
+          throw new BadRequestException({
+            code: 'BENTO_SCHEDULE_TOO_SOON',
+            message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
+          });
+        }
+        if (d > windowEnd) {
+          throw new BadRequestException({
+            code: 'BENTO_DATE_OUT_OF_WINDOW',
+            message: `Pickup date ${slot.date} is outside your scheduling window.`,
+          });
+        }
+        const blockReason = schedulablePickupReason(d, rules);
+        if (blockReason === 'weekday_closed') {
+          throw new BadRequestException({
+            code: 'BENTO_WEEKDAY_CLOSED',
+            message: `${slot.date} is not available for pickup.`,
+          });
+        }
+        if (blockReason === 'date_closed') {
+          throw new BadRequestException({
+            code: 'BENTO_DATE_CLOSED',
+            message: `${slot.date} is closed for pickup.`,
+          });
+        }
+        if (blockReason === 'too_soon') {
+          throw new BadRequestException({
+            code: 'BENTO_SCHEDULE_TOO_SOON',
+            message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
+          });
+        }
       }
 
       if (mealOption === BentoMealOption.LUNCH && slotDinner > 0) {

@@ -242,6 +242,7 @@ export class AuthService {
     code: string,
     referralCode?: string,
     emailRaw?: string,
+    source?: 'bento' | 'cake',
   ) {
     const phoneE164 = this.phoneNormalizer.normalizeToE164(phoneRaw);
     const normalizedEmail = this.normalizeEmail(emailRaw);
@@ -342,6 +343,7 @@ export class AuthService {
     const customer = await this.customers.ensureCustomerForPhone(phoneE164, {
       referralCode: referralCode?.trim() || undefined,
       email: challenge.email,
+      source,
     });
 
     await this.audit.log({

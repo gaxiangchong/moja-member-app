@@ -176,7 +176,8 @@ export async function verifyOtp(
     code: string;
     referralCode?: string;
     email?: string;
-  } = { phone, code };
+    source?: string;
+  } = { phone, code, source: 'cake' };
   const ref = opts?.referralCode?.trim();
   if (ref) body.referralCode = ref;
   const email = opts?.email?.trim();

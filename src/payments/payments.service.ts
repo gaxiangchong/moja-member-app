@@ -784,6 +784,8 @@ export class PaymentsService {
       where: { id: subscriptionId },
       include: { package: true },
     });
+    // Mark this member as interested in bento (→ "both" if they also buy cake).
+    void this.customers.addInterestTag(customerId, 'bento');
     // Same receipt as a real payment, so the demo flow exercises email too.
     void this.receiptEmail.sendBentoSubscriptionReceipt({
       subscriptionId,
@@ -828,6 +830,8 @@ export class PaymentsService {
       });
     }
     await this.customers.finalizeShopOrderAfterPayment(orderId);
+    // Mark this member as interested in cake (→ "both" if they also buy bento).
+    void this.customers.addInterestTag(customerId, 'cake');
     const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
       where: { id: orderId },
       include: { lines: { orderBy: { id: 'asc' } } },
@@ -1032,6 +1036,8 @@ export class PaymentsService {
       // Finalize any promo-code redemption tied to this intent. Capacity was
       // already claimed at checkout, so this only flips RESERVED -> CONFIRMED.
       void this.bentoVoucher.confirmByPaymentIntent(intent.id);
+      // Mark this member as interested in bento (→ "both" if they also buy cake).
+      void this.customers.addInterestTag(intent.customerId, 'bento');
       // Fire-and-forget: a transient email failure must not roll back a
       // successful payment, and the webhook should still ack 200 quickly.
       for (const subscriptionId of subscriptionIds) {
@@ -1116,6 +1122,8 @@ export class PaymentsService {
 
     try {
       await this.customers.finalizeShopOrderAfterPayment(orderId);
+      // Mark this member as interested in cake (→ "both" if they also buy bento).
+      void this.customers.addInterestTag(intent.customerId, 'cake');
       await this.finalizeShopPromotions({
         customerId: intent.customerId,
         orderId,

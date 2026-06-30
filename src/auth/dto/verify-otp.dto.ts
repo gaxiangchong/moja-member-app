@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   Length,
@@ -25,4 +26,13 @@ export class VerifyOtpDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  /**
+   * Which app the signup came from, used to seed the member's product-interest
+   * tag: 'bento' (bento app) or 'cake' (client/cake app). Ignored for existing
+   * members.
+   */
+  @IsOptional()
+  @IsIn(['bento', 'cake'])
+  source?: 'bento' | 'cake';
 }

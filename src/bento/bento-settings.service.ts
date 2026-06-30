@@ -19,6 +19,11 @@ export type BentoSettings = {
   earliestPickupDate?: string | null;
   /** Days after today before the first pickup may be scheduled. */
   minScheduleLeadDays?: number;
+  /**
+   * Daily order cutoff hour (0–23, kitchen-local time). Past this hour the
+   * nearest lead day is no longer bookable. Default 18 (6pm).
+   */
+  scheduleCutoffHour?: number;
   /** Extra closed dates (public holidays, etc.) — YYYY-MM-DD. */
   closedDates?: string[];
 };
@@ -29,7 +34,8 @@ const DEFAULT_SETTINGS: BentoSettings = {
   dailyCapacityPacks: DEFAULT_BENTO_DAILY_CAPACITY_PACKS,
   blockNewOrders: false,
   earliestPickupDate: null,
-  minScheduleLeadDays: 2,
+  minScheduleLeadDays: 1,
+  scheduleCutoffHour: 18,
   closedDates: [],
 };
 
@@ -57,13 +63,19 @@ export class BentoSettingsService {
     const minScheduleLeadDays =
       Number.isFinite(leadRaw) && leadRaw >= 0
         ? Math.min(Math.floor(leadRaw), 30)
-        : DEFAULT_SETTINGS.minScheduleLeadDays ?? 2;
+        : DEFAULT_SETTINGS.minScheduleLeadDays ?? 1;
+    const cutoffRaw = Number(raw.scheduleCutoffHour);
+    const scheduleCutoffHour =
+      Number.isFinite(cutoffRaw) && cutoffRaw >= 0 && cutoffRaw <= 23
+        ? Math.floor(cutoffRaw)
+        : DEFAULT_SETTINGS.scheduleCutoffHour ?? 18;
     const closedDates = normalizeClosedDates(raw.closedDates);
     return {
       dailyCapacityPacks,
       blockNewOrders,
       earliestPickupDate,
       minScheduleLeadDays,
+      scheduleCutoffHour,
       closedDates,
     };
   }

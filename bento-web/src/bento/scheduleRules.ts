@@ -4,7 +4,7 @@ import type { ScheduleRules } from '../api';
 export type { ScheduleRules };
 
 export const DEFAULT_SCHEDULE_RULES: ScheduleRules = {
-  minScheduleLeadDays: 2,
+  minScheduleLeadDays: 1,
   earliestPickupDate: null,
   earliestSchedulableDate: '',
   closedWeekdays: [0],

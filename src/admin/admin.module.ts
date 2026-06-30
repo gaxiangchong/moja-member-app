@@ -14,6 +14,7 @@ import { HomeAdsModule } from '../home-ads/home-ads.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { AdminEmployeesController } from './admin-employees.controller';
 import { BentoMenuModule } from '../bento/bento-menu.module';
+import { BentoModule } from '../bento/bento.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
     HomeAdsModule,
     EmployeesModule,
     BentoMenuModule,
+    BentoModule,
     ReportingSettingsModule,
     BentoVoucherModule,
   ],
