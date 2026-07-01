@@ -259,6 +259,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const allMealsScheduled = !anyUnscheduled;
   const canShowNotification =
     allMealsScheduled && !showScheduler && (scheduleConfirmed || hasSavedSchedule);
+  // Show the pickup code / QR as soon as there's at least one upcoming pickup,
+  // even if the plan isn't fully scheduled yet (e.g. a 30-meal plan with only a
+  // few days booked so far). Hidden while actively editing to avoid a stale card.
+  const hasUpcomingPickup = lunchUpcoming > 0 || dinnerUpcoming > 0;
+  const showPickupInfo =
+    !isEditingSchedule &&
+    (scheduleConfirmed || (hasSavedSchedule && hasUpcomingPickup));
   const incompleteSummary = unscheduledCreditSummary(
     totalLunch,
     totalDinner,
@@ -544,7 +551,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
           </p>
         )}
 
-        {canShowNotification && (
+        {showPickupInfo && (
           <PickupReminderNotification
             justConfirmed={scheduleConfirmed}
             pickupId={kitchenPickupId}

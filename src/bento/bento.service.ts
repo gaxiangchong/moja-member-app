@@ -851,6 +851,14 @@ export class BentoService implements OnModuleInit {
       });
     }
 
+    // Dates the plan already has a pickup on. Re-submitting one of these must
+    // not be rejected by the date gates (too-soon / window / closed) — you
+    // can't be "too late" to book a day you already booked, and locked past
+    // days are preserved as-is below. Only genuinely new dates are gated.
+    const existingDeliveryDates = new Set(
+      sub.deliveries.map((d) => formatDateOnly(d.deliveryDate)),
+    );
+
     const rows = this.validateScheduleSlots(
       sub.package,
       sub.mealOption,
@@ -858,6 +866,7 @@ export class BentoService implements OnModuleInit {
       sub.dinnerCredits,
       dto.slots,
       options,
+      existingDeliveryDates,
     );
 
     if (!options.adminOverride) {
@@ -1051,6 +1060,7 @@ export class BentoService implements OnModuleInit {
     dinnerCredits: number,
     slots: BentoScheduleSlotDto[],
     options: { adminOverride?: boolean } = {},
+    existingDeliveryDates: ReadonlySet<string> = new Set(),
   ): Array<{
     deliveryDate: Date;
     includesLunch: boolean;
@@ -1074,8 +1084,10 @@ export class BentoService implements OnModuleInit {
 
       // Admin override skips the time/closed-day gates so staff can fix
       // missed-cutoff and closed-day complaints; credit/meal-option checks
-      // below still apply.
-      if (!options.adminOverride) {
+      // below still apply. Dates the plan already has a pickup on are likewise
+      // exempt from the date gates — re-saving an existing/past pickup is not a
+      // new booking, and locked days are preserved unchanged downstream.
+      if (!options.adminOverride && !existingDeliveryDates.has(slot.date)) {
         if (d < earliest) {
           throw new BadRequestException({
             code: 'BENTO_SCHEDULE_TOO_SOON',
