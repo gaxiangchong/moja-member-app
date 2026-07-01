@@ -841,7 +841,9 @@ export class AdminDashboardController {
     .mk-mini-table td { padding: 4px 8px 4px 0; border-top: 1px solid #e2e8f0; }
     .customer-sort-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 0 20px 12px; }
     .customer-sort-bar label { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
-    .customer-sort-bar select { padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); }
+    .customer-sort-bar select, .customer-sort-bar input { padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); }
+    .customer-pager { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; padding: 12px 20px; }
+    .customer-pager .pager-info { font-size: 12px; color: var(--text-muted); margin-right: auto; }
     @media (max-width: 960px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { border-right: none; border-bottom: 1px solid var(--sidebar-border); }
@@ -1500,6 +1502,31 @@ export class AdminDashboardController {
               </div>
             </div>
             <div class="customer-sort-bar">
+              <span style="flex:1 1 240px;min-width:220px">
+                <label for="customerSearch">Search</label>
+                <input type="search" id="customerSearch" placeholder="Phone, name, email, or member id" style="width:100%" />
+              </span>
+              <span>
+                <label for="customerStatusFilter">Status</label>
+                <select id="customerStatusFilter">
+                  <option value="">All</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="DRAFT">Draft</option>
+                  <option value="SUSPENDED">Suspended</option>
+                </select>
+              </span>
+              <span>
+                <label for="customerTierFilter">Tier</label>
+                <input type="text" id="customerTierFilter" placeholder="e.g. standard" style="width:120px" />
+              </span>
+              <span>
+                <label for="customerSourceFilter">Source</label>
+                <input type="text" id="customerSourceFilter" placeholder="e.g. otp" style="width:120px" />
+              </span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="customerHasVoucher" style="width:auto" />
+                <label for="customerHasVoucher" style="margin:0">Has active voucher</label>
+              </span>
               <span>
                 <label for="customerSortBy">Sort by</label>
                 <select id="customerSortBy">
@@ -1518,12 +1545,29 @@ export class AdminDashboardController {
                   <option value="asc">Low → high / Old first</option>
                 </select>
               </span>
+              <span style="display:flex;gap:8px;align-items:flex-end">
+                <button type="button" class="btn-primary" id="customerSearchBtn">Search</button>
+                <button type="button" class="btn-outline" id="customerClearBtn">Clear</button>
+              </span>
             </div>
             <div class="table-wrap">
               <table class="data">
                 <thead><tr><th>Phone</th><th>Name</th><th>Email</th><th>Tier</th><th>Source</th><th>Birthday in</th><th>Vouchers</th><th>Status</th><th>Points</th><th>Spent</th><th>Refs</th><th>Last visit</th><th>Edit</th></tr></thead>
                 <tbody id="customersBody"></tbody>
               </table>
+            </div>
+            <div class="customer-pager">
+              <span class="pager-info" id="customersPageInfo"></span>
+              <span>
+                <label for="customerPageSize">Per page</label>
+                <select id="customerPageSize">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </span>
+              <button type="button" class="btn-outline" id="customersPrevBtn" disabled>‹ Prev</button>
+              <button type="button" class="btn-outline" id="customersNextBtn" disabled>Next ›</button>
             </div>
           </div>
         </section>
@@ -2913,7 +2957,7 @@ export class AdminDashboardController {
             </div>
             <div style="padding:12px 20px;max-width:820px">
               <p class="field-hint" style="margin-top:0">
-                Customer paid but <strong>can't schedule</strong>? Look them up by phone to check their plan status. A plan stuck on <strong>PENDING_PAYMENT</strong> is what blocks scheduling — click <strong>Activate</strong> to unblock it (this re-checks Xendit first, then lets you force it with a reason). Once active, the member can book in the app, or you can schedule for them from the Bento orders screen.
+                Customer paid but <strong>can't schedule</strong>? Look them up by phone to check their plan status. A plan stuck on <strong>PENDING_PAYMENT</strong> is what blocks scheduling — click <strong>Activate</strong> to unblock it (this re-checks Xendit first, then lets you force it with a reason). For any <strong>ACTIVE</strong> plan, click <strong>Schedule</strong> to pick meal pickup days on the member's behalf.
               </p>
               <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
                 <div style="display:flex;flex-direction:column;gap:4px">
@@ -4678,21 +4722,56 @@ export class AdminDashboardController {
 
     let customerSortBy = 'createdAt';
     let customerSortDir = 'desc';
-
-    async function loadCustomers() {
-      const sortBy = document.getElementById('customerSortBy')
-        ? document.getElementById('customerSortBy').value
-        : customerSortBy;
-      const sortDir = document.getElementById('customerSortDir')
-        ? document.getElementById('customerSortDir').value
-        : customerSortDir;
+    let customerPage = 1;
+    // Filter/sort params shared by the customer list and the CSV export.
+    function buildCustomerFilterParams() {
+      const val = (id) => {
+        const el = document.getElementById(id);
+        return el ? String(el.value).trim() : '';
+      };
+      const sortBy = val('customerSortBy') || customerSortBy;
+      const sortDir = val('customerSortDir') || customerSortDir;
       customerSortBy = sortBy;
       customerSortDir = sortDir;
+      const params = [
+        'sortBy=' + encodeURIComponent(sortBy),
+        'sortDir=' + encodeURIComponent(sortDir),
+      ];
+      const search = val('customerSearch');
+      if (search) params.push('search=' + encodeURIComponent(search));
+      const status = val('customerStatusFilter');
+      if (status) params.push('status=' + encodeURIComponent(status));
+      const tier = val('customerTierFilter');
+      if (tier) params.push('memberTier=' + encodeURIComponent(tier));
+      const source = val('customerSourceFilter');
+      if (source) params.push('signupSource=' + encodeURIComponent(source));
+      const hasVoucherEl = document.getElementById('customerHasVoucher');
+      if (hasVoucherEl && hasVoucherEl.checked) params.push('hasActiveVoucher=true');
+      return params;
+    }
+    function customerPageSize() {
+      const el = document.getElementById('customerPageSize');
+      const n = el ? parseInt(el.value, 10) : 20;
+      return Number.isFinite(n) && n > 0 ? n : 20;
+    }
+    function renderCustomerPager(page, pageSize, total) {
+      const info = document.getElementById('customersPageInfo');
+      const prev = document.getElementById('customersPrevBtn');
+      const next = document.getElementById('customersNextBtn');
+      const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+      const to = Math.min(page * pageSize, total);
+      if (info) info.textContent = total === 0
+        ? 'No members match.'
+        : ('Showing ' + from + '–' + to + ' of ' + total);
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = to >= total;
+    }
+
+    async function loadCustomers() {
+      const pageSize = customerPageSize();
+      const params = buildCustomerFilterParams();
       const q =
-        '/admin/customers?page=1&pageSize=20&sortBy=' +
-        encodeURIComponent(sortBy) +
-        '&sortDir=' +
-        encodeURIComponent(sortDir);
+        '/admin/customers?page=' + customerPage + '&pageSize=' + pageSize + '&' + params.join('&');
       const data = await api(q);
       const editSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
       const rows = (data.items || []).map((c) =>
@@ -4727,6 +4806,7 @@ export class AdminDashboardController {
         '</button></td></tr>'
       );
       document.getElementById('customersBody').innerHTML = rows.join('') || '<tr><td colspan="13">No data</td></tr>';
+      renderCustomerPager(data.page || customerPage, data.pageSize || pageSize, data.total || 0);
     }
 
     async function loadLoyalty() {
@@ -5786,6 +5866,7 @@ export class AdminDashboardController {
     }
 
     // --- Member booking fix (phone lookup + activate stuck plans) ----------
+    var bentoFixData = null; // last lookup payload, for the activate/schedule buttons
     function bentoFixDate(iso) {
       if (!iso) return '-';
       var d = new Date(iso);
@@ -5811,9 +5892,15 @@ export class AdminDashboardController {
         var note = s.blockedByPayment
           ? '<span class="pill warn">Blocks scheduling</span>'
           : (s.needsScheduling ? '<span class="pill neutral">Awaiting pickup days</span>' : '');
-        var action = (s.status === 'PENDING_PAYMENT')
-          ? '<button type="button" class="btn-primary bento-fix-activate" data-id="' + bentoEsc(s.id) + '">Activate</button>'
-          : '<span class="muted-hint">—</span>';
+        var action;
+        if (s.status === 'PENDING_PAYMENT') {
+          action = '<button type="button" class="btn-primary bento-fix-activate" data-id="' + bentoEsc(s.id) + '">Activate</button>';
+        } else if (s.status === 'ACTIVE') {
+          action = '<button type="button" class="btn-primary bento-fix-schedule" data-id="' + bentoEsc(s.id) + '">'
+            + (s.scheduledCount > 0 ? 'Edit schedule' : 'Schedule') + '</button>';
+        } else {
+          action = '<span class="muted-hint">—</span>';
+        }
         return '<tr>'
           + '<td>' + bentoEsc((s.package && s.package.label) || '-') + '</td>'
           + '<td>' + statusPill(s.status) + ' ' + note + '</td>'
@@ -5838,12 +5925,36 @@ export class AdminDashboardController {
       if (msg) msg.textContent = 'Searching…';
       try {
         var data = await api('/admin/reports/bento/customer-lookup?phone=' + encodeURIComponent(phone));
+        bentoFixData = data;
         if (msg) msg.textContent = '';
         renderBentoFixResult(data);
       } catch (e) {
+        bentoFixData = null;
         renderBentoFixResult(null);
         if (msg) msg.textContent = (e && e.message) ? e.message : String(e);
       }
+    }
+    function bentoFixOpenSchedule(id) {
+      if (!bentoFixData || !bentoFixData.customer) return;
+      var s = (bentoFixData.subscriptions || []).filter(function (x) { return x.id === id; })[0];
+      if (!s) return;
+      var c = bentoFixData.customer;
+      var name = (c.displayName && c.displayName.trim()) || c.phoneE164 || 'this member';
+      bentoOpenSchedModal({
+        subscriptionId: s.id,
+        customerName: name,
+        mealOption: s.mealOption,
+        mealOptionCode: s.mealOption,
+        packageLabel: (s.package && s.package.label) || '-',
+        mealCredits: s.mealCreditsTotal,
+        lunchCredits: s.lunchCredits,
+        dinnerCredits: s.dinnerCredits,
+        onScheduled: function (count) {
+          var msg = document.getElementById('bentoFixMsg');
+          if (msg) msg.textContent = 'Scheduled ' + count + ' pickup day(s) for ' + name + '.';
+          bentoFixSearch();
+        },
+      });
     }
     function activateBentoSub(id, reason) {
       var body = {};
@@ -6181,6 +6292,7 @@ export class AdminDashboardController {
       }
       var id = bentoSchedSub.subscriptionId;
       var name = bentoSchedSub.customerName;
+      var onScheduled = bentoSchedSub.onScheduled;
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
       if (result) { result.style.color = '#475569'; result.textContent = 'Saving…'; }
       try {
@@ -6190,6 +6302,8 @@ export class AdminDashboardController {
         if (out) out.textContent = 'Scheduled ' + collected.slots.length + ' pickup day(s) for ' + name + '.';
         // Refresh both the scheduled and awaiting tables.
         previewBentoOrders().catch(function () {});
+        // Let the opener (e.g. the member booking fix card) react to success.
+        if (typeof onScheduled === 'function') onScheduled(collected.slots.length, name);
       } catch (e) {
         if (result) { result.style.color = '#b91c1c'; result.textContent = bentoSchedFriendlyError(e); }
       } finally {
@@ -6454,12 +6568,10 @@ export class AdminDashboardController {
     }
 
     async function exportCustomersCsv() {
-      var sortByEl = document.getElementById('customerSortBy');
-      var sortDirEl = document.getElementById('customerSortDir');
-      var sortBy = sortByEl ? sortByEl.value : customerSortBy;
-      var sortDir = sortDirEl ? sortDirEl.value : customerSortDir;
+      // Export honors the same search/filter/sort as the on-screen list.
+      var params = buildCustomerFilterParams();
       await apiDownload(
-        '/admin/customers/export?sortBy=' + encodeURIComponent(sortBy) + '&sortDir=' + encodeURIComponent(sortDir),
+        '/admin/customers/export?' + params.join('&'),
         'customers.csv',
       );
     }
@@ -7686,13 +7798,51 @@ export class AdminDashboardController {
         saveReportingSettings(true).catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
-    const customerSortByEl = document.getElementById('customerSortBy');
-    const customerSortDirEl = document.getElementById('customerSortDir');
-    if (customerSortByEl) {
-      customerSortByEl.addEventListener('change', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    // Any filter/sort change jumps back to page 1 and reloads.
+    function reloadCustomersFromPageOne() {
+      customerPage = 1;
+      loadCustomers().catch((e) => { statusPanel.textContent = e.message; });
     }
-    if (customerSortDirEl) {
-      customerSortDirEl.addEventListener('change', () => loadCustomers().catch((e) => { statusPanel.textContent = e.message; }));
+    ['customerSortBy', 'customerSortDir', 'customerStatusFilter', 'customerPageSize'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', reloadCustomersFromPageOne);
+    });
+    const customerHasVoucherEl = document.getElementById('customerHasVoucher');
+    if (customerHasVoucherEl) customerHasVoucherEl.addEventListener('change', reloadCustomersFromPageOne);
+    ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); reloadCustomersFromPageOne(); }
+      });
+    });
+    const customerSearchBtn = document.getElementById('customerSearchBtn');
+    if (customerSearchBtn) customerSearchBtn.addEventListener('click', reloadCustomersFromPageOne);
+    const customerClearBtn = document.getElementById('customerClearBtn');
+    if (customerClearBtn) {
+      customerClearBtn.addEventListener('click', function () {
+        ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        const st = document.getElementById('customerStatusFilter');
+        if (st) st.value = '';
+        const hv = document.getElementById('customerHasVoucher');
+        if (hv) hv.checked = false;
+        reloadCustomersFromPageOne();
+      });
+    }
+    const customersPrevBtn = document.getElementById('customersPrevBtn');
+    if (customersPrevBtn) {
+      customersPrevBtn.addEventListener('click', function () {
+        if (customerPage > 1) { customerPage -= 1; loadCustomers().catch((e) => { statusPanel.textContent = e.message; }); }
+      });
+    }
+    const customersNextBtn = document.getElementById('customersNextBtn');
+    if (customersNextBtn) {
+      customersNextBtn.addEventListener('click', function () {
+        customerPage += 1;
+        loadCustomers().catch((e) => { statusPanel.textContent = e.message; });
+      });
     }
     ;['mkDashSpenderPeriod', 'mkRpSpenderPeriod'].forEach(function (sid) {
       const sel = document.getElementById(sid);
@@ -8023,8 +8173,10 @@ export class AdminDashboardController {
     var bentoFixResultEl = document.getElementById('bentoFixResult');
     if (bentoFixResultEl) {
       bentoFixResultEl.addEventListener('click', function (e) {
-        var btn = e.target.closest('.bento-fix-activate');
-        if (btn) bentoFixActivate(btn);
+        var actBtn = e.target.closest('.bento-fix-activate');
+        if (actBtn) { bentoFixActivate(actBtn); return; }
+        var schedBtn = e.target.closest('.bento-fix-schedule');
+        if (schedBtn) bentoFixOpenSchedule(schedBtn.getAttribute('data-id'));
       });
     }
     var bentoPackagesSaveBtn = document.getElementById('bentoPackagesSaveBtn');
