@@ -6,7 +6,11 @@ import { CalendarScheduler } from './CalendarScheduler';
 import { allCreditsScheduled } from './scheduleCredits';
 import { useI18n } from '../lib/i18n/context';
 
-const INACTIVE = ['CANCELLED', 'EXPIRED', 'TERMINATED', 'DELETED', 'INACTIVE'];
+// Only a paid (ACTIVE) plan can be scheduled — the server rejects scheduling on
+// a PENDING_PAYMENT plan with BENTO_NOT_ACTIVE. Use a whitelist (not a blacklist
+// of terminal states) so an unpaid plan — e.g. the member skipped the TNG
+// payment — is never offered in the calendar picker.
+const SCHEDULABLE_STATUSES = ['ACTIVE'];
 
 /** A plan still needs scheduling when it has unused lunch/dinner credits. */
 function planNeedsScheduling(s: BentoSubscription): boolean {
@@ -40,13 +44,18 @@ export function ScheduleTab({ profile }: Props) {
   }
   if (error) return <p className="err" style={{ padding: '20px 16px' }}>{error}</p>;
 
-  const active = subs.filter((s) => !INACTIVE.includes(s.status));
+  const active = subs.filter((s) => SCHEDULABLE_STATUSES.includes(s.status));
 
   if (active.length === 0) {
+    // Distinguish "you have nothing" from "you bought but haven't paid yet" so a
+    // member who skipped the TNG payment is told to finish paying, not to order.
+    const awaitingPayment = subs.some((s) => s.status === 'PENDING_PAYMENT');
     return (
       <section className="section">
         <h2>{t('schedule.title')}</h2>
-        <p className="caption">{t('schedule.noPlan')}</p>
+        <p className="caption">
+          {t(awaitingPayment ? 'schedule.awaitingPayment' : 'schedule.noPlan')}
+        </p>
       </section>
     );
   }

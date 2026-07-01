@@ -277,6 +277,8 @@ export const translations: Record<Lang, Dict> = {
     'schedule.pickupReminder': 'Pickup reminder',
     'schedule.changePickup': 'Change pickup days',
     'schedule.noPlan': 'No active plan yet — order a package first.',
+    'schedule.awaitingPayment':
+      'Complete your payment to start scheduling your pickups.',
     'schedule.loadError': 'Failed to load',
     'schedule.editHint': 'Update your pickup days below, then tap Confirm to save.',
     'schedule.assignFirst':
@@ -668,6 +670,7 @@ export const translations: Record<Lang, Dict> = {
     'schedule.pickupReminder': '取餐提醒',
     'schedule.changePickup': '更改取餐日',
     'schedule.noPlan': '尚无有效套餐 — 请先订购。',
+    'schedule.awaitingPayment': '请完成付款后再安排取餐。',
     'schedule.loadError': '加载失败',
     'schedule.editHint': '在下方更新取餐日，然后点击确认保存。',
     'schedule.assignFirst': '请先安排所有已购餐次，再查看取餐提醒。',
