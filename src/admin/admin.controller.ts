@@ -560,8 +560,8 @@ export class AdminController {
 
   @Put('bento-settings')
   @RequirePermissions(P.VOUCHER_UPDATE)
-  updateBentoSettings(@Body() dto: UpdateBentoSettingsDto) {
-    const saved = this.bentoSettings.setSettings(dto);
+  async updateBentoSettings(@Body() dto: UpdateBentoSettingsDto) {
+    const saved = await this.bentoSettings.setSettings(dto);
     const effective = this.bentoSettings.getDailyCapacityPacks();
     return {
       ...saved,

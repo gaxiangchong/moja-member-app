@@ -1146,3 +1146,14 @@ model BentoDiscountRedemption {
   @@index([paymentIntentId])
   @@map("bento_discount_redemptions")
 }
+
+/// Generic key→JSON application settings, stored in the database so every app
+/// instance and every restart shares one source of truth (replaces the local
+/// JSON files under `data/`, which don't persist or sync across instances).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
