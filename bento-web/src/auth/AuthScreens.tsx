@@ -17,9 +17,11 @@ type OtpFlowPurpose = 'register' | 'recovery';
 
 type Props = {
   onAuthenticated: () => void;
+  /** Optional banner shown above the form, e.g. after a session expiry. */
+  notice?: string | null;
 };
 
-export function AuthScreens({ onAuthenticated }: Props) {
+export function AuthScreens({ onAuthenticated, notice }: Props) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
@@ -182,6 +184,8 @@ export function AuthScreens({ onAuthenticated }: Props) {
             <span className="authBrandTagline">{t('auth.brandTagline')}</span>
           </div>
         </div>
+
+        {notice && step === 'phone' && <p className="authNotice">{notice}</p>}
 
         {step === 'phone' && (
           <>

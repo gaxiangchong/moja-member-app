@@ -23,6 +23,7 @@ import {
   lookupLogin,
   requestOtp,
   resolveApiAssetUrl,
+  SESSION_EXPIRED_EVENT,
   setInitialPin,
   setToken,
   updateMe,
@@ -554,6 +555,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [rewardsData, setRewardsData] = useState<MemberRewardsPayload | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -604,6 +606,7 @@ function App() {
     setProfile(me);
     setRewardsData(rewards);
     syncFormFromProfile(me);
+    setSessionExpired(false);
     setStep('member');
   }, [syncFormFromProfile]);
 
@@ -635,6 +638,20 @@ function App() {
       });
     }
   }, [loadMemberData]);
+
+  // The API layer fires this when a request is rejected with 401 (invalid or
+  // expired session). Drop back to the login screen and prompt for re-login.
+  useEffect(() => {
+    const onSessionExpired = () => {
+      clearToken();
+      setProfile(null);
+      setStep('phone');
+      setTab('home');
+      setSessionExpired(true);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, []);
 
   useEffect(() => {
     try {
@@ -1240,6 +1257,11 @@ function App() {
                   <p className="authSub">
                     Sign in or create an account to unlock rewards, vouchers and your Moja Maison perks.
                   </p>
+                  {sessionExpired && (
+                    <p className="authNotice" role="status">
+                      Your session has expired. Please log in again.
+                    </p>
+                  )}
                   <form onSubmit={handlePhoneContinue} className="authForm">
                     {sessionStorage.getItem(PENDING_REFERRAL_KEY) ? (
                       <p className="authInvite">

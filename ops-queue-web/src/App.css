@@ -517,6 +517,17 @@ body {
   font-size: 0.95rem;
 }
 
+.loginNotice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(240, 173, 78, 0.12);
+  border: 1px solid rgba(240, 173, 78, 0.5);
+  color: var(--accent2, #d08a2c);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .loginCard label {
   display: block;
   margin: 14px 0 6px;

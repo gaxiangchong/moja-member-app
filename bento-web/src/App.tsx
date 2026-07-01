@@ -10,6 +10,7 @@ import {
   fetchPaymentIntentStatus,
   getToken,
   isProfileIncomplete,
+  SESSION_EXPIRED_EVENT,
   updateMe,
   type MemberProfile,
 } from './api';
@@ -292,6 +293,7 @@ function AccountTab({
 export default function App() {
   const { t } = useI18n();
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [tab, setTab] = useState<Tab>('menu');
   const [orderStep, setOrderStep] = useState<'configure' | 'checkout'>('configure');
   const [profile, setProfile] = useState<MemberProfile | null>(null);
@@ -352,6 +354,20 @@ export default function App() {
       });
     }
   }, [loadMember]);
+
+  // The API layer fires this when a request is rejected with 401 (invalid or
+  // expired session). Drop back to the login screen and prompt for re-login.
+  useEffect(() => {
+    const onSessionExpired = () => {
+      clearToken();
+      setAuthed(false);
+      setProfile(null);
+      setPackages([]);
+      setSessionExpired(true);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, []);
 
   useEffect(() => {
     try {
@@ -465,7 +481,13 @@ export default function App() {
   if (!authed) {
     return (
       <div className="app">
-        <AuthScreens onAuthenticated={() => void loadMember()} />
+        <AuthScreens
+          notice={sessionExpired ? t('auth.sessionExpired') : null}
+          onAuthenticated={() => {
+            setSessionExpired(false);
+            void loadMember();
+          }}
+        />
       </div>
     );
   }

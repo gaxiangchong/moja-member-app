@@ -32,6 +32,31 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Dispatched when the API rejects a request with 401 (invalid/expired session). */
+export const SESSION_EXPIRED_EVENT = 'moja:session-expired';
+
+/**
+ * Thrown when the session token is missing, invalid, or expired. The app shell
+ * listens for SESSION_EXPIRED_EVENT and returns the user to the login screen, so
+ * this message is only a fallback if it is ever surfaced inline.
+ */
+export class SessionExpiredError extends Error {
+  constructor(message = 'Your session has expired. Please log in again.') {
+    super(message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
+/** Clear the stale token and ask the app shell to prompt for re-login. */
+function handleSessionExpired(): void {
+  clearToken();
+  try {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  } catch {
+    /* no window (non-browser env) */
+  }
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;
@@ -166,10 +191,14 @@ export function isProfileIncomplete(p: MemberProfile): boolean {
 
 export async function fetchMe(): Promise<MemberProfile> {
   const token = getToken();
-  if (!token) throw new Error('Not signed in');
+  if (!token) throw new SessionExpiredError();
   const res = await fetch(`${base}/customers/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new SessionExpiredError();
+  }
   const data = await parseJson<
     MemberProfile & { message?: string; gender?: string | null; address?: string | null; kitchenPickupId?: string }
   >(res);
@@ -195,7 +224,7 @@ export async function updateMe(input: {
   address?: string;
 }): Promise<MemberProfile> {
   const token = getToken();
-  if (!token) throw new Error('Not signed in');
+  if (!token) throw new SessionExpiredError();
   const res = await fetch(`${base}/customers/me`, {
     method: 'PATCH',
     headers: {
@@ -204,6 +233,10 @@ export async function updateMe(input: {
     },
     body: JSON.stringify(input),
   });
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new SessionExpiredError();
+  }
   const data = await parseJson<MemberProfile & { message?: string; kitchenPickupId?: string }>(res);
   if (!res.ok) throw new Error(data.message ?? 'Failed to update profile');
   return {
@@ -221,7 +254,7 @@ export async function updateMe(input: {
 
 async function authFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
-  if (!token) throw new Error('Not signed in');
+  if (!token) throw new SessionExpiredError();
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
@@ -230,6 +263,10 @@ async function authFetch<T = unknown>(path: string, init?: RequestInit): Promise
       ...(init?.headers ?? {}),
     },
   });
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new SessionExpiredError();
+  }
   const data = await parseJson<T & { message?: string | string[] }>(res);
   if (!res.ok) throw new Error(errMsg(data));
   return data;

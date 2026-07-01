@@ -342,6 +342,18 @@
   text-align: center;
 }
 
+.authNotice {
+  margin: 2px 4px 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fdf0e4;
+  border: 1px solid #f0c99a;
+  color: #8a5a1f;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
 /* --- Primary CTA ------------------------------------------------------- */
 .authPrimary {
   display: inline-flex;

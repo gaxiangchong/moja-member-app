@@ -65,6 +65,29 @@ function formatHttpError(
   return `Request failed (${status})`;
 }
 
+/** Dispatched when the ops API key is rejected with 401 (invalid/rotated key). */
+export const SESSION_EXPIRED_EVENT = 'moja:ops-session-expired';
+
+const SESSION_EXPIRED_MESSAGE =
+  'Your session has expired. Please sign in again.';
+
+/**
+ * Reject unauthorized responses with a friendly re-login message and notify the
+ * app shell (which drops back to the login screen). Otherwise surface the
+ * server's error text as before.
+ */
+function assertOk(res: Response, data: { message?: string | string[] }): void {
+  if (res.status === 401) {
+    try {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    } catch {
+      /* no window (non-browser env) */
+    }
+    throw new Error(SESSION_EXPIRED_MESSAGE);
+  }
+  assertOk(res, data);
+}
+
 export async function fetchQueueOrders(
   apiKey: string,
   baseUrl: string = defaultBase,
@@ -73,9 +96,7 @@ export async function fetchQueueOrders(
     headers: { 'x-ops-api-key': apiKey },
   });
   const data = await parseJson<QueueOrdersResponse & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data));
-  }
+  assertOk(res, data);
   return data as QueueOrdersResponse;
 }
 
@@ -89,9 +110,7 @@ export async function fetchQueueOrderDetail(
     { headers: { 'x-ops-api-key': apiKey } },
   );
   const data = await parseJson<QueueOrderDetail & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data));
-  }
+  assertOk(res, data);
   return data as QueueOrderDetail;
 }
 
@@ -110,9 +129,7 @@ export async function completeQueueOrder(
     headers: { 'x-ops-api-key': apiKey },
   });
   const data = await parseJson<{ message?: string | string[]; orderNumber?: number }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data));
-  }
+  assertOk(res, data);
   return { orderNumber: Number(data.orderNumber) || 0 };
 }
 
@@ -139,9 +156,7 @@ export async function timesheetClockIn(
     },
   );
   const data = await parseJson<TimesheetClockResponse & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data as { message?: string | string[] }));
-  }
+  assertOk(res, data);
   return data as TimesheetClockResponse;
 }
 
@@ -162,9 +177,7 @@ export async function timesheetClockOut(
     },
   );
   const data = await parseJson<TimesheetClockResponse & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data as { message?: string | string[] }));
-  }
+  assertOk(res, data);
   return data as TimesheetClockResponse;
 }
 
@@ -204,9 +217,7 @@ export async function fetchBentoPickupLookup(
     { headers: { 'x-ops-api-key': apiKey } },
   );
   const data = await parseJson<BentoPickupLookup & { message?: string | string[] }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data));
-  }
+  assertOk(res, data);
   return data as BentoPickupLookup;
 }
 
@@ -223,8 +234,6 @@ export async function collectBentoPickup(
     },
   );
   const data = await parseJson<{ message?: string | string[]; pickupCode?: string }>(res);
-  if (!res.ok) {
-    throw new Error(formatHttpError(res.status, data));
-  }
+  assertOk(res, data);
   return data as { pickupCode: string; deliveryDate: string; collectedCount: number; status: string };
 }

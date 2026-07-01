@@ -14,6 +14,57 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Dispatched when the API rejects a request with 401 (invalid/expired session). */
+export const SESSION_EXPIRED_EVENT = 'moja:session-expired';
+
+/**
+ * Thrown when the session token is missing, invalid, or expired. The app shell
+ * listens for SESSION_EXPIRED_EVENT and returns the user to the login screen, so
+ * this message is only a fallback if it is ever surfaced inline.
+ */
+export class SessionExpiredError extends Error {
+  constructor(message = 'Your session has expired. Please log in again.') {
+    super(message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
+/** Clear the stale token and ask the app shell to prompt for re-login. */
+function handleSessionExpired(): void {
+  clearToken();
+  try {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  } catch {
+    /* no window (non-browser env) */
+  }
+}
+
+/**
+ * fetch() for authenticated endpoints: attaches the bearer token and converts a
+ * 401 into a session-expiry (clears token, prompts re-login) so callers never
+ * surface a raw "Unauthorized" to the member. Non-401 responses are returned
+ * unchanged for each caller to parse as before.
+ */
+async function authorizedFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = getToken();
+  if (!token) throw new SessionExpiredError();
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+  });
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new SessionExpiredError();
+  }
+  return res;
+}
+
 export type HomeAdSlide = {
   id: string;
   title: string;
@@ -303,14 +354,9 @@ export async function createXenditCardTokenSession(): Promise<{
   componentsSdkKey: string;
   expiresAt: string | null;
 }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/payments/xendit/card-token-session`, {
+  const res = await authorizedFetch('/payments/xendit/card-token-session', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -358,13 +404,8 @@ export type PaymentIntentStatus = {
 export async function fetchPaymentIntentStatus(
   referenceId: string,
 ): Promise<PaymentIntentStatus> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(
-    `${base}/payments/intent/${encodeURIComponent(referenceId)}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
+  const res = await authorizedFetch(
+    `/payments/intent/${encodeURIComponent(referenceId)}`,
   );
   const data = await parseJson<{
     message?: string | string[];
@@ -406,13 +447,8 @@ export async function getXenditCardTokenSessionStatus(paymentSessionId: string):
   status: string;
   paymentTokenId: string | null;
 }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(
-    `${base}/payments/xendit/card-token-session/${encodeURIComponent(paymentSessionId)}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
+  const res = await authorizedFetch(
+    `/payments/xendit/card-token-session/${encodeURIComponent(paymentSessionId)}`,
   );
   const data = await parseJson<{
     message?: string | string[];
@@ -484,14 +520,9 @@ export async function createShopOrderCheckout(payload: {
     fulfillmentSummary?: string[] | null;
   };
 }): Promise<ShopOrderCheckoutResult> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/payments/xendit/shop-order`, {
+  const res = await authorizedFetch('/payments/xendit/shop-order', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   const data = await parseJson<ShopOrderCheckoutResult & { message?: string | string[] }>(res);
@@ -526,14 +557,9 @@ export async function completeDemoShopOrder(orderId: string): Promise<{
     }>;
   };
 }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/payments/demo/complete-shop-order`, {
+  const res = await authorizedFetch('/payments/demo/complete-shop-order', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderId }),
   });
   const data = await parseJson<{
@@ -581,14 +607,9 @@ export async function createWalletTopUpSession(
   currency: string;
   amountCents: number;
 }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/payments/xendit/wallet-topup`, {
+  const res = await authorizedFetch('/payments/xendit/wallet-topup', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       amountCents,
       ...(channelCode ? { channelCode } : {}),
@@ -650,11 +671,7 @@ export type MemberProfile = {
 };
 
 export async function fetchMe(): Promise<MemberProfile> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/customers/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await authorizedFetch('/customers/me');
   const data = await parseJson<MemberProfile & { message?: string }>(res);
   if (!res.ok) {
     throw new Error(
@@ -669,14 +686,9 @@ export async function updateMe(input: {
   email?: string;
   birthday?: string;
 }): Promise<MemberProfile> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/customers/me`, {
+  const res = await authorizedFetch('/customers/me', {
     method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   const data = await parseJson<MemberProfile & { message?: string }>(res);
@@ -758,14 +770,9 @@ export async function requestShopHandoff(): Promise<{
   expiresInSec: number;
   consumeUrl: string;
 }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/auth/shop-handoff`, {
+  const res = await authorizedFetch('/auth/shop-handoff', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
   const data = await parseJson<{
     message?: string | string[];
@@ -816,13 +823,8 @@ export type LoyaltyHistoryPayload = {
 export async function fetchMyLoyaltyHistory(
   limit = 25,
 ): Promise<LoyaltyHistoryPayload> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(
-    `${base}/customers/me/loyalty-history?limit=${encodeURIComponent(String(limit))}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
+  const res = await authorizedFetch(
+    `/customers/me/loyalty-history?limit=${encodeURIComponent(String(limit))}`,
   );
   const data = await parseJson<{
     message?: string | string[];
@@ -847,11 +849,7 @@ export async function fetchMyLoyaltyHistory(
 }
 
 export async function fetchMeRewards(): Promise<MemberRewardsPayload> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/customers/me/rewards`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await authorizedFetch('/customers/me/rewards');
   const data = await parseJson<MemberRewardsPayload & { message?: string }>(res);
   if (!res.ok) {
     throw new Error(
@@ -907,11 +905,7 @@ export type MemberOrderRow = {
 };
 
 export async function fetchMemberOrders(limit = 40): Promise<{ orders: MemberOrderRow[] }> {
-  const token = getToken();
-  if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${base}/customers/me/orders?limit=${encodeURIComponent(String(limit))}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await authorizedFetch(`/customers/me/orders?limit=${encodeURIComponent(String(limit))}`);
   const data = await parseJson<{ orders?: MemberOrderRow[]; message?: string | string[] }>(res);
   if (!res.ok) {
     const raw = data.message;

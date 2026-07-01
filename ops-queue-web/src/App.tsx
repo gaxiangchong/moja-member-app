@@ -435,7 +435,8 @@ function OrderCard({
 }
 
 export function App() {
-  const { state: authState, signIn, signOut, devKeyPrefill } = useOpsAuth();
+  const { state: authState, signIn, signOut, sessionExpired, devKeyPrefill } =
+    useOpsAuth();
   const [detailModalId, setDetailModalId] = useState<string | null>(() => detailIdFromSearch());
   const apiKey = authState.status === 'authenticated' ? authState.apiKey : '';
   const apiBase = authState.status === 'authenticated' ? authState.apiBase : readStoredBase();
@@ -549,6 +550,7 @@ export function App() {
         lead="Sign in with the secret configured on the API as OPS_QUEUE_API_KEY before accessing the kitchen queue."
         checking={authState.status === 'checking'}
         devKeyPrefill={devKeyPrefill}
+        notice={sessionExpired ? 'Your session has expired. Please sign in again.' : null}
         onSubmit={signIn}
       />
     );

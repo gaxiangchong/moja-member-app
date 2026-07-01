@@ -8,6 +8,8 @@ type Props = {
   devKeyPrefill?: string;
   onSubmit: (key: string, base: string) => Promise<void>;
   footer?: ReactNode;
+  /** Optional banner shown above the form, e.g. after a session expiry. */
+  notice?: string | null;
 };
 
 export function OpsLoginScreen({
@@ -17,6 +19,7 @@ export function OpsLoginScreen({
   devKeyPrefill = '',
   onSubmit,
   footer,
+  notice,
 }: Props) {
   const [apiBase, setApiBase] = useState(() => readStoredBase());
   const [apiKey, setApiKey] = useState(() => devKeyPrefill);
@@ -44,6 +47,11 @@ export function OpsLoginScreen({
         </div>
         <h1 className="loginTitle">{title}</h1>
         <p className="loginLead">{lead}</p>
+        {notice ? (
+          <p className="loginNotice" role="status">
+            {notice}
+          </p>
+        ) : null}
         {checking ? (
           <p className="loginStatus ok" role="status">
             Verifying saved session…

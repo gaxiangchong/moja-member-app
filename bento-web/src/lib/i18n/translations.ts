@@ -73,6 +73,7 @@ export const translations: Record<Lang, Dict> = {
     'auth.welcomeTitle': 'Welcome to Moja Bento',
     'auth.welcomeSub':
       'Sign in with your Moja account to enjoy fresh, chef-prepared meals on your schedule.',
+    'auth.sessionExpired': 'Your session has expired. Please log in again.',
     'auth.phoneLabel': 'Phone number',
     'auth.phonePlaceholder': '+60 12 345 6789',
     'auth.trust':
@@ -478,6 +479,7 @@ export const translations: Record<Lang, Dict> = {
     'auth.brandTagline': '每日新鲜便当',
     'auth.welcomeTitle': '欢迎使用 Moja Bento',
     'auth.welcomeSub': '使用 Moja 账户登录，按你的节奏享用新鲜主厨便当。',
+    'auth.sessionExpired': '登录已过期，请重新登录。',
     'auth.phoneLabel': '手机号码',
     'auth.phonePlaceholder': '+60 12 345 6789',
     'auth.trust': '新用户将通过电邮收到一次性验证码。如未收到，请检查垃圾邮件文件夹。',
