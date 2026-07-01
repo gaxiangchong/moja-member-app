@@ -2875,6 +2875,54 @@ export class AdminService {
     };
   }
 
+  /**
+   * Cancel an unpaid (PENDING_PAYMENT) subscription so abandoned/duplicate
+   * checkout attempts stop cluttering the member's list and blocking
+   * scheduling. Paid plans must go through refund instead, not cancel.
+   */
+  async cancelBentoSubscription(id: string, auth: AdminAuthState) {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    if (sub.status === BentoSubscriptionStatus.CANCELLED) {
+      return {
+        id: sub.id,
+        status: sub.status,
+        alreadyCancelled: true as const,
+      };
+    }
+    if (sub.status !== BentoSubscriptionStatus.PENDING_PAYMENT) {
+      throw new BadRequestException({
+        code: 'BENTO_CANNOT_CANCEL',
+        message: `Only unpaid subscriptions can be cancelled here (current status: ${sub.status}). Use refund for a paid plan.`,
+      });
+    }
+    const updated = await this.prisma.bentoSubscription.update({
+      where: { id },
+      data: { status: BentoSubscriptionStatus.CANCELLED },
+      select: { id: true, status: true },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'bento.subscription_cancelled',
+      entityType: 'bento_subscription',
+      entityId: id,
+      metadata: { previousStatus: sub.status } as object,
+    });
+    return {
+      id: updated.id,
+      status: updated.status,
+      alreadyCancelled: false as const,
+    };
+  }
+
   listVoucherPushRules() {
     return this.prisma.voucherPushRule.findMany({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],

@@ -5894,7 +5894,8 @@ export class AdminDashboardController {
           : (s.needsScheduling ? '<span class="pill neutral">Awaiting pickup days</span>' : '');
         var action;
         if (s.status === 'PENDING_PAYMENT') {
-          action = '<button type="button" class="btn-primary bento-fix-activate" data-id="' + bentoEsc(s.id) + '">Activate</button>';
+          action = '<button type="button" class="btn-primary bento-fix-activate" data-id="' + bentoEsc(s.id) + '">Activate</button> '
+            + '<button type="button" class="btn-outline bento-fix-cancel" data-id="' + bentoEsc(s.id) + '">Cancel</button>';
         } else if (s.status === 'ACTIVE') {
           action = '<button type="button" class="btn-primary bento-fix-schedule" data-id="' + bentoEsc(s.id) + '">'
             + (s.scheduledCount > 0 ? 'Edit schedule' : 'Schedule') + '</button>';
@@ -5994,6 +5995,23 @@ export class AdminDashboardController {
         }
         btn.disabled = false; btn.textContent = orig;
         if (msg) msg.textContent = m;
+      }
+    }
+    async function bentoFixCancel(btn) {
+      var id = btn.getAttribute('data-id');
+      if (!id) return;
+      if (!window.confirm('Cancel this unpaid plan? Use this only for abandoned/duplicate checkout attempts — it does not refund a paid plan.')) return;
+      var msg = document.getElementById('bentoFixMsg');
+      var orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Cancelling…';
+      try {
+        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/cancel', {});
+        if (msg) msg.textContent = 'Cancelled the unpaid plan.';
+        await bentoFixSearch();
+      } catch (e) {
+        btn.disabled = false; btn.textContent = orig;
+        if (msg) msg.textContent = (e && e.message) ? e.message : String(e);
       }
     }
 
@@ -8175,6 +8193,8 @@ export class AdminDashboardController {
       bentoFixResultEl.addEventListener('click', function (e) {
         var actBtn = e.target.closest('.bento-fix-activate');
         if (actBtn) { bentoFixActivate(actBtn); return; }
+        var cancelBtn = e.target.closest('.bento-fix-cancel');
+        if (cancelBtn) { bentoFixCancel(cancelBtn); return; }
         var schedBtn = e.target.closest('.bento-fix-schedule');
         if (schedBtn) bentoFixOpenSchedule(schedBtn.getAttribute('data-id'));
       });

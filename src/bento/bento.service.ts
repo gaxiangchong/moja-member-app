@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -131,8 +132,64 @@ export class BentoService implements OnModuleInit {
     private readonly bentoVouchers: BentoVoucherService,
   ) {}
 
+  private readonly logger = new Logger(BentoService.name);
+
+  /** Per-customer timestamp of the last auto-heal reconcile (throttling). */
+  private readonly lastPendingHealAt = new Map<string, number>();
+  /** Don't re-reconcile the same customer more than once per this window. */
+  private static readonly PENDING_HEAL_THROTTLE_MS = 30_000;
+  /** Reconcile at most this many pending plans per pass (bounds Xendit calls). */
+  private static readonly PENDING_HEAL_MAX = 5;
+  /** Only auto-heal recent attempts; older unpaid plans are treated as dead. */
+  private static readonly PENDING_HEAL_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
   async onModuleInit() {
     await this.seedPackages();
+  }
+
+  /**
+   * Auto-heal: a member whose e-wallet payment succeeded but whose Xendit
+   * webhook was missed stays at PENDING_PAYMENT, and the app never offers to
+   * schedule it (scheduling only targets ACTIVE plans) — so they "can't book"
+   * despite paying. When they open their bento screen we reconcile their recent
+   * unpaid plans with Xendit; a genuinely-paid one flips to ACTIVE. Throttled
+   * per customer, bounded, parallel, and never allowed to fail the request.
+   */
+  private async autoHealPendingSubscriptions(
+    customerId: string,
+  ): Promise<void> {
+    const now = Date.now();
+    const last = this.lastPendingHealAt.get(customerId) ?? 0;
+    if (now - last < BentoService.PENDING_HEAL_THROTTLE_MS) return;
+    // Guard against unbounded growth of the throttle map.
+    if (this.lastPendingHealAt.size > 5000) this.lastPendingHealAt.clear();
+    this.lastPendingHealAt.set(customerId, now);
+    try {
+      const since = new Date(now - BentoService.PENDING_HEAL_WINDOW_MS);
+      const pending = await this.prisma.bentoSubscription.findMany({
+        where: {
+          customerId,
+          status: BentoSubscriptionStatus.PENDING_PAYMENT,
+          paymentIntentId: { not: null },
+          createdAt: { gte: since },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: BentoService.PENDING_HEAL_MAX,
+        select: { id: true },
+      });
+      if (pending.length === 0) return;
+      await Promise.all(
+        pending.map((p) =>
+          this.payments.reconcileBentoSubscriptionPayment(p.id),
+        ),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Auto-heal of pending bento subscriptions failed for customer ${customerId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async seedPackages(): Promise<void> {
@@ -469,6 +526,8 @@ export class BentoService implements OnModuleInit {
   }
 
   async getWeeklyOptInStatus(customerId: string) {
+    // Flip any paid-but-stuck plans to ACTIVE before we compute what to show.
+    await this.autoHealPendingSubscriptions(customerId);
     const weekStart = parseDateOnly(weekStartMondayIso());
     const row = await this.prisma.bentoWeeklyOptIn.findUnique({
       where: {
@@ -669,6 +728,35 @@ export class BentoService implements OnModuleInit {
       status: BentoSubscriptionStatus.PENDING_PAYMENT,
     };
 
+    // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
+    // rows for this customer+package and clutter their list (and the "blocks
+    // scheduling" state). Before recording this new attempt, clear the earlier
+    // unpaid ones. Reconcile each with Xendit first so we never cancel an
+    // attempt that was actually paid but whose webhook is still in flight — a
+    // reconcile flips a paid one to ACTIVE, and the updateMany below only
+    // touches rows still PENDING_PAYMENT.
+    const priorPending = await this.prisma.bentoSubscription.findMany({
+      where: {
+        customerId,
+        packageId: pkg.id,
+        status: BentoSubscriptionStatus.PENDING_PAYMENT,
+      },
+      select: { id: true },
+    });
+    for (const prior of priorPending) {
+      await this.payments.reconcileBentoSubscriptionPayment(prior.id);
+    }
+    if (priorPending.length > 0) {
+      await this.prisma.bentoSubscription.updateMany({
+        where: {
+          customerId,
+          packageId: pkg.id,
+          status: BentoSubscriptionStatus.PENDING_PAYMENT,
+        },
+        data: { status: BentoSubscriptionStatus.CANCELLED },
+      });
+    }
+
     try {
       const subscriptions = await this.prisma.$transaction(async (tx) => {
         const created: Awaited<
@@ -843,6 +931,8 @@ export class BentoService implements OnModuleInit {
   }
 
   async listMySubscriptions(customerId: string) {
+    // Surface a paid-but-stuck plan as ACTIVE in the member's plan list.
+    await this.autoHealPendingSubscriptions(customerId);
     const rows = await this.prisma.bentoSubscription.findMany({
       where: {
         customerId,

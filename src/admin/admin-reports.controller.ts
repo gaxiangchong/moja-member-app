@@ -149,6 +149,19 @@ export class AdminReportsController {
   }
 
   /**
+   * Cancel an unpaid (PENDING_PAYMENT) subscription — clears abandoned /
+   * duplicate checkout attempts that block scheduling.
+   */
+  @Post('bento-subscriptions/:id/cancel')
+  @RequirePermissions(P.REPORT_VIEW)
+  cancelBentoSubscription(
+    @Param('id') id: string,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.cancelBentoSubscription(id, auth);
+  }
+
+  /**
    * Schedule pickup days on a customer's behalf. Runs with admin override so
    * staff can resolve missed-cutoff / closed-day complaints from the dashboard.
    */
