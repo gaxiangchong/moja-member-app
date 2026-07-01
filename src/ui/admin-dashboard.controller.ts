@@ -2906,6 +2906,26 @@ export class AdminDashboardController {
               <p class="field-hint" id="bentoSettingsEnvHint" style="display:none;color:#b45309"></p>
             </div>
           </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Member booking fix</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:820px">
+              <p class="field-hint" style="margin-top:0">
+                Customer paid but <strong>can't schedule</strong>? Look them up by phone to check their plan status. A plan stuck on <strong>PENDING_PAYMENT</strong> is what blocks scheduling — click <strong>Activate</strong> to unblock it (this re-checks Xendit first, then lets you force it with a reason). Once active, the member can book in the app, or you can schedule for them from the Bento orders screen.
+              </p>
+              <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <label for="bentoFixPhone">Customer phone</label>
+                  <input type="tel" id="bentoFixPhone" placeholder="012-345 6789 or +60123456789" style="min-width:260px" />
+                </div>
+                <button type="button" class="btn-primary" id="bentoFixSearchBtn">Look up</button>
+              </div>
+              <p class="field-hint" id="bentoFixMsg" style="margin-top:8px"></p>
+              <div id="bentoFixResult" style="margin-top:12px"></div>
+            </div>
+          </div>
         </section>
 
         <section id="bento-pricing" class="tab-panel hidden">
@@ -5764,6 +5784,108 @@ export class AdminDashboardController {
         if (out) out.textContent = e.message || String(e);
       }
     }
+
+    // --- Member booking fix (phone lookup + activate stuck plans) ----------
+    function bentoFixDate(iso) {
+      if (!iso) return '-';
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '-';
+      return d.toLocaleDateString();
+    }
+    function renderBentoFixResult(data) {
+      var box = document.getElementById('bentoFixResult');
+      if (!box) return;
+      if (!data || !data.customer) { box.innerHTML = ''; return; }
+      var c = data.customer;
+      var subs = data.subscriptions || [];
+      var head = '<div style="margin-bottom:10px">'
+        + '<strong>' + bentoEsc(c.displayName || '(no name)') + '</strong> · ' + bentoEsc(c.phoneE164)
+        + ' · member ' + statusPill(c.status)
+        + (c.kitchenPickupCode ? ' · pickup code ' + bentoEsc(c.kitchenPickupCode) : '')
+        + '</div>';
+      if (!subs.length) {
+        box.innerHTML = head + '<p class="field-hint">No bento plans found for this member.</p>';
+        return;
+      }
+      var rows = subs.map(function (s) {
+        var note = s.blockedByPayment
+          ? '<span class="pill warn">Blocks scheduling</span>'
+          : (s.needsScheduling ? '<span class="pill neutral">Awaiting pickup days</span>' : '');
+        var action = (s.status === 'PENDING_PAYMENT')
+          ? '<button type="button" class="btn-primary bento-fix-activate" data-id="' + bentoEsc(s.id) + '">Activate</button>'
+          : '<span class="muted-hint">—</span>';
+        return '<tr>'
+          + '<td>' + bentoEsc((s.package && s.package.label) || '-') + '</td>'
+          + '<td>' + statusPill(s.status) + ' ' + note + '</td>'
+          + '<td>' + bentoEsc(s.mealOption) + '</td>'
+          + '<td>' + bentoEsc(s.mealCreditsTotal) + '</td>'
+          + '<td>' + bentoEsc(s.scheduledCount) + '</td>'
+          + '<td>RM' + ((s.totalCents || 0) / 100).toFixed(2) + '</td>'
+          + '<td>' + bentoFixDate(s.createdAt) + '</td>'
+          + '<td style="white-space:nowrap">' + action + '</td>'
+          + '</tr>';
+      }).join('');
+      box.innerHTML = head
+        + '<div class="table-wrap"><table class="data"><thead><tr>'
+        + '<th>Plan</th><th>Status</th><th>Meals</th><th>Credits</th><th>Scheduled</th><th>Paid</th><th>Created</th><th>Action</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    async function bentoFixSearch() {
+      var input = document.getElementById('bentoFixPhone');
+      var msg = document.getElementById('bentoFixMsg');
+      var phone = input ? input.value.trim() : '';
+      if (!phone) { if (msg) msg.textContent = 'Enter a phone number.'; return; }
+      if (msg) msg.textContent = 'Searching…';
+      try {
+        var data = await api('/admin/reports/bento/customer-lookup?phone=' + encodeURIComponent(phone));
+        if (msg) msg.textContent = '';
+        renderBentoFixResult(data);
+      } catch (e) {
+        renderBentoFixResult(null);
+        if (msg) msg.textContent = (e && e.message) ? e.message : String(e);
+      }
+    }
+    function activateBentoSub(id, reason) {
+      var body = {};
+      if (reason) body.reason = reason;
+      return apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/activate', body);
+    }
+    async function bentoFixActivate(btn) {
+      var id = btn.getAttribute('data-id');
+      if (!id) return;
+      var msg = document.getElementById('bentoFixMsg');
+      var orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Activating…';
+      try {
+        await activateBentoSub(id, undefined);
+        if (msg) msg.textContent = 'Payment confirmed with Xendit — plan activated. The member can now schedule.';
+        await bentoFixSearch();
+      } catch (e) {
+        var m = (e && e.message) ? e.message : String(e);
+        // Xendit couldn't confirm the payment → offer a manual force with a reason.
+        if (m.indexOf('BENTO_ACTIVATION_REASON_REQUIRED') !== -1 || m.indexOf('did not confirm') !== -1) {
+          var reason = window.prompt('Xendit could not confirm this payment. Enter a reason to force-activate (recorded in the audit log):', '');
+          if (reason === null || !String(reason).trim()) {
+            btn.disabled = false; btn.textContent = orig;
+            if (msg) msg.textContent = 'Activation cancelled.';
+            return;
+          }
+          try {
+            await activateBentoSub(id, String(reason).trim());
+            if (msg) msg.textContent = 'Plan force-activated. The member can now schedule.';
+            await bentoFixSearch();
+          } catch (e2) {
+            btn.disabled = false; btn.textContent = orig;
+            if (msg) msg.textContent = (e2 && e2.message) ? e2.message : String(e2);
+          }
+          return;
+        }
+        btn.disabled = false; btn.textContent = orig;
+        if (msg) msg.textContent = m;
+      }
+    }
+
     async function saveBentoMenu() {
       var out = document.getElementById('bentoMenuSaveResult');
       if (out) out.textContent = 'Saving…';
@@ -7886,6 +8008,23 @@ export class AdminDashboardController {
     if (bentoSettingsSaveBtn) {
       bentoSettingsSaveBtn.addEventListener('click', function () {
         saveBentoSettings();
+      });
+    }
+    var bentoFixSearchBtn = document.getElementById('bentoFixSearchBtn');
+    if (bentoFixSearchBtn) {
+      bentoFixSearchBtn.addEventListener('click', function () { bentoFixSearch(); });
+    }
+    var bentoFixPhoneEl = document.getElementById('bentoFixPhone');
+    if (bentoFixPhoneEl) {
+      bentoFixPhoneEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); bentoFixSearch(); }
+      });
+    }
+    var bentoFixResultEl = document.getElementById('bentoFixResult');
+    if (bentoFixResultEl) {
+      bentoFixResultEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('.bento-fix-activate');
+        if (btn) bentoFixActivate(btn);
       });
     }
     var bentoPackagesSaveBtn = document.getElementById('bentoPackagesSaveBtn');

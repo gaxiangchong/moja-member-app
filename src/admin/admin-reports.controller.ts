@@ -17,7 +17,9 @@ import { AdminPermissionsGuard } from '../admin-auth/guards/admin-permissions.gu
 import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AdminService } from './admin.service';
+import { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
 import { AdminDailyCommerceDateDto } from './dto/admin-daily-commerce.dto';
+import { BentoCustomerLookupQueryDto } from './dto/bento-customer-lookup-query.dto';
 import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
@@ -120,6 +122,30 @@ export class AdminReportsController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.markBentoSubscriptionRefunded(id, auth);
+  }
+
+  /**
+   * Look up a member by phone and list their bento subscriptions + statuses.
+   * Support entry point for the "paid but can't schedule" complaint.
+   */
+  @Get('bento/customer-lookup')
+  @RequirePermissions(P.REPORT_VIEW)
+  lookupBentoCustomer(@Query() query: BentoCustomerLookupQueryDto) {
+    return this.admin.lookupBentoCustomer(query.phone);
+  }
+
+  /**
+   * Unblock a subscription stuck at PENDING_PAYMENT (reconciles with Xendit
+   * first, then force-activates with a reason) so the member can schedule.
+   */
+  @Post('bento-subscriptions/:id/activate')
+  @RequirePermissions(P.REPORT_VIEW)
+  activateBentoSubscription(
+    @Param('id') id: string,
+    @Body() dto: ActivateBentoSubscriptionDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.activateBentoSubscription(id, dto, auth);
   }
 
   /**

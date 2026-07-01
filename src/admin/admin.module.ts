@@ -16,6 +16,7 @@ import { AdminEmployeesController } from './admin-employees.controller';
 import { BentoMenuModule } from '../bento/bento-menu.module';
 import { BentoModule } from '../bento/bento.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
     BentoModule,
     ReportingSettingsModule,
     BentoVoucherModule,
+    PaymentsModule,
   ],
   controllers: [
     AdminController,

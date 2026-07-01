@@ -38,10 +38,12 @@ import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { stringify } from 'csv-stringify/sync';
 import { ReportingSettingsService } from './reporting-settings.service';
+import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
@@ -254,6 +256,7 @@ export class AdminService {
     private readonly config: ConfigService,
     private readonly phoneNormalizer: PhoneNormalizerService,
     private readonly reportingSettings: ReportingSettingsService,
+    private readonly payments: PaymentsService,
   ) {}
 
   /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
@@ -2710,6 +2713,166 @@ export class AdminService {
       metadata: { previousStatus: sub.status } as object,
     });
     return { id: updated.id, status: updated.status, alreadyRefunded: false as const };
+  }
+
+  /**
+   * Support tool: look up a member by phone and return every bento subscription
+   * with its status and scheduled pickups. Staff use this to diagnose the
+   * "paid but can't schedule" complaint (subscription stuck at PENDING_PAYMENT).
+   */
+  async lookupBentoCustomer(phone: string) {
+    const phoneE164 = this.phoneNormalizer.normalizeToE164(phone);
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: {
+        id: true,
+        phoneE164: true,
+        displayName: true,
+        email: true,
+        status: true,
+        kitchenPickupCode: true,
+        createdAt: true,
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: `No member found for phone ${phoneE164}`,
+      });
+    }
+    const subscriptions = await this.prisma.bentoSubscription.findMany({
+      where: { customerId: customer.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        package: { select: { code: true, label: true, mealCredits: true } },
+        deliveries: {
+          orderBy: { deliveryDate: 'asc' },
+          select: {
+            id: true,
+            deliveryDate: true,
+            includesLunch: true,
+            includesDinner: true,
+            lunchQty: true,
+            dinnerQty: true,
+            status: true,
+          },
+        },
+      },
+    });
+    return {
+      customer,
+      subscriptions: subscriptions.map((s) => ({
+        id: s.id,
+        status: s.status,
+        package: s.package,
+        mealOption: s.mealOption,
+        mealCreditsTotal: s.mealCreditsTotal,
+        lunchCredits: s.lunchCredits,
+        dinnerCredits: s.dinnerCredits,
+        totalCents: s.totalCents,
+        paymentIntentId: s.paymentIntentId,
+        createdAt: s.createdAt,
+        scheduledCount: s.deliveries.length,
+        deliveries: s.deliveries,
+        // What the client app gates scheduling on: ACTIVE with no pickups yet.
+        needsScheduling:
+          s.status === BentoSubscriptionStatus.ACTIVE &&
+          s.deliveries.length === 0,
+        // The stuck state that blocks scheduling despite a completed payment.
+        blockedByPayment: s.status === BentoSubscriptionStatus.PENDING_PAYMENT,
+      })),
+    };
+  }
+
+  /**
+   * Unblock a subscription stuck at PENDING_PAYMENT so the member can schedule.
+   * First re-checks Xendit and activates legitimately if the payment actually
+   * succeeded; only if Xendit still cannot confirm does it force-activate, which
+   * requires a reason for the audit trail.
+   */
+  async activateBentoSubscription(
+    id: string,
+    dto: ActivateBentoSubscriptionDto,
+    auth: AdminAuthState,
+  ) {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    if (sub.status === BentoSubscriptionStatus.ACTIVE) {
+      return {
+        id: sub.id,
+        status: sub.status,
+        method: 'already_active' as const,
+      };
+    }
+    if (sub.status !== BentoSubscriptionStatus.PENDING_PAYMENT) {
+      throw new BadRequestException({
+        code: 'BENTO_NOT_PENDING',
+        message: `Only subscriptions awaiting payment can be activated (current status: ${sub.status}).`,
+      });
+    }
+
+    // 1) Reconcile with Xendit — if the payment really succeeded, activate cleanly.
+    await this.payments.reconcileBentoSubscriptionPayment(id);
+    const afterReconcile = await this.prisma.bentoSubscription.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (afterReconcile?.status === BentoSubscriptionStatus.ACTIVE) {
+      await this.audit.log({
+        ...auditActorBase(auth),
+        action: 'bento.subscription_activated',
+        entityType: 'bento_subscription',
+        entityId: id,
+        metadata: {
+          method: 'reconciled',
+          previousStatus: sub.status,
+        } as object,
+      });
+      return {
+        id,
+        status: BentoSubscriptionStatus.ACTIVE,
+        method: 'reconciled' as const,
+      };
+    }
+
+    // 2) Force override — Xendit could not confirm, so require an explicit reason.
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException({
+        code: 'BENTO_ACTIVATION_REASON_REQUIRED',
+        message:
+          'Xendit did not confirm payment. Provide a reason to force-activate this subscription.',
+      });
+    }
+    const updated = await this.prisma.bentoSubscription.update({
+      where: { id },
+      data: { status: BentoSubscriptionStatus.ACTIVE },
+      select: { id: true, status: true },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'bento.subscription_activated',
+      entityType: 'bento_subscription',
+      entityId: id,
+      metadata: {
+        method: 'forced',
+        previousStatus: sub.status,
+        reason,
+      } as object,
+    });
+    return {
+      id: updated.id,
+      status: updated.status,
+      method: 'forced' as const,
+    };
   }
 
   listVoucherPushRules() {
