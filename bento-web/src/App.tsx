@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 import './bento-ui.css';
 import { AuthScreens, logout } from './auth/AuthScreens';
+import { LandingPage } from './landing/LandingPage';
 import {
   clearToken,
   fetchBentoPackages,
@@ -40,6 +41,25 @@ import {
 } from './payments/pendingPayment';
 
 type Tab = 'menu' | 'package' | 'schedule' | 'account';
+
+/** Set after a successful login so returning members skip the marketing landing page. */
+const KNOWN_MEMBER_KEY = 'bento-known-member';
+
+function isKnownMember(): boolean {
+  try {
+    return localStorage.getItem(KNOWN_MEMBER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberKnownMember(): void {
+  try {
+    localStorage.setItem(KNOWN_MEMBER_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
 
 function PurchaseItem({ sub }: { sub: BentoSubscription }) {
   const { t, packageLabel, dietLabel, statusLabel } = useI18n();
@@ -294,6 +314,8 @@ export default function App() {
   const { t } = useI18n();
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Returning members skip the marketing landing page and go straight to login.
+  const [showAuth, setShowAuth] = useState(() => Boolean(getToken()) || isKnownMember());
   const [tab, setTab] = useState<Tab>('menu');
   const [orderStep, setOrderStep] = useState<'configure' | 'checkout'>('configure');
   const [profile, setProfile] = useState<MemberProfile | null>(null);
@@ -479,12 +501,20 @@ export default function App() {
   };
 
   if (!authed) {
+    if (!showAuth && !sessionExpired) {
+      return (
+        <div className="app">
+          <LandingPage onLogin={() => setShowAuth(true)} />
+        </div>
+      );
+    }
     return (
       <div className="app">
         <AuthScreens
           notice={sessionExpired ? t('auth.sessionExpired') : null}
           onAuthenticated={() => {
             setSessionExpired(false);
+            rememberKnownMember();
             void loadMember();
           }}
         />

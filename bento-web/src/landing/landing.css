@@ -1,0 +1,476 @@
+/* ============================================================
+   landing.css — Pre-login marketing landing page
+   Uses the design tokens from bento-ui.css (:root vars).
+   ============================================================ */
+
+.landing {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.landing p {
+  margin: 0;
+}
+
+/* ---- Header ---- */
+.landingHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.landingBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.landingBrandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--primary-soft);
+  font-size: 1rem;
+}
+
+.landingBrandName {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.landingHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landingLoginLink {
+  background: none;
+  padding: 6px 4px;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+/* ---- Promo bar ---- */
+.landingPromoBar {
+  background: #9a3412;
+  color: #ffedd5;
+  text-align: center;
+  font-size: 0.8rem;
+  padding: 8px 14px;
+}
+
+/* ---- Hero ---- */
+.landingHero {
+  padding: 26px 18px 22px;
+}
+
+.landingTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary-soft);
+  color: #9a3412;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+
+.landingHeroTitle {
+  margin: 12px 0 0;
+  font-size: 1.72rem;
+  line-height: 1.24;
+  color: var(--text);
+}
+
+.landingHeroSub {
+  margin-top: 10px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #7c2d12;
+}
+
+.landingHeroImg {
+  display: block;
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  border-radius: 18px;
+  margin: 16px 0 6px;
+  box-shadow: var(--shadow);
+}
+
+.landingTrustLine {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---- Value stats strip ---- */
+.landingStats {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.landingStat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.landingStat + .landingStat {
+  border-left: 1px solid var(--border-strong);
+}
+
+.landingStat strong {
+  font-size: 0.98rem;
+}
+
+.landingStat span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ---- Generic sections ---- */
+.landingSection {
+  padding: 24px 18px;
+  scroll-margin-top: 12px;
+}
+
+.landingSectionAlt {
+  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.landingSectionTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.landingSectionSub {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* ---- How it works ---- */
+.landingSteps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.landingStep {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.landingStepIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: var(--primary-soft);
+  font-size: 1.05rem;
+}
+
+.landingStepTitle {
+  font-weight: 600;
+  font-size: 0.94rem;
+}
+
+.landingStepDesc {
+  margin-top: 2px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- Menu preview ---- */
+.landingDishes {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.landingDish {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.landingDish img {
+  display: block;
+  width: 100%;
+  height: 84px;
+  object-fit: cover;
+}
+
+.landingDish figcaption {
+  padding: 9px 10px 11px;
+}
+
+.landingDishName {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.landingDishSub {
+  margin-top: 2px;
+  font-size: 0.71rem;
+  color: var(--muted);
+}
+
+.landingMenuNote {
+  margin-top: 12px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---- Plans ---- */
+.landingPlans {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.landingPlan {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.landingPlan:active {
+  transform: scale(0.99);
+}
+
+.landingPlanTrial {
+  border: 2px solid var(--primary);
+}
+
+.landingPlanBadge {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 11px;
+  border-radius: 999px;
+}
+
+.landingPlanRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.landingPlanName {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.landingPlanChip {
+  display: inline-block;
+  margin-left: 6px;
+  background: var(--primary-soft);
+  color: #9a3412;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
+.landingPlanMeta {
+  margin-top: 2px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.landingPlanPrice {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.landingPlanPriceMain {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--primary);
+}
+
+.landingPlanPriceMain span {
+  font-weight: 400;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* ---- FAQ ---- */
+.landingFaqList {
+  margin-top: 8px;
+}
+
+.landingFaq {
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.landingFaq:last-child {
+  border-bottom: none;
+}
+
+.landingFaq summary {
+  padding: 13px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.landingFaq summary::-webkit-details-marker {
+  display: none;
+}
+
+.landingFaq summary::after {
+  content: '▾';
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.landingFaq[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.landingFaq p {
+  padding: 0 0 13px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* ---- Final CTA ---- */
+.landingFinal {
+  background: #431407;
+  color: #ffedd5;
+  text-align: center;
+  padding: 28px 20px 26px;
+}
+
+.landingFinal h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #fff;
+}
+
+.landingFinal > p {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: #fdba74;
+}
+
+.landingFinalBtn {
+  margin-top: 16px;
+}
+
+.landingFinalWhatsapp {
+  margin-top: 14px;
+  font-size: 0.8rem;
+  color: #fdba74;
+}
+
+.landingFinalWhatsapp a {
+  color: #ffedd5;
+  text-decoration: underline;
+}
+
+/* ---- Sticky bottom bar ---- */
+.landingStickyBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 24px rgba(39, 28, 21, 0.08);
+}
+
+.landingStickyInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.landingStickyPlan {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.landingStickyPrice {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.landingStickyPrice span {
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: #9a3412;
+}
+
+.landingStickyBtn {
+  width: auto;
+  margin-top: 0;
+  padding: 11px 20px;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
