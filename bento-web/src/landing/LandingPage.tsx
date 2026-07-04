@@ -20,8 +20,12 @@ const SINGLE_MEAL_RM = 17.9;
 const PLANS = [
   { labelKey: 'package.label.DAYS_7', perMealRm: 16, meals: 10, days: 30 },
   { labelKey: 'package.label.DAYS_15', perMealRm: 15, meals: 20, days: 60 },
-  { labelKey: 'package.label.DAYS_30', perMealRm: 13, meals: 30, days: 90, best: true },
+  { labelKey: 'package.label.DAYS_30', perMealRm: 13.9, meals: 30, days: 90, best: true },
 ] as const;
+
+function formatRmShort(rm: number): string {
+  return `RM${Number.isInteger(rm) ? rm : rm.toFixed(2)}`;
+}
 
 function planSavingsRm(perMealRm: number, meals: number): number {
   return Math.round((SINGLE_MEAL_RM - perMealRm) * meals);
@@ -161,7 +165,7 @@ export function LandingPage({ onLogin }: Props) {
                   <p className="landingPlanMeta">{t('landing.planValidMeta', { days: plan.days })}</p>
                 </div>
                 <div className="landingPlanPrice">
-                  <p className="landingPlanPriceMain">RM{plan.perMealRm} <span>{t('common.perMeal')}</span></p>
+                  <p className="landingPlanPriceMain">{formatRmShort(plan.perMealRm)} <span>{t('common.perMeal')}</span></p>
                   <p className="landingPlanMeta">
                     {t('landing.planSaveTotal', { amount: `RM${planSavingsRm(plan.perMealRm, plan.meals)}` })}
                   </p>
