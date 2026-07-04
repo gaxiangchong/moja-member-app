@@ -200,6 +200,17 @@ export function LandingPage({ onLogin }: Props) {
         </p>
       </section>
 
+      <footer className="landingFooter">
+        <p>{t('landing.footerAbout')}</p>
+        <p>
+          {t('landing.footerCorporate')}{' '}
+          <a href={whatsappUrl()} target="_blank" rel="noreferrer">
+            {t('landing.footerCorporateCta')}
+          </a>
+        </p>
+        <p className="landingFooterTags">{t('landing.footerTags')}</p>
+      </footer>
+
       <div className="landingStickyBar">
         <div className="landingStickyInfo">
           <p className="landingStickyPlan">{t('landing.stickyPlan')}</p>

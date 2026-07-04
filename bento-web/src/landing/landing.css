@@ -432,6 +432,30 @@
   text-decoration: underline;
 }
 
+/* ---- SEO footer ---- */
+.landingFooter {
+  padding: 20px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.landingFooter p {
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.landingFooter a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.landingFooterTags {
+  padding-top: 4px;
+  border-top: 1px solid var(--border-strong);
+}
+
 /* ---- Sticky bottom bar ---- */
 .landingStickyBar {
   position: sticky;

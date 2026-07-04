@@ -165,6 +165,13 @@ export const translations: Record<Lang, Dict> = {
     'landing.stickyPlan': 'Trial pack · 3 lunches',
     'landing.stickyCode': 'RM10 off with WELCOME10',
     'landing.getStarted': 'Get started',
+    'landing.footerAbout':
+      'Moja Bento by Moja Maison — bento meal subscription at Eco Botanic, Iskandar Puteri, Johor Bahru (JB). Daily bento menu with lunch and dinner, delicious local cuisine cooked fresh every day.',
+    'landing.footerCorporate':
+      'Corporate lunch catering and 包伙食 packages for offices and teams in JB —',
+    'landing.footerCorporateCta': 'WhatsApp us for a quote',
+    'landing.footerTags':
+      'Meal subscription · Daily bento menu · Corporate lunch catering JB · 包伙食 · Bento Eco Botanic',
 
     'menu.title': "This week's menu",
     'menu.badge': '🍱 Weekly',
@@ -624,6 +631,12 @@ export const translations: Record<Lang, Dict> = {
     'landing.stickyPlan': '试吃装 · 3 份午餐',
     'landing.stickyCode': '用码 WELCOME10 减 RM10',
     'landing.getStarted': '立即开始',
+    'landing.footerAbout':
+      'Moja Bento（Moja Maison 出品）— 位于新山（JB）Eco Botanic 的便当订阅服务。每日便当菜单，午餐晚餐皆备，地道本地美食每天新鲜现做。',
+    'landing.footerCorporate': '另提供新山企业午餐配送及公司包伙食配套 —',
+    'landing.footerCorporateCta': '欢迎 WhatsApp 询价',
+    'landing.footerTags':
+      '便当订阅 · 每日便当菜单 · 新山企业午餐 · 包伙食 · Eco Botanic 便当',
 
     'menu.title': '本周菜单',
     'menu.badge': '🍱 本周',
