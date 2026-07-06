@@ -1218,7 +1218,8 @@ function App() {
 
   useEffect(() => {
     let alive = true;
-    const p = profile?.phoneE164?.trim();
+    // SalesPlay member IDs have no leading "+", so strip it from the phone number
+    const p = profile?.phoneE164?.trim().replace(/^\+/, '');
     if (!p) {
       setPhoneQrUrl(null);
       return;
@@ -2355,7 +2356,7 @@ function App() {
                 )}
                 <div className="memberQrMeta">
                   <span className="memberQrMetaLabel">Member ID</span>
-                  <code className="memberQrMetaValue">{profile.phoneE164}</code>
+                  <code className="memberQrMetaValue">{profile.phoneE164?.replace(/^\+/, '')}</code>
                 </div>
                 <button
                   type="button"
