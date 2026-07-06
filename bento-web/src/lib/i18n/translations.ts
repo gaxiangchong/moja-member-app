@@ -186,6 +186,8 @@ export const translations: Record<Lang, Dict> = {
     'menu.regular': '🍗 Regular',
     'menu.veg': '🌱 Vegetarian',
     'menu.vegCaption': 'Showing vegetarian options for this week.',
+    'menu.vegUnavailable':
+      'The vegetarian menu is temporarily unavailable. Please reach out to our support team for more details.',
     'menu.loading': 'Loading menu…',
     'menu.empty': 'Menu not available yet — check back soon.',
     'menu.browsePkg': 'Browse packages →',
@@ -270,6 +272,8 @@ export const translations: Record<Lang, Dict> = {
     'customize.dinnerSoupIncluded': 'Soup is included with your plan.',
     'customize.regularLunch': 'Protein-rich and hearty.',
     'customize.vegLunch': 'Light and balanced.',
+    'customize.vegUnavailable':
+      'The vegetarian option is temporarily unavailable. Please reach out to our support team for more details.',
     'customize.regularDinner': 'Hearty evening meal.',
     'customize.vegDinner': 'Garden-fresh dinner.',
     'customize.whiteRiceDesc': 'Classic and familiar.',
@@ -651,6 +655,7 @@ export const translations: Record<Lang, Dict> = {
     'menu.regular': '🍗 荤菜',
     'menu.veg': '🌱 素菜',
     'menu.vegCaption': '显示本周素食选项。',
+    'menu.vegUnavailable': '素食菜单暂时无法提供，详情请联系我们的客服团队。',
     'menu.loading': '菜单加载中…',
     'menu.empty': '本周菜单暂未公布，请稍候再来。',
     'menu.browsePkg': '浏览套餐 →',
@@ -727,6 +732,7 @@ export const translations: Record<Lang, Dict> = {
     'customize.dinnerSoupIncluded': '本套餐已含汤品。',
     'customize.regularLunch': '蛋白质丰富，饱腹感强。',
     'customize.vegLunch': '清淡均衡。',
+    'customize.vegUnavailable': '素食选项暂时无法提供，详情请联系我们的客服团队。',
     'customize.regularDinner': '丰盛的晚餐。',
     'customize.vegDinner': '新鲜素食晚餐。',
     'customize.whiteRiceDesc': '经典白饭。',

@@ -743,6 +743,22 @@ button {
   cursor: not-allowed;
 }
 
+.variantCard.disabled,
+.menuDietBtn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.variantCard.disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.vegUnavailableNote {
+  margin-top: 8px;
+  color: #b45309;
+}
+
 .mealOptionHeader,
 .menuSectionHeader {
   display: flex;

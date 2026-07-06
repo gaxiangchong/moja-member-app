@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { assetUrl, fetchWeeklyOptInStatus, type WeeklyMenuPayload } from '../api';
-import { MENU_SHOW_IMAGES } from '../env';
+import { MENU_SHOW_IMAGES, VEG_OPTION_ENABLED } from '../env';
 import { useI18n } from '../lib/i18n/context';
 import { isTodayIso, parseDateOnly } from '../lib/dateUtils';
 import { LaunchAnnouncement } from './LaunchAnnouncement';
@@ -28,6 +28,7 @@ export function MenuTab({ onOrderNow }: Props) {
   const [data, setData] = useState<WeeklyMenuPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [showVeg, setShowVeg] = useState(false);
+  const [showVegNotice, setShowVegNotice] = useState(false);
   const [activeWeek, setActiveWeek] = useState(0);
 
   useEffect(() => {
@@ -111,14 +112,24 @@ export function MenuTab({ onOrderNow }: Props) {
           <button
             type="button"
             className={`menuDietBtn${!showVeg ? ' active' : ''}`}
-            onClick={() => setShowVeg(false)}
+            onClick={() => {
+              setShowVeg(false);
+              setShowVegNotice(false);
+            }}
           >
             {t('menu.regular')}
           </button>
           <button
             type="button"
-            className={`menuDietBtn${showVeg ? ' active' : ''}`}
-            onClick={() => setShowVeg(true)}
+            className={`menuDietBtn${showVeg ? ' active' : ''}${VEG_OPTION_ENABLED ? '' : ' disabled'}`}
+            aria-disabled={!VEG_OPTION_ENABLED}
+            onClick={() => {
+              if (!VEG_OPTION_ENABLED) {
+                setShowVegNotice(true);
+                return;
+              }
+              setShowVeg(true);
+            }}
           >
             {t('menu.veg')}
           </button>
@@ -127,6 +138,11 @@ export function MenuTab({ onOrderNow }: Props) {
         {showVeg && (
           <p className="caption" style={{ marginBottom: 12, color: '#15803d' }}>
             {t('menu.vegCaption')}
+          </p>
+        )}
+        {showVegNotice && (
+          <p className="caption vegUnavailableNote" role="status" style={{ marginBottom: 12 }}>
+            {t('menu.vegUnavailable')}
           </p>
         )}
 

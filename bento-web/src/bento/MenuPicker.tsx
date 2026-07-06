@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { BentoDietVariant, BentoMealOption, BentoRiceType } from './types';
 import { useI18n } from '../lib/i18n/context';
+import { VEG_OPTION_ENABLED } from '../env';
 
 type Props = {
   mealOption: BentoMealOption;
@@ -31,6 +33,22 @@ export function MenuPicker({
   const { t } = useI18n();
   const showLunch = mealOption === 'LUNCH' || mealOption === 'BOTH';
   const showDinner = mealOption === 'DINNER' || mealOption === 'BOTH';
+  // Which meal section the member tapped a (disabled) veg card in, so the
+  // unavailable notice only appears where they tapped.
+  const [vegNotice, setVegNotice] = useState<'lunch' | 'dinner' | null>(null);
+
+  const pickVariant = (
+    meal: 'lunch' | 'dinner',
+    variant: BentoDietVariant,
+    onChange: (v: BentoDietVariant) => void,
+  ) => {
+    if (variant === 'VEG' && !VEG_OPTION_ENABLED) {
+      setVegNotice(meal);
+      return;
+    }
+    setVegNotice(null);
+    onChange(variant);
+  };
 
   return (
     <section className="section">
@@ -53,20 +71,26 @@ export function MenuPicker({
             <button
               type="button"
               className={`variantCard${lunchVariant === 'NONVEG' ? ' active' : ''}`}
-              onClick={() => onLunchVariantChange('NONVEG')}
+              onClick={() => pickVariant('lunch', 'NONVEG', onLunchVariantChange)}
             >
               <span className="variantTitle">{t('common.regular')}</span>
               <span className="variantLabel">{t('customize.regularLunch')}</span>
             </button>
             <button
               type="button"
-              className={`variantCard${lunchVariant === 'VEG' ? ' active' : ''}`}
-              onClick={() => onLunchVariantChange('VEG')}
+              className={`variantCard${lunchVariant === 'VEG' ? ' active' : ''}${VEG_OPTION_ENABLED ? '' : ' disabled'}`}
+              aria-disabled={!VEG_OPTION_ENABLED}
+              onClick={() => pickVariant('lunch', 'VEG', onLunchVariantChange)}
             >
               <span className="variantTitle">{t('common.vegetarian')}</span>
               <span className="variantLabel">{t('customize.vegLunch')}</span>
             </button>
           </div>
+          {vegNotice === 'lunch' && (
+            <p className="caption vegUnavailableNote" role="status">
+              {t('customize.vegUnavailable')}
+            </p>
+          )}
         </div>
       )}
 
@@ -84,20 +108,26 @@ export function MenuPicker({
             <button
               type="button"
               className={`variantCard${dinnerVariant === 'NONVEG' ? ' active' : ''}`}
-              onClick={() => onDinnerVariantChange('NONVEG')}
+              onClick={() => pickVariant('dinner', 'NONVEG', onDinnerVariantChange)}
             >
               <span className="variantTitle">{t('common.regular')}</span>
               <span className="variantLabel">{t('customize.regularDinner')}</span>
             </button>
             <button
               type="button"
-              className={`variantCard${dinnerVariant === 'VEG' ? ' active' : ''}`}
-              onClick={() => onDinnerVariantChange('VEG')}
+              className={`variantCard${dinnerVariant === 'VEG' ? ' active' : ''}${VEG_OPTION_ENABLED ? '' : ' disabled'}`}
+              aria-disabled={!VEG_OPTION_ENABLED}
+              onClick={() => pickVariant('dinner', 'VEG', onDinnerVariantChange)}
             >
               <span className="variantTitle">{t('common.vegetarian')}</span>
               <span className="variantLabel">{t('customize.vegDinner')}</span>
             </button>
           </div>
+          {vegNotice === 'dinner' && (
+            <p className="caption vegUnavailableNote" role="status">
+              {t('customize.vegUnavailable')}
+            </p>
+          )}
         </div>
       )}
 

@@ -14,6 +14,14 @@ export function validateClientEnv(): void {
 export const MENU_SHOW_IMAGES =
   import.meta.env.VITE_MENU_SHOW_IMAGES?.trim().toLowerCase() === 'true';
 
+/**
+ * Whether the vegetarian meal option can be selected.
+ * Controlled by `VITE_VEG_OPTION_ENABLED`. Defaults to OFF while demand is
+ * low; set `VITE_VEG_OPTION_ENABLED=true` to offer vegetarian meals again.
+ */
+export const VEG_OPTION_ENABLED =
+  import.meta.env.VITE_VEG_OPTION_ENABLED?.trim().toLowerCase() === 'true';
+
 /** Customer support WhatsApp (digits only, no +). Override via VITE_WHATSAPP_NUMBER. */
 export const WHATSAPP_E164 = (
   import.meta.env.VITE_WHATSAPP_NUMBER?.trim().replace(/\D/g, '') || '601139331134'
