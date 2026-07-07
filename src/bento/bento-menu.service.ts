@@ -237,9 +237,23 @@ export class BentoMenuService {
     };
   }
 
-  /** Normalize arbitrary input into a full Mon–Sun config (all 7 days present). */
-  private normalize(input: unknown): BentoMenuConfig {
-    const defaults = this.cloneDefault();
+  /**
+   * Normalize arbitrary input into a full Mon–Sun config (all 7 days present).
+   * When `base` is given (admin saves), fields the payload omits fall back to
+   * the stored menu instead of the empty defaults — e.g. the menu editor no
+   * longer sends `image`, and stored dish photos must survive a save.
+   */
+  private normalize(input: unknown, base?: BentoMenuConfig): BentoMenuConfig {
+    const defaults = base
+      ? {
+          weekdays: base.weekdays.map((d) => ({
+            weekday: d.weekday,
+            closed: d.closed,
+            lunch: { ...EMPTY_DISHES, ...d.lunch },
+            dinner: { ...EMPTY_DISHES, ...d.dinner },
+          })),
+        }
+      : this.cloneDefault();
     const byDay = new Map<BentoWeekdayCode, BentoWeekdayMenu>(
       defaults.weekdays.map((d) => [d.weekday, d]),
     );
@@ -307,7 +321,7 @@ export class BentoMenuService {
 
   setConfig(input: unknown): BentoMenuConfig {
     const store = this.readStore();
-    store.template = this.normalize(input);
+    store.template = this.normalize(input, store.template);
     this.writeStore(store);
     return store.template;
   }
@@ -351,7 +365,12 @@ export class BentoMenuService {
       });
     }
     const store = this.readStore();
-    const incoming = this.normalize(input);
+    // Fall back to the effective stored week (override or template) so fields
+    // the editor omits — notably dish photos — carry over on save.
+    const incoming = this.normalize(
+      input,
+      this.getWeekConfig(weekStartIso),
+    );
     store.weeks[weekStartIso] = { weekdays: incoming.weekdays };
     const tplByDay = new Map(store.template.weekdays.map((d) => [d.weekday, d]));
     for (const d of incoming.weekdays) {

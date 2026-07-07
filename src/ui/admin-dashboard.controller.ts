@@ -768,6 +768,35 @@ export class AdminDashboardController {
       .vc-form { grid-template-columns: 1fr; }
       .vc-form .vc-field { grid-template-columns: 130px 1fr; }
     }
+    /* Bento weekly menu editor cells: stacked EN/中文 dish + description. */
+    .bm-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 160px;
+      padding: 2px 0;
+    }
+    .bm-cell .bm-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 8px;
+    }
+    .bm-cell .bm-lbl:first-child { margin-top: 0; }
+    .bm-cell .bm-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12.5px;
+      font-family: inherit;
+      background: #fff;
+    }
+    .bm-cell .bm-input:disabled { background: #f1f5f9; color: #94a3b8; }
+    .bm-cell textarea.bm-input { resize: vertical; line-height: 1.45; }
     .hidden { display: none !important; }
     body.login-locked { overflow: hidden; }
     .login-screen {
@@ -5696,42 +5725,24 @@ export class AdminDashboardController {
         var lunch = d.lunch || {};
         var dinner = d.dinner || {};
         var dis = d.closed ? ' disabled' : '';
-        function stackedInp(field, val, zhVal, zhPlaceholder, enPlaceholder) {
-          return '<div style="display:flex;flex-direction:column;gap:4px">' +
-            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Main dish</span>' +
-            '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + bmAttr(enPlaceholder || (d.closed ? 'Closed' : 'English')) + '" />' +
-            '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
-            '</div>';
-        }
-        function stackedDesc(field, val, zhVal, zhPlaceholder) {
-          return '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">' +
-            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Description</span>' +
-            '<textarea class="bm-input" data-field="' + field + '" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="English description">' + bmAttr(val) + '</textarea>' +
-            '<textarea class="bm-input" data-field="' + field + 'Zh" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="' + bmAttr(zhPlaceholder || '中文描述') + '">' + bmAttr(zhVal) + '</textarea>' +
-            '</div>';
-        }
         function mealCol(prefix, meal, dishField, descField, zhDishPh, zhDescPh, enDishPh) {
-          return stackedInp(prefix + '.' + dishField, meal[dishField], meal[dishField + 'Zh'], zhDishPh, enDishPh) +
-            stackedDesc(prefix + '.' + descField, meal[descField], meal[descField + 'Zh'], zhDescPh);
-        }
-        function photoCtrl(meal, img) {
-          var url = img || '';
-          var thumb = url
-            ? '<img src="' + bmAttr(url) + '" class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0" />'
-            : '<span class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px">🍽️</span>';
-          return '<div class="bm-photo" style="display:flex;align-items:center;gap:6px;margin-top:6px">' +
-            thumb +
-            '<input type="hidden" class="bm-input" data-field="' + meal + '.image" value="' + bmAttr(url) + '" />' +
-            '<button type="button" class="btn-outline bm-photo-upload" style="padding:3px 9px;font-size:11px"' + dis + '>Photo</button>' +
-            (url ? '<button type="button" class="bm-photo-remove" title="Remove photo" style="border:none;background:none;cursor:pointer;color:#b91c1c;font-size:16px;line-height:1"' + dis + '>×</button>' : '') +
+          var dishBase = prefix + '.' + dishField;
+          var descBase = prefix + '.' + descField;
+          return '<div class="bm-cell">' +
+            '<span class="bm-lbl">Main dish</span>' +
+            '<input type="text" class="bm-input" data-field="' + dishBase + '" value="' + bmAttr(meal[dishField]) + '"' + dis + ' placeholder="' + bmAttr(d.closed ? 'Closed' : (enDishPh || 'English')) + '" />' +
+            '<input type="text" class="bm-input" data-field="' + dishBase + 'Zh" value="' + bmAttr(meal[dishField + 'Zh']) + '"' + dis + ' placeholder="' + bmAttr(zhDishPh || '中文') + '" />' +
+            '<span class="bm-lbl">Description</span>' +
+            '<textarea class="bm-input" data-field="' + descBase + '" rows="2"' + dis + ' placeholder="English description">' + bmAttr(meal[descField]) + '</textarea>' +
+            '<textarea class="bm-input" data-field="' + descBase + 'Zh" rows="2"' + dis + ' placeholder="' + bmAttr(zhDescPh || '中文描述') + '">' + bmAttr(meal[descField + 'Zh']) + '</textarea>' +
             '</div>';
         }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
           '<td>' + mealCol('lunch', lunch, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
-          '<td>' + mealCol('lunch', lunch, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('lunch', lunch.image) + '</td>' +
+          '<td>' + mealCol('lunch', lunch, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + '</td>' +
           '<td>' + mealCol('dinner', dinner, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
-          '<td>' + mealCol('dinner', dinner, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('dinner', dinner.image) + '</td>' +
+          '<td>' + mealCol('dinner', dinner, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
@@ -5802,7 +5813,8 @@ export class AdminDashboardController {
               regularDescZh: val('lunch.regularDescZh'),
               vegDesc: val('lunch.vegDesc'),
               vegDescZh: val('lunch.vegDescZh'),
-              image: val('lunch.image'),
+              // image omitted on purpose: the backend keeps the stored photo
+              // when the field is absent (photo upload was removed from this UI).
             },
             dinner: {
               regular: val('dinner.regular'),
@@ -5813,84 +5825,11 @@ export class AdminDashboardController {
               regularDescZh: val('dinner.regularDescZh'),
               vegDesc: val('dinner.vegDesc'),
               vegDescZh: val('dinner.vegDescZh'),
-              image: val('dinner.image'),
             },
           };
         }),
       };
     }
-    async function bentoMenuUploadPhoto(photoEl) {
-      if (!photoEl) return;
-      var fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
-      fileInput.onchange = async function () {
-        var file = fileInput.files && fileInput.files[0];
-        if (!file) return;
-        var btn = photoEl.querySelector('.bm-photo-upload');
-        var out = document.getElementById('bentoMenuSaveResult');
-        if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
-        try {
-          var headers = { ...getAuthHeaders() };
-          delete headers['Content-Type'];
-          var fd = new FormData();
-          fd.append('file', file);
-          var res = await fetch('/admin/bento-menu/image', { method: 'POST', headers, body: fd });
-          if (!res.ok) {
-            var txt = await res.text();
-            throw new Error('Upload failed (' + res.status + '): ' + txt);
-          }
-          var data = await res.json();
-          var url = data && data.url;
-          var hidden = photoEl.querySelector('input[type="hidden"]');
-          if (hidden) hidden.value = url || '';
-          var thumb = photoEl.querySelector('.bm-photo-thumb');
-          if (thumb && url) {
-            var img = document.createElement('img');
-            img.src = url;
-            img.className = 'bm-photo-thumb';
-            img.style.cssText = 'width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0';
-            thumb.replaceWith(img);
-          }
-          if (out) out.textContent = 'Photo uploaded — click Save menu to publish.';
-        } catch (e) {
-          if (out) out.textContent = e.message || String(e);
-        } finally {
-          if (btn) { btn.disabled = false; btn.textContent = 'Photo'; }
-        }
-      };
-      fileInput.click();
-    }
-    (function () {
-      var menuBody = document.getElementById('bentoMenuBody');
-      if (!menuBody) return;
-      menuBody.addEventListener('click', function (e) {
-        var up = e.target.closest ? e.target.closest('.bm-photo-upload') : null;
-        if (up) {
-          var pe = up.closest('.bm-photo');
-          if (pe) bentoMenuUploadPhoto(pe);
-          return;
-        }
-        var rm = e.target.closest ? e.target.closest('.bm-photo-remove') : null;
-        if (rm) {
-          var pe2 = rm.closest('.bm-photo');
-          if (!pe2) return;
-          var hidden = pe2.querySelector('input[type="hidden"]');
-          if (hidden) hidden.value = '';
-          var thumb = pe2.querySelector('.bm-photo-thumb');
-          if (thumb) {
-            var span = document.createElement('span');
-            span.className = 'bm-photo-thumb';
-            span.style.cssText = 'width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px';
-            span.textContent = '🍽️';
-            thumb.replaceWith(span);
-          }
-          rm.remove();
-          var out = document.getElementById('bentoMenuSaveResult');
-          if (out) out.textContent = 'Photo removed — click Save menu to publish.';
-        }
-      });
-    })();
 
     async function loadBentoSettings() {
       var capEl = document.getElementById('bentoDailyCapacity');
