@@ -1,0 +1,575 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  CustomerStatus,
+  EmailAudienceKind,
+  EmailCampaign,
+  EmailCampaignStatus,
+  EmailRecipientStatus,
+  Prisma,
+} from '@prisma/client';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../notifications/email.service';
+import {
+  CreateCampaignDto,
+  UpdateCampaignDto,
+} from './dto/upsert-campaign.dto';
+import {
+  renderCampaignEmail,
+  TEMPLATE_PRESETS,
+} from './mailer-templates';
+
+/** States in which the draft content may still be edited. */
+const EDITABLE_STATUSES: EmailCampaignStatus[] = [
+  EmailCampaignStatus.DRAFT,
+  EmailCampaignStatus.SCHEDULED,
+];
+
+/** How often the dispatcher looks for due campaigns. */
+const DISPATCH_POLL_MS = 30_000;
+/** Pause between individual sends — Resend free tier allows ~2 req/s. */
+const SEND_GAP_MS = 600;
+
+@Injectable()
+export class MailerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(MailerService.name);
+  private dispatchTimer: NodeJS.Timeout | null = null;
+  private dispatching = false;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly email: EmailService,
+  ) {}
+
+  onModuleInit(): void {
+    // Skip the background dispatcher in tests to keep runs deterministic.
+    if (process.env.NODE_ENV === 'test') return;
+    this.dispatchTimer = setInterval(() => {
+      void this.dispatchDueCampaigns().catch((err) => {
+        this.logger.error(
+          `Mailer dispatch tick failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }, DISPATCH_POLL_MS);
+    this.dispatchTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.dispatchTimer) clearInterval(this.dispatchTimer);
+  }
+
+  // ---- Template presets -------------------------------------------------
+
+  getTemplates() {
+    return { templates: TEMPLATE_PRESETS };
+  }
+
+  // ---- Campaign CRUD ----------------------------------------------------
+
+  async listCampaigns() {
+    const campaigns = await this.prisma.emailCampaign.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return { campaigns: campaigns.map((c) => this.toSummary(c)) };
+  }
+
+  async getCampaign(id: string) {
+    const campaign = await this.prisma.emailCampaign.findUnique({
+      where: { id },
+    });
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    const recipientErrors = await this.prisma.emailCampaignRecipient.findMany({
+      where: { campaignId: id, status: EmailRecipientStatus.FAILED },
+      take: 20,
+      select: { email: true, error: true },
+    });
+    return { campaign: this.toDetail(campaign), recipientErrors };
+  }
+
+  async createCampaign(dto: CreateCampaignDto, actorLabel: string | null) {
+    const campaign = await this.prisma.emailCampaign.create({
+      data: {
+        name: dto.name.trim(),
+        templateKind: dto.templateKind,
+        subject: dto.subject.trim(),
+        preheader: dto.preheader?.trim() || null,
+        bodyHtml: dto.bodyHtml,
+        audience: dto.audience,
+        tierFilter: this.normalizeTier(dto.tierFilter),
+        createdBy: actorLabel,
+      },
+    });
+    return { campaign: this.toDetail(campaign) };
+  }
+
+  async updateCampaign(id: string, dto: UpdateCampaignDto) {
+    const existing = await this.requireCampaign(id);
+    if (!EDITABLE_STATUSES.includes(existing.status)) {
+      throw new BadRequestException(
+        `Campaign can no longer be edited (status: ${existing.status})`,
+      );
+    }
+    const campaign = await this.prisma.emailCampaign.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.templateKind !== undefined
+          ? { templateKind: dto.templateKind }
+          : {}),
+        ...(dto.subject !== undefined ? { subject: dto.subject.trim() } : {}),
+        ...(dto.preheader !== undefined
+          ? { preheader: dto.preheader?.trim() || null }
+          : {}),
+        ...(dto.bodyHtml !== undefined ? { bodyHtml: dto.bodyHtml } : {}),
+        ...(dto.audience !== undefined ? { audience: dto.audience } : {}),
+        ...(dto.tierFilter !== undefined
+          ? { tierFilter: this.normalizeTier(dto.tierFilter) }
+          : {}),
+      },
+    });
+    return { campaign: this.toDetail(campaign) };
+  }
+
+  async duplicateCampaign(id: string, actorLabel: string | null) {
+    const existing = await this.requireCampaign(id);
+    const campaign = await this.prisma.emailCampaign.create({
+      data: {
+        name: `${existing.name} (copy)`.slice(0, 120),
+        templateKind: existing.templateKind,
+        subject: existing.subject,
+        preheader: existing.preheader,
+        bodyHtml: existing.bodyHtml,
+        audience: existing.audience,
+        tierFilter: existing.tierFilter,
+        createdBy: actorLabel,
+      },
+    });
+    return { campaign: this.toDetail(campaign) };
+  }
+
+  async deleteCampaign(id: string) {
+    const existing = await this.requireCampaign(id);
+    if (
+      existing.status === EmailCampaignStatus.SENDING ||
+      existing.status === EmailCampaignStatus.SCHEDULED
+    ) {
+      throw new BadRequestException(
+        'Cancel the campaign before deleting it.',
+      );
+    }
+    await this.prisma.emailCampaign.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  // ---- Scheduling -------------------------------------------------------
+
+  async scheduleCampaign(id: string, scheduledAtIso: string | undefined) {
+    const existing = await this.requireCampaign(id);
+    if (!EDITABLE_STATUSES.includes(existing.status)) {
+      throw new BadRequestException(
+        `Campaign cannot be scheduled (status: ${existing.status})`,
+      );
+    }
+    if (!existing.subject.trim() || !existing.bodyHtml.trim()) {
+      throw new BadRequestException(
+        'Campaign needs a subject and body before it can be scheduled.',
+      );
+    }
+    const scheduledAt = scheduledAtIso ? new Date(scheduledAtIso) : new Date();
+    if (Number.isNaN(scheduledAt.getTime())) {
+      throw new BadRequestException('Invalid scheduledAt datetime.');
+    }
+    const { count } = await this.audiencePreview(
+      existing.audience,
+      existing.tierFilter,
+    );
+    if (count === 0) {
+      throw new BadRequestException(
+        'The selected audience has no recipients with an email address.',
+      );
+    }
+    const campaign = await this.prisma.emailCampaign.update({
+      where: { id },
+      data: { status: EmailCampaignStatus.SCHEDULED, scheduledAt },
+    });
+    // Fire the dispatcher soon after "send now" instead of waiting a tick.
+    if (scheduledAt.getTime() <= Date.now()) {
+      setTimeout(() => void this.dispatchDueCampaigns().catch(() => {}), 100);
+    }
+    return { campaign: this.toDetail(campaign) };
+  }
+
+  async cancelCampaign(id: string) {
+    const existing = await this.requireCampaign(id);
+    if (existing.status !== EmailCampaignStatus.SCHEDULED) {
+      throw new BadRequestException(
+        'Only scheduled campaigns can be cancelled. Campaigns already sending will finish the current run.',
+      );
+    }
+    const campaign = await this.prisma.emailCampaign.update({
+      where: { id },
+      data: { status: EmailCampaignStatus.CANCELLED, scheduledAt: null },
+    });
+    return { campaign: this.toDetail(campaign) };
+  }
+
+  // ---- Audience ---------------------------------------------------------
+
+  async audiencePreview(
+    audience: EmailAudienceKind,
+    tierFilter: string | null,
+  ) {
+    const where = this.audienceWhere(audience, tierFilter);
+    const count = await this.prisma.customer.count({ where });
+    return { audience, tierFilter, count };
+  }
+
+  private audienceWhere(
+    audience: EmailAudienceKind,
+    tierFilter: string | null,
+  ): Prisma.CustomerWhereInput {
+    return {
+      status: CustomerStatus.ACTIVE,
+      email: { not: null },
+      ...(audience === EmailAudienceKind.OPTED_IN
+        ? { marketingConsent: true }
+        : {}),
+      ...(tierFilter ? { memberTier: tierFilter } : {}),
+    };
+  }
+
+  // ---- Test send & preview ----------------------------------------------
+
+  async previewCampaign(id: string) {
+    const campaign = await this.requireCampaign(id);
+    const rendered = renderCampaignEmail({
+      subject: campaign.subject,
+      preheader: campaign.preheader,
+      bodyHtml: campaign.bodyHtml,
+      recipientName: 'Preview Member',
+      unsubscribeUrl: this.unsubscribeUrl('00000000-0000-0000-0000-000000000000'),
+      brandName: this.brandName(),
+    });
+    return { subject: rendered.subject, html: rendered.html };
+  }
+
+  async testSend(id: string, to: string) {
+    const campaign = await this.requireCampaign(id);
+    const address = to.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      throw new BadRequestException('Invalid test email address.');
+    }
+    if (!this.email.isConfigured()) {
+      throw new BadRequestException(
+        'Email sending is not configured (RESEND_API_KEY / from address missing).',
+      );
+    }
+    const rendered = renderCampaignEmail({
+      subject: `[TEST] ${campaign.subject}`,
+      preheader: campaign.preheader,
+      bodyHtml: campaign.bodyHtml,
+      recipientName: 'Test Member',
+      unsubscribeUrl: this.unsubscribeUrl('00000000-0000-0000-0000-000000000000'),
+      brandName: this.brandName(),
+    });
+    const ok = await this.email.send({
+      to: address,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      from: this.marketingFrom(),
+    });
+    if (!ok) {
+      throw new BadRequestException(
+        'Test send failed — check server logs for the Resend error.',
+      );
+    }
+    return { ok: true };
+  }
+
+  // ---- Unsubscribe ------------------------------------------------------
+
+  unsubscribeToken(customerId: string): string {
+    const secret =
+      this.config.get<string>('ADMIN_JWT_SECRET') ||
+      this.config.get<string>('JWT_SECRET') ||
+      '';
+    return createHmac('sha256', `mailer-unsub:${secret}`)
+      .update(customerId)
+      .digest('hex')
+      .slice(0, 32);
+  }
+
+  verifyUnsubscribeToken(customerId: string, token: string): boolean {
+    const expected = Buffer.from(this.unsubscribeToken(customerId));
+    const given = Buffer.from(token);
+    return (
+      expected.length === given.length && timingSafeEqual(expected, given)
+    );
+  }
+
+  unsubscribeUrl(customerId: string): string | null {
+    const base = (this.config.get<string>('API_PUBLIC_URL') ?? '')
+      .trim()
+      .replace(/\/$/, '');
+    if (!base) return null;
+    return `${base}/mailer/unsubscribe?c=${customerId}&t=${this.unsubscribeToken(customerId)}`;
+  }
+
+  async unsubscribe(customerId: string, token: string): Promise<boolean> {
+    if (!customerId || !token) return false;
+    if (!this.verifyUnsubscribeToken(customerId, token)) return false;
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) return false;
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { marketingConsent: false },
+    });
+    this.logger.log(`Customer ${customerId} unsubscribed from marketing email.`);
+    return true;
+  }
+
+  // ---- Dispatcher -------------------------------------------------------
+
+  /**
+   * Pick up campaigns whose schedule time has arrived and send them.
+   * Claiming flips SCHEDULED → SENDING atomically (updateMany with status
+   * guard) so parallel instances never double-send a campaign.
+   */
+  async dispatchDueCampaigns(): Promise<void> {
+    if (this.dispatching) return;
+    this.dispatching = true;
+    try {
+      const due = await this.prisma.emailCampaign.findMany({
+        where: {
+          status: EmailCampaignStatus.SCHEDULED,
+          scheduledAt: { lte: new Date() },
+        },
+        select: { id: true },
+        take: 5,
+      });
+      for (const { id } of due) {
+        const claimed = await this.prisma.emailCampaign.updateMany({
+          where: { id, status: EmailCampaignStatus.SCHEDULED },
+          data: {
+            status: EmailCampaignStatus.SENDING,
+            startedAt: new Date(),
+          },
+        });
+        if (claimed.count === 0) continue;
+        await this.runCampaign(id);
+      }
+    } finally {
+      this.dispatching = false;
+    }
+  }
+
+  private async runCampaign(id: string): Promise<void> {
+    const campaign = await this.prisma.emailCampaign.findUnique({
+      where: { id },
+    });
+    if (!campaign) return;
+    this.logger.log(`Mailer: sending campaign "${campaign.name}" (${id})`);
+
+    if (!this.email.isConfigured()) {
+      await this.prisma.emailCampaign.update({
+        where: { id },
+        data: {
+          status: EmailCampaignStatus.FAILED,
+          lastError:
+            'Email transport not configured (RESEND_API_KEY / from address missing).',
+          completedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    // Materialize the recipient list (idempotent via skipDuplicates so a
+    // restarted run doesn't re-add rows).
+    const customers = await this.prisma.customer.findMany({
+      where: this.audienceWhere(campaign.audience, campaign.tierFilter),
+      select: { id: true, email: true, displayName: true },
+    });
+    await this.prisma.emailCampaignRecipient.createMany({
+      data: customers.map((c) => ({
+        campaignId: id,
+        customerId: c.id,
+        email: (c.email ?? '').trim().toLowerCase(),
+      })),
+      skipDuplicates: true,
+    });
+    await this.prisma.emailCampaign.update({
+      where: { id },
+      data: { totalRecipients: customers.length },
+    });
+
+    const nameByCustomer = new Map(
+      customers.map((c) => [c.id, c.displayName ?? null]),
+    );
+    const from = this.marketingFrom();
+    const brand = this.brandName();
+
+    // Send PENDING recipients one by one; each row is marked before moving
+    // on, so a crash mid-run resumes where it left off.
+    let sent = 0;
+    let failed = 0;
+    // Track counts already recorded from a previous interrupted run.
+    const prior = await this.prisma.emailCampaignRecipient.groupBy({
+      by: ['status'],
+      where: { campaignId: id },
+      _count: { _all: true },
+    });
+    for (const row of prior) {
+      if (row.status === EmailRecipientStatus.SENT) sent += row._count._all;
+      if (row.status === EmailRecipientStatus.FAILED)
+        failed += row._count._all;
+    }
+
+    for (;;) {
+      const batch = await this.prisma.emailCampaignRecipient.findMany({
+        where: { campaignId: id, status: EmailRecipientStatus.PENDING },
+        take: 50,
+      });
+      if (batch.length === 0) break;
+
+      for (const recipient of batch) {
+        if (!recipient.email) {
+          await this.prisma.emailCampaignRecipient.update({
+            where: { id: recipient.id },
+            data: {
+              status: EmailRecipientStatus.SKIPPED,
+              error: 'No email address',
+            },
+          });
+          continue;
+        }
+        const rendered = renderCampaignEmail({
+          subject: campaign.subject,
+          preheader: campaign.preheader,
+          bodyHtml: campaign.bodyHtml,
+          recipientName: nameByCustomer.get(recipient.customerId) ?? null,
+          unsubscribeUrl: this.unsubscribeUrl(recipient.customerId),
+          brandName: brand,
+        });
+        const ok = await this.email.send({
+          to: recipient.email,
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+          from,
+        });
+        if (ok) {
+          sent += 1;
+          await this.prisma.emailCampaignRecipient.update({
+            where: { id: recipient.id },
+            data: { status: EmailRecipientStatus.SENT, sentAt: new Date() },
+          });
+        } else {
+          failed += 1;
+          await this.prisma.emailCampaignRecipient.update({
+            where: { id: recipient.id },
+            data: {
+              status: EmailRecipientStatus.FAILED,
+              error: 'Send failed (see server logs)',
+            },
+          });
+        }
+        await this.prisma.emailCampaign.update({
+          where: { id },
+          data: { sentCount: sent, failedCount: failed },
+        });
+        await sleep(SEND_GAP_MS);
+      }
+    }
+
+    await this.prisma.emailCampaign.update({
+      where: { id },
+      data: {
+        status:
+          sent === 0 && failed > 0
+            ? EmailCampaignStatus.FAILED
+            : EmailCampaignStatus.SENT,
+        sentCount: sent,
+        failedCount: failed,
+        completedAt: new Date(),
+        lastError:
+          failed > 0 ? `${failed} recipient(s) failed — see campaign detail.` : null,
+      },
+    });
+    this.logger.log(
+      `Mailer: campaign "${campaign.name}" done — sent=${sent} failed=${failed}`,
+    );
+  }
+
+  // ---- Helpers ----------------------------------------------------------
+
+  private async requireCampaign(id: string): Promise<EmailCampaign> {
+    const campaign = await this.prisma.emailCampaign.findUnique({
+      where: { id },
+    });
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    return campaign;
+  }
+
+  private normalizeTier(tier: string | null | undefined): string | null {
+    const t = (tier ?? '').trim().toLowerCase();
+    return t || null;
+  }
+
+  private brandName(): string {
+    return this.email.getSubjectPrefix();
+  }
+
+  /** Marketing from-address; falls back to the transactional from. */
+  private marketingFrom(): string | undefined {
+    const from = this.config.get<string>('MARKETING_EMAIL_FROM')?.trim();
+    return from || undefined;
+  }
+
+  private toSummary(c: EmailCampaign) {
+    return {
+      id: c.id,
+      name: c.name,
+      templateKind: c.templateKind,
+      subject: c.subject,
+      audience: c.audience,
+      tierFilter: c.tierFilter,
+      status: c.status,
+      scheduledAt: c.scheduledAt,
+      completedAt: c.completedAt,
+      totalRecipients: c.totalRecipients,
+      sentCount: c.sentCount,
+      failedCount: c.failedCount,
+      createdBy: c.createdBy,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    };
+  }
+
+  private toDetail(c: EmailCampaign) {
+    return {
+      ...this.toSummary(c),
+      preheader: c.preheader,
+      bodyHtml: c.bodyHtml,
+      startedAt: c.startedAt,
+      lastError: c.lastError,
+    };
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

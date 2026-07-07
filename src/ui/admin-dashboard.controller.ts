@@ -11,6 +11,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     loyalty: { showGroup: true, showSubmenu: true },
     vouchers: { showGroup: false, showSubmenu: true },
     campaigns: { showGroup: false, showSubmenu: true },
+    mailer: { showGroup: true, showSubmenu: true },
     'data-tools': { showGroup: false, showSubmenu: true },
     reports: { showGroup: false, showSubmenu: true },
     settings: { showGroup: true, showSubmenu: true },
@@ -31,6 +32,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-vouchers': true,
     'voucher-campaigns': true,
     'gift-rewards': true,
+    'mailer-campaigns': true,
     'settings-shopping-catalog': true,
     'settings-shop-layout': true,
     'settings-popular-items': true,
@@ -1152,6 +1154,15 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
+        <details class="nav-group" data-menu-group="mailer" open>
+          <summary>Email marketing</summary>
+          <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="mailer-campaigns">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              Email campaigns
+            </button>
+          </div>
+        </details>
         <details class="nav-group" data-menu-group="data-tools" open>
           <summary>Data Tools</summary>
           <div class="nav-items">
@@ -2209,6 +2220,101 @@ export class AdminDashboardController {
                 <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead>
                 <tbody id="campaignHistoryBody"></tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="mailer-campaigns" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Email campaigns</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="mailNewBtn">New campaign</button>
+                <button type="button" class="btn-outline" id="mailRefreshBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Draft marketing emails, send a test to yourself, then send now or schedule for later.
+                Emails go to <strong>active members with an email address</strong>; the default audience only includes members who opted in to marketing.
+                Every email carries an automatic unsubscribe link.
+              </p>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">1 &middot; Start from a template</h3>
+              <div id="mailTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:18px"></div>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 4px;font-size:14px">2 &middot; Draft the email &mdash; <span id="mailEditorMode">new campaign</span></h3>
+                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
+                <input type="hidden" id="mailEditingId" value="" />
+                <input type="hidden" id="mailTemplateKind" value="PLAIN" />
+                <div class="vc-form">
+                  <div class="vc-field">
+                    <label for="mailName">Internal name</label>
+                    <input type="text" id="mailName" placeholder="e.g. July newsletter" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailSubject">Subject</label>
+                    <input type="text" id="mailSubject" placeholder="e.g. This week at Moja Maison" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailPreheader">Preview line</label>
+                    <input type="text" id="mailPreheader" placeholder="Shown next to the subject in the inbox (optional)" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailBody">Body (HTML)</label>
+                    <textarea id="mailBody" rows="12" style="width:100%;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.5;border:1px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&#10;&lt;p&gt;Write your message here...&lt;/p&gt;"></textarea>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailAudience">Audience</label>
+                    <select id="mailAudience">
+                      <option value="OPTED_IN">Opted-in members (recommended)</option>
+                      <option value="ALL_WITH_EMAIL">All members with email</option>
+                    </select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailTier">Member tier</label>
+                    <input type="text" id="mailTier" placeholder="all tiers (e.g. gold)" />
+                  </div>
+                </div>
+                <p class="field-hint" id="mailAudienceCount" style="margin:10px 0 0"></p>
+                <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="mailSaveBtn">Save draft</button>
+                  <button type="button" class="btn-outline" id="mailPreviewBtn">Preview</button>
+                  <input type="email" id="mailTestEmail" placeholder="you@example.com" style="max-width:220px" />
+                  <button type="button" class="btn-outline" id="mailTestBtn">Send test</button>
+                  <span class="field-hint" id="mailEditorResult" style="margin:0"></span>
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px dashed #cbd5e1;padding-top:12px">
+                  <input type="datetime-local" id="mailScheduleAt" style="max-width:230px" />
+                  <button type="button" class="btn-outline" id="mailScheduleBtn">Schedule</button>
+                  <button type="button" class="btn-primary" id="mailSendNowBtn">Send now</button>
+                  <span class="field-hint" id="mailScheduleResult" style="margin:0"></span>
+                </div>
+                <div id="mailPreviewWrap" style="display:none;margin-top:14px">
+                  <h3 style="margin:0 0 6px;font-size:14px">Preview</h3>
+                  <iframe id="mailPreviewFrame" title="Email preview" style="width:100%;height:460px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+                </div>
+              </div>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">Your campaigns</h3>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Subject</th>
+                      <th>Audience</th>
+                      <th style="text-align:center">Status</th>
+                      <th>Scheduled / sent</th>
+                      <th style="text-align:center">Delivered</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mailCampaignsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="mailListResult"></p>
             </div>
           </div>
         </section>
@@ -3558,6 +3664,7 @@ export class AdminDashboardController {
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
       'voucher-campaigns', 'gift-rewards',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
+      'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
       'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
@@ -3615,6 +3722,7 @@ export class AdminDashboardController {
       'campaigns-push-points': iconLoyalty,
       'campaigns-push-wallet': iconWallet,
       'campaigns-history': '<path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4"/><polyline points="12 7 12 12 15 15"/>',
+      'mailer-campaigns': '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
       'data-import': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
       'data-export': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
       'data-templates': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><line x1="7" y1="10" x2="17" y2="10"/>',
@@ -3664,6 +3772,7 @@ export class AdminDashboardController {
       'campaigns-push-points': 'Campaigns · Push points',
       'campaigns-push-wallet': 'Campaigns · Push wallet bonus',
       'campaigns-history': 'Campaigns · History',
+      'mailer-campaigns': 'Email marketing · Campaigns',
       'data-import': 'Data Tools · Import data',
       'data-export': 'Data Tools · Export data',
       'data-templates': 'Data Tools · Template downloads',
@@ -7596,6 +7705,272 @@ export class AdminDashboardController {
       await Promise.all([loadEmTimeEntries(), loadEmCalendarTable()]);
     }
 
+    // ---- Email marketing (mailer) ----
+    var mailerInitialized = false;
+
+    function mailSetResult(id, msg, isError) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = isError ? '#dc2626' : '';
+    }
+    function mailEditorErr(e) { mailSetResult('mailEditorResult', e.message, true); }
+    function mailScheduleErr(e) { mailSetResult('mailScheduleResult', e.message, true); }
+    function mailListErr(e) { mailSetResult('mailListResult', e.message, true); }
+
+    function mailerInit() {
+      if (mailerInitialized) return;
+      mailerInitialized = true;
+      document.getElementById('mailNewBtn').addEventListener('click', mailResetEditor);
+      document.getElementById('mailRefreshBtn').addEventListener('click', function () {
+        loadMailCampaigns().catch(mailListErr);
+        mailUpdateAudienceCount();
+      });
+      document.getElementById('mailSaveBtn').addEventListener('click', function () {
+        mailSave().then(function () {
+          mailSetResult('mailEditorResult', 'Draft saved.');
+        }).catch(mailEditorErr);
+      });
+      document.getElementById('mailPreviewBtn').addEventListener('click', function () {
+        mailPreview().catch(mailEditorErr);
+      });
+      document.getElementById('mailTestBtn').addEventListener('click', function () {
+        mailTestSend().catch(mailEditorErr);
+      });
+      document.getElementById('mailScheduleBtn').addEventListener('click', function () {
+        mailSchedule(false).catch(mailScheduleErr);
+      });
+      document.getElementById('mailSendNowBtn').addEventListener('click', function () {
+        mailSchedule(true).catch(mailScheduleErr);
+      });
+      document.getElementById('mailAudience').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailTier').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailCampaignsBody').addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('button[data-mail-act]') : null;
+        if (btn) mailTableAction(btn.getAttribute('data-mail-act'), btn.getAttribute('data-id')).catch(mailListErr);
+      });
+      mailLoadTemplates().catch(function () {});
+      loadMailCampaigns().catch(mailListErr);
+      mailUpdateAudienceCount();
+    }
+
+    async function mailLoadTemplates() {
+      var grid = document.getElementById('mailTemplateGrid');
+      if (!grid) return;
+      var data = await api('/admin/mailer/templates');
+      var icons = { WELCOME: '👋', WEEKLY: '🍱', EVENT: '🎉', PLAIN: '📝' };
+      grid.innerHTML = (data.templates || []).map(function (t) {
+        return '<button type="button" class="btn-outline" data-mail-template="' + vcEsc(t.kind) + '"' +
+          ' style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;text-align:left;height:auto;cursor:pointer">' +
+          '<span style="font-size:20px">' + (icons[t.kind] || '📝') + '</span>' +
+          '<strong style="font-size:13px">' + vcEsc(t.label) + '</strong>' +
+          '<span class="field-hint" style="margin:0;font-size:11.5px">' + vcEsc(t.description) + '</span></button>';
+      }).join('');
+      grid.querySelectorAll('button[data-mail-template]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var kind = btn.getAttribute('data-mail-template');
+          var t = (data.templates || []).find(function (x) { return x.kind === kind; });
+          if (!t) return;
+          var bodyEl = document.getElementById('mailBody');
+          if (bodyEl.value.trim() && !window.confirm('Replace the current draft content with the "' + t.label + '" template?')) return;
+          document.getElementById('mailTemplateKind').value = t.kind;
+          document.getElementById('mailSubject').value = t.subject || '';
+          document.getElementById('mailPreheader').value = t.preheader || '';
+          bodyEl.value = t.bodyHtml || '';
+          var nameEl = document.getElementById('mailName');
+          if (!nameEl.value.trim()) nameEl.value = t.label;
+          grid.querySelectorAll('button[data-mail-template]').forEach(function (b) {
+            b.style.borderColor = '';
+            b.style.background = '';
+          });
+          btn.style.borderColor = '#2563eb';
+          btn.style.background = '#eff6ff';
+          mailSetResult('mailEditorResult', 'Template loaded — edit and save as draft.');
+        });
+      });
+    }
+
+    function mailResetEditor() {
+      document.getElementById('mailEditingId').value = '';
+      document.getElementById('mailTemplateKind').value = 'PLAIN';
+      ['mailName', 'mailSubject', 'mailPreheader', 'mailBody', 'mailTestEmail', 'mailScheduleAt'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('mailAudience').value = 'OPTED_IN';
+      document.getElementById('mailTier').value = '';
+      document.getElementById('mailEditorMode').textContent = 'new campaign';
+      document.getElementById('mailPreviewWrap').style.display = 'none';
+      mailSetResult('mailEditorResult', '');
+      mailSetResult('mailScheduleResult', '');
+      mailUpdateAudienceCount();
+    }
+
+    function mailEditorPayload() {
+      return {
+        name: document.getElementById('mailName').value.trim(),
+        templateKind: document.getElementById('mailTemplateKind').value || 'PLAIN',
+        subject: document.getElementById('mailSubject').value.trim(),
+        preheader: document.getElementById('mailPreheader').value.trim() || null,
+        bodyHtml: document.getElementById('mailBody').value,
+        audience: document.getElementById('mailAudience').value,
+        tierFilter: document.getElementById('mailTier').value.trim() || null,
+      };
+    }
+
+    async function mailSave() {
+      var payload = mailEditorPayload();
+      if (!payload.name) throw new Error('Give the campaign an internal name.');
+      if (!payload.subject) throw new Error('Subject is required.');
+      if (!payload.bodyHtml.trim()) throw new Error('The email body is empty.');
+      var editingId = document.getElementById('mailEditingId').value;
+      var res;
+      if (editingId) {
+        res = await apiPatch('/admin/mailer/campaigns/' + editingId, payload);
+      } else {
+        res = await apiPost('/admin/mailer/campaigns', payload);
+        document.getElementById('mailEditingId').value = res.campaign.id;
+      }
+      document.getElementById('mailEditorMode').textContent = 'editing "' + res.campaign.name + '"';
+      await loadMailCampaigns();
+      return res.campaign.id;
+    }
+
+    async function mailEnsureSaved() {
+      var editingId = document.getElementById('mailEditingId').value;
+      if (editingId) { await mailSave(); return editingId; }
+      return mailSave();
+    }
+
+    async function mailPreview() {
+      var id = await mailEnsureSaved();
+      var data = await api('/admin/mailer/campaigns/' + id + '/preview');
+      var frame = document.getElementById('mailPreviewFrame');
+      frame.srcdoc = data.html;
+      document.getElementById('mailPreviewWrap').style.display = 'block';
+      mailSetResult('mailEditorResult', 'Preview updated (subject: ' + data.subject + ')');
+    }
+
+    async function mailTestSend() {
+      var address = document.getElementById('mailTestEmail').value.trim();
+      if (!address) throw new Error('Enter an email address for the test send.');
+      var id = await mailEnsureSaved();
+      mailSetResult('mailEditorResult', 'Sending test…');
+      await apiPost('/admin/mailer/campaigns/' + id + '/test-send', { email: address });
+      mailSetResult('mailEditorResult', 'Test email sent to ' + address + '.');
+    }
+
+    async function mailUpdateAudienceCount() {
+      var el = document.getElementById('mailAudienceCount');
+      if (!el) return;
+      try {
+        var aud = document.getElementById('mailAudience').value;
+        var tier = document.getElementById('mailTier').value.trim();
+        var data = await api('/admin/mailer/audience-preview?audience=' + encodeURIComponent(aud) + '&tier=' + encodeURIComponent(tier));
+        el.textContent = 'This audience currently has ' + data.count + ' recipient(s).';
+      } catch (e) {
+        el.textContent = '';
+      }
+    }
+
+    async function mailSchedule(sendNow) {
+      var id = await mailEnsureSaved();
+      var body = {};
+      var label;
+      if (sendNow) {
+        var countEl = document.getElementById('mailAudienceCount');
+        var confirmMsg = 'Send this campaign now?' + (countEl && countEl.textContent ? '\\n' + countEl.textContent : '');
+        if (!window.confirm(confirmMsg)) return;
+        label = 'Sending — refresh the list to follow progress.';
+      } else {
+        var v = document.getElementById('mailScheduleAt').value;
+        if (!v) throw new Error('Pick a date and time to schedule.');
+        var when = new Date(v);
+        if (isNaN(when.getTime())) throw new Error('Invalid schedule date.');
+        if (when.getTime() < Date.now() - 60000) throw new Error('The schedule time is in the past.');
+        body.scheduledAt = when.toISOString();
+        label = 'Scheduled for ' + when.toLocaleString() + '.';
+      }
+      await apiPost('/admin/mailer/campaigns/' + id + '/schedule', body);
+      mailSetResult('mailScheduleResult', label);
+      await loadMailCampaigns();
+    }
+
+    function mailStatusBadge(status) {
+      var colors = {
+        DRAFT: '#64748b', SCHEDULED: '#2563eb', SENDING: '#d97706',
+        SENT: '#059669', CANCELLED: '#94a3b8', FAILED: '#dc2626',
+      };
+      return '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:' + (colors[status] || '#64748b') + '">' + vcEsc(status) + '</span>';
+    }
+
+    async function loadMailCampaigns() {
+      var body = document.getElementById('mailCampaignsBody');
+      if (!body) return;
+      var data = await api('/admin/mailer/campaigns');
+      var rows = (data.campaigns || []).map(function (c) {
+        var audience = (c.audience === 'ALL_WITH_EMAIL' ? 'All with email' : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '');
+        var whenTxt = '';
+        if (c.status === 'SCHEDULED' && c.scheduledAt) whenTxt = new Date(c.scheduledAt).toLocaleString();
+        else if (c.completedAt) whenTxt = new Date(c.completedAt).toLocaleString();
+        var delivered = c.totalRecipients ? (c.sentCount + '/' + c.totalRecipients + (c.failedCount ? ' (' + c.failedCount + ' failed)' : '')) : '—';
+        var actions = '<button type="button" class="btn-outline" data-mail-act="open" data-id="' + c.id + '">Open</button> ' +
+          '<button type="button" class="btn-outline" data-mail-act="duplicate" data-id="' + c.id + '">Duplicate</button>';
+        if (c.status === 'SCHEDULED') actions += ' <button type="button" class="btn-outline" data-mail-act="cancel" data-id="' + c.id + '">Cancel</button>';
+        if (c.status === 'DRAFT' || c.status === 'CANCELLED' || c.status === 'SENT' || c.status === 'FAILED') {
+          actions += ' <button type="button" class="btn-outline" data-mail-act="delete" data-id="' + c.id + '">Delete</button>';
+        }
+        return '<tr>' +
+          '<td>' + vcEsc(c.name) + '</td>' +
+          '<td>' + vcEsc(c.subject) + '</td>' +
+          '<td>' + audience + '</td>' +
+          '<td style="text-align:center">' + mailStatusBadge(c.status) + '</td>' +
+          '<td>' + vcEsc(whenTxt) + '</td>' +
+          '<td style="text-align:center">' + vcEsc(delivered) + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + actions + '</td>' +
+          '</tr>';
+      });
+      body.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">No campaigns yet — draft your first one above.</td></tr>';
+      mailSetResult('mailListResult', '');
+    }
+
+    async function mailTableAction(act, id) {
+      if (act === 'open') {
+        var data = await api('/admin/mailer/campaigns/' + id);
+        var c = data.campaign;
+        document.getElementById('mailEditingId').value = c.id;
+        document.getElementById('mailTemplateKind').value = c.templateKind || 'PLAIN';
+        document.getElementById('mailName').value = c.name || '';
+        document.getElementById('mailSubject').value = c.subject || '';
+        document.getElementById('mailPreheader').value = c.preheader || '';
+        document.getElementById('mailBody').value = c.bodyHtml || '';
+        document.getElementById('mailAudience').value = c.audience || 'OPTED_IN';
+        document.getElementById('mailTier').value = c.tierFilter || '';
+        var editable = c.status === 'DRAFT' || c.status === 'SCHEDULED';
+        document.getElementById('mailEditorMode').textContent =
+          (editable ? 'editing "' : 'viewing "') + c.name + '" (' + c.status.toLowerCase() + ')';
+        document.getElementById('mailPreviewWrap').style.display = 'none';
+        mailSetResult('mailEditorResult', editable ? '' : 'This campaign has already run — duplicate it to send again.');
+        mailSetResult('mailScheduleResult', c.lastError ? 'Last run: ' + c.lastError : '');
+        mailUpdateAudienceCount();
+        document.getElementById('mailName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (act === 'duplicate') {
+        await apiPost('/admin/mailer/campaigns/' + id + '/duplicate', {});
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign duplicated as a new draft.');
+      } else if (act === 'cancel') {
+        if (!window.confirm('Cancel this scheduled campaign?')) return;
+        await apiPost('/admin/mailer/campaigns/' + id + '/cancel', {});
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign cancelled.');
+      } else if (act === 'delete') {
+        if (!window.confirm('Delete this campaign? This cannot be undone.')) return;
+        await apiDelete('/admin/mailer/campaigns/' + id);
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign deleted.');
+      }
+    }
+
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
       const tasks = [
@@ -7662,6 +8037,9 @@ export class AdminDashboardController {
       if (view === 'voucher-campaigns') {
         vcInitTemplates();
         vcInitDates();
+      }
+      if (view === 'mailer-campaigns') {
+        mailerInit();
       }
     }
 

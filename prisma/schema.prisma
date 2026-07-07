@@ -498,6 +498,7 @@ model Customer {
   bentoSubscriptions BentoSubscription[]
   bentoWeeklyOptIns  BentoWeeklyOptIn[]
   bentoDiscountRedemptions BentoDiscountRedemption[]
+  emailCampaignRecipients EmailCampaignRecipient[]
 
   @@index([displayName])
   @@index([email])
@@ -1156,4 +1157,84 @@ model AppSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+  FAILED
+}
+
+enum EmailTemplateKind {
+  WELCOME
+  WEEKLY
+  EVENT
+  PLAIN
+}
+
+enum EmailAudienceKind {
+  /// Active customers with an email address AND marketingConsent = true.
+  OPTED_IN
+  /// Every active customer with an email address (service announcements only).
+  ALL_WITH_EMAIL
+}
+
+enum EmailRecipientStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Admin-drafted marketing/announcement email, sent to a customer audience
+/// either immediately or at `scheduledAt` by the mailer dispatcher.
+model EmailCampaign {
+  id           String              @id @default(uuid()) @db.Uuid
+  name         String
+  templateKind EmailTemplateKind   @default(PLAIN) @map("template_kind")
+  subject      String
+  /// Inbox preview line rendered as hidden preheader text.
+  preheader    String?
+  /// Inner HTML body (placed inside the branded layout at send time).
+  bodyHtml     String              @map("body_html")
+  audience     EmailAudienceKind   @default(OPTED_IN)
+  /// Optional member tier filter (e.g. "gold"); null = all tiers.
+  tierFilter   String?             @map("tier_filter")
+  status       EmailCampaignStatus @default(DRAFT)
+  scheduledAt  DateTime?           @map("scheduled_at")
+  startedAt    DateTime?           @map("started_at")
+  completedAt  DateTime?           @map("completed_at")
+  totalRecipients Int              @default(0) @map("total_recipients")
+  sentCount    Int                 @default(0) @map("sent_count")
+  failedCount  Int                 @default(0) @map("failed_count")
+  lastError    String?             @map("last_error")
+  /// Actor label of the admin who created it (e.g. "admin:ops@moja.com").
+  createdBy    String?             @map("created_by")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  recipients EmailCampaignRecipient[]
+
+  @@index([status, scheduledAt])
+  @@map("email_campaigns")
+}
+
+/// Per-customer delivery record, materialized when a campaign starts sending.
+model EmailCampaignRecipient {
+  id         String               @id @default(uuid()) @db.Uuid
+  campaignId String               @map("campaign_id") @db.Uuid
+  campaign   EmailCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customerId String               @map("customer_id") @db.Uuid
+  customer   Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  email      String
+  status     EmailRecipientStatus @default(PENDING)
+  error      String?
+  sentAt     DateTime?            @map("sent_at")
+
+  @@unique([campaignId, customerId])
+  @@index([campaignId, status])
+  @@map("email_campaign_recipients")
 }

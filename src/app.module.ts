@@ -23,6 +23,7 @@ import { HomeAdsModule } from './home-ads/home-ads.module';
 import { RewardsWorkflowModule } from './rewards-workflow/rewards-workflow.module';
 import { BentoModule } from './bento/bento.module';
 import { BentoVoucherModule } from './bento-vouchers/bento-voucher.module';
+import { MailerModule } from './mailer/mailer.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { BentoVoucherModule } from './bento-vouchers/bento-voucher.module';
     RewardsWorkflowModule,
     BentoModule,
     BentoVoucherModule,
+    MailerModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })
