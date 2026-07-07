@@ -730,27 +730,55 @@ export class BentoService implements OnModuleInit {
 
     // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
     // rows for this customer+package and clutter their list (and the "blocks
-    // scheduling" state). Before recording this new attempt, clear the earlier
-    // unpaid ones. Reconcile each with Xendit first so we never cancel an
-    // attempt that was actually paid but whose webhook is still in flight — a
-    // reconcile flips a paid one to ACTIVE, and the updateMany below only
-    // touches rows still PENDING_PAYMENT.
+    // scheduling" state). Before recording this new attempt, clear only attempts
+    // whose payment can no longer succeed. Reconcile each first; rows with a
+    // pending/processing intent must stay intact because a delayed webhook may
+    // still activate them.
     const priorPending = await this.prisma.bentoSubscription.findMany({
       where: {
         customerId,
         packageId: pkg.id,
         status: BentoSubscriptionStatus.PENDING_PAYMENT,
       },
-      select: { id: true },
+      select: { id: true, paymentIntentId: true },
     });
     for (const prior of priorPending) {
       await this.payments.reconcileBentoSubscriptionPayment(prior.id);
     }
-    if (priorPending.length > 0) {
+    const remainingPriorPending =
+      priorPending.length > 0
+        ? await this.prisma.bentoSubscription.findMany({
+            where: {
+              id: { in: priorPending.map((prior) => prior.id) },
+              status: BentoSubscriptionStatus.PENDING_PAYMENT,
+            },
+            select: { id: true, paymentIntentId: true },
+          })
+        : [];
+    const paymentIntentIds = remainingPriorPending
+      .map((prior) => prior.paymentIntentId)
+      .filter((id): id is string => Boolean(id));
+    const paymentIntentStatuses =
+      paymentIntentIds.length > 0
+        ? await this.prisma.paymentIntent.findMany({
+            where: { id: { in: paymentIntentIds } },
+            select: { id: true, status: true },
+          })
+        : [];
+    const paymentIntentStatusById = new Map(
+      paymentIntentStatuses.map((intent) => [intent.id, intent.status]),
+    );
+    const cancellablePriorIds = remainingPriorPending
+      .filter((prior) => {
+        if (!prior.paymentIntentId) return true;
+        const status = paymentIntentStatusById.get(prior.paymentIntentId);
+        return !status || status === 'FAILED';
+      })
+      .map((prior) => prior.id);
+    if (cancellablePriorIds.length > 0) {
       await this.prisma.bentoSubscription.updateMany({
         where: {
-          customerId,
-          packageId: pkg.id,
+          id: { in: cancellablePriorIds },
           status: BentoSubscriptionStatus.PENDING_PAYMENT,
         },
         data: { status: BentoSubscriptionStatus.CANCELLED },
