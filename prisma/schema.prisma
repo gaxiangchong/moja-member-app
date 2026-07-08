@@ -213,13 +213,13 @@ enum BentoDeliveryStatus {
 }
 
 model UserWalletBalance {
-  id              String   @id @default(uuid()) @db.Uuid
-  customerId      String   @unique @map("customer_id") @db.Uuid
-  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  walletBalance   Int      @default(0) @map("wallet_balance")
-  pointsBalance   Int      @default(0) @map("points_balance")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid()) @db.Uuid
+  customerId    String   @unique @map("customer_id") @db.Uuid
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  walletBalance Int      @default(0) @map("wallet_balance")
+  pointsBalance Int      @default(0) @map("points_balance")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   walletTransactions WalletTransaction[]
   pointsEntries      RewardsPointsLedger[]
@@ -228,20 +228,20 @@ model UserWalletBalance {
 }
 
 model WalletTransaction {
-  id                String            @id @default(uuid()) @db.Uuid
-  customerId        String            @map("customer_id") @db.Uuid
-  customer          Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  userWalletBalanceId String?         @map("user_wallet_balance_id") @db.Uuid
-  userWalletBalance UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
-  type              WalletTxnFlowType
-  amount            Int
-  balanceBefore     Int               @map("balance_before")
-  balanceAfter      Int               @map("balance_after")
-  referenceType     String?           @map("reference_type")
-  referenceId       String?           @map("reference_id")
-  idempotencyKey    String?           @unique @map("idempotency_key")
-  metadata          Json?
-  createdAt         DateTime          @default(now()) @map("created_at")
+  id                  String             @id @default(uuid()) @db.Uuid
+  customerId          String             @map("customer_id") @db.Uuid
+  customer            Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userWalletBalanceId String?            @map("user_wallet_balance_id") @db.Uuid
+  userWalletBalance   UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
+  type                WalletTxnFlowType
+  amount              Int
+  balanceBefore       Int                @map("balance_before")
+  balanceAfter        Int                @map("balance_after")
+  referenceType       String?            @map("reference_type")
+  referenceId         String?            @map("reference_id")
+  idempotencyKey      String?            @unique @map("idempotency_key")
+  metadata            Json?
+  createdAt           DateTime           @default(now()) @map("created_at")
 
   @@index([customerId, createdAt])
   @@index([referenceType, referenceId])
@@ -249,18 +249,18 @@ model WalletTransaction {
 }
 
 model RewardsPointsLedger {
-  id                 String            @id @default(uuid()) @db.Uuid
-  customerId         String            @map("customer_id") @db.Uuid
-  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  userWalletBalanceId String?          @map("user_wallet_balance_id") @db.Uuid
-  userWalletBalance  UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
-  pointsDelta        Int               @map("points_delta")
-  pointsBefore       Int               @map("points_before")
-  pointsAfter        Int               @map("points_after")
-  referenceType      String?           @map("reference_type")
-  referenceId        String?           @map("reference_id")
-  reason             String
-  createdAt          DateTime          @default(now()) @map("created_at")
+  id                  String             @id @default(uuid()) @db.Uuid
+  customerId          String             @map("customer_id") @db.Uuid
+  customer            Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userWalletBalanceId String?            @map("user_wallet_balance_id") @db.Uuid
+  userWalletBalance   UserWalletBalance? @relation(fields: [userWalletBalanceId], references: [id], onDelete: SetNull)
+  pointsDelta         Int                @map("points_delta")
+  pointsBefore        Int                @map("points_before")
+  pointsAfter         Int                @map("points_after")
+  referenceType       String?            @map("reference_type")
+  referenceId         String?            @map("reference_id")
+  reason              String
+  createdAt           DateTime           @default(now()) @map("created_at")
 
   @@index([customerId, createdAt])
   @@index([referenceType, referenceId])
@@ -268,21 +268,21 @@ model RewardsPointsLedger {
 }
 
 model RewardCatalog {
-  id                     String      @id @default(uuid()) @db.Uuid
-  code                   String      @unique
+  id                     String           @id @default(uuid()) @db.Uuid
+  code                   String           @unique
   name                   String
   description            String?
-  rewardType             RewardType  @map("reward_type")
-  pointsCost             Int         @default(0) @map("points_cost")
-  voucherCampaignId      String?     @map("voucher_campaign_id") @db.Uuid
+  rewardType             RewardType       @map("reward_type")
+  pointsCost             Int              @default(0) @map("points_cost")
+  voucherCampaignId      String?          @map("voucher_campaign_id") @db.Uuid
   voucherCampaign        VoucherCampaign? @relation(fields: [voucherCampaignId], references: [id], onDelete: SetNull)
-  visibleInRewardsWallet Boolean     @default(true) @map("visible_in_rewards_wallet")
-  startsAt               DateTime?   @map("starts_at")
-  endsAt                 DateTime?   @map("ends_at")
-  isActive               Boolean     @default(true) @map("is_active")
-  tncText                String?     @map("tnc_text")
-  createdAt              DateTime    @default(now()) @map("created_at")
-  updatedAt              DateTime    @updatedAt @map("updated_at")
+  visibleInRewardsWallet Boolean          @default(true) @map("visible_in_rewards_wallet")
+  startsAt               DateTime?        @map("starts_at")
+  endsAt                 DateTime?        @map("ends_at")
+  isActive               Boolean          @default(true) @map("is_active")
+  tncText                String?          @map("tnc_text")
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   userRewards UserReward[]
 
@@ -291,87 +291,87 @@ model RewardCatalog {
 }
 
 model UserReward {
-  id                String           @id @default(uuid()) @db.Uuid
-  customerId        String           @map("customer_id") @db.Uuid
-  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  rewardCatalogId   String           @map("reward_catalog_id") @db.Uuid
-  rewardCatalog     RewardCatalog    @relation(fields: [rewardCatalogId], references: [id], onDelete: Restrict)
-  status            UserRewardStatus @default(AVAILABLE)
-  redeemedAt        DateTime?        @map("redeemed_at")
-  expiresAt         DateTime?        @map("expires_at")
-  voucherId         String?          @map("voucher_id") @db.Uuid
-  voucher           Voucher?         @relation(fields: [voucherId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now()) @map("created_at")
+  id              String           @id @default(uuid()) @db.Uuid
+  customerId      String           @map("customer_id") @db.Uuid
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rewardCatalogId String           @map("reward_catalog_id") @db.Uuid
+  rewardCatalog   RewardCatalog    @relation(fields: [rewardCatalogId], references: [id], onDelete: Restrict)
+  status          UserRewardStatus @default(AVAILABLE)
+  redeemedAt      DateTime?        @map("redeemed_at")
+  expiresAt       DateTime?        @map("expires_at")
+  voucherId       String?          @map("voucher_id") @db.Uuid
+  voucher         Voucher?         @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now()) @map("created_at")
 
   @@index([customerId, status, createdAt])
   @@map("user_rewards")
 }
 
 model VoucherCampaign {
-  id                     String       @id @default(uuid()) @db.Uuid
-  code                   String       @unique
+  id                     String             @id @default(uuid()) @db.Uuid
+  code                   String             @unique
   name                   String
   description            String?
-  template               CampaignTemplate? @map("template")
-  codePrefix             String?      @map("code_prefix") @db.VarChar(16)
-  voucherType            VoucherType  @map("voucher_type")
-  percentageOff          Int?         @map("percentage_off")
-  fixedAmountOff         Int?         @map("fixed_amount_off")
-  freeItemSku            String?      @map("free_item_sku")
-  deliveryDiscountAmount Int?         @map("delivery_discount_amount")
-  walletCreditAmount     Int?         @map("wallet_credit_amount")
-  minSpend               Int?         @map("min_spend")
-  expiryDate             DateTime?    @map("expiry_date")
-  oneTimeUse             Boolean      @default(true) @map("one_time_use")
-  oneVoucherPerTxn       Boolean      @default(true) @map("one_voucher_per_txn")
-  allowStacking          Boolean      @default(false) @map("allow_stacking")
-  usageLimitPerUser      Int?         @map("usage_limit_per_user")
-  totalRedemptionCap     Int?         @map("total_redemption_cap")
-  applicableProductIds   String[]     @default([]) @map("applicable_product_ids")
-  applicableCategories   String[]     @default([]) @map("applicable_categories")
-  applicableOutlets      String[]     @default([]) @map("applicable_outlets")
+  template               CampaignTemplate?  @map("template")
+  codePrefix             String?            @map("code_prefix") @db.VarChar(16)
+  voucherType            VoucherType        @map("voucher_type")
+  percentageOff          Int?               @map("percentage_off")
+  fixedAmountOff         Int?               @map("fixed_amount_off")
+  freeItemSku            String?            @map("free_item_sku")
+  deliveryDiscountAmount Int?               @map("delivery_discount_amount")
+  walletCreditAmount     Int?               @map("wallet_credit_amount")
+  minSpend               Int?               @map("min_spend")
+  expiryDate             DateTime?          @map("expiry_date")
+  oneTimeUse             Boolean            @default(true) @map("one_time_use")
+  oneVoucherPerTxn       Boolean            @default(true) @map("one_voucher_per_txn")
+  allowStacking          Boolean            @default(false) @map("allow_stacking")
+  usageLimitPerUser      Int?               @map("usage_limit_per_user")
+  totalRedemptionCap     Int?               @map("total_redemption_cap")
+  applicableProductIds   String[]           @default([]) @map("applicable_product_ids")
+  applicableCategories   String[]           @default([]) @map("applicable_categories")
+  applicableOutlets      String[]           @default([]) @map("applicable_outlets")
   applicableOrderTypes   VoucherOrderType[] @default([]) @map("applicable_order_types")
-  autoCreditTrigger      String?      @map("auto_credit_trigger")
-  visibleInWallet        Boolean      @default(true) @map("visible_in_wallet")
-  tncText                String?      @map("tnc_text")
-  isActive               Boolean      @default(true) @map("is_active")
-  startsAt               DateTime?    @map("starts_at")
-  endsAt                 DateTime?    @map("ends_at")
-  voucherValidDays       Int?         @map("voucher_valid_days")
-  createdAt              DateTime     @default(now()) @map("created_at")
-  updatedAt              DateTime     @updatedAt @map("updated_at")
+  autoCreditTrigger      String?            @map("auto_credit_trigger")
+  visibleInWallet        Boolean            @default(true) @map("visible_in_wallet")
+  tncText                String?            @map("tnc_text")
+  isActive               Boolean            @default(true) @map("is_active")
+  startsAt               DateTime?          @map("starts_at")
+  endsAt                 DateTime?          @map("ends_at")
+  voucherValidDays       Int?               @map("voucher_valid_days")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
 
-  vouchers    Voucher[]
-  rewards     RewardCatalog[]
+  vouchers Voucher[]
+  rewards  RewardCatalog[]
 
   @@index([isActive, startsAt, endsAt])
   @@map("voucher_campaigns")
 }
 
 model Voucher {
-  id                  String                 @id @default(uuid()) @db.Uuid
-  customerId          String                 @map("customer_id") @db.Uuid
-  customer            Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  voucherCampaignId   String?                @map("voucher_campaign_id") @db.Uuid
-  voucherCampaign     VoucherCampaign?       @relation(fields: [voucherCampaignId], references: [id], onDelete: SetNull)
-  code                String                 @unique
-  name                String
-  status              VoucherLifecycleStatus @default(ACTIVE)
-  expiresAt           DateTime?              @map("expires_at")
-  usedAt              DateTime?              @map("used_at")
-  usageCount          Int                    @default(0) @map("usage_count")
-  usageLimitPerUser   Int?                   @map("usage_limit_per_user")
-  lockToken           String?                @unique @map("lock_token")
-  lockedAt            DateTime?              @map("locked_at")
-  lockExpiresAt       DateTime?              @map("lock_expires_at")
-  lockOrderId         String?                @map("lock_order_id") @db.Uuid
-  visibleInWallet     Boolean                @default(true) @map("visible_in_wallet")
-  metadata            Json?
-  createdAt           DateTime               @default(now()) @map("created_at")
-  updatedAt           DateTime               @updatedAt @map("updated_at")
+  id                String                 @id @default(uuid()) @db.Uuid
+  customerId        String                 @map("customer_id") @db.Uuid
+  customer          Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  voucherCampaignId String?                @map("voucher_campaign_id") @db.Uuid
+  voucherCampaign   VoucherCampaign?       @relation(fields: [voucherCampaignId], references: [id], onDelete: SetNull)
+  code              String                 @unique
+  name              String
+  status            VoucherLifecycleStatus @default(ACTIVE)
+  expiresAt         DateTime?              @map("expires_at")
+  usedAt            DateTime?              @map("used_at")
+  usageCount        Int                    @default(0) @map("usage_count")
+  usageLimitPerUser Int?                   @map("usage_limit_per_user")
+  lockToken         String?                @unique @map("lock_token")
+  lockedAt          DateTime?              @map("locked_at")
+  lockExpiresAt     DateTime?              @map("lock_expires_at")
+  lockOrderId       String?                @map("lock_order_id") @db.Uuid
+  visibleInWallet   Boolean                @default(true) @map("visible_in_wallet")
+  metadata          Json?
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
 
-  userRewards   UserReward[]
-  redemptions   VoucherRedemption[]
+  userRewards UserReward[]
+  redemptions VoucherRedemption[]
 
   @@index([customerId, status, expiresAt])
   @@index([voucherCampaignId])
@@ -379,20 +379,20 @@ model Voucher {
 }
 
 model VoucherRedemption {
-  id               String                  @id @default(uuid()) @db.Uuid
-  voucherId        String                  @map("voucher_id") @db.Uuid
-  voucher          Voucher                 @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-  customerId       String                  @map("customer_id") @db.Uuid
-  customer         Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  orderId          String?                 @map("order_id") @db.Uuid
-  paymentIntentId  String?                 @map("payment_intent_id") @db.Uuid
-  status           VoucherRedemptionStatus @default(LOCKED)
-  lockToken        String                  @map("lock_token")
-  idempotencyKey   String?                 @unique @map("idempotency_key")
-  createdAt        DateTime                @default(now()) @map("created_at")
-  confirmedAt      DateTime?               @map("confirmed_at")
-  releasedAt       DateTime?               @map("released_at")
-  metadata         Json?
+  id              String                  @id @default(uuid()) @db.Uuid
+  voucherId       String                  @map("voucher_id") @db.Uuid
+  voucher         Voucher                 @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  customerId      String                  @map("customer_id") @db.Uuid
+  customer        Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId         String?                 @map("order_id") @db.Uuid
+  paymentIntentId String?                 @map("payment_intent_id") @db.Uuid
+  status          VoucherRedemptionStatus @default(LOCKED)
+  lockToken       String                  @map("lock_token")
+  idempotencyKey  String?                 @unique @map("idempotency_key")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  confirmedAt     DateTime?               @map("confirmed_at")
+  releasedAt      DateTime?               @map("released_at")
+  metadata        Json?
 
   @@index([voucherId, status])
   @@index([customerId, createdAt])
@@ -400,22 +400,22 @@ model VoucherRedemption {
 }
 
 model GiftVoucherCode {
-  id                 String   @id @default(uuid()) @db.Uuid
-  code               String   @unique
-  amount             Int
-  currency           String   @default("MYR")
-  status             String   @default("ACTIVE")
-  expiresAt          DateTime? @map("expires_at")
-  maxRedemptions     Int      @default(1) @map("max_redemptions")
-  redeemedCount      Int      @default(0) @map("redeemed_count")
-  redeemedByCustomerId String? @map("redeemed_by_customer_id") @db.Uuid
-  redeemedByCustomer Customer? @relation(fields: [redeemedByCustomerId], references: [id], onDelete: SetNull)
-  redeemedAt         DateTime? @map("redeemed_at")
-  campaignCode       String?  @map("campaign_code")
-  tncText            String?  @map("tnc_text")
-  metadata           Json?
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  id                   String    @id @default(uuid()) @db.Uuid
+  code                 String    @unique
+  amount               Int
+  currency             String    @default("MYR")
+  status               String    @default("ACTIVE")
+  expiresAt            DateTime? @map("expires_at")
+  maxRedemptions       Int       @default(1) @map("max_redemptions")
+  redeemedCount        Int       @default(0) @map("redeemed_count")
+  redeemedByCustomerId String?   @map("redeemed_by_customer_id") @db.Uuid
+  redeemedByCustomer   Customer? @relation(fields: [redeemedByCustomerId], references: [id], onDelete: SetNull)
+  redeemedAt           DateTime? @map("redeemed_at")
+  campaignCode         String?   @map("campaign_code")
+  tncText              String?   @map("tnc_text")
+  metadata             Json?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   @@index([status, expiresAt])
   @@map("gift_voucher_codes")
@@ -450,55 +450,57 @@ enum PerksCriteriaKind {
 }
 
 model Customer {
-  id          String         @id @default(uuid()) @db.Uuid
-  phoneE164   String         @unique @map("phone_e164")
-  status      CustomerStatus @default(DRAFT)
-  displayName String?        @map("display_name")
-  email       String?
+  id                   String         @id @default(uuid()) @db.Uuid
+  phoneE164            String         @unique @map("phone_e164")
+  status               CustomerStatus @default(DRAFT)
+  displayName          String?        @map("display_name")
+  email                String?
   /// Opaque SalesPlay POS customer id (returned by the SalesPlay customer API).
-  salesplayCustomerId String? @map("salesplay_customer_id")
-  birthday    DateTime?      @db.Date
-  gender      String?        @map("gender")
-  address     String?        @map("address")
-  preferredStore String?     @map("preferred_store")
-  signupSource String        @default("otp") @map("signup_source")
-  memberTier  String         @default("standard") @map("member_tier")
-  marketingConsent Boolean   @default(false) @map("marketing_consent")
-  notes       String?        @map("notes")
-  tags        String[]       @default([]) @map("tags")
-  lastLoginAt DateTime?      @map("last_login_at")
+  salesplayCustomerId  String?        @map("salesplay_customer_id")
+  birthday             DateTime?      @db.Date
+  gender               String?        @map("gender")
+  address              String?        @map("address")
+  preferredStore       String?        @map("preferred_store")
+  signupSource         String         @default("otp") @map("signup_source")
+  memberTier           String         @default("standard") @map("member_tier")
+  marketingConsent     Boolean        @default(false) @map("marketing_consent")
+  notes                String?        @map("notes")
+  tags                 String[]       @default([]) @map("tags")
+  lastLoginAt          DateTime?      @map("last_login_at")
   /// bcrypt hash of 6-digit login PIN (set after first OTP; null until then).
-  loginPinHash String?       @map("login_pin_hash")
+  loginPinHash         String?        @map("login_pin_hash")
   /// Shareable code for referral attribution (set on first login / create).
-  referralCode          String?   @unique @map("referral_code") @db.VarChar(20)
+  referralCode         String?        @unique @map("referral_code") @db.VarChar(20)
   /// Unique 6-digit kitchen pickup code for bento collection (e.g. 100042).
-  kitchenPickupCode     String?   @unique @map("kitchen_pickup_code") @db.VarChar(6)
-  referredByCustomerId  String?   @map("referred_by_customer_id") @db.Uuid
-  referredBy            Customer? @relation("CustomerReferrer", fields: [referredByCustomerId], references: [id], onDelete: SetNull)
-  referredMembers       Customer[] @relation("CustomerReferrer")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  kitchenPickupCode    String?        @unique @map("kitchen_pickup_code") @db.VarChar(6)
+  referredByCustomerId String?        @map("referred_by_customer_id") @db.Uuid
+  referredBy           Customer?      @relation("CustomerReferrer", fields: [referredByCustomerId], references: [id], onDelete: SetNull)
+  referredMembers      Customer[]     @relation("CustomerReferrer")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
 
-  wallet         LoyaltyWallet?
-  storedWallet   StoredWallet?
-  ledgerEntries  LoyaltyLedgerEntry[]
+  wallet                    LoyaltyWallet?
+  storedWallet              StoredWallet?
+  ledgerEntries             LoyaltyLedgerEntry[]
   storedWalletLedgerEntries StoredWalletLedgerEntry[]
-  vouchers          CustomerVoucher[]
-  otpChallenges     OtpChallenge[]
-  shopHandoffJtis   ShopHandoffJti[]
-  orders            CustomerOrder[]
-  paymentIntents    PaymentIntent[]
-  userWalletBalance UserWalletBalance?
-  walletTransactions WalletTransaction[]
-  rewardsPointsLedger RewardsPointsLedger[]
-  userRewards       UserReward[]
-  vouchersV2        Voucher[]
-  voucherRedemptions VoucherRedemption[]
-  redeemedGiftCodes GiftVoucherCode[]
-  bentoSubscriptions BentoSubscription[]
-  bentoWeeklyOptIns  BentoWeeklyOptIn[]
-  bentoDiscountRedemptions BentoDiscountRedemption[]
-  emailCampaignRecipients EmailCampaignRecipient[]
+  vouchers                  CustomerVoucher[]
+  otpChallenges             OtpChallenge[]
+  shopHandoffJtis           ShopHandoffJti[]
+  orders                    CustomerOrder[]
+  paymentIntents            PaymentIntent[]
+  userWalletBalance         UserWalletBalance?
+  walletTransactions        WalletTransaction[]
+  rewardsPointsLedger       RewardsPointsLedger[]
+  userRewards               UserReward[]
+  vouchersV2                Voucher[]
+  voucherRedemptions        VoucherRedemption[]
+  redeemedGiftCodes         GiftVoucherCode[]
+  bentoSubscriptions        BentoSubscription[]
+  bentoWeeklyOptIns         BentoWeeklyOptIn[]
+  bentoDiscountRedemptions  BentoDiscountRedemption[]
+  emailCampaignRecipients   EmailCampaignRecipient[]
+  posReceipts               PosReceipt[]
+  posCreditNotes            PosCreditNote[]
 
   @@index([displayName])
   @@index([email])
@@ -510,37 +512,37 @@ model Customer {
 
 /// Xendit Payments API v3 — wallet top-up (and future flows). Confirmed via webhook.
 model PaymentIntent {
-  id                       String   @id @default(uuid()) @db.Uuid
-  customerId               String   @map("customer_id") @db.Uuid
-  customer                 Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  referenceId              String   @unique @map("reference_id") @db.VarChar(64)
-  purpose                  String   @db.VarChar(32)
-  amountCents              Int      @map("amount_cents")
-  currency                 String   @db.VarChar(3)
-  country                  String   @db.VarChar(2)
-  status                   String   @default("PENDING") @db.VarChar(32)
-  channelCode              String   @map("channel_code") @db.VarChar(64)
-  idempotencyKey           String?  @unique @map("idempotency_key")
-  xenditPaymentRequestId   String?  @map("xendit_payment_request_id") @db.VarChar(128)
-  metadata                 Json?
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  id                     String   @id @default(uuid()) @db.Uuid
+  customerId             String   @map("customer_id") @db.Uuid
+  customer               Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  referenceId            String   @unique @map("reference_id") @db.VarChar(64)
+  purpose                String   @db.VarChar(32)
+  amountCents            Int      @map("amount_cents")
+  currency               String   @db.VarChar(3)
+  country                String   @db.VarChar(2)
+  status                 String   @default("PENDING") @db.VarChar(32)
+  channelCode            String   @map("channel_code") @db.VarChar(64)
+  idempotencyKey         String?  @unique @map("idempotency_key")
+  xenditPaymentRequestId String?  @map("xendit_payment_request_id") @db.VarChar(128)
+  metadata               Json?
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@index([customerId, createdAt])
   @@map("payment_intents")
 }
 
 model CustomerOrder {
-  id                 String    @id @default(uuid()) @db.Uuid
-  customerId         String    @map("customer_id") @db.Uuid
-  customer           Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id                      String    @id @default(uuid()) @db.Uuid
+  customerId              String    @map("customer_id") @db.Uuid
+  customer                Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   /// Public pickup / order number (sequential). Shown on receipts, ops queue, and member QR.
-  orderNumber        Int       @unique @default(autoincrement()) @map("order_number")
-  totalCents         Int       @map("total_cents")
-  status             String    @default("placed") @db.VarChar(32)
-  fulfillmentSummary Json?     @map("fulfillment_summary")
-  placedAt           DateTime  @default(now()) @map("placed_at")
-  completedAt        DateTime? @map("completed_at")
+  orderNumber             Int       @unique @default(autoincrement()) @map("order_number")
+  totalCents              Int       @map("total_cents")
+  status                  String    @default("placed") @db.VarChar(32)
+  fulfillmentSummary      Json?     @map("fulfillment_summary")
+  placedAt                DateTime  @default(now()) @map("placed_at")
+  completedAt             DateTime? @map("completed_at")
   /// SalesPlay online_orders API system_unique_id after a successful push.
   salesplaySystemUniqueId String?   @map("salesplay_system_unique_id")
   salesplaySyncedAt       DateTime? @map("salesplay_synced_at")
@@ -562,6 +564,108 @@ model DailySalesClose {
   @@map("daily_sales_closes")
 }
 
+/// How a POS record reached us: pushed live via webhook, or pulled by the
+/// reconciliation/backfill sync.
+enum PosSyncSource {
+  WEBHOOK
+  PULL
+}
+
+/// An in-store SalesPlay sale (receipt). This is the POS channel's source of
+/// truth inside member-app — online-shop and bento sales stay in their own
+/// tables (customer_orders / bento_subscriptions) and are unioned at report
+/// time, never copied here.
+model PosReceipt {
+  id                  String        @id @default(uuid()) @db.Uuid
+  /// SalesPlay receipt identifier (receipt_id / receipt_number). Unique so the
+  /// webhook can upsert idempotently — SalesPlay retries a delivery up to 200×.
+  salesplayReceiptId  String        @unique @map("salesplay_receipt_id")
+  receiptNumber       String?       @map("receipt_number")
+  shopId              String?       @map("shop_id")
+  terminal            String?       @map("terminal")
+  /// Business date in Asia/Kuala_Lumpur — POS books days in MYT, so reports and
+  /// the daily close bucket on this rather than a raw UTC timestamp.
+  businessDate        DateTime      @map("business_date") @db.Date
+  /// Sale timestamp as reported by SalesPlay (UTC instant), when available.
+  soldAt              DateTime?     @map("sold_at")
+  grossCents          Int           @default(0) @map("gross_cents")
+  discountCents       Int           @default(0) @map("discount_cents")
+  taxCents            Int           @default(0) @map("tax_cents")
+  netCents            Int           @default(0) @map("net_cents")
+  paymentType         String?       @map("payment_type")
+  /// Matched member (by SalesPlay customer id, then phone); null for walk-ins.
+  customerId          String?       @map("customer_id") @db.Uuid
+  customer            Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  /// Set when this receipt is the in-store settlement of one of our online
+  /// orders (pushed to SalesPlay via online_orders). Such receipts are excluded
+  /// from POS-channel revenue so online sales are not counted twice.
+  originOnlineOrderId String?       @map("origin_online_order_id") @db.Uuid
+  source              PosSyncSource @default(WEBHOOK)
+  /// Full SalesPlay payload — the receipt JSON schema is undocumented, so we
+  /// keep the raw record to refine field mapping from real data.
+  rawPayload          Json          @map("raw_payload")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  lines PosReceiptLine[]
+
+  @@index([businessDate])
+  @@index([customerId, businessDate])
+  @@index([originOnlineOrderId])
+  @@map("pos_receipts")
+}
+
+model PosReceiptLine {
+  id             String     @id @default(uuid()) @db.Uuid
+  receiptId      String     @map("receipt_id") @db.Uuid
+  receipt        PosReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  productCode    String?    @map("product_code")
+  name           String
+  qty            Int
+  unitPriceCents Int        @map("unit_price_cents")
+  lineTotalCents Int        @map("line_total_cents")
+
+  @@index([receiptId])
+  @@index([productCode])
+  @@map("pos_receipt_lines")
+}
+
+/// A SalesPlay credit note (in-store refund / void). Kept separate from
+/// receipts so consolidated revenue can net refunds without mutating the
+/// original sale.
+model PosCreditNote {
+  id                    String        @id @default(uuid()) @db.Uuid
+  salesplayCreditNoteId String        @unique @map("salesplay_credit_note_id")
+  /// The receipt this credit note reverses, when SalesPlay reports it.
+  salesplayReceiptId    String?       @map("salesplay_receipt_id")
+  businessDate          DateTime      @map("business_date") @db.Date
+  amountCents           Int           @default(0) @map("amount_cents")
+  reason                String?
+  customerId            String?       @map("customer_id") @db.Uuid
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  source                PosSyncSource @default(WEBHOOK)
+  rawPayload            Json          @map("raw_payload")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@index([businessDate])
+  @@index([salesplayReceiptId])
+  @@map("pos_credit_notes")
+}
+
+/// Bookkeeping for the SalesPlay pull sync (backfill + nightly reconciliation)
+/// and last-seen webhook time, one row per resource (e.g. "receipts").
+model SalesplaySyncState {
+  id            String    @id @default(uuid()) @db.Uuid
+  resource      String    @unique
+  cursor        String?
+  lastPulledAt  DateTime? @map("last_pulled_at")
+  lastWebhookAt DateTime? @map("last_webhook_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("salesplay_sync_state")
+}
+
 model CustomerOrderLine {
   id             String        @id @default(uuid()) @db.Uuid
   orderId        String        @map("order_id") @db.Uuid
@@ -579,17 +683,17 @@ model CustomerOrderLine {
 }
 
 model OtpChallenge {
-  id         String    @id @default(uuid()) @db.Uuid
-  phoneE164  String    @map("phone_e164")
-  email      String?   @map("email")
-  deliveryChannel String @default("dev") @map("delivery_channel") @db.VarChar(20)
-  otpHash    String    @map("otp_hash")
-  purpose    OtpPurpose @default(REGISTER) @map("purpose")
-  expiresAt  DateTime  @map("expires_at")
-  usedAt     DateTime? @map("used_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  customerId String?   @map("customer_id") @db.Uuid
-  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  id              String     @id @default(uuid()) @db.Uuid
+  phoneE164       String     @map("phone_e164")
+  email           String?    @map("email")
+  deliveryChannel String     @default("dev") @map("delivery_channel") @db.VarChar(20)
+  otpHash         String     @map("otp_hash")
+  purpose         OtpPurpose @default(REGISTER) @map("purpose")
+  expiresAt       DateTime   @map("expires_at")
+  usedAt          DateTime?  @map("used_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  customerId      String?    @map("customer_id") @db.Uuid
+  customer        Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([phoneE164, createdAt])
   @@map("otp_challenges")
@@ -617,15 +721,15 @@ model LoyaltyWallet {
 }
 
 model LoyaltyLedgerEntry {
-  id             String   @id @default(uuid()) @db.Uuid
-  customerId     String   @map("customer_id") @db.Uuid
-  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  deltaPoints    Int      @map("delta_points")
-  balanceAfter   Int      @map("balance_after")
-  referenceType  String?  @map("reference_type")
-  referenceId    String?  @map("reference_id") @db.Uuid
-  reason         String
-  createdAt      DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid()) @db.Uuid
+  customerId    String   @map("customer_id") @db.Uuid
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deltaPoints   Int      @map("delta_points")
+  balanceAfter  Int      @map("balance_after")
+  referenceType String?  @map("reference_type")
+  referenceId   String?  @map("reference_id") @db.Uuid
+  reason        String
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([customerId, createdAt])
   @@index([referenceType, referenceId])
@@ -651,21 +755,21 @@ model StoredWallet {
 }
 
 model StoredWalletLedgerEntry {
-  id              String      @id @default(uuid()) @db.Uuid
-  walletId         String      @map("wallet_id") @db.Uuid
-  wallet           StoredWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  customerId       String      @map("customer_id") @db.Uuid
-  customer         Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  type             WalletTxnType
-  amountCents      Int         @map("amount_cents")
-  balanceBefore    Int         @map("balance_before")
-  balanceAfter     Int         @map("balance_after")
-  reason           String
-  createdByType    String      @map("created_by_type")
-  createdBy        String?     @map("created_by")
-  reversedByTxnId  String?     @map("reversed_by_txn_id") @db.Uuid
-  metadata         Json?
-  createdAt        DateTime    @default(now()) @map("created_at")
+  id              String        @id @default(uuid()) @db.Uuid
+  walletId        String        @map("wallet_id") @db.Uuid
+  wallet          StoredWallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  customerId      String        @map("customer_id") @db.Uuid
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type            WalletTxnType
+  amountCents     Int           @map("amount_cents")
+  balanceBefore   Int           @map("balance_before")
+  balanceAfter    Int           @map("balance_after")
+  reason          String
+  createdByType   String        @map("created_by_type")
+  createdBy       String?       @map("created_by")
+  reversedByTxnId String?       @map("reversed_by_txn_id") @db.Uuid
+  metadata        Json?
+  createdAt       DateTime      @default(now()) @map("created_at")
 
   @@index([customerId, createdAt])
   @@index([walletId, createdAt])
@@ -675,36 +779,36 @@ model StoredWalletLedgerEntry {
 }
 
 model VoucherDefinition {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  title       String
-  description String?
-  pointsCost  Int?     @map("points_cost")
-  isActive    Boolean  @default(true) @map("is_active")
+  id                   String    @id @default(uuid()) @db.Uuid
+  code                 String    @unique
+  title                String
+  description          String?
+  pointsCost           Int?      @map("points_cost")
+  isActive             Boolean   @default(true) @map("is_active")
   /// Cash discount (in sen) applied at checkout when this reward is redeemed.
   /// Set directly on the series so no perks campaign is needed for a flat RM off.
-  rebateValueSen        Int?      @map("rebate_value_sen")
+  rebateValueSen       Int?      @map("rebate_value_sen")
   /// Optional minimum order subtotal (in sen) required to apply the discount.
-  minSpendSen           Int?      @map("min_spend_sen")
+  minSpendSen          Int?      @map("min_spend_sen")
   /// Image URL for member app rewards catalog (HTTPS recommended).
-  imageUrl              String?   @map("image_url")
+  imageUrl             String?   @map("image_url")
   /// Optional grouping in UI: food, drinks, other.
-  rewardCategory        String?   @map("reward_category")
+  rewardCategory       String?   @map("reward_category")
   /// Show in member app “Rewards” redeemable catalog.
-  showInRewardsCatalog  Boolean   @default(true) @map("show_in_rewards_catalog")
+  showInRewardsCatalog Boolean   @default(true) @map("show_in_rewards_catalog")
   /// Catalog ordering (lower first).
-  rewardSortOrder       Int       @default(0) @map("reward_sort_order")
+  rewardSortOrder      Int       @default(0) @map("reward_sort_order")
   /// Redeemable / visible window in catalog (optional).
-  rewardValidFrom       DateTime? @map("reward_valid_from")
-  rewardValidUntil      DateTime? @map("reward_valid_until")
+  rewardValidFrom      DateTime? @map("reward_valid_from")
+  rewardValidUntil     DateTime? @map("reward_valid_until")
   /// Optional cap on total issued vouchers from this definition (null = unlimited).
-  maxTotalIssued        Int?      @map("max_total_issued")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  maxTotalIssued       Int?      @map("max_total_issued")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  instances            CustomerVoucher[]
-  pushRules            VoucherPushRule[]
-  perksCampaignRules   PerksCampaignRule[]
+  instances          CustomerVoucher[]
+  pushRules          VoucherPushRule[]
+  perksCampaignRules PerksCampaignRule[]
 
   @@map("voucher_definitions")
 }
@@ -732,10 +836,10 @@ model VoucherPushRule {
 
 /// Loyalty perks auto-campaigns: RM thresholds, campaign dates, structured criteria (voucher rebate vs reward).
 model PerksCampaignRule {
-  id        String  @id @default(uuid()) @db.Uuid
-  name      String
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
   description String?
-  isActive  Boolean @default(true) @map("is_active")
+  isActive    Boolean @default(true) @map("is_active")
 
   programKind  PerksProgramKind  @map("program_kind")
   criteriaKind PerksCriteriaKind @map("criteria_kind")
@@ -744,14 +848,14 @@ model PerksCampaignRule {
   campaignEndDate   DateTime @map("campaign_end_date") @db.Date
 
   /// Minimum single-order total in sen (1/100 MYR) when criteria uses purchase threshold.
-  minPurchaseAmountSen Int? @map("min_purchase_amount_sen")
+  minPurchaseAmountSen Int?    @map("min_purchase_amount_sen")
   /// Fixed cash rebate value for VOUCHER_REBATE (sen).
-  rebateValueSen       Int? @map("rebate_value_sen")
+  rebateValueSen       Int?    @map("rebate_value_sen")
   /// Minimum wallet top-up in sen for WALLET_TOPUP_MIN_RM.
-  minWalletTopupSen    Int? @map("min_wallet_topup_sen")
-  withinDaysOfSignup   Int? @map("within_days_of_signup")
-  minReferralCount     Int? @map("min_referral_count")
-  inactiveDays         Int? @map("inactive_days")
+  minWalletTopupSen    Int?    @map("min_wallet_topup_sen")
+  withinDaysOfSignup   Int?    @map("within_days_of_signup")
+  minReferralCount     Int?    @map("min_referral_count")
+  inactiveDays         Int?    @map("inactive_days")
   /// SILVER | GOLD | PLATINUM when tier gate applies.
   minMemberTier        String? @map("min_member_tier")
 
@@ -770,43 +874,43 @@ model PerksCampaignRule {
 }
 
 model CustomerVoucher {
-  id           String            @id @default(uuid()) @db.Uuid
-  customerId   String            @map("customer_id") @db.Uuid
-  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  definitionId String            @map("definition_id") @db.Uuid
-  definition   VoucherDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
-  status       VoucherStatus     @default(ISSUED)
-  issuedAt     DateTime          @default(now()) @map("issued_at")
-  redeemedAt   DateTime?         @map("redeemed_at")
-  expiresAt    DateTime?         @map("expires_at")
-  referenceType String?          @map("reference_type")
-  referenceId   String?         @map("reference_id") @db.Uuid
-  campaignRunId String?          @map("campaign_run_id") @db.Uuid
-  campaignRun   CampaignRun?     @relation(fields: [campaignRunId], references: [id], onDelete: SetNull)
-  updatedAt    DateTime         @updatedAt @map("updated_at")
+  id            String            @id @default(uuid()) @db.Uuid
+  customerId    String            @map("customer_id") @db.Uuid
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  definitionId  String            @map("definition_id") @db.Uuid
+  definition    VoucherDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  status        VoucherStatus     @default(ISSUED)
+  issuedAt      DateTime          @default(now()) @map("issued_at")
+  redeemedAt    DateTime?         @map("redeemed_at")
+  expiresAt     DateTime?         @map("expires_at")
+  referenceType String?           @map("reference_type")
+  referenceId   String?           @map("reference_id") @db.Uuid
+  campaignRunId String?           @map("campaign_run_id") @db.Uuid
+  campaignRun   CampaignRun?      @relation(fields: [campaignRunId], references: [id], onDelete: SetNull)
+  updatedAt     DateTime          @updatedAt @map("updated_at")
 
+  @@unique([customerId, definitionId, campaignRunId])
   @@index([customerId, status])
   @@index([updatedAt])
-  @@unique([customerId, definitionId, campaignRunId])
   @@map("customer_vouchers")
 }
 
 model AuditLog {
-  id           String    @id @default(uuid()) @db.Uuid
-  actorType    String    @map("actor_type")
-  actorId      String?   @map("actor_id")
-  action       String
-  entityType   String    @map("entity_type")
-  entityId     String?   @map("entity_id") @db.Uuid
-  metadata     Json?
-  adminUserId  String?   @map("admin_user_id") @db.Uuid
-  adminUser    AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
-  adminRole    String?   @map("admin_role")
-  ipAddress    String?   @map("ip_address")
-  reason       String?
-  beforeValue  Json?     @map("before_value")
-  afterValue   Json?     @map("after_value")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id          String     @id @default(uuid()) @db.Uuid
+  actorType   String     @map("actor_type")
+  actorId     String?    @map("actor_id")
+  action      String
+  entityType  String     @map("entity_type")
+  entityId    String?    @map("entity_id") @db.Uuid
+  metadata    Json?
+  adminUserId String?    @map("admin_user_id") @db.Uuid
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  adminRole   String?    @map("admin_role")
+  ipAddress   String?    @map("ip_address")
+  reason      String?
+  beforeValue Json?      @map("before_value")
+  afterValue  Json?      @map("after_value")
+  createdAt   DateTime   @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([createdAt])
@@ -816,17 +920,17 @@ model AuditLog {
 }
 
 model AdminUser {
-  id           String       @id @default(uuid()) @db.Uuid
-  email        String       @unique
-  passwordHash String       @map("password_hash")
-  displayName  String?      @map("display_name")
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  displayName  String?       @map("display_name")
   role         AdminRoleCode @map("role")
-  isActive     Boolean      @default(true) @map("is_active")
-  lastLoginAt  DateTime?    @map("last_login_at")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  isActive     Boolean       @default(true) @map("is_active")
+  lastLoginAt  DateTime?     @map("last_login_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  auditLogs         AuditLog[]
+  auditLogs          AuditLog[]
   approvalsRequested ApprovalRequest[] @relation("ApprovalRequester")
   approvalsReviewed  ApprovalRequest[] @relation("ApprovalReviewer")
 
@@ -865,23 +969,23 @@ model SegmentAudience {
 }
 
 model CampaignRun {
-  id                 String             @id @default(uuid()) @db.Uuid
-  segmentAudienceId  String?            @map("segment_audience_id") @db.Uuid
-  segmentAudience    SegmentAudience?   @relation(fields: [segmentAudienceId], references: [id], onDelete: SetNull)
-  filtersSnapshot    Json?              @map("filters_snapshot")
-  action             String
-  payload            Json
-  createdBy          String             @map("created_by")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  customerMatched    Int                @default(0) @map("customer_matched")
-  customerSucceeded  Int                @default(0) @map("customer_succeeded")
-  customerFailed     Int                @default(0) @map("customer_failed")
-  customerProcessed  Int                @default(0) @map("customer_processed")
-  errors             Json?
-  status             CampaignRunStatus  @default(COMPLETED) @map("status")
-  startedAt          DateTime?          @map("started_at")
-  finishedAt         DateTime?          @map("finished_at")
-  duplicatesSkipped  Int                 @default(0) @map("duplicates_skipped")
+  id                String            @id @default(uuid()) @db.Uuid
+  segmentAudienceId String?           @map("segment_audience_id") @db.Uuid
+  segmentAudience   SegmentAudience?  @relation(fields: [segmentAudienceId], references: [id], onDelete: SetNull)
+  filtersSnapshot   Json?             @map("filters_snapshot")
+  action            String
+  payload           Json
+  createdBy         String            @map("created_by")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  customerMatched   Int               @default(0) @map("customer_matched")
+  customerSucceeded Int               @default(0) @map("customer_succeeded")
+  customerFailed    Int               @default(0) @map("customer_failed")
+  customerProcessed Int               @default(0) @map("customer_processed")
+  errors            Json?
+  status            CampaignRunStatus @default(COMPLETED) @map("status")
+  startedAt         DateTime?         @map("started_at")
+  finishedAt        DateTime?         @map("finished_at")
+  duplicatesSkipped Int               @default(0) @map("duplicates_skipped")
 
   voucherIssues CustomerVoucher[]
 
@@ -901,19 +1005,19 @@ model ShopHandoffJti {
 }
 
 model ImportBatch {
-  id           String            @id @default(uuid()) @db.Uuid
-  kind         ImportBatchKind
-  fileName     String            @map("file_name")
-  fileStoragePath String?        @map("file_storage_path")
-  uploadedBy   String            @map("uploaded_by")
-  uploadedAt   DateTime          @default(now()) @map("uploaded_at")
-  status       ImportBatchStatus @default(PREVIEW)
-  totalRows    Int               @default(0) @map("total_rows")
-  successRows  Int               @default(0) @map("success_rows")
-  failedRows   Int               @default(0) @map("failed_rows")
-  previewRows  Json?             @map("preview_rows")
-  rowErrors    Json?             @map("row_errors")
-  summary      Json?
+  id              String            @id @default(uuid()) @db.Uuid
+  kind            ImportBatchKind
+  fileName        String            @map("file_name")
+  fileStoragePath String?           @map("file_storage_path")
+  uploadedBy      String            @map("uploaded_by")
+  uploadedAt      DateTime          @default(now()) @map("uploaded_at")
+  status          ImportBatchStatus @default(PREVIEW)
+  totalRows       Int               @default(0) @map("total_rows")
+  successRows     Int               @default(0) @map("success_rows")
+  failedRows      Int               @default(0) @map("failed_rows")
+  previewRows     Json?             @map("preview_rows")
+  rowErrors       Json?             @map("row_errors")
+  summary         Json?
 
   @@index([kind, uploadedAt])
   @@map("import_batches")
@@ -973,67 +1077,67 @@ enum WorkCalendarDayType {
 }
 
 model PayrollSettings {
-  id                           String   @id @default("default")
-  standardWorkdayMinutes         Int      @default(480) @map("standard_workday_minutes")
-  overtimeMultiplierBps        Int      @default(15000) @map("overtime_multiplier_bps")
-  publicHolidayMultiplierBps   Int      @default(20000) @map("public_holiday_multiplier_bps")
-  offDayWorkedMultiplierBps    Int      @default(10000) @map("off_day_worked_multiplier_bps")
-  updatedAt                    DateTime @updatedAt @map("updated_at")
+  id                         String   @id @default("default")
+  standardWorkdayMinutes     Int      @default(480) @map("standard_workday_minutes")
+  overtimeMultiplierBps      Int      @default(15000) @map("overtime_multiplier_bps")
+  publicHolidayMultiplierBps Int      @default(20000) @map("public_holiday_multiplier_bps")
+  offDayWorkedMultiplierBps  Int      @default(10000) @map("off_day_worked_multiplier_bps")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
 
   @@map("payroll_settings")
 }
 
 model Employee {
-  id                 String               @id @default(uuid()) @db.Uuid
-  employeeCode       String               @unique @map("employee_code")
-  displayName        String               @map("display_name")
-  positionTitle      String               @default("") @map("position_title")
-  hourlyRateCents    Int                  @default(0) @map("hourly_rate_cents")
-  commissionRateBps  Int                  @default(0) @map("commission_rate_bps")
-  isActive           Boolean              @default(true) @map("is_active")
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
-  timeEntries        EmployeeTimeEntry[]
+  id                String              @id @default(uuid()) @db.Uuid
+  employeeCode      String              @unique @map("employee_code")
+  displayName       String              @map("display_name")
+  positionTitle     String              @default("") @map("position_title")
+  hourlyRateCents   Int                 @default(0) @map("hourly_rate_cents")
+  commissionRateBps Int                 @default(0) @map("commission_rate_bps")
+  isActive          Boolean             @default(true) @map("is_active")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  timeEntries       EmployeeTimeEntry[]
 
   @@map("employees")
 }
 
 model EmployeeTimeEntry {
-  id          String    @id @default(uuid()) @db.Uuid
-  employeeId  String    @map("employee_id") @db.Uuid
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  clockInAt   DateTime  @map("clock_in_at")
-  clockOutAt  DateTime? @map("clock_out_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  employeeId String    @map("employee_id") @db.Uuid
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clockInAt  DateTime  @map("clock_in_at")
+  clockOutAt DateTime? @map("clock_out_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([employeeId, clockInAt])
   @@map("employee_time_entries")
 }
 
 model WorkCalendarDay {
-  id      String               @id @default(uuid()) @db.Uuid
-  date    DateTime             @unique @db.Date
-  dayType WorkCalendarDayType  @map("day_type")
+  id      String              @id @default(uuid()) @db.Uuid
+  date    DateTime            @unique @db.Date
+  dayType WorkCalendarDayType @map("day_type")
   label   String?
 
   @@map("work_calendar_days")
 }
 
 model BentoPackage {
-  id                String           @id @default(uuid()) @db.Uuid
-  code              BentoPackageCode @unique
-  label             String
+  id                       String              @id @default(uuid()) @db.Uuid
+  code                     BentoPackageCode    @unique
+  label                    String
   /// Calendar window (days) to schedule pickups after payment.
-  durationDays      Int              @map("duration_days")
+  durationDays             Int                 @map("duration_days")
   /// Meals included in the plan (e.g. 30-meal pack).
-  mealCredits       Int              @map("meal_credits")
-  pricePerMealCents Int              @map("price_per_meal_cents")
+  mealCredits              Int                 @map("meal_credits")
+  pricePerMealCents        Int                 @map("price_per_meal_cents")
   /// When set, base checkout uses this fixed total (e.g. newcomer RM39).
-  fixedCheckoutCents Int?            @map("fixed_checkout_cents")
+  fixedCheckoutCents       Int?                @map("fixed_checkout_cents")
   /// 60-meal plan: dinner soup (+RM1) and drinks included in plan price.
-  includeFreeSoupAndDrinks Boolean  @default(false) @map("include_free_soup_and_drinks")
-  isActive          Boolean          @default(true) @map("is_active")
-  subscriptions     BentoSubscription[]
+  includeFreeSoupAndDrinks Boolean             @default(false) @map("include_free_soup_and_drinks")
+  isActive                 Boolean             @default(true) @map("is_active")
+  subscriptions            BentoSubscription[]
 
   @@map("bento_packages")
 }
@@ -1123,7 +1227,7 @@ model BentoDiscountVoucher {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  redemptions    BentoDiscountRedemption[]
+  redemptions BentoDiscountRedemption[]
 
   @@index([isActive, startsAt, endsAt])
   @@map("bento_discount_vouchers")
@@ -1192,29 +1296,29 @@ enum EmailRecipientStatus {
 /// Admin-drafted marketing/announcement email, sent to a customer audience
 /// either immediately or at `scheduledAt` by the mailer dispatcher.
 model EmailCampaign {
-  id           String              @id @default(uuid()) @db.Uuid
-  name         String
-  templateKind EmailTemplateKind   @default(PLAIN) @map("template_kind")
-  subject      String
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String
+  templateKind    EmailTemplateKind   @default(PLAIN) @map("template_kind")
+  subject         String
   /// Inbox preview line rendered as hidden preheader text.
-  preheader    String?
+  preheader       String?
   /// Inner HTML body (placed inside the branded layout at send time).
-  bodyHtml     String              @map("body_html")
-  audience     EmailAudienceKind   @default(OPTED_IN)
+  bodyHtml        String              @map("body_html")
+  audience        EmailAudienceKind   @default(OPTED_IN)
   /// Optional member tier filter (e.g. "gold"); null = all tiers.
-  tierFilter   String?             @map("tier_filter")
-  status       EmailCampaignStatus @default(DRAFT)
-  scheduledAt  DateTime?           @map("scheduled_at")
-  startedAt    DateTime?           @map("started_at")
-  completedAt  DateTime?           @map("completed_at")
-  totalRecipients Int              @default(0) @map("total_recipients")
-  sentCount    Int                 @default(0) @map("sent_count")
-  failedCount  Int                 @default(0) @map("failed_count")
-  lastError    String?             @map("last_error")
+  tierFilter      String?             @map("tier_filter")
+  status          EmailCampaignStatus @default(DRAFT)
+  scheduledAt     DateTime?           @map("scheduled_at")
+  startedAt       DateTime?           @map("started_at")
+  completedAt     DateTime?           @map("completed_at")
+  totalRecipients Int                 @default(0) @map("total_recipients")
+  sentCount       Int                 @default(0) @map("sent_count")
+  failedCount     Int                 @default(0) @map("failed_count")
+  lastError       String?             @map("last_error")
   /// Actor label of the admin who created it (e.g. "admin:ops@moja.com").
-  createdBy    String?             @map("created_by")
-  createdAt    DateTime            @default(now()) @map("created_at")
-  updatedAt    DateTime            @updatedAt @map("updated_at")
+  createdBy       String?             @map("created_by")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
 
   recipients EmailCampaignRecipient[]
 
