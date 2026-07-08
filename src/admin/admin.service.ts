@@ -2625,23 +2625,58 @@ export class AdminService {
       ORDER BY qty_sold DESC
     `;
 
-    const totals = await this.prisma.$queryRaw<
-      { orders: bigint; gmv: bigint }[]
-    >`
-      SELECT COUNT(*)::bigint AS orders,
-             COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
-      FROM customer_orders o
-      WHERE o.status = 'completed'
-        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
-        AND COALESCE(o.completed_at, o.placed_at) < ${next}
-    `;
+    const [totals, posTotals, bentoTotals] = await Promise.all([
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+        FROM customer_orders o
+        WHERE o.status = 'completed'
+          AND COALESCE(o.completed_at, o.placed_at) >= ${start}
+          AND COALESCE(o.completed_at, o.placed_at) < ${next}
+      `,
+      // In-store POS, booked on its MYT business date. Exclude online-order
+      // settlement receipts (already counted in the online channel).
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv
+        FROM pos_receipts pr
+        WHERE pr.origin_online_order_id IS NULL
+          AND pr.business_date >= ${start}
+          AND pr.business_date < ${next}
+      `,
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${start}
+          AND pi.updated_at < ${next}
+      `,
+    ]);
+
+    const onlineOrders = Number(totals[0]?.orders ?? 0n);
+    const onlineGmv = Number(totals[0]?.gmv ?? 0n);
+    const posOrders = Number(posTotals[0]?.orders ?? 0n);
+    const posGmv = Number(posTotals[0]?.gmv ?? 0n);
+    const bentoOrders = Number(bentoTotals[0]?.orders ?? 0n);
+    const bentoGmv = Number(bentoTotals[0]?.gmv ?? 0n);
 
     return {
       date: day.toISOString().slice(0, 10),
       closed: !!closed,
       closedAt: closed?.closedAt.toISOString() ?? null,
-      completedOrders: Number(totals[0]?.orders ?? 0n),
-      totalGmvCents: Number(totals[0]?.gmv ?? 0n),
+      // Kept for backward compatibility — the online-shop channel figures.
+      completedOrders: onlineOrders,
+      totalGmvCents: onlineGmv,
+      // All-channel breakdown for the finance daily view.
+      channels: {
+        onlineShop: { orders: onlineOrders, gmvCents: onlineGmv },
+        pos: { orders: posOrders, gmvCents: posGmv },
+        bento: { orders: bentoOrders, gmvCents: bentoGmv },
+      },
+      allChannelsOrders: onlineOrders + posOrders + bentoOrders,
+      allChannelsGmvCents: onlineGmv + posGmv + bentoGmv,
       items: items.map((r) => ({
         productId: r.product_id,
         name: r.name,

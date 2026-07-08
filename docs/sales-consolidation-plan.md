@@ -94,7 +94,28 @@ Original spec:
 - Sync-health admin endpoint: last webhook at, last pull at, receipts ingested
   today, unmatched-customer count, dedupe hits.
 
-### Phase 3 — Unified reporting API
+### Phase 3 — Unified reporting API ✅ (implemented)
+
+Implemented in `finance-report.service.ts`. Endpoints:
+`GET /admin/reports/finance-overview` (per-channel totals, merged revenue
+series, payment-method mix, refunds, top products, prior-period deltas) and
+`GET /admin/reports/transactions` (paged UNION ledger across all three
+channels with date/channel/method/customer/amount filters + CSV export).
+`daily-commerce` now returns a per-channel breakdown (`channels` +
+`allChannels*`) while keeping the original online-shop fields for
+compatibility. Verified end-to-end against the dev DB (boot, all routes mapped,
+POS receipt → correct totals/series/AOV/top-products, then cleaned up).
+
+Notes / deviations:
+- Bento has no refund timestamp (only `createdAt` + `status`), so bento refunds
+  are attributed to the subscription's purchase date.
+- POS buckets on its MYT business date; online/bento bucket on UTC timestamps
+  (matching the existing analytics). Range totals are unaffected; day-boundary
+  bucketing can differ by up to 8h.
+- The `pos`/`all` categories on the older `sales-analytics` endpoint were not
+  added — `finance-overview` supersedes that need.
+
+Original spec:
 
 - Extend `sales-analytics` categories: `pos` and `all` (currently
   `cake` | `bento`), with channel breakdown in the series.

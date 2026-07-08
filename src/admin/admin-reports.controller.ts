@@ -23,10 +23,13 @@ import { BentoCustomerLookupQueryDto } from './dto/bento-customer-lookup-query.d
 import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { PosPullDto } from './dto/pos-pull.dto';
+import { FinanceOverviewQueryDto } from './dto/finance-overview-query.dto';
+import { UnifiedTransactionsQueryDto } from './dto/unified-transactions-query.dto';
 import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
 import { BentoService } from '../bento/bento.service';
 import { BentoScheduleDto } from '../bento/dto/bento-subscription.dto';
 import { SalesplayPullService } from '../salesplay/salesplay-pull.service';
+import { FinanceReportService } from './finance-report.service';
 
 @Controller('admin/reports')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -36,7 +39,42 @@ export class AdminReportsController {
     private readonly bentoOrdersReport: BentoOrdersReportService,
     private readonly bento: BentoService,
     private readonly salesplayPull: SalesplayPullService,
+    private readonly finance: FinanceReportService,
   ) {}
+
+  /**
+   * Consolidated cross-channel finance overview (POS + online shop + bento):
+   * per-channel totals, merged revenue series, payment-method mix, refunds,
+   * top products, and prior-period comparison.
+   */
+  @Get('finance-overview')
+  @RequirePermissions(P.REPORT_VIEW)
+  financeOverview(@Query() query: FinanceOverviewQueryDto) {
+    return this.finance.getFinanceOverview(query);
+  }
+
+  /**
+   * Unified transaction ledger across all three channels, each row tagged with
+   * its channel. Supports date / channel / payment-method / customer / amount
+   * filters, pagination, and CSV export.
+   */
+  @Get('transactions')
+  @RequirePermissions(P.REPORT_VIEW)
+  async transactions(
+    @Query() query: UnifiedTransactionsQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const payload = await this.finance.getUnifiedTransactions(query);
+    if (query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="transactions.csv"',
+      );
+      return this.finance.unifiedTransactionsToCsv(payload);
+    }
+    return payload;
+  }
 
   /** SalesPlay POS ingest health for the finance dashboard sync panel. */
   @Get('pos/sync-health')

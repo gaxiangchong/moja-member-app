@@ -8,6 +8,7 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
+import { FinanceReportService } from './finance-report.service';
 import { ReportingSettingsModule } from './reporting-settings.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { HomeAdsModule } from '../home-ads/home-ads.module';
@@ -41,6 +42,6 @@ import { SalesplayModule } from '../salesplay/salesplay.module';
     AdminReportsController,
     AdminEmployeesController,
   ],
-  providers: [AdminService, ApprovalsService],
+  providers: [AdminService, ApprovalsService, FinanceReportService],
 })
 export class AdminModule {}
