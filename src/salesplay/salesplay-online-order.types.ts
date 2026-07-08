@@ -24,3 +24,18 @@ export type SalesplayOnlineOrderPushResult = {
   orderReferenceId: string;
   orderReferenceNumber: string;
 };
+
+/** Query for one page of a paginated SalesPlay GET (pull sync). */
+export type SalesplayPageQuery = {
+  cursor?: string | null;
+  limit?: number;
+  /** Lower date bound (YYYY-MM-DD), when the resource supports date filtering. */
+  fromDate?: string | null;
+};
+
+/** One page of records from a SalesPlay GET, with the forward cursor. */
+export type SalesplayPage = {
+  items: unknown[];
+  /** Cursor for the next page, or null when this is the last page. */
+  nextCursor: string | null;
+};

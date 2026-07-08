@@ -17,6 +17,7 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
 import { BentoModule } from '../bento/bento.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SalesplayModule } from '../salesplay/salesplay.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PaymentsModule } from '../payments/payments.module';
     ReportingSettingsModule,
     BentoVoucherModule,
     PaymentsModule,
+    SalesplayModule,
   ],
   controllers: [
     AdminController,
