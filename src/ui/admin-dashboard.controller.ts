@@ -9,7 +9,6 @@ const DEFAULT_DASHBOARD_CONFIG = {
     bento: { showGroup: true, showSubmenu: true },
     wallet: { showGroup: false, showSubmenu: true },
     loyalty: { showGroup: true, showSubmenu: true },
-    vouchers: { showGroup: false, showSubmenu: true },
     campaigns: { showGroup: false, showSubmenu: true },
     mailer: { showGroup: true, showSubmenu: true },
     'data-tools': { showGroup: false, showSubmenu: true },
@@ -41,8 +40,6 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'settings-system': true,
     'reports-customers': true,
     'reports-sales': true,
-    'reports-vouchers': true,
-    'reports-loyalty': true,
     'finance-overview': true,
     'finance-transactions': true,
     'finance-daily': true,
@@ -1232,8 +1229,6 @@ export class AdminDashboardController {
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="reports-sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>Sales &amp; transactions</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>Customer reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-vouchers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>Voucher reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-loyalty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Loyalty reports</button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="settings" open>
@@ -2882,57 +2877,6 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="reports-vouchers" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Voucher reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Issued</div><div class="kpi-value" id="rpVIssued">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redeemed</div><div class="kpi-value" id="rpVRedeemed">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redemption rate</div><div class="kpi-value" id="rpVRate">-</div></div>
-            </div>
-          </div>
-        </section>
-
-        <section id="reports-loyalty" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Loyalty reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Points issued</div><div class="kpi-value" id="rpPtsIssued">-</div></div>
-              <div class="kpi"><div class="kpi-label">Points redeemed</div><div class="kpi-value" id="rpPtsRedeemed">-</div></div>
-            </div>
-          </div>
-        </section>
-
-        <section id="settings-roles" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Roles &amp; permissions</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAdminUsersBtn">Refresh</button></div></div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Permissions</th></tr></thead>
-                <tbody id="adminUsersBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="settings-master-data" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Master data</h2></div>
-            <div class="coming-soon">
-              Master entries and business rules are managed through <code>/admin/master/entries</code> and <code>/admin/master/rules</code>. UI workflow will include staged edits, validation, and rollback-friendly audit trails.
-            </div>
-          </div>
-        </section>
-
-        <section id="settings-notifications" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Notification templates</h2></div>
-            <div class="coming-soon">
-              Notification templates are not yet wired in this dashboard. Planned controls include variable previews, test-send to admin-only numbers, and approval checkpoints before activation.
-            </div>
-          </div>
-        </section>
-
         <section id="settings-system" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
@@ -3969,9 +3913,9 @@ export class AdminDashboardController {
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
-      'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
+      'reports-customers', 'reports-sales',
       'finance-overview', 'finance-transactions', 'finance-daily', 'finance-sync',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
+      'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -4033,15 +3977,10 @@ export class AdminDashboardController {
       'data-import-history': iconAudit,
       'reports-customers': iconUsers,
       'reports-sales': '<path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/>',
-      'reports-vouchers': iconVoucher,
-      'reports-loyalty': iconLoyalty,
       'finance-overview': iconLoyalty,
       'finance-transactions': '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
       'finance-daily': '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
       'finance-sync': '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/>',
-      'settings-roles': iconUsers,
-      'settings-master-data': iconAudit,
-      'settings-notifications': iconAudit,
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
       'bento-overview': '<path d="M3 3v18h18"/><path d="M18.7 8a6 6 0 0 1-6 6H3"/><circle cx="7" cy="17" r="1"/>',
@@ -4087,15 +4026,10 @@ export class AdminDashboardController {
       'data-import-history': 'Data Tools · Import history',
       'reports-customers': 'Sales & reports · Customer reports',
       'reports-sales': 'Sales & reports · Sales & transactions',
-      'reports-vouchers': 'Sales & reports · Voucher reports',
-      'reports-loyalty': 'Sales & reports · Loyalty reports',
       'finance-overview': 'Finance · Revenue overview',
       'finance-transactions': 'Finance · All transactions',
       'finance-daily': 'Finance · Daily close',
       'finance-sync': 'Finance · POS sync health',
-      'settings-roles': 'Settings · Roles & permissions',
-      'settings-master-data': 'Settings · Master data',
-      'settings-notifications': 'Settings · Notification templates',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
       'bento-overview': 'Bento · Overview & members',
@@ -5793,24 +5727,10 @@ export class AdminDashboardController {
         '<tr><td>' + fmt(r.signupSource) + '</td><td>' + fmt(r.count) + '</td></tr>'
       );
       document.getElementById('reportSourceBody').innerHTML = srcRows.join('') || '<tr><td colspan="2">No data</td></tr>';
-      document.getElementById('rpVIssued').textContent = fmt(data.overview?.vouchers?.issued);
-      document.getElementById('rpVRedeemed').textContent = fmt(data.overview?.vouchers?.redeemed);
-      const rr = data.overview?.vouchers?.redemptionRate;
-      document.getElementById('rpVRate').textContent = rr != null ? (Math.round(rr * 10000) / 100) + '%' : '-';
-      document.getElementById('rpPtsIssued').textContent = fmt(data.overview?.loyalty?.pointsIssued);
-      document.getElementById('rpPtsRedeemed').textContent = fmt(data.overview?.loyalty?.pointsRedeemed);
       lastRpMarketing = data.marketing || null;
       paintMarketing(lastRpMarketing, 'mkRp');
       const rpSp = document.getElementById('mkRpSpenderPeriod');
       paintSpenderPeriod('mkRp', lastRpMarketing, rpSp ? rpSp.value : 'all');
-    }
-
-    async function loadAdminUsers() {
-      const data = await api('/admin/users');
-      const rows = (data || []).map((u) =>
-        '<tr><td>' + fmt(u.email) + '</td><td>' + fmt(u.displayName) + '</td><td>' + statusPill(u.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td>' + fmt((u.permissions || []).join(', ')) + '</td></tr>'
-      );
-      document.getElementById('adminUsersBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
     var lastBentoMenu = [];
@@ -8210,7 +8130,6 @@ export class AdminDashboardController {
         loadImportHistory(),
         loadExportJobs(),
         loadReporting(),
-        loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
         loadBentoMenu(),
@@ -8523,7 +8442,6 @@ export class AdminDashboardController {
     });
     document.getElementById('refreshImportHistoryBtn').addEventListener('click', () => loadImportHistory().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshExportJobsBtn').addEventListener('click', () => loadExportJobs().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshAdminUsersBtn').addEventListener('click', () => loadAdminUsers().catch((e) => { statusPanel.textContent = e.message; }));
 
     function saBind(id, fn) {
       const el = document.getElementById(id);

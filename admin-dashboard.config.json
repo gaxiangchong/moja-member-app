@@ -20,10 +20,6 @@
       "showGroup": true,
       "showSubmenu": true
     },
-    "vouchers": {
-      "showGroup": false,
-      "showSubmenu": true
-    },
     "campaigns": {
       "showGroup": false,
       "showSubmenu": true
@@ -69,8 +65,6 @@
     "settings-shop-layout": true,
     "settings-system": true,
     "reports-customers": true,
-    "reports-vouchers": true,
-    "reports-loyalty": true,
     "finance-overview": true,
     "finance-transactions": true,
     "finance-daily": true,
