@@ -1,16 +1,53 @@
 {
   "menuGroups": {
-    "dashboard": { "showGroup": true, "showSubmenu": true },
-    "customers": { "showGroup": true, "showSubmenu": true },
-    "bento": { "showGroup": true, "showSubmenu": true },
-    "wallet": { "showGroup": false, "showSubmenu": true },
-    "loyalty": { "showGroup": true, "showSubmenu": true },
-    "vouchers": { "showGroup": false, "showSubmenu": true },
-    "campaigns": { "showGroup": false, "showSubmenu": true },
-    "data-tools": { "showGroup": false, "showSubmenu": true },
-    "reports": { "showGroup": true, "showSubmenu": true },
-    "settings": { "showGroup": true, "showSubmenu": true },
-    "audit": { "showGroup": false, "showSubmenu": true }
+    "dashboard": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "customers": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "bento": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "wallet": {
+      "showGroup": false,
+      "showSubmenu": true
+    },
+    "loyalty": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "vouchers": {
+      "showGroup": false,
+      "showSubmenu": true
+    },
+    "campaigns": {
+      "showGroup": false,
+      "showSubmenu": true
+    },
+    "data-tools": {
+      "showGroup": false,
+      "showSubmenu": true
+    },
+    "finance": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "reports": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "settings": {
+      "showGroup": true,
+      "showSubmenu": true
+    },
+    "audit": {
+      "showGroup": false,
+      "showSubmenu": true
+    }
   },
   "menuViews": {
     "dashboard-overview": true,
@@ -33,6 +70,10 @@
     "settings-system": true,
     "reports-customers": true,
     "reports-vouchers": true,
-    "reports-loyalty": true
+    "reports-loyalty": true,
+    "finance-overview": true,
+    "finance-transactions": true,
+    "finance-daily": true,
+    "finance-sync": true
   }
 }

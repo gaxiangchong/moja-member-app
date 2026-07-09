@@ -13,6 +13,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     campaigns: { showGroup: false, showSubmenu: true },
     mailer: { showGroup: true, showSubmenu: true },
     'data-tools': { showGroup: false, showSubmenu: true },
+    finance: { showGroup: true, showSubmenu: true },
     reports: { showGroup: false, showSubmenu: true },
     settings: { showGroup: true, showSubmenu: true },
     audit: { showGroup: false, showSubmenu: true },
@@ -42,6 +43,10 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'reports-sales': true,
     'reports-vouchers': true,
     'reports-loyalty': true,
+    'finance-overview': true,
+    'finance-transactions': true,
+    'finance-daily': true,
+    'finance-sync': true,
   },
 };
 
@@ -1211,6 +1216,15 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
               Import history
             </button>
+          </div>
+        </details>
+        <details class="nav-group" data-menu-group="finance" open>
+          <summary>Finance</summary>
+          <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="finance-overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Revenue overview</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-transactions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>All transactions</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-daily"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Daily close</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>POS sync health</button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="reports" open>
@@ -2608,6 +2622,266 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="finance-overview" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="finPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="finPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="finPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finFrom">From (UTC)</label>
+                <input type="date" id="finFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finTo">To (UTC, inclusive)</label>
+                <input type="date" id="finTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finBucket">Bucket</label>
+                <select id="finBucket" aria-label="Time bucket">
+                  <option value="day" selected>Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month">Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="finRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <div class="sa-kpi-strip" id="finKpiStrip">
+              <div class="sa-kpi-card is-active">
+                <div class="sa-kpi-card-title">Total revenue (all channels)</div>
+                <div class="sa-kpi-card-value" id="finValRevenue">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaRevenue">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Transactions</div>
+                <div class="sa-kpi-card-value" id="finValOrders">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaOrders">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Avg transaction</div>
+                <div class="sa-kpi-card-value" id="finValAov">—</div>
+                <div class="sa-kpi-card-delta">&nbsp;</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Refunds</div>
+                <div class="sa-kpi-card-value" id="finValRefunds">—</div>
+                <div class="sa-kpi-card-delta" id="finRefundsDetail">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Net revenue</div>
+                <div class="sa-kpi-card-value" id="finValNet">—</div>
+                <div class="sa-kpi-card-delta">after refunds</div>
+              </div>
+            </div>
+
+            <p class="sa-substats">
+              <strong>Scope:</strong> in-store POS (SalesPlay receipts, MYT business day, online-order settlements excluded),
+              online shop (paid orders), and bento (successful payments). One consolidated set of numbers — online orders
+              are never double-counted when they settle at the POS.
+            </p>
+
+            <div class="sa-chart-card">
+              <div class="sa-chart-head">
+                <div class="sa-chart-head-title">Revenue by channel</div>
+                <div class="sa-chart-controls" id="finChartLegend"></div>
+              </div>
+              <div id="finChannelChart" class="sa-line-chart-wrap" aria-label="Revenue by channel chart"></div>
+            </div>
+
+            <div class="sa-split">
+              <div class="sa-panel">
+                <div class="sa-panel-head">Channel breakdown</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Channel</th><th>Revenue</th><th>Txns</th><th>Avg</th><th>Refunds</th></tr></thead>
+                    <tbody id="finChannelBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="sa-panel">
+                <div class="sa-panel-head">Payment methods</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Method</th><th>Revenue</th><th>Txns</th></tr></thead>
+                    <tbody id="finMethodsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Top products across channels</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">By revenue in range</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Channel</th><th>Product</th><th>SKU / code</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="finTopBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="muted-hint" id="finOverviewHint" style="margin:12px 4px 0;font-size:12px"></p>
+          </div>
+        </section>
+
+        <section id="finance-transactions" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-group">
+                <label for="ftFrom">From (UTC)</label>
+                <input type="date" id="ftFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftTo">To (UTC, inclusive)</label>
+                <input type="date" id="ftTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftChannel">Channel</label>
+                <select id="ftChannel" aria-label="Channel filter">
+                  <option value="" selected>All channels</option>
+                  <option value="pos">In-store POS</option>
+                  <option value="online_shop">Online shop</option>
+                  <option value="bento">Bento</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftMinRm">Min amount (RM)</label>
+                <input type="number" id="ftMinRm" min="0" step="0.01" placeholder="—" style="width:110px" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftMaxRm">Max amount (RM)</label>
+                <input type="number" id="ftMaxRm" min="0" step="0.01" placeholder="—" style="width:110px" />
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="ftRefreshBtn">Apply</button>
+                <button type="button" class="btn-outline" id="ftExportCsv">Export CSV</button>
+              </div>
+            </div>
+
+            <p class="sa-substats" id="ftSummary"><strong>Filtered total:</strong> — </p>
+
+            <div class="sa-export-block sa-panel">
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Channel</th><th>Date / time (UTC)</th><th>Amount</th><th>Payment</th><th>Ref</th><th>Customer</th><th>Phone</th></tr></thead>
+                  <tbody id="ftBody"></tbody>
+                </table>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px">
+                <button type="button" class="btn-outline" id="ftPrevBtn">‹ Prev</button>
+                <span class="muted-hint" style="margin:0;width:auto" id="ftPageInfo">—</span>
+                <button type="button" class="btn-outline" id="ftNextBtn">Next ›</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="finance-daily" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-export-block sa-panel" style="margin-top:0">
+              <div class="sa-export-head">
+                <h3>Daily close — all channels</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">UTC business day · close books when reconciled</span>
+              </div>
+              <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+                <div class="form-section" style="margin:0">
+                  <label for="fdDate">Business date (UTC)</label>
+                  <input type="date" id="fdDate" />
+                </div>
+                <button type="button" class="btn-primary" id="fdLoadBtn">Load day</button>
+                <span id="fdClosedBadge" class="muted-hint" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="fdCloseBtn">Close day</button>
+              </div>
+              <div class="sa-kpi-strip" style="padding:0 16px 12px">
+                <div class="sa-kpi-card is-active">
+                  <div class="sa-kpi-card-title">All channels</div>
+                  <div class="sa-kpi-card-value" id="fdValTotal">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountTotal">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">In-store POS</div>
+                  <div class="sa-kpi-card-value" id="fdValPos">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountPos">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Online shop</div>
+                  <div class="sa-kpi-card-value" id="fdValOnline">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountOnline">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Bento</div>
+                  <div class="sa-kpi-card-value" id="fdValBento">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountBento">—</div>
+                </div>
+              </div>
+              <div class="sa-export-head" style="border-top:1px solid rgba(148,163,184,0.15)">
+                <h3 style="font-size:14px">Online shop items (completed orders)</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">POS item detail lives in SalesPlay receipts</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="fdItemsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="fdResult" style="padding:0 16px 16px;margin:0"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="finance-sync" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-export-block sa-panel" style="margin-top:0">
+              <div class="sa-export-head">
+                <h3>SalesPlay POS sync health</h3>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn-outline" id="fsRefreshBtn">Refresh</button>
+                  <button type="button" class="btn-primary" id="fsPullBtn">Pull now (reconcile)</button>
+                  <button type="button" class="btn-outline" id="fsBackfillBtn">Backfill history</button>
+                </div>
+              </div>
+              <div class="sa-kpi-strip" style="padding:12px 16px">
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Connection</div>
+                  <div class="sa-kpi-card-value" id="fsValConfigured" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta" id="fsFlagsDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last webhook</div>
+                  <div class="sa-kpi-card-value" id="fsValWebhook" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">real-time receipt push</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last pull</div>
+                  <div class="sa-kpi-card-value" id="fsValPull" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">backfill / reconciliation</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts today (MYT)</div>
+                  <div class="sa-kpi-card-value" id="fsValToday">—</div>
+                  <div class="sa-kpi-card-delta" id="fsTodayDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts total</div>
+                  <div class="sa-kpi-card-value" id="fsValTotal">—</div>
+                  <div class="sa-kpi-card-delta" id="fsCreditsDetail">—</div>
+                </div>
+              </div>
+              <p class="muted-hint" style="margin:0 16px 12px;font-size:13px" id="fsHint">
+                Webhooks are the live path; the nightly pull is the integrity net. If "Last webhook" goes stale on a
+                trading day, check the SalesPlay Back Office webhook configuration, then run a manual pull.
+              </p>
+              <p class="field-hint" id="fsResult" style="padding:0 16px 16px;margin:0"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="reports-vouchers" class="tab-panel hidden">
           <div class="kpi-panel" style="margin-top:0">
             <h2>Voucher reports</h2>
@@ -3696,6 +3970,7 @@ export class AdminDashboardController {
       'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
       'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
+      'finance-overview', 'finance-transactions', 'finance-daily', 'finance-sync',
       'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
@@ -3760,6 +4035,10 @@ export class AdminDashboardController {
       'reports-sales': '<path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/>',
       'reports-vouchers': iconVoucher,
       'reports-loyalty': iconLoyalty,
+      'finance-overview': iconLoyalty,
+      'finance-transactions': '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+      'finance-daily': '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+      'finance-sync': '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/>',
       'settings-roles': iconUsers,
       'settings-master-data': iconAudit,
       'settings-notifications': iconAudit,
@@ -3810,6 +4089,10 @@ export class AdminDashboardController {
       'reports-sales': 'Sales & reports · Sales & transactions',
       'reports-vouchers': 'Sales & reports · Voucher reports',
       'reports-loyalty': 'Sales & reports · Loyalty reports',
+      'finance-overview': 'Finance · Revenue overview',
+      'finance-transactions': 'Finance · All transactions',
+      'finance-daily': 'Finance · Daily close',
+      'finance-sync': 'Finance · POS sync health',
       'settings-roles': 'Settings · Roles & permissions',
       'settings-master-data': 'Settings · Master data',
       'settings-notifications': 'Settings · Notification templates',
@@ -8333,6 +8616,384 @@ export class AdminDashboardController {
         refreshSalesViz();
       });
     }
+
+    // ---- Finance (consolidated cross-channel) -------------------------------
+
+    const FIN_CHANNELS = [
+      { key: 'pos', field: 'posRevenueCents', label: 'In-store POS', color: '#38bdf8' },
+      { key: 'online_shop', field: 'onlineShopRevenueCents', label: 'Online shop', color: '#a78bfa' },
+      { key: 'bento', field: 'bentoRevenueCents', label: 'Bento', color: '#34d399' },
+    ];
+    let lastFinanceOverview = null;
+    let ftPage = 1;
+
+    function finChannelLabel(key) {
+      const c = FIN_CHANNELS.find(function (x) { return x.key === key; });
+      return c ? c.label : key;
+    }
+
+    function finRm(cents) {
+      return 'RM ' + moneyFromCents(cents);
+    }
+
+    function finPct(p) {
+      if (p === null || p === undefined) return 'no prior data';
+      const v = Math.round(p * 1000) / 10;
+      return (v >= 0 ? '▲ +' : '▼ ') + v + '% vs previous period';
+    }
+
+    function finSetDates(startDaysAgo, monthToDate) {
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = monthToDate
+        ? new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))
+        : new Date(end);
+      if (!monthToDate) start.setUTCDate(start.getUTCDate() - startDaysAgo);
+      const fe = document.getElementById('finFrom');
+      const te = document.getElementById('finTo');
+      if (fe) fe.value = saIsoDateUtc(start);
+      if (te) te.value = saIsoDateUtc(end);
+    }
+
+    function finRangeQuery(fromId, toId) {
+      const fromStr = document.getElementById(fromId).value;
+      const toStr = document.getElementById(toId).value;
+      if (!fromStr || !toStr) return null;
+      const toEnd = new Date(toStr + 'T00:00:00.000Z');
+      toEnd.setUTCDate(toEnd.getUTCDate() + 1);
+      return (
+        'from=' + encodeURIComponent(fromStr + 'T00:00:00.000Z') +
+        '&to=' + encodeURIComponent(toEnd.toISOString())
+      );
+    }
+
+    async function loadFinanceOverview() {
+      const base = finRangeQuery('finFrom', 'finTo');
+      if (!base) {
+        statusPanel.textContent = 'Set from and to dates first.';
+        return;
+      }
+      const bucket = document.getElementById('finBucket').value || 'day';
+      statusPanel.textContent = 'Loading finance overview…';
+      const data = await api('/admin/reports/finance-overview?' + base + '&bucket=' + bucket);
+      lastFinanceOverview = data;
+
+      document.getElementById('finValRevenue').textContent = finRm(data.totals.revenueCents);
+      document.getElementById('finDeltaRevenue').textContent = finPct(data.deltas.revenuePct);
+      document.getElementById('finValOrders').textContent = fmt(data.totals.orders);
+      document.getElementById('finDeltaOrders').textContent = finPct(data.deltas.ordersPct);
+      document.getElementById('finValAov').textContent = finRm(data.totals.averageOrderValueCents);
+      document.getElementById('finValRefunds').textContent = finRm(data.totals.refundsCents);
+      document.getElementById('finRefundsDetail').textContent =
+        data.refunds.posCount + ' POS · ' + data.refunds.bentoCount + ' bento';
+      document.getElementById('finValNet').textContent = finRm(data.totals.netRevenueCents);
+
+      const chBody = document.getElementById('finChannelBody');
+      chBody.innerHTML = data.byChannel.length
+        ? data.byChannel
+            .map(function (c) {
+              return (
+                '<tr><td>' + finChannelLabel(c.channel) + '</td><td>' + finRm(c.revenueCents) +
+                '</td><td>' + fmt(c.orders) + '</td><td>' + finRm(c.averageOrderValueCents) +
+                '</td><td>' + (c.refundsCents ? finRm(c.refundsCents) : '—') + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="5">No data.</td></tr>';
+
+      const pmBody = document.getElementById('finMethodsBody');
+      pmBody.innerHTML = data.paymentMethods.length
+        ? data.paymentMethods
+            .map(function (m) {
+              return (
+                '<tr><td>' + emEscapeHtml(m.method) + '</td><td>' + finRm(m.revenueCents) +
+                '</td><td>' + fmt(m.count) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="3">No transactions in range.</td></tr>';
+
+      const topBody = document.getElementById('finTopBody');
+      topBody.innerHTML = data.topProducts.length
+        ? data.topProducts
+            .map(function (p) {
+              return (
+                '<tr><td>' + finChannelLabel(p.channel) + '</td><td>' + emEscapeHtml(p.name) +
+                '</td><td>' + emEscapeHtml(p.productId) + '</td><td>' + fmt(p.qtySold) +
+                '</td><td>' + finRm(p.revenueCents) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="5">No products sold in range.</td></tr>';
+
+      paintFinanceChart();
+      document.getElementById('finOverviewHint').textContent =
+        'Range ' + data.meta.from.slice(0, 10) + ' → ' + data.meta.to.slice(0, 10) +
+        ' vs previous ' + data.meta.previousFrom.slice(0, 10) + ' → ' + data.meta.previousTo.slice(0, 10) +
+        ' · generated ' + data.meta.generatedAt.slice(11, 19) + ' UTC';
+      statusPanel.textContent = 'Finance overview loaded.';
+    }
+
+    function paintFinanceChart() {
+      const wrap = document.getElementById('finChannelChart');
+      const legendEl = document.getElementById('finChartLegend');
+      if (!wrap) return;
+      const arr = (lastFinanceOverview && lastFinanceOverview.series) || [];
+
+      if (legendEl) {
+        legendEl.innerHTML = FIN_CHANNELS.map(function (c) {
+          return (
+            '<span style="display:inline-flex;align-items:center;gap:5px;margin-left:12px;font-size:12px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + c.color + '"></span>' +
+            c.label + '</span>'
+          );
+        }).join('');
+      }
+
+      if (!arr.length) {
+        wrap.innerHTML =
+          '<p class="muted-hint" style="margin:0;padding:48px 16px;text-align:center">No revenue in this range.</p>';
+        return;
+      }
+
+      const W = 880;
+      const H = 260;
+      const padL = 58;
+      const padR = 20;
+      const padT = 16;
+      const padB = 44;
+      const iw = W - padL - padR;
+      const ih = H - padT - padB;
+      const n = arr.length;
+      const totals = arr.map(function (s) { return Number(s.totalRevenueCents) || 0; });
+      const maxV = Math.max(1, ...totals) * 1.06;
+      const slot = iw / n;
+      const barW = Math.max(3, Math.min(48, slot * 0.62));
+
+      let gridAndLabels = '';
+      const yTicks = 5;
+      for (let t = 0; t <= yTicks; t += 1) {
+        const frac = t / yTicks;
+        const y = padT + ih * frac;
+        gridAndLabels +=
+          '<line class="sa-chart-grid" x1="' + padL + '" y1="' + y.toFixed(1) +
+          '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" />' +
+          '<text class="sa-chart-axis" x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) +
+          '" text-anchor="end">' + moneyFromCents(Math.round(maxV * (1 - frac))) + '</text>';
+      }
+
+      let bars = '';
+      let xLabels = '';
+      const step = n <= 8 ? 1 : Math.ceil(n / 8);
+      arr.forEach(function (s, i) {
+        const xc = padL + slot * i + slot / 2;
+        let yCursor = padT + ih;
+        FIN_CHANNELS.forEach(function (c) {
+          const v = Number(s[c.field]) || 0;
+          if (v <= 0) return;
+          const h = (ih * v) / maxV;
+          yCursor -= h;
+          const tip =
+            String(s.periodStart || '').slice(0, 10) + ' · ' + c.label + ': RM ' + moneyFromCents(v) +
+            ' (total RM ' + moneyFromCents(s.totalRevenueCents) + ')';
+          bars +=
+            '<rect x="' + (xc - barW / 2).toFixed(1) + '" y="' + yCursor.toFixed(1) +
+            '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) +
+            '" fill="' + c.color + '" rx="1.5"><title>' + tip + '</title></rect>';
+        });
+        if (i % step === 0 || i === n - 1) {
+          xLabels +=
+            '<text class="sa-chart-axis" x="' + xc.toFixed(1) + '" y="' + (H - 12) +
+            '" text-anchor="middle">' + String(s.periodStart || '').slice(5, 10) + '</text>';
+        }
+      });
+
+      wrap.innerHTML =
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' +
+        gridAndLabels + bars + xLabels + '</svg>';
+    }
+
+    function ftBuildQuery() {
+      const base = finRangeQuery('ftFrom', 'ftTo');
+      if (!base) return null;
+      let q = base + '&page=' + ftPage + '&pageSize=50';
+      const ch = document.getElementById('ftChannel').value;
+      if (ch) q += '&channel=' + encodeURIComponent(ch);
+      const minRm = parseFloat(document.getElementById('ftMinRm').value);
+      if (Number.isFinite(minRm)) q += '&minAmountCents=' + Math.round(minRm * 100);
+      const maxRm = parseFloat(document.getElementById('ftMaxRm').value);
+      if (Number.isFinite(maxRm)) q += '&maxAmountCents=' + Math.round(maxRm * 100);
+      return q;
+    }
+
+    async function loadFinanceTransactions() {
+      const q = ftBuildQuery();
+      if (!q) {
+        statusPanel.textContent = 'Set from and to dates first.';
+        return;
+      }
+      statusPanel.textContent = 'Loading transactions…';
+      const data = await api('/admin/reports/transactions?' + q);
+      const tb = document.getElementById('ftBody');
+      tb.innerHTML = data.transactions.length
+        ? data.transactions
+            .map(function (t) {
+              return (
+                '<tr><td>' + finChannelLabel(t.channel) + '</td><td>' +
+                t.occurredAt.slice(0, 16).replace('T', ' ') + '</td><td>' + finRm(t.amountCents) +
+                '</td><td>' + fmt(t.paymentMethod) + '</td><td>' + fmt(t.reference) +
+                '</td><td>' + fmt(t.customerName) + '</td><td>' + fmt(t.customerPhone) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="7">No transactions match these filters.</td></tr>';
+      document.getElementById('ftSummary').innerHTML =
+        '<strong>Filtered total:</strong> ' + finRm(data.totalsInFilter.amountCents) +
+        ' across ' + fmt(data.totalsInFilter.count) + ' transaction(s)';
+      document.getElementById('ftPageInfo').textContent =
+        'Page ' + data.meta.page + ' of ' + Math.max(1, data.meta.totalPages) +
+        ' · ' + data.meta.total + ' rows';
+      const prev = document.getElementById('ftPrevBtn');
+      const next = document.getElementById('ftNextBtn');
+      if (prev) prev.disabled = data.meta.page <= 1;
+      if (next) next.disabled = data.meta.page >= data.meta.totalPages;
+      statusPanel.textContent = 'Transactions loaded.';
+    }
+
+    async function loadFinanceDaily() {
+      const dce = document.getElementById('fdDate');
+      if (!dce || !dce.value) return;
+      statusPanel.textContent = 'Loading daily close…';
+      const data = await api('/admin/reports/daily-commerce?date=' + encodeURIComponent(dce.value));
+      const ch = data.channels || {};
+      const setPair = function (valId, cntId, entry) {
+        const e = entry || { orders: 0, gmvCents: 0 };
+        document.getElementById(valId).textContent = finRm(e.gmvCents);
+        document.getElementById(cntId).textContent = fmt(e.orders) + ' txns';
+      };
+      document.getElementById('fdValTotal').textContent = finRm(data.allChannelsGmvCents || 0);
+      document.getElementById('fdCountTotal').textContent = fmt(data.allChannelsOrders || 0) + ' txns';
+      setPair('fdValPos', 'fdCountPos', ch.pos);
+      setPair('fdValOnline', 'fdCountOnline', ch.onlineShop);
+      setPair('fdValBento', 'fdCountBento', ch.bento);
+      document.getElementById('fdClosedBadge').textContent = data.closed
+        ? 'Closed at ' + String(data.closedAt || '').slice(0, 16).replace('T', ' ') + ' UTC'
+        : 'Day is still open';
+      const items = data.items || [];
+      document.getElementById('fdItemsBody').innerHTML = items.length
+        ? items
+            .map(function (r) {
+              return (
+                '<tr><td>' + emEscapeHtml(r.name) + '</td><td>' + emEscapeHtml(r.productId) +
+                '</td><td>' + fmt(r.qtySold) + '</td><td>' + finRm(r.revenueCents) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="4">No completed online orders this day.</td></tr>';
+      statusPanel.textContent = 'Daily close loaded.';
+    }
+
+    function fsAgo(iso) {
+      if (!iso) return 'never';
+      const ms = Date.now() - new Date(iso).getTime();
+      if (!Number.isFinite(ms) || ms < 0) return iso.slice(0, 16).replace('T', ' ');
+      const mins = Math.floor(ms / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 48) return hrs + 'h ago';
+      return Math.floor(hrs / 24) + 'd ago';
+    }
+
+    async function loadFinanceSync() {
+      statusPanel.textContent = 'Loading POS sync health…';
+      const d = await api('/admin/reports/pos/sync-health');
+      document.getElementById('fsValConfigured').textContent = d.configured ? 'Configured' : 'Not configured';
+      document.getElementById('fsFlagsDetail').textContent =
+        'pull ' + (d.pullEnabled ? 'on' : 'off') + ' · reconcile ' + (d.reconcileEnabled ? 'on' : 'off');
+      document.getElementById('fsValWebhook').textContent = fsAgo(d.lastWebhookAt);
+      document.getElementById('fsValPull').textContent = fsAgo(d.lastPulledAt);
+      document.getElementById('fsValToday').textContent = fmt(d.receiptsToday);
+      document.getElementById('fsTodayDetail').textContent =
+        d.unmatchedReceiptsToday + ' walk-in · ' + d.onlineSettlementReceiptsToday + ' online settlement';
+      document.getElementById('fsValTotal').textContent = fmt(d.totalReceipts);
+      document.getElementById('fsCreditsDetail').textContent = d.creditNotesToday + ' credit note(s) today';
+      statusPanel.textContent = 'POS sync health loaded.';
+    }
+
+    function finRunPull(mode) {
+      const out = document.getElementById('fsResult');
+      out.textContent = (mode === 'backfill' ? 'Backfill' : 'Reconcile') + ' running… this can take a while.';
+      apiPost('/admin/reports/pos/pull', { mode: mode })
+        .then(function (r) {
+          const rc = r.receipts || {};
+          const cn = r.creditNotes || {};
+          out.textContent =
+            'Receipts: ' + (rc.itemsIngested || 0) + ' new of ' + (rc.itemsSeen || 0) + ' seen (' +
+            (rc.stoppedReason || '-') + ') · Credit notes: ' + (cn.itemsIngested || 0) + ' new of ' +
+            (cn.itemsSeen || 0) + ' seen (' + (cn.stoppedReason || '-') + ')';
+          return loadFinanceSync();
+        })
+        .catch(function (e) {
+          out.textContent = e.message || String(e);
+        });
+    }
+
+    saBind('finRefreshBtn', function () {
+      loadFinanceOverview().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('finPreset7', function () { finSetDates(6, false); });
+    saBind('finPreset30', function () { finSetDates(29, false); });
+    saBind('finPresetMtd', function () { finSetDates(0, true); });
+    saBind('ftRefreshBtn', function () {
+      ftPage = 1;
+      loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('ftPrevBtn', function () {
+      if (ftPage > 1) {
+        ftPage -= 1;
+        loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+      }
+    });
+    saBind('ftNextBtn', function () {
+      ftPage += 1;
+      loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('ftExportCsv', function () {
+      const q = ftBuildQuery();
+      if (!q) {
+        statusPanel.textContent = 'Set from and to dates before exporting.';
+        return;
+      }
+      apiDownload('/admin/reports/transactions?' + q + '&format=csv', 'transactions.csv').catch(function (e) {
+        statusPanel.textContent = e.message || String(e);
+      });
+    });
+    saBind('fdLoadBtn', function () {
+      loadFinanceDaily().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('fdCloseBtn', function () {
+      const dce = document.getElementById('fdDate');
+      const out = document.getElementById('fdResult');
+      if (!dce || !dce.value) {
+        statusPanel.textContent = 'Pick a business date first.';
+        return;
+      }
+      apiPost('/admin/reports/daily-commerce/close', { date: dce.value })
+        .then(function (r) {
+          out.textContent = r.alreadyClosed
+            ? 'Day was already closed at ' + r.closedAt + '.'
+            : 'Day closed at ' + r.closedAt + '.';
+          return loadFinanceDaily();
+        })
+        .catch(function (e) { out.textContent = e.message || String(e); });
+    });
+    saBind('fsRefreshBtn', function () {
+      loadFinanceSync().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('fsPullBtn', function () { finRunPull('reconcile'); });
+    saBind('fsBackfillBtn', function () { finRunPull('backfill'); });
+
     document.querySelectorAll('.template-dl-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.getAttribute('data-kind');
@@ -10533,6 +11194,46 @@ export class AdminDashboardController {
               statusPanel.textContent = err.message || String(err);
             });
             loadDailyCommerceReport().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-overview' && isConnected) {
+            const fe = document.getElementById('finFrom');
+            if (fe && !fe.value) finSetDates(29, false);
+            loadFinanceOverview().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-transactions' && isConnected) {
+            const fe = document.getElementById('ftFrom');
+            const te = document.getElementById('ftTo');
+            if (fe && !fe.value) {
+              const t = new Date();
+              const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+              const start = new Date(end);
+              start.setUTCDate(start.getUTCDate() - 29);
+              fe.value = saIsoDateUtc(start);
+              if (te) te.value = saIsoDateUtc(end);
+            }
+            ftPage = 1;
+            loadFinanceTransactions().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-daily' && isConnected) {
+            const dce = document.getElementById('fdDate');
+            if (dce && !dce.value) {
+              const t = new Date();
+              dce.value = saIsoDateUtc(
+                new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())),
+              );
+            }
+            loadFinanceDaily().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-sync' && isConnected) {
+            loadFinanceSync().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

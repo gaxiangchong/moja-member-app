@@ -2641,8 +2641,8 @@ export class AdminService {
                COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv
         FROM pos_receipts pr
         WHERE pr.origin_online_order_id IS NULL
-          AND pr.business_date >= ${start}
-          AND pr.business_date < ${next}
+          AND pr.business_date >= (${start} AT TIME ZONE 'UTC')::date
+          AND pr.business_date < (${next} AT TIME ZONE 'UTC')::date
       `,
       this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
         SELECT COUNT(*)::bigint AS orders,

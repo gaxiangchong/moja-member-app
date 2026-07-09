@@ -129,7 +129,27 @@ Original spec:
   `CustomerOrder`s) and compute the business day in `Asia/Kuala_Lumpur`
   consistently (POS trades on MYT days; `DailySalesClose` is UTC today).
 
-### Phase 4 — Dashboard "Finance" UI (new nav group)
+### Phase 4 — Dashboard "Finance" UI ✅ (implemented)
+
+New "Finance" nav group in the admin dashboard with four views: Revenue
+overview (KPI strip with prior-period deltas, stacked-by-channel bar chart,
+channel/payment-method breakdowns, cross-channel top products), All
+transactions (unified paged ledger with channel/amount filters + CSV export),
+Daily close (all-channel day totals + close-books action), and POS sync health
+(connection state, last webhook/pull, manual reconcile/backfill buttons).
+Registered in both the built-in default config and `admin-dashboard.config.json`
+(whitelist). Verified in the browser against the dev DB with seeded receipts:
+totals, chart, filters, pagination, close-day, and pull buttons all exercised;
+demo data removed afterwards.
+
+Timezone fix shipped with this phase: `pos_receipts.business_date` is a
+Postgres DATE — comparing it against timestamp params casts at the *DB
+server's* timezone, which shifted every POS day filter by 8h on a MYT server.
+All business-date filters now use `(param AT TIME ZONE 'UTC')::date`, and the
+finance-overview series buckets are computed as deterministic UTC instants so
+the three channels always merge onto the same period regardless of server tz.
+
+Original spec:
 
 New nav group in `src/ui/admin-dashboard.controller.ts`:
 

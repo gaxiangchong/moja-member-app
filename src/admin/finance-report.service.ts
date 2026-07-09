@@ -109,7 +109,7 @@ export class FinanceReportService {
       this.prisma.$queryRaw<TotalsRow[]>`
         SELECT COUNT(*)::bigint AS cnt, COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv
         FROM pos_receipts pr
-        WHERE ${POS_ONLY} AND pr.business_date >= ${from} AND pr.business_date < ${to}
+        WHERE ${POS_ONLY} AND pr.business_date >= (${from} AT TIME ZONE 'UTC')::date AND pr.business_date < (${to} AT TIME ZONE 'UTC')::date
       `,
     ]);
     return {
@@ -165,7 +165,7 @@ export class FinanceReportService {
       this.prisma.$queryRaw<TotalsRow[]>`
         SELECT COUNT(*)::bigint AS cnt, COALESCE(SUM(amount_cents), 0)::bigint AS gmv
         FROM pos_credit_notes
-        WHERE business_date >= ${from} AND business_date < ${to}
+        WHERE business_date >= (${from} AT TIME ZONE 'UTC')::date AND business_date < (${to} AT TIME ZONE 'UTC')::date
       `,
       // Bento stores no refund timestamp (only createdAt + status), so refunds
       // are attributed to the subscription's purchase date. total_cents is the
@@ -180,11 +180,15 @@ export class FinanceReportService {
                COUNT(*)::bigint AS cnt,
                COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv
         FROM pos_receipts pr
-        WHERE ${POS_ONLY} AND pr.business_date >= ${from} AND pr.business_date < ${to}
+        WHERE ${POS_ONLY} AND pr.business_date >= (${from} AT TIME ZONE 'UTC')::date AND pr.business_date < (${to} AT TIME ZONE 'UTC')::date
         GROUP BY pr.payment_type
       `,
+      // Series buckets: date_trunc on the *naive* (UTC-valued) timestamp, then
+      // AT TIME ZONE 'UTC' to return a true UTC instant. Keeps bucket keys
+      // deterministic regardless of the DB server's timezone, so the three
+      // channels always merge onto the same period.
       this.prisma.$queryRaw<{ period_start: Date; gmv: bigint; cnt: bigint }[]>`
-        SELECT date_trunc(${truncUnit}, (o.placed_at AT TIME ZONE 'UTC')) AS period_start,
+        SELECT (date_trunc(${truncUnit}, o.placed_at) AT TIME ZONE 'UTC') AS period_start,
                COALESCE(SUM(o.total_cents), 0)::bigint AS gmv,
                COUNT(*)::bigint AS cnt
         FROM customer_orders o
@@ -192,7 +196,7 @@ export class FinanceReportService {
         GROUP BY 1 ORDER BY 1 ASC
       `,
       this.prisma.$queryRaw<{ period_start: Date; gmv: bigint; cnt: bigint }[]>`
-        SELECT date_trunc(${truncUnit}, (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
+        SELECT (date_trunc(${truncUnit}, pi.updated_at) AT TIME ZONE 'UTC') AS period_start,
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv,
                COUNT(*)::bigint AS cnt
         FROM payment_intents pi
@@ -200,11 +204,11 @@ export class FinanceReportService {
         GROUP BY 1 ORDER BY 1 ASC
       `,
       this.prisma.$queryRaw<{ period_start: Date; gmv: bigint; cnt: bigint }[]>`
-        SELECT date_trunc(${truncUnit}, pr.business_date) AS period_start,
+        SELECT (date_trunc(${truncUnit}, pr.business_date::timestamp) AT TIME ZONE 'UTC') AS period_start,
                COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv,
                COUNT(*)::bigint AS cnt
         FROM pos_receipts pr
-        WHERE ${POS_ONLY} AND pr.business_date >= ${from} AND pr.business_date < ${to}
+        WHERE ${POS_ONLY} AND pr.business_date >= (${from} AT TIME ZONE 'UTC')::date AND pr.business_date < (${to} AT TIME ZONE 'UTC')::date
         GROUP BY 1 ORDER BY 1 ASC
       `,
       this.topProducts(from, to),
@@ -385,7 +389,7 @@ export class FinanceReportService {
                SUM(prl.line_total_cents)::bigint AS revenue
         FROM pos_receipt_lines prl
         INNER JOIN pos_receipts pr ON pr.id = prl.receipt_id
-        WHERE ${POS_ONLY} AND pr.business_date >= ${from} AND pr.business_date < ${to}
+        WHERE ${POS_ONLY} AND pr.business_date >= (${from} AT TIME ZONE 'UTC')::date AND pr.business_date < (${to} AT TIME ZONE 'UTC')::date
         GROUP BY prl.product_code ORDER BY revenue DESC LIMIT 25
       `,
       this.prisma.$queryRaw<
