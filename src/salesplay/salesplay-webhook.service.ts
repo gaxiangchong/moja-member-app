@@ -271,7 +271,10 @@ export class SalesplayWebhookService {
     }
     if (parsed.netCents <= 0) return;
 
-    const amountRm = parsed.netCents / 100;
+    // Floor RM (major unit) before applying the rate — same formula as online
+    // checkout (`CustomersService.finalizeShopOrderAfterPayment`) so both
+    // channels award identical points for the same spend at any earn rate.
+    const amountRm = Math.floor(parsed.netCents / 100);
     const points = Math.floor(amountRm * this.pointsPerUnit());
     if (points <= 0) return;
 
