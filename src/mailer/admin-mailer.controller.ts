@@ -40,12 +40,20 @@ export class AdminMailerController {
   audiencePreview(
     @Query('audience') audience?: string,
     @Query('tier') tier?: string,
+    @Query('birthdayDays') birthdayDays?: string,
   ) {
     const kind =
       audience === EmailAudienceKind.ALL_WITH_EMAIL
         ? EmailAudienceKind.ALL_WITH_EMAIL
-        : EmailAudienceKind.OPTED_IN;
-    return this.mailer.audiencePreview(kind, tier?.trim() || null);
+        : audience === EmailAudienceKind.BIRTHDAY_UPCOMING
+          ? EmailAudienceKind.BIRTHDAY_UPCOMING
+          : EmailAudienceKind.OPTED_IN;
+    const days = birthdayDays ? parseInt(birthdayDays, 10) : NaN;
+    return this.mailer.audiencePreview(
+      kind,
+      tier?.trim() || null,
+      Number.isFinite(days) && days >= 1 && days <= 60 ? days : null,
+    );
   }
 
   @Get('campaigns')

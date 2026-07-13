@@ -1,10 +1,15 @@
 import {
   IsEnum,
+  IsInt,
   IsISO8601,
   IsOptional,
   IsString,
+  IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { EmailAudienceKind, EmailTemplateKind } from '@prisma/client';
 
 export class CreateCampaignDto {
@@ -37,6 +42,27 @@ export class CreateCampaignDto {
   @IsString()
   @MaxLength(40)
   tierFilter?: string | null;
+
+  /** BIRTHDAY_UPCOMING audience: birthday within this many days (default 14). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  birthdayWindowDays?: number | null;
+
+  /** Voucher series issued to every recipient when the campaign sends. */
+  @IsOptional()
+  @IsUUID()
+  voucherDefinitionId?: string | null;
+
+  /** Days the issued voucher stays valid (omit for no expiry). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  voucherValidDays?: number | null;
 }
 
 export class UpdateCampaignDto {
@@ -72,6 +98,24 @@ export class UpdateCampaignDto {
   @IsString()
   @MaxLength(40)
   tierFilter?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  birthdayWindowDays?: number | null;
+
+  @IsOptional()
+  @IsUUID()
+  voucherDefinitionId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  voucherValidDays?: number | null;
 }
 
 export class ScheduleCampaignDto {

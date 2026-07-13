@@ -1572,6 +1572,10 @@ export class AdminDashboardController {
                 <label for="customerSourceFilter">Source</label>
                 <input type="text" id="customerSourceFilter" placeholder="e.g. otp" style="width:120px" />
               </span>
+              <span>
+                <label for="customerTagFilter">Tag</label>
+                <input type="text" id="customerTagFilter" placeholder="e.g. bento, cake" style="width:130px" title="Comma-separated: members with any of these tags" />
+              </span>
               <span style="display:flex;align-items:center;gap:6px">
                 <input type="checkbox" id="customerHasVoucher" style="width:auto" />
                 <label for="customerHasVoucher" style="margin:0">Has active voucher</label>
@@ -2283,7 +2287,7 @@ export class AdminDashboardController {
 
               <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
                 <h3 style="margin:0 0 4px;font-size:14px">2 &middot; Draft the email &mdash; <span id="mailEditorMode">new campaign</span></h3>
-                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
+                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. With an attached voucher you can also use <code>{{voucher_title}}</code>, <code>{{voucher_code}}</code> and <code>{{voucher_expiry}}</code>. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
                 <input type="hidden" id="mailEditingId" value="" />
                 <input type="hidden" id="mailTemplateKind" value="PLAIN" />
                 <div class="vc-form">
@@ -2308,14 +2312,28 @@ export class AdminDashboardController {
                     <select id="mailAudience">
                       <option value="OPTED_IN">Opted-in members (recommended)</option>
                       <option value="ALL_WITH_EMAIL">All members with email</option>
+                      <option value="BIRTHDAY_UPCOMING">🎂 Birthday coming up (opted-in)</option>
                     </select>
                   </div>
                   <div class="vc-field">
                     <label for="mailTier">Member tier</label>
                     <input type="text" id="mailTier" placeholder="all tiers (e.g. gold)" />
                   </div>
+                  <div class="vc-field" id="mailBirthdayDaysWrap" style="display:none">
+                    <label for="mailBirthdayDays">Birthday within (days)</label>
+                    <input type="number" id="mailBirthdayDays" min="1" max="60" value="14" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherDef">Attach voucher (added to each recipient's wallet)</label>
+                    <select id="mailVoucherDef"><option value="">— no voucher —</option></select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherValidDays">Voucher valid for (days)</label>
+                    <input type="number" id="mailVoucherValidDays" min="1" max="365" placeholder="no expiry" />
+                  </div>
                 </div>
                 <p class="field-hint" id="mailAudienceCount" style="margin:10px 0 0"></p>
+                <div id="mailBirthdayPreview" style="display:none;margin-top:10px"></div>
                 <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                   <button type="button" class="btn-primary" id="mailSaveBtn">Save draft</button>
                   <button type="button" class="btn-outline" id="mailPreviewBtn">Preview</button>
@@ -5100,6 +5118,8 @@ export class AdminDashboardController {
       if (tier) params.push('memberTier=' + encodeURIComponent(tier));
       const source = val('customerSourceFilter');
       if (source) params.push('signupSource=' + encodeURIComponent(source));
+      const tag = val('customerTagFilter');
+      if (tag) params.push('tag=' + encodeURIComponent(tag));
       const hasVoucherEl = document.getElementById('customerHasVoucher');
       if (hasVoucherEl && hasVoucherEl.checked) params.push('hasActiveVoucher=true');
       return params;
@@ -7885,22 +7905,47 @@ export class AdminDashboardController {
       document.getElementById('mailSendNowBtn').addEventListener('click', function () {
         mailSchedule(true).catch(mailScheduleErr);
       });
-      document.getElementById('mailAudience').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailAudience').addEventListener('change', function () {
+        mailSyncBirthdayVisibility();
+        mailUpdateAudienceCount();
+      });
       document.getElementById('mailTier').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailBirthdayDays').addEventListener('change', mailUpdateAudienceCount);
       document.getElementById('mailCampaignsBody').addEventListener('click', function (e) {
         var btn = e.target && e.target.closest ? e.target.closest('button[data-mail-act]') : null;
         if (btn) mailTableAction(btn.getAttribute('data-mail-act'), btn.getAttribute('data-id')).catch(mailListErr);
       });
       mailLoadTemplates().catch(function () {});
+      mailLoadVoucherDefs().catch(function () {});
       loadMailCampaigns().catch(mailListErr);
       mailUpdateAudienceCount();
+    }
+
+    function mailSyncBirthdayVisibility() {
+      var wrap = document.getElementById('mailBirthdayDaysWrap');
+      if (wrap) wrap.style.display =
+        document.getElementById('mailAudience').value === 'BIRTHDAY_UPCOMING' ? '' : 'none';
+    }
+
+    async function mailLoadVoucherDefs() {
+      var sel = document.getElementById('mailVoucherDef');
+      if (!sel) return;
+      var defs = await api('/admin/voucher-definitions');
+      var current = sel.value;
+      sel.innerHTML = '<option value="">— no voucher —</option>' + (defs || [])
+        .filter(function (d) { return d.isActive; })
+        .map(function (d) {
+          var extra = d.rebateValueSen ? ' (RM' + (d.rebateValueSen / 100).toFixed(2) + ' off)' : '';
+          return '<option value="' + vcEsc(d.id) + '">' + vcEsc(d.code + ' — ' + d.title + extra) + '</option>';
+        }).join('');
+      if (current) sel.value = current;
     }
 
     async function mailLoadTemplates() {
       var grid = document.getElementById('mailTemplateGrid');
       if (!grid) return;
       var data = await api('/admin/mailer/templates');
-      var icons = { WELCOME: '👋', WEEKLY: '🍱', EVENT: '🎉', PLAIN: '📝' };
+      var icons = { WELCOME: '👋', WEEKLY: '🍱', EVENT: '🎉', BIRTHDAY: '🎂', PLAIN: '📝' };
       grid.innerHTML = (data.templates || []).map(function (t) {
         return '<button type="button" class="btn-outline" data-mail-template="' + vcEsc(t.kind) + '"' +
           ' style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;text-align:left;height:auto;cursor:pointer">' +
@@ -7919,6 +7964,11 @@ export class AdminDashboardController {
           document.getElementById('mailSubject').value = t.subject || '';
           document.getElementById('mailPreheader').value = t.preheader || '';
           bodyEl.value = t.bodyHtml || '';
+          if (t.kind === 'BIRTHDAY') {
+            document.getElementById('mailAudience').value = 'BIRTHDAY_UPCOMING';
+            mailSyncBirthdayVisibility();
+            mailUpdateAudienceCount();
+          }
           var nameEl = document.getElementById('mailName');
           if (!nameEl.value.trim()) nameEl.value = t.label;
           grid.querySelectorAll('button[data-mail-template]').forEach(function (b) {
@@ -7941,6 +7991,10 @@ export class AdminDashboardController {
       });
       document.getElementById('mailAudience').value = 'OPTED_IN';
       document.getElementById('mailTier').value = '';
+      document.getElementById('mailBirthdayDays').value = '14';
+      document.getElementById('mailVoucherDef').value = '';
+      document.getElementById('mailVoucherValidDays').value = '';
+      mailSyncBirthdayVisibility();
       document.getElementById('mailEditorMode').textContent = 'new campaign';
       document.getElementById('mailPreviewWrap').style.display = 'none';
       mailSetResult('mailEditorResult', '');
@@ -7949,6 +8003,8 @@ export class AdminDashboardController {
     }
 
     function mailEditorPayload() {
+      var birthdayDays = parseInt(document.getElementById('mailBirthdayDays').value, 10);
+      var voucherValidDays = parseInt(document.getElementById('mailVoucherValidDays').value, 10);
       return {
         name: document.getElementById('mailName').value.trim(),
         templateKind: document.getElementById('mailTemplateKind').value || 'PLAIN',
@@ -7957,6 +8013,9 @@ export class AdminDashboardController {
         bodyHtml: document.getElementById('mailBody').value,
         audience: document.getElementById('mailAudience').value,
         tierFilter: document.getElementById('mailTier').value.trim() || null,
+        birthdayWindowDays: Number.isFinite(birthdayDays) ? birthdayDays : null,
+        voucherDefinitionId: document.getElementById('mailVoucherDef').value || null,
+        voucherValidDays: Number.isFinite(voucherValidDays) ? voucherValidDays : null,
       };
     }
 
@@ -8004,14 +8063,34 @@ export class AdminDashboardController {
 
     async function mailUpdateAudienceCount() {
       var el = document.getElementById('mailAudienceCount');
+      var preview = document.getElementById('mailBirthdayPreview');
       if (!el) return;
       try {
         var aud = document.getElementById('mailAudience').value;
         var tier = document.getElementById('mailTier').value.trim();
-        var data = await api('/admin/mailer/audience-preview?audience=' + encodeURIComponent(aud) + '&tier=' + encodeURIComponent(tier));
-        el.textContent = 'This audience currently has ' + data.count + ' recipient(s).';
+        var days = document.getElementById('mailBirthdayDays').value;
+        var data = await api('/admin/mailer/audience-preview?audience=' + encodeURIComponent(aud) +
+          '&tier=' + encodeURIComponent(tier) + '&birthdayDays=' + encodeURIComponent(days));
+        el.textContent = 'This audience currently has ' + data.count + ' recipient(s).' +
+          (aud === 'BIRTHDAY_UPCOMING' ? ' Members with a birthday in the next ' + (data.birthdayWindowDays || days) + ' days, soonest first:' : '');
+        if (preview) {
+          if (aud === 'BIRTHDAY_UPCOMING' && (data.recipients || []).length) {
+            preview.style.display = '';
+            preview.innerHTML = '<div class="table-wrap" style="max-height:220px;overflow:auto">' +
+              '<table class="data"><thead><tr><th>Birthday in</th><th>Name</th><th>Email</th><th>Birthday</th></tr></thead><tbody>' +
+              data.recipients.map(function (r) {
+                var when = r.birthdayDaysUntil === 0 ? '🎂 today' : r.birthdayDaysUntil + ' day(s)';
+                var bday = r.birthday ? String(r.birthday).slice(5, 10) : '—';
+                return '<tr><td>' + when + '</td><td>' + vcEsc(r.name || '—') + '</td><td>' + vcEsc(r.email || '—') + '</td><td>' + vcEsc(bday) + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+          } else {
+            preview.style.display = 'none';
+            preview.innerHTML = '';
+          }
+        }
       } catch (e) {
         el.textContent = '';
+        if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
       }
     }
 
@@ -8051,7 +8130,10 @@ export class AdminDashboardController {
       if (!body) return;
       var data = await api('/admin/mailer/campaigns');
       var rows = (data.campaigns || []).map(function (c) {
-        var audience = (c.audience === 'ALL_WITH_EMAIL' ? 'All with email' : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '');
+        var audience = (c.audience === 'ALL_WITH_EMAIL' ? 'All with email'
+          : c.audience === 'BIRTHDAY_UPCOMING' ? '🎂 Birthday ≤ ' + (c.birthdayWindowDays || 14) + 'd'
+          : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '') +
+          (c.voucherDefinitionId ? ' · 🎟️ voucher' : '');
         var whenTxt = '';
         if (c.status === 'SCHEDULED' && c.scheduledAt) whenTxt = new Date(c.scheduledAt).toLocaleString();
         else if (c.completedAt) whenTxt = new Date(c.completedAt).toLocaleString();
@@ -8088,6 +8170,10 @@ export class AdminDashboardController {
         document.getElementById('mailBody').value = c.bodyHtml || '';
         document.getElementById('mailAudience').value = c.audience || 'OPTED_IN';
         document.getElementById('mailTier').value = c.tierFilter || '';
+        document.getElementById('mailBirthdayDays').value = c.birthdayWindowDays || '14';
+        document.getElementById('mailVoucherDef').value = c.voucherDefinitionId || '';
+        document.getElementById('mailVoucherValidDays').value = c.voucherValidDays || '';
+        mailSyncBirthdayVisibility();
         var editable = c.status === 'DRAFT' || c.status === 'SCHEDULED';
         document.getElementById('mailEditorMode').textContent =
           (editable ? 'editing "' : 'viewing "') + c.name + '" (' + c.status.toLowerCase() + ')';
@@ -8346,7 +8432,7 @@ export class AdminDashboardController {
     });
     const customerHasVoucherEl = document.getElementById('customerHasVoucher');
     if (customerHasVoucherEl) customerHasVoucherEl.addEventListener('change', reloadCustomersFromPageOne);
-    ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+    ['customerSearch', 'customerTierFilter', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); reloadCustomersFromPageOne(); }
@@ -8357,7 +8443,7 @@ export class AdminDashboardController {
     const customerClearBtn = document.getElementById('customerClearBtn');
     if (customerClearBtn) {
       customerClearBtn.addEventListener('click', function () {
-        ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+        ['customerSearch', 'customerTierFilter', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
           const el = document.getElementById(id);
           if (el) el.value = '';
         });

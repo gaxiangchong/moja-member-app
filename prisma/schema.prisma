@@ -809,6 +809,7 @@ model VoucherDefinition {
   instances          CustomerVoucher[]
   pushRules          VoucherPushRule[]
   perksCampaignRules PerksCampaignRule[]
+  emailCampaigns     EmailCampaign[]
 
   @@map("voucher_definitions")
 }
@@ -1276,6 +1277,7 @@ enum EmailTemplateKind {
   WELCOME
   WEEKLY
   EVENT
+  BIRTHDAY
   PLAIN
 }
 
@@ -1284,6 +1286,8 @@ enum EmailAudienceKind {
   OPTED_IN
   /// Every active customer with an email address (service announcements only).
   ALL_WITH_EMAIL
+  /// Opted-in customers whose birthday is within `birthdayWindowDays` days.
+  BIRTHDAY_UPCOMING
 }
 
 enum EmailRecipientStatus {
@@ -1307,6 +1311,13 @@ model EmailCampaign {
   audience        EmailAudienceKind   @default(OPTED_IN)
   /// Optional member tier filter (e.g. "gold"); null = all tiers.
   tierFilter      String?             @map("tier_filter")
+  /// For BIRTHDAY_UPCOMING: birthday must fall within this many days (default 14).
+  birthdayWindowDays  Int?               @map("birthday_window_days")
+  /// Optional voucher series issued to every recipient when the campaign sends.
+  voucherDefinitionId String?            @map("voucher_definition_id") @db.Uuid
+  voucherDefinition   VoucherDefinition? @relation(fields: [voucherDefinitionId], references: [id], onDelete: SetNull)
+  /// Days the issued voucher stays valid (null = no expiry).
+  voucherValidDays    Int?               @map("voucher_valid_days")
   status          EmailCampaignStatus @default(DRAFT)
   scheduledAt     DateTime?           @map("scheduled_at")
   startedAt       DateTime?           @map("started_at")

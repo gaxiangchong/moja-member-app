@@ -7,6 +7,8 @@ import { EmailTemplateKind } from '@prisma/client';
  *
  * Supported personalization placeholders (replaced per recipient at send
  * time): {{name}} — customer display name (falls back to "there").
+ * When the campaign has an attached voucher series: {{voucher_title}},
+ * {{voucher_code}}, {{voucher_expiry}} (localized date or "no expiry").
  */
 export type MailerTemplatePreset = {
   kind: EmailTemplateKind;
@@ -70,6 +72,25 @@ export const TEMPLATE_PRESETS: MailerTemplatePreset[] = [
     ].join('\n'),
   },
   {
+    kind: EmailTemplateKind.BIRTHDAY,
+    label: 'Birthday voucher',
+    description:
+      'Birthday greeting with an attached voucher the member can spend online.',
+    subject: 'Happy early birthday, {{name}} — a gift from us 🎂',
+    preheader: 'Your birthday voucher is waiting in your member wallet.',
+    bodyHtml: [
+      '<h2>Happy birthday month, {{name}} 🎂</h2>',
+      '<p>Your special day is coming up and we want to celebrate with you. We have added a gift to your member wallet:</p>',
+      '<div style="background:#fff7ed;border:1px dashed #c2410c;border-radius:10px;padding:16px 20px;margin:16px 0;text-align:center;">',
+      '  <p style="margin:0 0 4px;font-size:17px;"><strong>{{voucher_title}}</strong></p>',
+      '  <p style="margin:0 0 4px;">Voucher code: <strong>{{voucher_code}}</strong></p>',
+      '  <p style="margin:0;font-size:13px;color:#9a3412;">Valid until: {{voucher_expiry}}</p>',
+      '</div>',
+      '<p>The voucher is already in your account — just open the member app, shop as usual, and pick it at checkout to enjoy your birthday treat.</p>',
+      '<p>We wish you a wonderful celebration! 🎉</p>',
+    ].join('\n'),
+  },
+  {
     kind: EmailTemplateKind.PLAIN,
     label: 'Blank announcement',
     description: 'Start from a clean slate with just the branded layout.',
@@ -79,6 +100,12 @@ export const TEMPLATE_PRESETS: MailerTemplatePreset[] = [
   },
 ];
 
+export type RenderVoucherInfo = {
+  code: string;
+  title: string;
+  expiresAt: Date | null;
+};
+
 export type RenderEmailInput = {
   subject: string;
   preheader: string | null;
@@ -86,6 +113,8 @@ export type RenderEmailInput = {
   recipientName: string | null;
   unsubscribeUrl: string | null;
   brandName: string;
+  /** Voucher issued to this recipient; fills the {{voucher_*}} placeholders. */
+  voucher?: RenderVoucherInfo | null;
 };
 
 function escapeHtml(value: string): string {
@@ -96,9 +125,27 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function applyPlaceholders(html: string, name: string | null): string {
+function applyPlaceholders(
+  html: string,
+  name: string | null,
+  voucher: RenderVoucherInfo | null | undefined,
+): string {
   const safeName = escapeHtml((name ?? '').trim()) || 'there';
-  return html.replace(/\{\{\s*name\s*\}\}/gi, safeName);
+  const expiry = voucher
+    ? voucher.expiresAt
+      ? voucher.expiresAt.toLocaleDateString('en-MY', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'Asia/Kuala_Lumpur',
+        })
+      : 'no expiry'
+    : '';
+  return html
+    .replace(/\{\{\s*name\s*\}\}/gi, safeName)
+    .replace(/\{\{\s*voucher_code\s*\}\}/gi, escapeHtml(voucher?.code ?? ''))
+    .replace(/\{\{\s*voucher_title\s*\}\}/gi, escapeHtml(voucher?.title ?? ''))
+    .replace(/\{\{\s*voucher_expiry\s*\}\}/gi, escapeHtml(expiry));
 }
 
 /** Strip tags for the plain-text alternative part. */
@@ -127,13 +174,21 @@ export function renderCampaignEmail(input: RenderEmailInput): {
   html: string;
   text: string;
 } {
-  const subject = applyPlaceholders(input.subject, input.recipientName)
+  const subject = applyPlaceholders(
+    input.subject,
+    input.recipientName,
+    input.voucher,
+  )
     // Subjects are plain text: undo entity escaping from placeholder fill.
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"');
-  const body = applyPlaceholders(input.bodyHtml, input.recipientName);
+  const body = applyPlaceholders(
+    input.bodyHtml,
+    input.recipientName,
+    input.voucher,
+  );
   const preheader = (input.preheader ?? '').trim();
   const brand = escapeHtml(input.brandName);
 

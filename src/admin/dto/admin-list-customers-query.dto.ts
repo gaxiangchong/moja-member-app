@@ -44,6 +44,12 @@ export class AdminListCustomersQueryDto {
   @MaxLength(64)
   signupSource?: string;
 
+  /** Comma-separated tags; matches customers having ANY of them (e.g. `bento,cake`) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  tag?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
