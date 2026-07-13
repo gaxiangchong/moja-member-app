@@ -147,7 +147,7 @@ export const translations: Record<Lang, Dict> = {
     'landing.faqTitle': 'Good to know',
     'landing.faq1Q': 'Is this delivery or pickup?',
     'landing.faq1A':
-      'All meals are self-pickup at Moja Maison. Lunch pickup is 12pm–2pm and dinner pickup is 6pm–8pm.',
+      'All subscription meals are available for self-pickup or dine-in at Moja Maison, with no additional charges. Lunch is available from 11:30 AM and dinner is available from 5:30 PM to 9:00 PM.',
     'landing.faq2Q': 'What if I miss a day?',
     'landing.faq2A':
       'Your meal credits stay with you — adjust your pickup days in the app any time within your plan validity.',
@@ -201,7 +201,7 @@ export const translations: Record<Lang, Dict> = {
     'launch.badge': '🔔 Announcement',
     'launch.title': '⏰ New Pickup Hours',
     'launch.body':
-      'Grab your meals fresh! Lunch pickup is available from 12pm – 2pm, and dinner pickup is from 6pm – 8pm.\n Please time your arrival within these windows so we can hand over your food perfectly hot and fresh.', 
+      'Grab your meals fresh! Lunch pickup/dine-in is available from 11:30 AM – 2:00 PM, and dinner pickup is from 5:30 PM – 9:00 PM.\n Please time your arrival within these windows so we can hand over your food perfectly hot and fresh.', 
 
     'launch.pickup': '🎁 New User? Get RM10 OFF with code: WELCOME10',
     'launch.gotIt': 'Got it',
@@ -316,7 +316,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.pay': 'Pay {amount}',
     'checkout.takeawayTitle': 'Takeaway only',
     'checkout.takeawayBody':
-      'Moja Bento is designed as a convenient takeaway meal subscription. All subscription meals are for self-pickup only and are not valid for dine-in at Moja Maison. If you prefer to enjoy your meal in our café, a separate dine-in order at the regular menu price will apply.',
+      'Moja Bento is a subscription service available for both dine-in and takeaway. All subscription meals can be picked up for takeaway or enjoyed directly as dine-in at Moja Maison, with no additional charges.',
     'checkout.takeawayAgree':
       'I understand and agree that my subscription covers takeaway bento only.',
     'checkout.takeawayConfirm': 'Agree and pay',
@@ -620,7 +620,7 @@ export const translations: Record<Lang, Dict> = {
     'landing.planSaveTotal': '共省 {amount}',
     'landing.faqTitle': '常见问题',
     'landing.faq1Q': '是外送还是自取？',
-    'landing.faq1A': '所有餐点均于 Moja Maison 自取。午餐取餐时间 12pm–2pm，晚餐 6pm–8pm。',
+    'landing.faq1A': '所有餐点均于 Moja Maison 自取。午餐取餐/堂食时间 11：30pm–2：00pm，晚餐 5：30pm–9：00pm。',
     'landing.faq2Q': '错过取餐日怎么办？',
     'landing.faq2A': '餐点额度不会消失 — 在套餐有效期内，可随时于应用中调整取餐日。',
     'landing.faq3Q': '有素食吗？',
@@ -668,7 +668,7 @@ export const translations: Record<Lang, Dict> = {
 
     'launch.badge': '🔔通告',
     'launch.title': '取餐时间通知！',
-    'launch.body': '为了确保您的餐点以最完美、最温热的状态送到您手中，我们调整了自取时间段, 午餐自取时间为 12pm – 2pm，晚餐自取时间为 6pm – 8pm。请在指定时间内前来取餐哦。',
+    'launch.body': '为了确保您的餐点以最完美、最温热的状态送到您手中，我们调整了自取/堂食时间段, 午餐时间为 11：30pm – 2：00pm，晚餐时间为 5：30pm – 9：00pm。请在指定时间内前来取餐哦。',
     'launch.pickup': '🎁 新用户立减 RM10｜优惠码：WELCOME10',
     'launch.gotIt': '知道了',
     'launch.dontShowAgain': '不再显示',
@@ -775,7 +775,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.pay': '付款 {amount}',
     'checkout.takeawayTitle': '仅限外带',
     'checkout.takeawayBody':
-      'Moja Bento 为自取外带订阅服务，所有订阅餐点仅供外带领取，不包含堂食。如您希望在 Moja Maison 店内享用餐点，请以门市价格另行点购。',
+      'Moja Bento 为外带与堂食双栖订阅服务。所有订阅餐点均可选择到店自取外带，或于 Moja Maison 店内直接堂食享用!',
     'checkout.takeawayAgree': '我已了解并同意订阅仅涵盖外带便当。',
     'checkout.takeawayConfirm': '同意并付款',
     'checkout.takeawayCancel': '取消',
