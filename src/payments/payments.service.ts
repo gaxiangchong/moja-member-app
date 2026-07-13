@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WalletTxnType } from '@prisma/client';
+import { BentoSubscriptionStatus, WalletTxnType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
@@ -1022,16 +1022,47 @@ export class PaymentsService {
     }
 
     try {
-      await this.prisma.bentoSubscription.updateMany({
-        where: { id: { in: subscriptionIds }, status: 'PENDING_PAYMENT' },
-        data: { status: 'ACTIVE' },
-      });
-      await this.prisma.paymentIntent.update({
-        where: { id: intent.id },
-        data: {
-          status: 'SUCCEEDED',
-          metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.bentoSubscription.updateMany({
+          where: {
+            id: { in: subscriptionIds },
+            paymentIntentId: intent.id,
+            status: {
+              in: [
+                BentoSubscriptionStatus.PENDING_PAYMENT,
+                BentoSubscriptionStatus.CANCELLED,
+              ],
+            },
+          },
+          data: { status: BentoSubscriptionStatus.ACTIVE },
+        });
+
+        const subscriptions = await tx.bentoSubscription.findMany({
+          where: { id: { in: subscriptionIds } },
+          select: { id: true, paymentIntentId: true, status: true },
+        });
+        const activatedIds = new Set(
+          subscriptions
+            .filter(
+              (subscription) =>
+                subscription.paymentIntentId === intent.id &&
+                subscription.status === BentoSubscriptionStatus.ACTIVE,
+            )
+            .map((subscription) => subscription.id),
+        );
+        if (activatedIds.size !== subscriptionIds.length) {
+          throw new Error(
+            `Bento payment ${intent.id} did not activate all linked subscriptions`,
+          );
+        }
+
+        await tx.paymentIntent.update({
+          where: { id: intent.id },
+          data: {
+            status: 'SUCCEEDED',
+            metadata: mergeMetadata(intent.metadata, { xendit: data }) as object,
+          },
+        });
       });
       // Finalize any promo-code redemption tied to this intent. Capacity was
       // already claimed at checkout, so this only flips RESERVED -> CONFIRMED.
