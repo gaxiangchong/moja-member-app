@@ -225,6 +225,8 @@ export class AdminReportsController {
   /**
    * Schedule pickup days on a customer's behalf. Runs with admin override so
    * staff can resolve missed-cutoff / closed-day complaints from the dashboard.
+   * Pass `overrideLocked: true` to also edit days past the 5 PM day-before
+   * lock (e.g. switch a locked lunch+dinner day to dinner only).
    */
   @Post('bento-subscriptions/:id/schedule')
   @RequirePermissions(P.REPORT_VIEW)

@@ -3904,9 +3904,13 @@ export class AdminDashboardController {
     </div>
     <div class="modal-body">
       <p class="field-hint" style="margin-top:0" id="bentoSchedSubInfo">—</p>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px">
         <strong>Admin override.</strong> Booking here ignores the daily cutoff, lead time, closed days and the daily capacity cap — use it to fix missed-cutoff complaints, but make sure the kitchen can handle these days.
       </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="bentoSchedOverrideLock" style="margin-top:2px" />
+        <span><strong>Also edit locked days 🔒.</strong> Days lock at 5:00 PM the evening before pickup. Tick this to change or remove a locked day — e.g. switch tomorrow from lunch + dinner to dinner only. Check with the kitchen first; delivered days can never be changed.</span>
+      </label>
       <div id="bentoSchedRows"></div>
       <button type="button" class="btn-outline" id="bentoSchedAddDay" style="margin-top:4px">+ Add pickup day</button>
       <p class="field-hint" id="bentoSchedTotals" style="margin-top:12px;font-weight:600">—</p>
@@ -6221,6 +6225,7 @@ export class AdminDashboardController {
         mealCredits: s.mealCreditsTotal,
         lunchCredits: s.lunchCredits,
         dinnerCredits: s.dinnerCredits,
+        deliveries: s.deliveries,
         onScheduled: function (count) {
           var msg = document.getElementById('bentoFixMsg');
           if (msg) msg.textContent = 'Scheduled ' + count + ' pickup day(s) for ' + name + '.';
@@ -6473,27 +6478,60 @@ export class AdminDashboardController {
     function bentoSchedHasDinner() {
       return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'DINNER' || bentoSchedSub.mealOptionCode === 'BOTH');
     }
-    function bentoSchedAddRow(dateIso) {
+    // Mirrors the backend rule: a pickup day locks at 17:00 MYT (09:00 UTC)
+    // the day before.
+    function bentoSchedIsLocked(dateIso) {
+      var m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(dateIso || '');
+      if (!m) return false;
+      var deadline = Date.UTC(+m[1], +m[2] - 1, +m[3] - 1, 9, 0, 0);
+      return Date.now() >= deadline;
+    }
+    // state: '' (editable), 'locked' (editable only with the override tick),
+    // 'delivered' (never editable — shown so credit totals stay honest).
+    function bentoSchedAddRow(dateIso, lunchQty, dinnerQty, state) {
       var host = document.getElementById('bentoSchedRows');
       if (!host) return;
+      if (lunchQty === undefined) lunchQty = 1;
+      if (dinnerQty === undefined) dinnerQty = 1;
+      state = state || '';
       var qtyStyle = 'width:64px;text-align:center';
       var lunch = bentoSchedHasLunch()
         ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Lunch'
-          + '<input type="number" min="0" max="50" value="1" class="bento-sched-lunch" style="' + qtyStyle + '" /></label>'
+          + '<input type="number" min="0" max="50" value="' + lunchQty + '" class="bento-sched-lunch" style="' + qtyStyle + '" /></label>'
         : '';
       var dinner = bentoSchedHasDinner()
         ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Dinner'
-          + '<input type="number" min="0" max="50" value="1" class="bento-sched-dinner" style="' + qtyStyle + '" /></label>'
+          + '<input type="number" min="0" max="50" value="' + dinnerQty + '" class="bento-sched-dinner" style="' + qtyStyle + '" /></label>'
         : '';
+      var tag = '';
+      if (state === 'locked') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#b45309;align-self:center;white-space:nowrap">🔒 Locked</span>';
+      if (state === 'delivered') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#64748b;align-self:center;white-space:nowrap">✓ Delivered</span>';
+      if (state === 'skipped') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#64748b;align-self:center;white-space:nowrap">Skipped</span>';
       var div = document.createElement('div');
       div.className = 'bento-sched-row';
+      div.setAttribute('data-state', state);
       div.style.cssText = 'display:flex;gap:10px;align-items:flex-end;margin-bottom:8px';
       div.innerHTML = '<label style="flex:1;display:flex;flex-direction:column;font-size:12px;color:#475569">Pickup date'
         + '<input type="date" value="' + (dateIso || '') + '" class="bento-sched-date" /></label>'
-        + lunch + dinner
+        + lunch + dinner + tag
         + '<button type="button" class="btn-outline bento-sched-remove" aria-label="Remove day" style="padding:8px 12px">&times;</button>';
       host.appendChild(div);
+      bentoSchedSyncLockedRows();
       bentoSchedUpdateTotals();
+    }
+    // Locked rows follow the override tick; delivered rows are always frozen.
+    function bentoSchedSyncLockedRows() {
+      var override = document.getElementById('bentoSchedOverrideLock');
+      var unlocked = !!(override && override.checked);
+      document.querySelectorAll('#bentoSchedRows .bento-sched-row').forEach(function (row) {
+        var state = row.getAttribute('data-state');
+        if (!state) return;
+        var frozen = state !== 'locked' || !unlocked;
+        row.querySelectorAll('input, button.bento-sched-remove').forEach(function (el) {
+          el.disabled = frozen;
+        });
+        row.style.opacity = frozen ? '0.6' : '';
+      });
     }
     function bentoSchedUpdateTotals() {
       var totals = document.getElementById('bentoSchedTotals');
@@ -6522,9 +6560,23 @@ export class AdminDashboardController {
       }
       var result = document.getElementById('bentoSchedResult');
       if (result) { result.textContent = ''; }
+      var override = document.getElementById('bentoSchedOverrideLock');
+      if (override) { override.checked = false; }
       var host = document.getElementById('bentoSchedRows');
       if (host) { host.innerHTML = ''; }
-      bentoSchedAddRow(bentoSchedTomorrowIso());
+      // Pre-fill the plan's existing pickup days so saving edits the schedule
+      // instead of silently replacing it. Delivered days are shown frozen so
+      // the credit totals stay honest; locked days need the override tick.
+      var existing = Array.isArray(row.deliveries) ? row.deliveries : [];
+      existing.forEach(function (d) {
+        var iso = String(d.deliveryDate || '').slice(0, 10);
+        if (!iso) return;
+        var state = d.status === 'SCHEDULED'
+          ? (bentoSchedIsLocked(iso) ? 'locked' : '')
+          : (d.status === 'DELIVERED' ? 'delivered' : 'skipped');
+        bentoSchedAddRow(iso, d.lunchQty || 0, d.dinnerQty || 0, state);
+      });
+      if (!existing.length) bentoSchedAddRow(bentoSchedTomorrowIso());
       document.getElementById('bentoSchedBackdrop').classList.remove('hidden');
       document.getElementById('bentoSchedModal').classList.remove('hidden');
     }
@@ -6584,8 +6636,12 @@ export class AdminDashboardController {
       var onScheduled = bentoSchedSub.onScheduled;
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
       if (result) { result.style.color = '#475569'; result.textContent = 'Saving…'; }
+      var overrideEl = document.getElementById('bentoSchedOverrideLock');
       try {
-        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/schedule', { slots: collected.slots });
+        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/schedule', {
+          slots: collected.slots,
+          overrideLocked: !!(overrideEl && overrideEl.checked),
+        });
         bentoCloseSchedModal();
         var out = document.getElementById('bentoAwaitCopyResult');
         if (out) out.textContent = 'Scheduled ' + collected.slots.length + ' pickup day(s) for ' + name + '.';
@@ -9930,6 +9986,10 @@ export class AdminDashboardController {
       document.getElementById('bentoSchedSave').addEventListener('click', function () {
         bentoSchedSubmit().catch(function () {});
       });
+      var bentoSchedOverrideEl = document.getElementById('bentoSchedOverrideLock');
+      if (bentoSchedOverrideEl) {
+        bentoSchedOverrideEl.addEventListener('change', bentoSchedSyncLockedRows);
+      }
       var bentoSchedRowsEl = document.getElementById('bentoSchedRows');
       if (bentoSchedRowsEl) {
         bentoSchedRowsEl.addEventListener('click', function (e) {

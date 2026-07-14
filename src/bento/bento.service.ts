@@ -797,9 +797,10 @@ export class BentoService implements OnModuleInit {
    * Runs with `adminOverride`, which bypasses the lead-time/cutoff, the
    * package window, closed weekdays/dates, and the daily capacity cap — so
    * staff can resolve "I missed the cutoff" / "it won't let me pick that day"
-   * complaints. Credit limits, meal-option, and locked (already-delivered)
-   * days are still enforced. Throws NotFoundException if the subscription
-   * does not exist.
+   * complaints. Credit limits and meal-option checks are still enforced.
+   * Days past the 5 PM day-before lock are also frozen unless the dto sets
+   * `overrideLocked` (already-delivered days can never be changed). Throws
+   * NotFoundException if the subscription does not exist.
    */
   async adminScheduleDeliveries(subscriptionId: string, dto: BentoScheduleDto) {
     const sub = await this.prisma.bentoSubscription.findUnique({
@@ -814,6 +815,7 @@ export class BentoService implements OnModuleInit {
     }
     return this.scheduleDeliveries(sub.customerId, subscriptionId, dto, {
       adminOverride: true,
+      overrideLocked: dto.overrideLocked === true,
     });
   }
 
@@ -821,7 +823,7 @@ export class BentoService implements OnModuleInit {
     customerId: string,
     subscriptionId: string,
     dto: BentoScheduleDto,
-    options: { adminOverride?: boolean } = {},
+    options: { adminOverride?: boolean; overrideLocked?: boolean } = {},
   ) {
     let sub = await this.prisma.bentoSubscription.findFirst({
       where: { id: subscriptionId, customerId },
@@ -873,12 +875,21 @@ export class BentoService implements OnModuleInit {
       await this.assertDailyCapacity(subscriptionId, rows);
     }
 
-    this.assertLockedDeliveriesUnchanged(sub.deliveries, rows);
+    // Admins can unfreeze days past the 5 PM day-before lock (e.g. switch a
+    // locked lunch+dinner day to dinner only); delivered/skipped days remain
+    // immutable for everyone.
+    const unlockForAdmin =
+      options.adminOverride === true && options.overrideLocked === true;
+
+    if (!unlockForAdmin) {
+      this.assertLockedDeliveriesUnchanged(sub.deliveries, rows);
+    }
 
     const lockedScheduledIds = sub.deliveries
       .filter(
         (d) =>
           d.status === BentoDeliveryStatus.SCHEDULED &&
+          !unlockForAdmin &&
           isPickupDateLocked(formatDateOnly(d.deliveryDate)),
       )
       .map((d) => d.id);
@@ -886,7 +897,7 @@ export class BentoService implements OnModuleInit {
     const immutableDeliveries = sub.deliveries.filter(
       (d) =>
         d.status !== BentoDeliveryStatus.SCHEDULED ||
-        isPickupDateLocked(formatDateOnly(d.deliveryDate)),
+        (!unlockForAdmin && isPickupDateLocked(formatDateOnly(d.deliveryDate))),
     );
 
     await this.prisma.$transaction(async (tx) => {
