@@ -64,10 +64,11 @@ import type {
 export { BENTO_MENU };
 
 /**
- * Promo codes on single-meal (ONE_TIME) orders require the order subtotal
- * (before discount) to reach RM13 — below that the code is rejected.
+ * Promo codes on single-meal (ONE_TIME) orders must leave a payable total of
+ * at least RM13 after the discount — below that the code is rejected (e.g.
+ * RM17.90 with an RM10 code would pay RM7.90, so the code is refused).
  */
-const SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS = 1300;
+const SINGLE_MEAL_VOUCHER_MIN_TOTAL_CENTS = 1300;
 
 const PACKAGE_SEED: Array<{
   code: BentoPackageCode;
@@ -631,22 +632,22 @@ export class BentoService implements OnModuleInit {
     } | null = null;
     let voucherError: string | null = null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
-      if (this.singleMealVoucherBlocked(pkg.code, subtotalCents)) {
+      const result = await this.bentoVouchers.validateForQuote(
+        dto.voucherCode,
+        subtotalCents,
+      );
+      if (!result.ok) {
+        voucherError = result.reason;
+      } else if (
+        this.singleMealVoucherBlocked(pkg.code, result.newTotalCents)
+      ) {
         voucherError = 'SINGLE_MEAL_MIN';
       } else {
-        const result = await this.bentoVouchers.validateForQuote(
-          dto.voucherCode,
-          subtotalCents,
-        );
-        if (result.ok) {
-          voucher = {
-            code: result.code,
-            discountCents: result.discountCents,
-            newTotalCents: result.newTotalCents,
-          };
-        } else {
-          voucherError = result.reason;
-        }
+        voucher = {
+          code: result.code,
+          discountCents: result.discountCents,
+          newTotalCents: result.newTotalCents,
+        };
       }
     }
 
@@ -696,10 +697,20 @@ export class BentoService implements OnModuleInit {
     let redemption: { redemptionId: string; discountCents: number } | null =
       null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
-      if (this.singleMealVoucherBlocked(pkg.code, subtotalCents)) {
+      // Preview the discount first: single meals must still pay at least RM13
+      // after the code is applied. reserve() below re-runs the standard
+      // validity checks (window/capacity/min-spend) atomically.
+      const preview = await this.bentoVouchers.validateForQuote(
+        dto.voucherCode,
+        subtotalCents,
+      );
+      if (
+        preview.ok &&
+        this.singleMealVoucherBlocked(pkg.code, preview.newTotalCents)
+      ) {
         throw new BadRequestException({
           code: 'BENTO_VOUCHER_SINGLE_MEAL_MIN',
-          message: `Promo codes need a single-meal order of at least RM${(SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS / 100).toFixed(0)}.`,
+          message: `Promo codes can't bring a single-meal order below RM${(SINGLE_MEAL_VOUCHER_MIN_TOTAL_CENTS / 100).toFixed(0)}.`,
         });
       }
       const reserved = await this.bentoVouchers.reserve(
@@ -989,16 +1000,17 @@ export class BentoService implements OnModuleInit {
   }
 
   /**
-   * Single-meal (ONE_TIME) orders accept promo codes only when the subtotal
-   * (before discount) reaches RM13; subscription plans have no such floor.
+   * Single-meal (ONE_TIME) orders accept promo codes only when the total
+   * still payable after the discount is at least RM13; subscription plans
+   * have no such floor.
    */
   private singleMealVoucherBlocked(
     code: BentoPackageCode,
-    subtotalCents: number,
+    totalAfterDiscountCents: number,
   ): boolean {
     return (
       code === BentoPackageCode.ONE_TIME &&
-      subtotalCents < SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS
+      totalAfterDiscountCents < SINGLE_MEAL_VOUCHER_MIN_TOTAL_CENTS
     );
   }
 
