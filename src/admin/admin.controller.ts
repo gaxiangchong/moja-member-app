@@ -280,6 +280,17 @@ export class AdminController {
     return this.bentoVouchers.adminUpdate(id, dto);
   }
 
+  /**
+   * Delete a voucher that was never redeemed. Codes with confirmed or
+   * in-flight redemptions are refused (deactivate those instead) so the usage
+   * history behind the sales reports is never cascade-deleted.
+   */
+  @Delete('bento-vouchers/:id')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  deleteBentoVoucher(@Param('id') id: string) {
+    return this.bentoVouchers.adminDelete(id);
+  }
+
   @Get('loyalty-ledger')
   @RequirePermissions(P.LOYALTY_READ)
   listLoyaltyLedger(

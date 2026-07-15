@@ -63,6 +63,12 @@ import type {
 
 export { BENTO_MENU };
 
+/**
+ * Promo codes on single-meal (ONE_TIME) orders require the order subtotal
+ * (before discount) to reach RM13 — below that the code is rejected.
+ */
+const SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS = 1300;
+
 const PACKAGE_SEED: Array<{
   code: BentoPackageCode;
   label: string;
@@ -625,9 +631,8 @@ export class BentoService implements OnModuleInit {
     } | null = null;
     let voucherError: string | null = null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
-      const packageBlock = this.voucherPackageBlockReason(pkg.code);
-      if (packageBlock) {
-        voucherError = packageBlock;
+      if (this.singleMealVoucherBlocked(pkg.code, subtotalCents)) {
+        voucherError = 'SINGLE_MEAL_MIN';
       } else {
         const result = await this.bentoVouchers.validateForQuote(
           dto.voucherCode,
@@ -691,12 +696,10 @@ export class BentoService implements OnModuleInit {
     let redemption: { redemptionId: string; discountCents: number } | null =
       null;
     if (dto.voucherCode && dto.voucherCode.trim()) {
-      const packageBlock = this.voucherPackageBlockReason(pkg.code);
-      if (packageBlock) {
+      if (this.singleMealVoucherBlocked(pkg.code, subtotalCents)) {
         throw new BadRequestException({
-          code: 'BENTO_VOUCHER_PACKAGE_NOT_ELIGIBLE',
-          message:
-            'Promo codes apply to subscription plans only, not single meals.',
+          code: 'BENTO_VOUCHER_SINGLE_MEAL_MIN',
+          message: `Promo codes need a single-meal order of at least RM${(SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS / 100).toFixed(0)}.`,
         });
       }
       const reserved = await this.bentoVouchers.reserve(
@@ -985,9 +988,18 @@ export class BentoService implements OnModuleInit {
     return this.mapSubscription(row);
   }
 
-  /** Promo codes apply to subscription plans only (not single-meal ONE_TIME). */
-  private voucherPackageBlockReason(code: BentoPackageCode): string | null {
-    return code === BentoPackageCode.ONE_TIME ? 'PACKAGE_NOT_ELIGIBLE' : null;
+  /**
+   * Single-meal (ONE_TIME) orders accept promo codes only when the subtotal
+   * (before discount) reaches RM13; subscription plans have no such floor.
+   */
+  private singleMealVoucherBlocked(
+    code: BentoPackageCode,
+    subtotalCents: number,
+  ): boolean {
+    return (
+      code === BentoPackageCode.ONE_TIME &&
+      subtotalCents < SINGLE_MEAL_VOUCHER_MIN_SUBTOTAL_CENTS
+    );
   }
 
   private async resolvePackage(code: BentoPackageCode): Promise<BentoPackage> {

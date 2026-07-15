@@ -3268,8 +3268,8 @@ export class AdminDashboardController {
               </div>
               <div class="table-wrap">
                 <table class="data">
-                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Amount (RM)</th></tr></thead>
-                  <tbody id="bsTxnBody"><tr><td colspan="6" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Voucher</th><th>Amount (RM)</th></tr></thead>
+                  <tbody id="bsTxnBody"><tr><td colspan="7" class="muted-hint">Apply a date range to load.</td></tr></tbody>
                 </table>
               </div>
             </div>
@@ -3489,6 +3489,7 @@ export class AdminDashboardController {
                       <th>Redeemed / Cap</th>
                       <th>Min spend</th>
                       <th style="text-align:center">Active</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody id="bentoVouchersBody"></tbody>
@@ -5807,8 +5808,9 @@ export class AdminDashboardController {
           '<td' + countStyle + '>' + fmt(v.redeemedCount) + ' / ' + fmt(v.redemptionCap) + '</td>' +
           '<td>' + (v.minSpendCents != null ? bvRm(v.minSpendCents) : '—') + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bv-active"' + (v.isActive ? ' checked' : '') + ' /></td>' +
+          '<td style="text-align:center"><button type="button" class="btn-outline bv-delete" data-code="' + bmAttr(v.code) + '" style="padding:4px 10px;color:#b91c1c">Delete</button></td>' +
           '</tr>';
-      }).join('') || '<tr><td colspan="6">No vouchers yet</td></tr>';
+      }).join('') || '<tr><td colspan="7">No vouchers yet</td></tr>';
     }
     async function loadBentoVouchers() {
       var data = await api('/admin/bento-vouchers');
@@ -5865,6 +5867,17 @@ export class AdminDashboardController {
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
         await loadBentoVouchers();
+      }
+    }
+    async function deleteBentoVoucher(id, code) {
+      if (!window.confirm('Delete voucher ' + code + '? This cannot be undone. Codes that were already used cannot be deleted — deactivate those instead.')) return;
+      var out = document.getElementById('bentoVouchersListResult');
+      try {
+        await apiDelete('/admin/bento-vouchers/' + encodeURIComponent(id));
+        if (out) out.textContent = 'Deleted ' + code + '.';
+        await loadBentoVouchers();
+      } catch (e) {
+        if (out) out.textContent = bentoSchedFriendlyError(e);
       }
     }
     function renderBentoPackages() {
@@ -6843,9 +6856,13 @@ export class AdminDashboardController {
         var list = (txn && Array.isArray(txn.transactions)) ? txn.transactions : [];
         var xb = document.getElementById('bsTxnBody');
         var xrows = list.map(function (x) {
-          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
+          var voucherCell = x.voucherCode
+            ? '<code style="font-size:11px">' + bpAttr(x.voucherCode) + '</code>'
+              + (x.voucherDiscountCents ? '<br><span class="field-hint" style="margin:0">−' + moneyFromCents(x.voucherDiscountCents) + '</span>' : '')
+            : '—';
+          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + voucherCell + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
         });
-        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="6" class="muted-hint">No transactions in this range.</td></tr>';
+        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="7" class="muted-hint">No transactions in this range.</td></tr>';
         if (hint) hint.textContent = list.length + ' shown (latest 100)';
         statusPanel.textContent = 'Bento sales updated.';
       } catch (e) {
@@ -9922,6 +9939,13 @@ export class AdminDashboardController {
         var tr = target.closest('tr[data-voucher-id]');
         if (!tr) return;
         toggleBentoVoucherActive(tr.getAttribute('data-voucher-id'), target.checked);
+      });
+      bentoVouchersBody.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button.bv-delete') : null;
+        if (!btn) return;
+        var tr = btn.closest('tr[data-voucher-id]');
+        if (!tr) return;
+        deleteBentoVoucher(tr.getAttribute('data-voucher-id'), btn.getAttribute('data-code') || 'this voucher');
       });
     }
     var bentoMenuBody = document.getElementById('bentoMenuBody');

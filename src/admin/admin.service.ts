@@ -2296,6 +2296,8 @@ export class AdminService {
         package_label: string | null;
         meal_option: string | null;
         amount_cents: bigint;
+        voucher_code: string | null;
+        voucher_discount_cents: bigint | null;
       }[]
     >`
       SELECT pi.id AS payment_intent_id,
@@ -2306,11 +2308,16 @@ export class AdminService {
              bp.code AS package_code,
              bp.label AS package_label,
              bs.meal_option AS meal_option,
-             pi.amount_cents AS amount_cents
+             pi.amount_cents AS amount_cents,
+             bdv.code AS voucher_code,
+             bdr.discount_cents AS voucher_discount_cents
       FROM payment_intents pi
       LEFT JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
       LEFT JOIN bento_packages bp ON bp.id = bs.package_id
       LEFT JOIN customers c ON c.id = pi.customer_id
+      LEFT JOIN bento_discount_redemptions bdr
+        ON bdr.payment_intent_id = pi.id AND bdr.status = 'CONFIRMED'
+      LEFT JOIN bento_discount_vouchers bdv ON bdv.id = bdr.voucher_id
       WHERE pi.purpose = 'bento_subscription'
         AND pi.status = 'SUCCEEDED'
         ${rangeFilter}
@@ -2330,6 +2337,11 @@ export class AdminService {
         packageLabel: r.package_label,
         mealOption: r.meal_option,
         amountCents: Number(r.amount_cents),
+        voucherCode: r.voucher_code,
+        voucherDiscountCents:
+          r.voucher_discount_cents == null
+            ? null
+            : Number(r.voucher_discount_cents),
       })),
     };
   }
