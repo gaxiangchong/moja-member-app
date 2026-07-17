@@ -8,6 +8,7 @@
     "ops-queue-web",
     "bento-web",
     "mobile",
+    "scripts",
     "**/*spec.ts"
   ]
 }
