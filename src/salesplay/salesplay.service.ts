@@ -304,16 +304,31 @@ export class SalesplayService {
 
     const cursorParam =
       this.config.get<string>('SALESPLAY_PULL_CURSOR_PARAM')?.trim() || 'cursor';
-    // SalesPlay list endpoints filter by created_at_min / created_at_max
-    // (Y-m-d H:i:s) — see https://developer.salesplay.com/.
-    const fromParam =
-      this.config.get<string>('SALESPLAY_PULL_FROM_PARAM')?.trim() ||
-      'created_at_min';
+    const fromOverride = this.config
+      .get<string>('SALESPLAY_PULL_FROM_PARAM')
+      ?.trim();
 
     const url = new URL(`${this.apiBase()}/${resource}`);
     url.searchParams.set('limit', String(opts.limit ?? this.pullPageSize()));
     if (opts.cursor) url.searchParams.set(cursorParam, opts.cursor);
-    if (opts.fromDate) url.searchParams.set(fromParam, opts.fromDate);
+
+    // SalesPlay requires the created-date window on list endpoints ("Created
+    // min at can not be blank"), in `Y-m-d H:i:s` format. The reference docs
+    // name the params created_at_min/max but the live validation message reads
+    // like created_min_at, so unless SALESPLAY_PULL_FROM_PARAM pins one name we
+    // send the window under both spellings — unknown params are ignored.
+    const fromDate = opts.fromDate ?? '2000-01-01 00:00:00';
+    if (fromOverride) {
+      url.searchParams.set(fromOverride, fromDate);
+    } else {
+      const toDate = this.formatSalesplayDateTime(
+        new Date(Date.now() + 24 * 60 * 60 * 1000),
+      );
+      url.searchParams.set('created_at_min', fromDate);
+      url.searchParams.set('created_min_at', fromDate);
+      url.searchParams.set('created_at_max', toDate);
+      url.searchParams.set('created_max_at', toDate);
+    }
     const shopId = this.config.get<string>('SALESPLAY_SHOP_ID')?.trim();
     if (shopId) url.searchParams.set('shop_id', shopId);
 
