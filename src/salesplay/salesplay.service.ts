@@ -332,15 +332,21 @@ export class SalesplayService {
     const shopId = this.config.get<string>('SALESPLAY_SHOP_ID')?.trim();
     if (shopId) url.searchParams.set('shop_id', shopId);
 
+    // URLSearchParams serializes spaces as "+"; encode them as %20 so the
+    // Y-m-d H:i:s datetimes survive any query parser. Literal plus signs in
+    // values are already %2B, so this replacement only ever touches spaces.
+    const requestUrl = url.toString().replace(/\+/g, '%20');
     try {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(requestUrl, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
       });
       const text = await res.text();
       if (!res.ok) {
+        // Include the query as sent (no secrets — auth is in the header) so a
+        // rejected request shows exactly which params went out.
         this.logger.error(
-          `SalesPlay ${resource} GET failed (${res.status}): ${text.slice(0, 500)}`,
+          `SalesPlay ${resource} GET failed (${res.status}) [${requestUrl.slice(url.origin.length)}]: ${text.slice(0, 500)}`,
         );
         return null;
       }
