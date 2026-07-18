@@ -40,15 +40,25 @@ export type SalesplayCustomerInput = {
 export class SalesplayService {
   private readonly logger = new Logger(SalesplayService.name);
 
+  /** Cached OAuth token (in-memory; re-obtained after a restart). */
+  private oauth: {
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAtMs: number;
+  } | null = null;
+  /** De-dupes concurrent token requests so parallel API calls share one fetch. */
+  private oauthInflight: Promise<string | null> | null = null;
+
   constructor(private readonly config: ConfigService) {}
 
   isConfigured(): boolean {
     const enabled = this.config.get<string>('SALESPLAY_ENABLED');
-    const token = this.config.get<string>('SALESPLAY_ACCESS_TOKEN')?.trim();
     const on = ['1', 'true', 'on', 'yes'].includes(
       String(enabled ?? '').toLowerCase(),
     );
-    return on && Boolean(token);
+    if (!on) return false;
+    const token = this.config.get<string>('SALESPLAY_ACCESS_TOKEN')?.trim();
+    return Boolean(token) || this.oauthConfigured();
   }
 
   /** True when online order push is enabled and shop id is configured. */
@@ -69,6 +79,131 @@ export class SalesplayService {
       this.config.get<string>('SALESPLAY_API_BASE')?.trim().replace(/\/$/, '') ||
       'https://api.salesplaypos.com/v1.0'
     );
+  }
+
+  // ---- Auth -------------------------------------------------------------
+
+  /**
+   * True when OAuth 2.0 app credentials are present (Backoffice → Integrations
+   * → OAuth Apps): App ID, App secret, and the Authorization Code shown on the
+   * app page. OAuth is preferred over SALESPLAY_ACCESS_TOKEN when both are set.
+   */
+  private oauthConfigured(): boolean {
+    return Boolean(
+      this.config.get<string>('SALESPLAY_CLIENT_ID')?.trim() &&
+        this.config.get<string>('SALESPLAY_CLIENT_SECRET')?.trim() &&
+        this.config.get<string>('SALESPLAY_AUTH_CODE')?.trim(),
+    );
+  }
+
+  /**
+   * Resolves the Bearer token for API calls: the cached OAuth access token
+   * (fetched / refreshed on demand) when OAuth is configured, otherwise the
+   * static SALESPLAY_ACCESS_TOKEN. Returns null when no token is obtainable.
+   */
+  private async getAccessToken(): Promise<string | null> {
+    if (!this.oauthConfigured()) {
+      return this.config.get<string>('SALESPLAY_ACCESS_TOKEN')?.trim() || null;
+    }
+    // Refresh 60s before expiry so in-flight calls never race the deadline.
+    if (this.oauth && Date.now() < this.oauth.expiresAtMs - 60_000) {
+      return this.oauth.accessToken;
+    }
+    if (!this.oauthInflight) {
+      this.oauthInflight = this.obtainOauthToken().finally(() => {
+        this.oauthInflight = null;
+      });
+    }
+    return this.oauthInflight;
+  }
+
+  /**
+   * Gets a fresh access token from SalesPlay: prefers the refresh token when we
+   * hold one, and falls back to exchanging the (static, Backoffice-issued)
+   * authorization code — which is also how the first token after a restart is
+   * obtained, since the cache is in-memory only.
+   */
+  private async obtainOauthToken(): Promise<string | null> {
+    const clientId = this.config.getOrThrow<string>('SALESPLAY_CLIENT_ID').trim();
+    const clientSecret = this.config
+      .getOrThrow<string>('SALESPLAY_CLIENT_SECRET')
+      .trim();
+
+    if (this.oauth?.refreshToken) {
+      const refreshed = await this.requestOauthToken({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: this.oauth.refreshToken,
+      });
+      if (refreshed) return refreshed;
+      this.logger.warn(
+        'SalesPlay OAuth refresh failed; retrying with the authorization code.',
+      );
+    }
+
+    return this.requestOauthToken({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code: this.config.getOrThrow<string>('SALESPLAY_AUTH_CODE').trim(),
+    });
+  }
+
+  /** POST /oauth/token (form-urlencoded). Never throws; caches on success. */
+  private async requestOauthToken(
+    params: Record<string, string>,
+  ): Promise<string | null> {
+    try {
+      const res = await fetch(`${this.apiBase()}/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: '*/*',
+        },
+        body: new URLSearchParams(params).toString(),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        this.logger.error(
+          `SalesPlay OAuth token request failed (${res.status}, grant=${params.grant_type}): ${text.slice(0, 300)}`,
+        );
+        return null;
+      }
+      const data = JSON.parse(text) as {
+        access_token?: string;
+        expires_in?: number;
+        refresh_token?: string;
+      };
+      const accessToken = data.access_token?.trim();
+      if (!accessToken) {
+        this.logger.error(
+          `SalesPlay OAuth token response missing access_token: ${text.slice(0, 300)}`,
+        );
+        return null;
+      }
+      const ttlSec =
+        Number.isFinite(data.expires_in) && Number(data.expires_in) > 0
+          ? Number(data.expires_in)
+          : 3600;
+      this.oauth = {
+        accessToken,
+        // Keep the previous refresh token if the response omits a new one.
+        refreshToken: data.refresh_token?.trim() || this.oauth?.refreshToken || null,
+        expiresAtMs: Date.now() + ttlSec * 1000,
+      };
+      this.logger.log(
+        `SalesPlay OAuth access token obtained via ${params.grant_type} (expires in ${ttlSec}s).`,
+      );
+      return accessToken;
+    } catch (err) {
+      this.logger.error(
+        `SalesPlay OAuth token request error: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   // ---- Pull sync (GET) --------------------------------------------------
@@ -109,13 +244,19 @@ export class SalesplayService {
     opts: SalesplayPageQuery,
   ): Promise<SalesplayPage | null> {
     if (!this.isConfigured()) return null;
-    const token = this.config.getOrThrow<string>('SALESPLAY_ACCESS_TOKEN').trim();
+    const token = await this.getAccessToken();
+    if (!token) {
+      this.logger.error(`SalesPlay ${resource} GET skipped: no usable access token.`);
+      return null;
+    }
 
     const cursorParam =
       this.config.get<string>('SALESPLAY_PULL_CURSOR_PARAM')?.trim() || 'cursor';
+    // SalesPlay list endpoints filter by created_at_min / created_at_max
+    // (Y-m-d H:i:s) — see https://developer.salesplay.com/.
     const fromParam =
       this.config.get<string>('SALESPLAY_PULL_FROM_PARAM')?.trim() ||
-      'date_from';
+      'created_at_min';
 
     const url = new URL(`${this.apiBase()}/${resource}`);
     url.searchParams.set('limit', String(opts.limit ?? this.pullPageSize()));
@@ -238,7 +379,13 @@ export class SalesplayService {
   async syncCustomer(input: SalesplayCustomerInput): Promise<string | null> {
     if (!this.isConfigured()) return null;
 
-    const token = this.config.getOrThrow<string>('SALESPLAY_ACCESS_TOKEN').trim();
+    const token = await this.getAccessToken();
+    if (!token) {
+      this.logger.error(
+        `SalesPlay customer sync skipped for ${input.id ?? input.phoneE164}: no usable access token.`,
+      );
+      return null;
+    }
     const url = `${this.apiBase()}/customers`;
     const payload = this.buildPayload(input);
 
@@ -298,7 +445,13 @@ export class SalesplayService {
     if (!this.isOnlineOrdersConfigured()) return null;
 
     const shopId = this.config.getOrThrow<string>('SALESPLAY_SHOP_ID').trim();
-    const token = this.config.getOrThrow<string>('SALESPLAY_ACCESS_TOKEN').trim();
+    const token = await this.getAccessToken();
+    if (!token) {
+      this.logger.error(
+        `SalesPlay online order push skipped for ${input.orderId}: no usable access token.`,
+      );
+      return null;
+    }
     const url = `${this.apiBase()}/online_orders`;
     const payload = this.buildOnlineOrderPayload(input, shopId);
 

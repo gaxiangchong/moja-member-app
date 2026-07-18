@@ -84,7 +84,7 @@ describe('SalesplayService.getReceiptsPage', () => {
     expect(calledUrl).toContain('/receipts');
     expect(calledUrl).toContain('limit=100');
     expect(calledUrl).toContain('cursor=CUR');
-    expect(calledUrl).toContain('date_from=2026-01-01');
+    expect(calledUrl).toContain('created_at_min=2026-01-01');
     expect(calledUrl).toContain('shop_id=SHOP-9');
   });
 });
