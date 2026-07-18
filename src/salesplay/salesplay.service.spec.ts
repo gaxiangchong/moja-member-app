@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import { SalesplayService } from './salesplay.service';
 
 /** Minimal ConfigService backed by a plain map. */
@@ -11,6 +12,14 @@ function configWith(values: Record<string, string>): ConfigService {
     },
   } as unknown as ConfigService;
 }
+
+/** Prisma stub — these tests use the static-token path, which never hits it. */
+const prismaStub = {
+  appSetting: {
+    findUnique: jest.fn().mockResolvedValue(null),
+    upsert: jest.fn().mockResolvedValue(null),
+  },
+} as unknown as PrismaService;
 
 const ENABLED = { SALESPLAY_ENABLED: '1', SALESPLAY_ACCESS_TOKEN: 'tok' };
 
@@ -26,7 +35,7 @@ describe('SalesplayService.getReceiptsPage', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('returns empty when SalesPlay is not configured (no API call)', async () => {
-    const svc = new SalesplayService(configWith({}));
+    const svc = new SalesplayService(configWith({}), prismaStub);
     global.fetch = jest.fn();
     expect(await svc.getReceiptsPage({})).toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
@@ -37,7 +46,7 @@ describe('SalesplayService.getReceiptsPage', () => {
       receipts: [{ receipt_id: 'R1' }, { receipt_id: 'R2' }],
       next_cursor: 'CURSOR-2',
     });
-    const svc = new SalesplayService(configWith(ENABLED));
+    const svc = new SalesplayService(configWith(ENABLED), prismaStub);
     const page = await svc.getReceiptsPage({});
     expect(page).toEqual({
       items: [{ receipt_id: 'R1' }, { receipt_id: 'R2' }],
@@ -50,7 +59,7 @@ describe('SalesplayService.getReceiptsPage', () => {
       success: { receipts: [{ receipt_id: 'R3' }] },
       paging: { next: 'C3' },
     });
-    const svc = new SalesplayService(configWith(ENABLED));
+    const svc = new SalesplayService(configWith(ENABLED), prismaStub);
     const page = await svc.getReceiptsPage({});
     expect(page?.items).toHaveLength(1);
     expect(page?.nextCursor).toBe('C3');
@@ -58,14 +67,14 @@ describe('SalesplayService.getReceiptsPage', () => {
 
   it('treats a missing cursor as the last page', async () => {
     mockFetchOnce({ receipts: [{ receipt_id: 'R4' }] });
-    const svc = new SalesplayService(configWith(ENABLED));
+    const svc = new SalesplayService(configWith(ENABLED), prismaStub);
     const page = await svc.getReceiptsPage({});
     expect(page?.nextCursor).toBeNull();
   });
 
   it('returns null (not throw) on an HTTP error', async () => {
     mockFetchOnce({ error: 'nope' }, false, 500);
-    const svc = new SalesplayService(configWith(ENABLED));
+    const svc = new SalesplayService(configWith(ENABLED), prismaStub);
     expect(await svc.getReceiptsPage({})).toBeNull();
   });
 
@@ -78,6 +87,7 @@ describe('SalesplayService.getReceiptsPage', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     const svc = new SalesplayService(
       configWith({ ...ENABLED, SALESPLAY_SHOP_ID: 'SHOP-9' }),
+      prismaStub,
     );
     await svc.getReceiptsPage({ cursor: 'CUR', fromDate: '2026-01-01', limit: 100 });
     const calledUrl = String(fetchMock.mock.calls[0][0]);

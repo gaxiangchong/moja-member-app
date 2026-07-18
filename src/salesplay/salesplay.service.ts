@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import type {
   SalesplayOnlineOrderInput,
   SalesplayOnlineOrderPushResult,
@@ -49,7 +50,10 @@ export class SalesplayService {
   /** De-dupes concurrent token requests so parallel API calls share one fetch. */
   private oauthInflight: Promise<string | null> | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   isConfigured(): boolean {
     const enabled = this.config.get<string>('SALESPLAY_ENABLED');
@@ -118,10 +122,12 @@ export class SalesplayService {
   }
 
   /**
-   * Gets a fresh access token from SalesPlay: prefers the refresh token when we
-   * hold one, and falls back to exchanging the (static, Backoffice-issued)
-   * authorization code — which is also how the first token after a restart is
-   * obtained, since the cache is in-memory only.
+   * Gets a fresh access token from SalesPlay. The refresh token (in-memory or
+   * persisted in app_settings from an earlier exchange) is preferred; the
+   * authorization code is only exchanged when no refresh token exists yet.
+   * Authorization codes are single-use, so the code path is effectively the
+   * one-time bootstrap — after it succeeds, restarts survive on the persisted
+   * refresh token alone.
    */
   private async obtainOauthToken(): Promise<string | null> {
     const clientId = this.config.getOrThrow<string>('SALESPLAY_CLIENT_ID').trim();
@@ -129,12 +135,14 @@ export class SalesplayService {
       .getOrThrow<string>('SALESPLAY_CLIENT_SECRET')
       .trim();
 
-    if (this.oauth?.refreshToken) {
+    const refreshToken =
+      this.oauth?.refreshToken ?? (await this.loadPersistedRefreshToken());
+    if (refreshToken) {
       const refreshed = await this.requestOauthToken({
         client_id: clientId,
         client_secret: clientSecret,
         grant_type: 'refresh_token',
-        refresh_token: this.oauth.refreshToken,
+        refresh_token: refreshToken,
       });
       if (refreshed) return refreshed;
       this.logger.warn(
@@ -148,6 +156,46 @@ export class SalesplayService {
       grant_type: 'authorization_code',
       code: this.config.getOrThrow<string>('SALESPLAY_AUTH_CODE').trim(),
     });
+  }
+
+  /** app_settings key holding the SalesPlay OAuth refresh token. */
+  private static readonly OAUTH_SETTING_KEY = 'salesplay.oauth';
+
+  private async loadPersistedRefreshToken(): Promise<string | null> {
+    try {
+      const row = await this.prisma.appSetting.findUnique({
+        where: { key: SalesplayService.OAUTH_SETTING_KEY },
+      });
+      const value = row?.value as { refreshToken?: string } | null;
+      return value?.refreshToken?.trim() || null;
+    } catch (err) {
+      this.logger.warn(
+        `Could not load persisted SalesPlay refresh token: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /** Best-effort persistence so restarts never need a fresh authorization code. */
+  private async persistRefreshToken(refreshToken: string): Promise<void> {
+    try {
+      await this.prisma.appSetting.upsert({
+        where: { key: SalesplayService.OAUTH_SETTING_KEY },
+        create: {
+          key: SalesplayService.OAUTH_SETTING_KEY,
+          value: { refreshToken },
+        },
+        update: { value: { refreshToken } },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not persist SalesPlay refresh token: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /** POST /oauth/token (form-urlencoded). Never throws; caches on success. */
@@ -192,6 +240,10 @@ export class SalesplayService {
         refreshToken: data.refresh_token?.trim() || this.oauth?.refreshToken || null,
         expiresAtMs: Date.now() + ttlSec * 1000,
       };
+      // Persist rotation so a restart can refresh instead of needing a new
+      // (single-use) authorization code.
+      const newRefreshToken = data.refresh_token?.trim();
+      if (newRefreshToken) await this.persistRefreshToken(newRefreshToken);
       this.logger.log(
         `SalesPlay OAuth access token obtained via ${params.grant_type} (expires in ${ttlSec}s).`,
       );
