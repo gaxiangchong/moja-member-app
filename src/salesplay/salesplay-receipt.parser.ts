@@ -35,6 +35,10 @@ export type ParsedReceipt = {
   taxCents: number;
   netCents: number;
   paymentType: string | null;
+  /** SalesPlay receipt_type (e.g. "SALE", "REFUND"); null when absent. */
+  receiptType: string | null;
+  /** True when SalesPlay marks the receipt as deleted. */
+  isDeleted: boolean;
   lines: ParsedReceiptLine[];
   /** References that may tie this receipt back to one of our online orders. */
   onlineOrderRefs: {
@@ -147,7 +151,8 @@ const RECEIPT_DATE_KEYS = [
 
 function parseLines(receipt: Record<string, unknown>): ParsedReceiptLine[] {
   const rawLines =
-    (['order_items', 'items', 'receipt_items', 'line_items', 'products'] as const)
+    // line_products is the live API's name (per the SalesPlay docs sample).
+    (['line_products', 'order_items', 'items', 'receipt_items', 'line_items', 'products'] as const)
       .map((k) => receipt[k])
       .find((v) => Array.isArray(v)) ?? [];
   if (!Array.isArray(rawLines)) return [];
@@ -212,6 +217,8 @@ export function parseReceipt(raw: unknown): ParsedReceipt | null {
   const businessDate = mytBusinessDate(soldAt ?? new Date());
 
   const net = pickNumber(receipt, [
+    // total_money is the live API's name (per the SalesPlay docs sample).
+    'total_money',
     'total',
     'total_amount',
     'net_amount',
@@ -247,6 +254,10 @@ export function parseReceipt(raw: unknown): ParsedReceipt | null {
       'tender_type',
       'pay_type',
     ]),
+    receiptType: pickString(receipt, ['receipt_type']),
+    isDeleted:
+      receipt['receipt_delete_status'] === true ||
+      receipt['receipt_delete_status'] === 'true',
     lines: parseLines(receipt),
     onlineOrderRefs: {
       systemUniqueId: pickString(receipt, [

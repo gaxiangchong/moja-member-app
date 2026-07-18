@@ -104,6 +104,52 @@ describe('parseReceipt', () => {
     });
   });
 
+  it('parses the live SalesPlay receipt shape (total_money, line_products)', () => {
+    // Field names per the response sample at https://developer.salesplay.com.
+    const parsed = parseReceipt({
+      receipt_number: '1-2207203',
+      receipt_type: 'SALE',
+      refund_for: null,
+      receipt_date: '2026-07-18',
+      receipt_time: '5:21 PM',
+      receipt_date_time: '2026-07-18 17:21:26',
+      total_money: '600.00',
+      customer_id: '1000',
+      total_discount: '0.00',
+      total_tax: 0,
+      line_products: [
+        {
+          product_name: 'Bento Set',
+          product_qty: 1,
+          product_unit_price: '600.00',
+        },
+      ],
+      receipt_delete_status: false,
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.salesplayReceiptId).toBe('1-2207203');
+    expect(parsed!.netCents).toBe(60000);
+    expect(parsed!.receiptType).toBe('SALE');
+    expect(parsed!.isDeleted).toBe(false);
+    expect(parsed!.lines).toHaveLength(1);
+    expect(parsed!.customerHints.salesplayCustomerId).toBe('1000');
+  });
+
+  it('flags refund and deleted receipts so they earn no points', () => {
+    const refund = parseReceipt({
+      receipt_number: '1-2207204',
+      receipt_type: 'REFUND',
+      total_money: '10.00',
+    });
+    expect(refund!.receiptType).toBe('REFUND');
+    const deleted = parseReceipt({
+      receipt_number: '1-2207205',
+      total_money: '10.00',
+      receipt_delete_status: true,
+    });
+    expect(deleted!.isDeleted).toBe(true);
+  });
+
   it('falls back to unit price * qty when no line total is given', () => {
     const parsed = parseReceipt({
       receipt_id: 'R-3003',

@@ -269,6 +269,17 @@ export class SalesplayWebhookService {
       );
       return;
     }
+    // Only a SALE earns points — refund/void receipts and deleted receipts
+    // must not; refunds arrive separately as credit notes.
+    if (
+      parsed.isDeleted ||
+      (parsed.receiptType && parsed.receiptType.toUpperCase() !== 'SALE')
+    ) {
+      this.logger.debug(
+        `Receipt ${parsed.salesplayReceiptId} is ${parsed.isDeleted ? 'deleted' : parsed.receiptType}; not awarding points.`,
+      );
+      return;
+    }
     if (parsed.netCents <= 0) return;
 
     // Floor RM (major unit) before applying the rate — same formula as online

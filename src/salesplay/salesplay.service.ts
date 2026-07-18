@@ -468,6 +468,9 @@ export class SalesplayService {
       first_name: firstName,
       last_name: lastName || undefined,
       email: (input.email ?? '').trim() || undefined,
+      // The live create-customer API takes `phone` (per SalesPlay's Postman
+      // collection); phone_number is kept for older deployments that used it.
+      phone: phone || undefined,
       phone_number: phone || undefined,
       country,
       ...(customerCode ? { customer_code: customerCode } : {}),
