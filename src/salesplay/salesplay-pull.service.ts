@@ -170,10 +170,14 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
   private async pullCreditNotes(opts: {
     fromDate: string | null;
   }): Promise<PullSummary> {
-    // SalesPlay API v1.0 has no GET /credit_notes endpoint (the docs list only
-    // the credit_note.update webhook), so pulling it just 404s. Off unless the
-    // flag is set — flip it on if SalesPlay ever ships the endpoint.
-    if (!this.flagOn('SALESPLAY_PULL_CREDIT_NOTES_ENABLED')) {
+    // Credit notes are pulled from /credit_note_and_refund (per SalesPlay's
+    // Postman collection). Set SALESPLAY_PULL_CREDIT_NOTES_ENABLED=false to
+    // skip this resource if the endpoint misbehaves for an account.
+    const flag = this.config
+      .get<string>('SALESPLAY_PULL_CREDIT_NOTES_ENABLED')
+      ?.trim()
+      .toLowerCase();
+    if (['0', 'false', 'off', 'no'].includes(flag ?? '')) {
       return {
         resource: CREDIT_NOTES_RESOURCE,
         pagesFetched: 0,

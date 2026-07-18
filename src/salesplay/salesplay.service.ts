@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { request as httpsRequest } from 'node:https';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   SalesplayOnlineOrderInput,
@@ -284,12 +285,14 @@ export class SalesplayService {
   }
 
   /**
-   * Low-level GET with cursor pagination. Never throws — returns null on any
-   * failure so a pull run degrades gracefully rather than crashing a loop.
+   * Low-level list fetch with cursor pagination. Never throws — returns null on
+   * any failure so a pull run degrades gracefully rather than crashing a loop.
    *
-   * The exact query-param and response-envelope names are not documented, so
-   * they are configurable (with sensible defaults) and the response is parsed
-   * defensively. The raw first page is logged so the shape can be confirmed.
+   * Despite the reference docs labelling these "query parameters", SalesPlay's
+   * official Postman collection (and the live API) put the filters in a raw
+   * JSON body on the GET request — query-string params are ignored entirely,
+   * which surfaces as `"Created min at can not be blank"`. Standard fetch()
+   * forbids GET bodies, so the transport drops down to node:https.
    */
   private async getResourcePage(
     resource: 'receipts' | 'credit_notes',
@@ -302,51 +305,34 @@ export class SalesplayService {
       return null;
     }
 
-    const cursorParam =
-      this.config.get<string>('SALESPLAY_PULL_CURSOR_PARAM')?.trim() || 'cursor';
-    const fromOverride = this.config
-      .get<string>('SALESPLAY_PULL_FROM_PARAM')
-      ?.trim();
+    // The credit-notes list lives at /credit_note_and_refund (the /credit_notes
+    // path from earlier guesswork does not exist and 404s).
+    const path = resource === 'credit_notes' ? 'credit_note_and_refund' : resource;
 
-    const url = new URL(`${this.apiBase()}/${resource}`);
-    url.searchParams.set('limit', String(opts.limit ?? this.pullPageSize()));
-    if (opts.cursor) url.searchParams.set(cursorParam, opts.cursor);
-
-    // SalesPlay requires the created-date window on list endpoints ("Created
-    // min at can not be blank"), in `Y-m-d H:i:s` format. The reference docs
-    // name the params created_at_min/max but the live validation message reads
-    // like created_min_at, so unless SALESPLAY_PULL_FROM_PARAM pins one name we
-    // send the window under both spellings — unknown params are ignored.
-    const fromDate = opts.fromDate ?? '2000-01-01 00:00:00';
-    if (fromOverride) {
-      url.searchParams.set(fromOverride, fromDate);
-    } else {
-      const toDate = this.formatSalesplayDateTime(
+    // Filter window in `Y-m-d H:i:s` — created_at_min is required by the live
+    // validation, so "full history" backfills send an epoch-ish lower bound.
+    const body: Record<string, string> = {
+      receipt_numbers: '',
+      shop_id: this.config.get<string>('SALESPLAY_SHOP_ID')?.trim() || '',
+      created_at_min: opts.fromDate ?? '2000-01-01 00:00:00',
+      created_at_max: this.formatSalesplayDateTime(
         new Date(Date.now() + 24 * 60 * 60 * 1000),
-      );
-      url.searchParams.set('created_at_min', fromDate);
-      url.searchParams.set('created_min_at', fromDate);
-      url.searchParams.set('created_at_max', toDate);
-      url.searchParams.set('created_max_at', toDate);
-    }
-    const shopId = this.config.get<string>('SALESPLAY_SHOP_ID')?.trim();
-    if (shopId) url.searchParams.set('shop_id', shopId);
+      ),
+      limit: String(opts.limit ?? this.pullPageSize()),
+      cursor: opts.cursor ?? '',
+    };
 
-    // URLSearchParams serializes spaces as "+"; encode them as %20 so the
-    // Y-m-d H:i:s datetimes survive any query parser. Literal plus signs in
-    // values are already %2B, so this replacement only ever touches spaces.
-    const requestUrl = url.toString().replace(/\+/g, '%20');
     try {
-      const res = await fetch(requestUrl, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        // Include the query as sent (no secrets — auth is in the header) so a
-        // rejected request shows exactly which params went out.
+      const { status, text } = await this.getWithJsonBody(
+        `${this.apiBase()}/${path}`,
+        token,
+        body,
+      );
+      if (status < 200 || status >= 300) {
+        // Log the body we sent (no secrets — auth is in the header) so a
+        // rejected request shows exactly which filters went out.
         this.logger.error(
-          `SalesPlay ${resource} GET failed (${res.status}) [${requestUrl.slice(url.origin.length)}]: ${text.slice(0, 500)}`,
+          `SalesPlay ${resource} GET failed (${status}) [/${path} ${JSON.stringify(body)}]: ${text.slice(0, 500)}`,
         );
         return null;
       }
@@ -364,6 +350,50 @@ export class SalesplayService {
       );
       return null;
     }
+  }
+
+  /**
+   * GET with a JSON body over node:https (fetch() rejects GET bodies per spec).
+   * Sends the token under both header names: `Authorization` (verified to pass
+   * their auth) and `Token` (the name used by SalesPlay's Postman collection).
+   */
+  private getWithJsonBody(
+    urlStr: string,
+    token: string,
+    body: Record<string, string>,
+  ): Promise<{ status: number; text: string }> {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body);
+      const u = new URL(urlStr);
+      const req = httpsRequest(
+        {
+          hostname: u.hostname,
+          port: u.port || 443,
+          path: u.pathname + u.search,
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Token: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            Accept: '*/*',
+          },
+        },
+        (res) => {
+          let data = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk: string) => {
+            data += chunk;
+          });
+          res.on('end', () =>
+            resolve({ status: res.statusCode ?? 0, text: data }),
+          );
+        },
+      );
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
   }
 
   private parseResourcePage(text: string): SalesplayPage {
