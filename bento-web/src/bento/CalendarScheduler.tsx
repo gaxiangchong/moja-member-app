@@ -22,6 +22,10 @@ import {
   allCreditsScheduled,
   unscheduledCreditSummary,
 } from './scheduleCredits';
+import {
+  allocateScheduleSelections,
+  type ScheduleSelection,
+} from './scheduleAllocation';
 import type { BentoSubscription } from './types';
 
 type Props = {
@@ -31,11 +35,7 @@ type Props = {
 };
 
 /** Internal selection — quantity per meal per day. */
-type DaySelection = {
-  date: string;
-  lunchQty: number;
-  dinnerQty: number;
-};
+type DaySelection = ScheduleSelection;
 
 type SheetTarget =
   | { kind: 'single'; date: string }
@@ -385,47 +385,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const prevMonth = () => { if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); };
   const nextMonth = () => { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
 
-  // ── Save (round-robin distribution across subscriptions) ─────────────────
+  // ── Save (preserve existing ownership, distribute new pickups) ───────────
   const persistSchedule = async (): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
-      const sorted = [...selections].sort((a, b) => a.date.localeCompare(b.date));
-
-      const lunchSlots: string[] = [];
-      const dinnerSlots: string[] = [];
-      for (const sel of sorted) {
-        for (let i = 0; i < sel.lunchQty;  i++) lunchSlots.push(sel.date);
-        for (let i = 0; i < sel.dinnerQty; i++) dinnerSlots.push(sel.date);
-      }
-
-      for (let si = 0; si < N; si++) {
-        const sub = subscriptions[si]!;
-        const myLunch  = lunchSlots.filter((_,  idx) => idx % N === si);
-        const myDinner = dinnerSlots.filter((_, idx) => idx % N === si);
-
-        // Count quantity per date so a single plan can place several meals/day.
-        const dateMap = new Map<string, { lunchQty: number; dinnerQty: number }>();
-        myLunch.forEach(d => {
-          const e = dateMap.get(d) ?? { lunchQty: 0, dinnerQty: 0 };
-          e.lunchQty += 1; dateMap.set(d, e);
+      const schedules = allocateScheduleSelections(subscriptions, selections);
+      for (const schedule of schedules) {
+        await scheduleBentoSubscription(schedule.subscriptionId, {
+          slots: schedule.slots,
         });
-        myDinner.forEach(d => {
-          const e = dateMap.get(d) ?? { lunchQty: 0, dinnerQty: 0 };
-          e.dinnerQty += 1; dateMap.set(d, e);
-        });
-
-        const slots = [...dateMap.entries()]
-          .map(([date, m]) => ({
-            date,
-            includeLunch: m.lunchQty > 0,
-            includeDinner: m.dinnerQty > 0,
-            lunchQty: m.lunchQty,
-            dinnerQty: m.dinnerQty,
-          }))
-          .filter(s => s.lunchQty > 0 || s.dinnerQty > 0);
-
-        await scheduleBentoSubscription(sub.id, { slots });
       }
 
       setChangedSinceSave(false);
