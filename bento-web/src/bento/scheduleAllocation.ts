@@ -42,6 +42,12 @@ function addQuantity(
   allocation.set(date, row);
 }
 
+function canAssignDate(subscription: BentoSubscription, date: string): boolean {
+  const scheduling = subscription.scheduling;
+  if (!scheduling) return true;
+  return date >= scheduling.earliestDate && date <= scheduling.windowEndDate;
+}
+
 /**
  * Split the combined calendar selection back into subscription-specific
  * payloads. Existing pickup ownership is retained wherever the selected date
@@ -92,7 +98,10 @@ export function allocateScheduleSelections(
         let target = -1;
         for (let offset = 0; offset < subscriptions.length; offset++) {
           const candidate = (nextSubscription + offset) % subscriptions.length;
-          if (used[candidate]! < subscriptions[candidate]![creditKey]) {
+          if (
+            used[candidate]! < subscriptions[candidate]![creditKey] &&
+            canAssignDate(subscriptions[candidate]!, date)
+          ) {
             target = candidate;
             break;
           }

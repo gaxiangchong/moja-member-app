@@ -48,6 +48,15 @@ function subscription(
     totalRm: 10,
     status: 'ACTIVE',
     needsSchedule: deliveries.length === 0,
+    scheduling: {
+      minLeadDays: 1,
+      earliestDate: '2026-07-01',
+      windowEndDate: '2026-12-31',
+      allowLunch: lunchCredits > 0,
+      allowDinner: dinnerCredits > 0,
+      lunchScheduled: deliveries.reduce((total, row) => total + row.lunchQty, 0),
+      dinnerScheduled: deliveries.reduce((total, row) => total + row.dinnerQty, 0),
+    },
     createdAt: '2026-07-01T00:00:00.000Z',
     package: {
       id: `package-${id}`,
@@ -146,5 +155,20 @@ describe('allocateScheduleSelections', () => {
 
     expect(schedules[0]!.slots.map((slot) => slot.lunchQty)).toEqual([1, 1]);
     expect(schedules[1]!.slots.map((slot) => slot.lunchQty)).toEqual([1, 1]);
+  });
+
+  it('assigns new pickups only within each plan scheduling window', () => {
+    const latePlan = subscription('late', 1, 0);
+    latePlan.scheduling!.earliestDate = '2026-07-22';
+    const earlyPlan = subscription('early', 1, 0);
+    earlyPlan.scheduling!.windowEndDate = '2026-07-21';
+
+    const schedules = allocateScheduleSelections([latePlan, earlyPlan], [
+      { date: '2026-07-20', lunchQty: 1, dinnerQty: 0 },
+      { date: '2026-07-23', lunchQty: 1, dinnerQty: 0 },
+    ]);
+
+    expect(schedules[0]!.slots.map((slot) => slot.date)).toEqual(['2026-07-23']);
+    expect(schedules[1]!.slots.map((slot) => slot.date)).toEqual(['2026-07-20']);
   });
 });
