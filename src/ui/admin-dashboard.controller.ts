@@ -6485,11 +6485,12 @@ export class AdminDashboardController {
       function p(n) { return (n < 10 ? '0' : '') + n; }
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     }
+    // Meal credits are a flexible pool — every plan can book lunch or dinner.
     function bentoSchedHasLunch() {
-      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'LUNCH' || bentoSchedSub.mealOptionCode === 'BOTH');
+      return !!bentoSchedSub;
     }
     function bentoSchedHasDinner() {
-      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'DINNER' || bentoSchedSub.mealOptionCode === 'BOTH');
+      return !!bentoSchedSub;
     }
     // Mirrors the backend rule: a pickup day locks at 17:00 MYT (09:00 UTC)
     // the day before.
@@ -6556,20 +6557,21 @@ export class AdminDashboardController {
         lunch += l ? Math.max(0, parseInt(l.value, 10) || 0) : 0;
         dinner += d ? Math.max(0, parseInt(d.value, 10) || 0) : 0;
       });
-      var parts = [];
-      if (bentoSchedHasLunch()) parts.push('Lunch ' + lunch + ' / ' + bentoSchedSub.lunchCredits);
-      if (bentoSchedHasDinner()) parts.push('Dinner ' + dinner + ' / ' + bentoSchedSub.dinnerCredits);
-      var over = (bentoSchedHasLunch() && lunch > bentoSchedSub.lunchCredits)
-        || (bentoSchedHasDinner() && dinner > bentoSchedSub.dinnerCredits);
-      totals.textContent = 'Allocated — ' + parts.join(' · ') + (over ? '  (over plan credits)' : '');
+      // Credits are pooled: lunch + dinner combined against the plan total.
+      var totalCredits = (bentoSchedSub.lunchCredits || 0) + (bentoSchedSub.dinnerCredits || 0);
+      var used = lunch + dinner;
+      var parts = ['Meals ' + used + ' / ' + totalCredits];
+      if (used > 0) parts.push('(' + lunch + ' lunch · ' + dinner + ' dinner)');
+      var over = used > totalCredits;
+      totals.textContent = 'Allocated — ' + parts.join(' ') + (over ? '  (over plan credits)' : '');
       totals.style.color = over ? '#b91c1c' : '#475569';
     }
     function bentoOpenSchedModal(row) {
       bentoSchedSub = row;
       var info = document.getElementById('bentoSchedSubInfo');
       if (info) {
-        info.textContent = row.customerName + ' · ' + row.packageLabel + ' · ' + row.mealOption
-          + ' · ' + row.mealCredits + ' credit(s)';
+        info.textContent = row.customerName + ' · ' + row.packageLabel
+          + ' · ' + row.mealCredits + ' meal credit(s) — lunch or dinner';
       }
       var result = document.getElementById('bentoSchedResult');
       if (result) { result.textContent = ''; }

@@ -18,10 +18,7 @@ import {
   makeScheduleHelpers,
   type ScheduleHelpers,
 } from './scheduleRules';
-import {
-  allCreditsScheduled,
-  unscheduledCreditSummary,
-} from './scheduleCredits';
+import { allCreditsScheduled } from './scheduleCredits';
 import type { BentoSubscription } from './types';
 
 type Props = {
@@ -82,26 +79,28 @@ function allDatesInRange(startIso: string, endIso: string): string[] {
   return out;
 }
 
-/** Auto-fill eligible days with qty = min(maxQty, remaining credits). */
+/**
+ * Auto-fill eligible days from the pooled credit balance — a lunch and a
+ * dinner per set per day until the credits run out. Members can freely
+ * reassign any meal to lunch or dinner afterwards.
+ */
 function buildAutoFill(
   windowDates: string[],
-  allowLunch: boolean,
-  allowDinner: boolean,
-  totalLunch: number,
-  totalDinner: number,
+  totalCredits: number,
   maxQtyPerDay: number,
   isSchedulable: (iso: string) => boolean,
 ): DaySelection[] {
   const eligible = windowDates.filter((d) => isSchedulable(d));
   const result: DaySelection[] = [];
-  let lL = totalLunch; let dL = totalDinner;
+  let left = totalCredits;
   for (const date of eligible) {
-    if (lL <= 0 && dL <= 0) break;
-    const lunchQty = allowLunch ? Math.min(maxQtyPerDay, lL) : 0;
-    const dinnerQty = allowDinner ? Math.min(maxQtyPerDay, dL) : 0;
+    if (left <= 0) break;
+    const lunchQty = Math.min(maxQtyPerDay, left);
+    left -= lunchQty;
+    const dinnerQty = Math.min(maxQtyPerDay, left);
+    left -= dinnerQty;
     if (lunchQty > 0 || dinnerQty > 0) {
       result.push({ date, lunchQty, dinnerQty });
-      lL -= lunchQty; dL -= dinnerQty;
     }
   }
   return result;
@@ -149,13 +148,15 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const isDateClosed = scheduleHelpers.isDateClosed;
 
   // ── Aggregate across all subscriptions ──────────────────────────────────
-  const totalLunch  = subscriptions.reduce((s, sub) => s + sub.lunchCredits, 0);
-  const totalDinner = subscriptions.reduce((s, sub) => s + sub.dinnerCredits, 0);
-  const allowLunch  = subscriptions.some(s => s.scheduling?.allowLunch  ?? s.mealOption !== 'DINNER');
-  const allowDinner = subscriptions.some(s => s.scheduling?.allowDinner ?? s.mealOption !== 'LUNCH');
+  // Meal credits are one flexible pool: any credit can become a lunch or a
+  // dinner, so all limits below are on the combined total.
+  const totalCredits = subscriptions.reduce(
+    (s, sub) => s + sub.lunchCredits + sub.dinnerCredits,
+    0,
+  );
 
   const [showScheduler, setShowScheduler] = useState(
-    () => !allCreditsScheduled(subscriptions, allowLunch, allowDinner),
+    () => !allCreditsScheduled(subscriptions),
   );
 
   const combinedWindow = useMemo(() => {
@@ -193,7 +194,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const [selections, setSelections] = useState<DaySelection[]>(() => {
     const merged = mergeDeliveries(subscriptions);
     if (merged.length > 0) return merged;
-    return buildAutoFill(windowDates, allowLunch, allowDinner, totalLunch, totalDinner, N, isDateSchedulable);
+    return buildAutoFill(windowDates, totalCredits, N, isDateSchedulable);
   });
 
   const [rangeStart, setRangeStart]   = useState<string | null>(null);
@@ -244,15 +245,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
     }
   }, [subscriptions, changedSinceSave]);
 
-  // ── Credit counters ──────────────────────────────────────────────────────
+  // ── Credit counters (pooled) ─────────────────────────────────────────────
   const todayIso       = formatDateOnly(todayUtc());
   const lunchConsumed  = selections.filter(s => s.date <  todayIso).reduce((n, s) => n + s.lunchQty,  0);
   const dinnerConsumed = selections.filter(s => s.date <  todayIso).reduce((n, s) => n + s.dinnerQty, 0);
   const lunchUpcoming  = selections.filter(s => s.date >= todayIso).reduce((n, s) => n + s.lunchQty,  0);
   const dinnerUpcoming = selections.filter(s => s.date >= todayIso).reduce((n, s) => n + s.dinnerQty, 0);
-  const lunchUnscheduled  = totalLunch  - lunchConsumed  - lunchUpcoming;
-  const dinnerUnscheduled = totalDinner - dinnerConsumed - dinnerUpcoming;
-  const anyUnscheduled = (allowLunch && lunchUnscheduled > 0) || (allowDinner && dinnerUnscheduled > 0);
+  const creditsConsumed   = lunchConsumed + dinnerConsumed;
+  const creditsUpcoming   = lunchUpcoming + dinnerUpcoming;
+  const creditsUnscheduled = totalCredits - creditsConsumed - creditsUpcoming;
+  const anyUnscheduled = creditsUnscheduled > 0;
 
   const anyNeedsSchedule = subscriptions.some(s => s.needsSchedule);
   const hasSavedSchedule = subscriptions.some((s) => s.deliveries.length > 0);
@@ -266,14 +268,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const showPickupInfo =
     !isEditingSchedule &&
     (scheduleConfirmed || (hasSavedSchedule && hasUpcomingPickup));
-  const incompleteSummary = unscheduledCreditSummary(
-    totalLunch,
-    totalDinner,
-    lunchConsumed + lunchUpcoming,
-    dinnerConsumed + dinnerUpcoming,
-    allowLunch,
-    allowDinner,
-  );
+  const incompleteSummary = t('rhythm.mealsCount', { count: creditsUnscheduled });
 
   useEffect(() => {
     if (!allMealsScheduled) {
@@ -493,17 +488,16 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
   const sheetMaxTotalPacks = sheetRow
     ? maxTotalPacksOnDay(sheetRow, sheetCapacity)
     : 999;
-  // Remaining credits available (excluding what this day already uses)
-  const sheetLunchBase  = sheetRow ? lunchUpcoming  - sheetRow.lunchQty  : lunchUpcoming;
-  const sheetDinnerBase = sheetRow ? dinnerUpcoming - sheetRow.dinnerQty : dinnerUpcoming;
-  // Per-day quantity is bounded by remaining credits and kitchen capacity only
-  // (no fixed per-day cap) so a single plan can pick up several meals to share.
+  // Credits left in the shared pool (not yet consumed or booked upcoming).
+  const poolLeft = Math.max(0, totalCredits - creditsConsumed - creditsUpcoming);
+  // Per-day quantity is bounded by the pooled remaining credits and kitchen
+  // capacity only (no fixed per-day cap) so a plan can pick up meals to share.
   const maxLunchQty  = Math.min(
-    Math.max(0, totalLunch - lunchConsumed - sheetLunchBase),
+    (sheetRow ? sheetRow.lunchQty : 0) + poolLeft,
     sheetRow ? sheetMaxTotalPacks - sheetRow.dinnerQty : Number.MAX_SAFE_INTEGER,
   );
   const maxDinnerQty = Math.min(
-    Math.max(0, totalDinner - dinnerConsumed - sheetDinnerBase),
+    (sheetRow ? sheetRow.dinnerQty : 0) + poolLeft,
     sheetRow ? sheetMaxTotalPacks - sheetRow.lunchQty : Number.MAX_SAFE_INTEGER,
   );
 
@@ -590,38 +584,22 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
         {showScheduler && (
           <>
-        {/* Credit summary */}
+        {/* Credit summary — one flexible pool, spendable on lunch or dinner */}
         <div className="calCreditsSummary">
-          {allowLunch && (
-            <div className="calCreditBlock">
-              <span className="calCreditIcon">🌞</span>
-              <div className="calCreditDetail">
-                <span className="calCreditLabel">{t('schedule.creditLabel', { meal: t('common.lunch'), count: totalLunch })}</span>
-                <span className="calCreditNumbers">
-                  {lunchConsumed  > 0 && <span className="calCreditUsed">{t('schedule.used', { count: lunchConsumed })}</span>}
-                  {lunchUpcoming  > 0 && <span className="calCreditUpcoming">{t('schedule.upcoming', { count: lunchUpcoming })}</span>}
-                  {lunchUnscheduled  > 0 && <span className="calCreditWarn">{t('schedule.unused', { count: lunchUnscheduled })}</span>}
-                  {lunchUnscheduled <= 0 && lunchUpcoming > 0 && <span className="calCreditDone">{t('schedule.allScheduled')}</span>}
-                  {lunchConsumed === 0 && lunchUpcoming === 0 && <span className="calCreditUpcoming">{t('schedule.ready')}</span>}
-                </span>
-              </div>
+          <div className="calCreditBlock">
+            <span className="calCreditIcon">🍱</span>
+            <div className="calCreditDetail">
+              <span className="calCreditLabel">{t('schedule.mealCreditLabel', { count: totalCredits })}</span>
+              <span className="calCreditNumbers">
+                {creditsConsumed  > 0 && <span className="calCreditUsed">{t('schedule.used', { count: creditsConsumed })}</span>}
+                {creditsUpcoming  > 0 && <span className="calCreditUpcoming">{t('schedule.upcoming', { count: creditsUpcoming })}</span>}
+                {creditsUnscheduled  > 0 && <span className="calCreditWarn">{t('schedule.unused', { count: creditsUnscheduled })}</span>}
+                {creditsUnscheduled <= 0 && creditsUpcoming > 0 && <span className="calCreditDone">{t('schedule.allScheduled')}</span>}
+                {creditsConsumed === 0 && creditsUpcoming === 0 && <span className="calCreditUpcoming">{t('schedule.ready')}</span>}
+              </span>
+              <span className="caption">{t('schedule.flexibleHint')}</span>
             </div>
-          )}
-          {allowDinner && (
-            <div className="calCreditBlock">
-              <span className="calCreditIcon">🌙</span>
-              <div className="calCreditDetail">
-                <span className="calCreditLabel">{t('schedule.creditLabel', { meal: t('common.dinner'), count: totalDinner })}</span>
-                <span className="calCreditNumbers">
-                  {dinnerConsumed  > 0 && <span className="calCreditUsed">{t('schedule.used', { count: dinnerConsumed })}</span>}
-                  {dinnerUpcoming  > 0 && <span className="calCreditUpcoming">{t('schedule.upcoming', { count: dinnerUpcoming })}</span>}
-                  {dinnerUnscheduled  > 0 && <span className="calCreditWarn">{t('schedule.unused', { count: dinnerUnscheduled })}</span>}
-                  {dinnerUnscheduled <= 0 && dinnerUpcoming > 0 && <span className="calCreditDone">{t('schedule.allScheduled')}</span>}
-                  {dinnerConsumed === 0 && dinnerUpcoming === 0 && <span className="calCreditUpcoming">{t('schedule.ready')}</span>}
-                </span>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
 
         {anyUnscheduled && (
@@ -742,12 +720,13 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 const hasSel = row.lunchQty > 0 || row.dinnerQty > 0;
                 const dayCapacity = capacityByDate.get(iso);
                 const maxTotal = maxTotalPacksOnDay(row, dayCapacity);
+                // Pooled credits: either meal can grow while the shared pool lasts.
                 const rowLunchMax = Math.min(
-                  Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + row.lunchQty),
+                  row.lunchQty + poolLeft,
                   maxTotal - row.dinnerQty,
                 );
                 const rowDinnerMax = Math.min(
-                  Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + row.dinnerQty),
+                  row.dinnerQty + poolLeft,
                   maxTotal - row.lunchQty,
                 );
 
@@ -764,8 +743,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                       {status && <span className="calListStatus">{status}</span>}
                     </div>
                     <div className="calListMeals">
-                      {allowLunch && (
-                        <div className="calListMeal">
+                      <div className="calListMeal">
                           <span className="calListMealLabel">🌞 {t('common.lunch')}</span>
                           {interactive ? (
                             <div className="calSheetQtyControl">
@@ -787,9 +765,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                             <span className="calListQtyReadonly">{row.lunchQty > 0 ? row.lunchQty : '—'}</span>
                           )}
                         </div>
-                      )}
-                      {allowDinner && (
-                        <div className="calListMeal">
+                      <div className="calListMeal">
                           <span className="calListMealLabel">🌙 {t('common.dinner')}</span>
                           {interactive ? (
                             <div className="calSheetQtyControl">
@@ -811,7 +787,6 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                             <span className="calListQtyReadonly">{row.dinnerQty > 0 ? row.dinnerQty : '—'}</span>
                           )}
                         </div>
-                      )}
                     </div>
                   </li>
                 );
@@ -869,7 +844,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
           <div className="scheduleWarningDialog" role="alertdialog" aria-labelledby="scheduleWarningTitle">
             <h3 id="scheduleWarningTitle">{t('schedule.warningTitle')}</h3>
             <p>
-              {t('schedule.warningBody', { summary: incompleteSummary.join(' and ') })}
+              {t('schedule.warningBody', { summary: incompleteSummary })}
             </p>
             <button
               type="button"
@@ -908,7 +883,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
 
             {/* Meal qty rows */}
             <div className="calSheetMealRows">
-              {allowLunch && (() => {
+              {(() => {
                 const dates = sheetTarget.kind === 'single' ? [sheetTarget.date] : sheetTarget.dates;
                 const qty = sheetTarget.kind === 'single'
                   ? getRow(sheetTarget.date).lunchQty
@@ -923,11 +898,9 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                           {qty > 0
                             ? t(qty > 1 ? 'schedule.setsLeftPlural' : 'schedule.setsLeft', {
                                 qty,
-                                left: Math.max(0, totalLunch - lunchConsumed - lunchUpcoming + (sheetTarget.kind === 'single' ? qty : 0)),
+                                left: poolLeft,
                               })
-                            : t('schedule.creditsLeft', {
-                                count: Math.max(0, totalLunch - lunchConsumed - lunchUpcoming),
-                              })}
+                            : t('schedule.creditsLeft', { count: poolLeft })}
                         </span>
                       </div>
                     </div>
@@ -950,7 +923,7 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                 );
               })()}
 
-              {allowDinner && (() => {
+              {(() => {
                 const dates = sheetTarget.kind === 'single' ? [sheetTarget.date] : sheetTarget.dates;
                 const qty = sheetTarget.kind === 'single'
                   ? getRow(sheetTarget.date).dinnerQty
@@ -965,11 +938,9 @@ export function CalendarScheduler({ subscriptions, onScheduled, kitchenPickupId 
                           {qty > 0
                             ? t(qty > 1 ? 'schedule.setsLeftPlural' : 'schedule.setsLeft', {
                                 qty,
-                                left: Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming + (sheetTarget.kind === 'single' ? qty : 0)),
+                                left: poolLeft,
                               })
-                            : t('schedule.creditsLeft', {
-                                count: Math.max(0, totalDinner - dinnerConsumed - dinnerUpcoming),
-                              })}
+                            : t('schedule.creditsLeft', { count: poolLeft })}
                         </span>
                       </div>
                     </div>

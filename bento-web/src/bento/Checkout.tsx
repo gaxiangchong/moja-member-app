@@ -164,14 +164,9 @@ export function Checkout({ draft, onSuccess }: Props) {
     ? t(PROMO_ERROR_KEYS[voucherError] ?? 'checkout.promoError.generic')
     : null;
 
-  const lunchPart =
-    quote && quote.lunchCredits > 0
-      ? `${quote.lunchCredits * sets} ${t('common.lunch').toLowerCase()}`
-      : '';
-  const dinnerPart =
-    quote && quote.dinnerCredits > 0
-      ? `${quote.dinnerCredits * sets} ${t('common.dinner').toLowerCase()}`
-      : '';
+  // Credits are a flexible pool — show the total meal count; lunch vs dinner
+  // is chosen later on the schedule screen.
+  const totalMeals = quote ? quote.mealCredits * sets : 0;
   const setsPart = sets > 1 ? ` (${sets} ${t('common.sets')})` : '';
 
   const openTakeawayDisclaimer = () => {
@@ -275,9 +270,9 @@ export function Checkout({ draft, onSuccess }: Props) {
             {voucherErrorText && <p className="err promoError">{voucherErrorText}</p>}
           </div>
 
-          {(lunchPart || dinnerPart) && (
+          {totalMeals > 0 && (
             <p className="caption" style={{ marginTop: 6 }}>
-              {[lunchPart, dinnerPart].filter(Boolean).join(' · ')}{setsPart}
+              {t('checkout.flexibleMeals', { count: totalMeals })}{setsPart}
             </p>
           )}
 

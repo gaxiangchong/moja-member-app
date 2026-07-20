@@ -36,7 +36,7 @@ describe('quoteBentoCheckout', () => {
     expect(q.dinnerCredits).toBe(0);
   });
 
-  it('computes 30-meal BOTH with dinner +RM1 per dinner meal', () => {
+  it('prices 30 pooled meals at the flat per-meal rate (no dinner premium)', () => {
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_30,
       mealCredits: 30,
@@ -46,11 +46,11 @@ describe('quoteBentoCheckout', () => {
       riceType: BentoRiceType.WHITE,
       includeDrinkAddon: false,
     });
-    expect(q.lunchCredits).toBe(15);
-    expect(q.dinnerCredits).toBe(15);
-    expect(q.subtotalMealsCents).toBe(15 * 1300 + 15 * 1400);
-    expect(q.dinnerPremiumCents).toBe(15 * 100);
-    expect(q.totalCents).toBe(15 * 1300 + 15 * 1400);
+    expect(q.lunchCredits + q.dinnerCredits).toBe(30);
+    expect(q.subtotalMealsCents).toBe(30 * 1300);
+    expect(q.dinnerPremiumCents).toBe(0);
+    expect(q.totalCents).toBe(30 * 1300);
+    expect(q.lines[0]!.label).toContain('30 meals');
   });
 
   it('computes 60-meal plan without dinner premium or drink charges', () => {
@@ -87,7 +87,7 @@ describe('quoteBentoCheckout', () => {
     expect(q.totalCents).toBe(10 * 1600 + 10 * 200 + 10 * 400);
   });
 
-  it('computes DINNER-only with +RM1 per meal', () => {
+  it('prices legacy DINNER-only input at the flat rate too', () => {
     const q = quoteBentoCheckout({
       packageCode: BentoPackageCode.DAYS_15,
       mealCredits: 20,
@@ -98,8 +98,8 @@ describe('quoteBentoCheckout', () => {
       includeDrinkAddon: false,
     });
     expect(q.dinnerCredits).toBe(20);
-    expect(q.totalCents).toBe(20 * 1600);
-    expect(q.dinnerPremiumCents).toBe(20 * 100);
+    expect(q.totalCents).toBe(20 * 1500);
+    expect(q.dinnerPremiumCents).toBe(0);
   });
 
   it('computes newcomer RM39 lunch base with add-ons', () => {

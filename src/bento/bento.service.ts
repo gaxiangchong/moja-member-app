@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import {
   BentoDeliveryStatus,
-  BentoMealOption,
   BentoPackageCode,
   BentoSubscriptionStatus,
   type BentoPackage,
@@ -82,7 +81,7 @@ const PACKAGE_SEED: Array<{
 }> = [
   {
     code: BentoPackageCode.NEWCOMER_3,
-    label: 'Trial pack — 3 lunches',
+    label: 'Trial pack — 3 meals',
     durationDays: 14,
     mealCredits: 3,
     pricePerMealCents: 1300,
@@ -597,7 +596,7 @@ export class BentoService implements OnModuleInit {
     }
   > {
     const pkg = await this.resolvePackage(dto.packageCode);
-    await this.validateCheckoutInput(customerId, pkg, dto);
+    await this.validateCheckoutInput(customerId, pkg);
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
     const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
     const baseline = await this.loadSavingsBaseline();
@@ -662,7 +661,7 @@ export class BentoService implements OnModuleInit {
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
     const pkg = await this.resolvePackage(dto.packageCode);
-    await this.validateCheckoutInput(customerId, pkg, dto);
+    await this.validateCheckoutInput(customerId, pkg);
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();
     const includeDrinkAddon = drinksAndSoupEnabled ? dto.includeDrinkAddon : false;
     const baseline = await this.loadSavingsBaseline();
@@ -811,7 +810,7 @@ export class BentoService implements OnModuleInit {
    * Runs with `adminOverride`, which bypasses the lead-time/cutoff, the
    * package window, closed weekdays/dates, and the daily capacity cap — so
    * staff can resolve "I missed the cutoff" / "it won't let me pick that day"
-   * complaints. Credit limits and meal-option checks are still enforced.
+   * complaints. The pooled meal-credit limit is still enforced.
    * Days past the 5 PM day-before lock are also frozen unless the dto sets
    * `overrideLocked` (already-delivered days can never be changed). Throws
    * NotFoundException if the subscription does not exist.
@@ -877,9 +876,7 @@ export class BentoService implements OnModuleInit {
 
     const rows = this.validateScheduleSlots(
       sub.package,
-      sub.mealOption,
-      sub.lunchCredits,
-      sub.dinnerCredits,
+      sub.lunchCredits + sub.dinnerCredits,
       dto.slots,
       options,
       existingDeliveryDates,
@@ -1066,15 +1063,8 @@ export class BentoService implements OnModuleInit {
   private async validateCheckoutInput(
     customerId: string,
     pkg: BentoPackage,
-    dto: BentoQuoteDto,
   ): Promise<void> {
     if (pkg.code === BentoPackageCode.NEWCOMER_3) {
-      if (dto.mealOption !== BentoMealOption.LUNCH) {
-        throw new BadRequestException({
-          code: 'BENTO_NEWCOMER_LUNCH_ONLY',
-          message: 'Trial pack is lunch-only. Add-ons (brown rice, vegetarian) are still available.',
-        });
-      }
       await this.assertNewcomerEligible(customerId);
     }
   }
@@ -1090,9 +1080,7 @@ export class BentoService implements OnModuleInit {
 
   private validateScheduleSlots(
     pkg: BentoPackage,
-    mealOption: BentoMealOption,
-    lunchCredits: number,
-    dinnerCredits: number,
+    totalCredits: number,
     slots: BentoScheduleSlotDto[],
     options: { adminOverride?: boolean } = {},
     existingDeliveryDates: ReadonlySet<string> = new Set(),
@@ -1156,19 +1144,6 @@ export class BentoService implements OnModuleInit {
         }
       }
 
-      if (mealOption === BentoMealOption.LUNCH && slotDinner > 0) {
-        throw new BadRequestException({
-          code: 'BENTO_LUNCH_ONLY',
-          message: 'Your plan includes lunch only — dinner cannot be scheduled.',
-        });
-      }
-      if (mealOption === BentoMealOption.DINNER && slotLunch > 0) {
-        throw new BadRequestException({
-          code: 'BENTO_DINNER_ONLY',
-          message: 'Your plan includes dinner only — lunch cannot be scheduled.',
-        });
-      }
-
       const prev = byDate.get(slot.date) ?? { lunchQty: 0, dinnerQty: 0 };
       byDate.set(slot.date, {
         lunchQty: prev.lunchQty + slotLunch,
@@ -1183,6 +1158,8 @@ export class BentoService implements OnModuleInit {
       });
     }
 
+    // Meal credits are a single flexible pool: any credit can be spent on a
+    // lunch or a dinner, so only the combined total is capped.
     let lunchUsed = 0;
     let dinnerUsed = 0;
     for (const row of byDate.values()) {
@@ -1190,20 +1167,13 @@ export class BentoService implements OnModuleInit {
       dinnerUsed += row.dinnerQty;
     }
 
-    if (lunchUsed > lunchCredits) {
-      throw new BadRequestException({
-        code: 'BENTO_LUNCH_CREDITS_EXCEEDED',
-        message: `You can schedule at most ${lunchCredits} lunch meal(s).`,
-      });
-    }
-    if (dinnerUsed > dinnerCredits) {
-      throw new BadRequestException({
-        code: 'BENTO_DINNER_CREDITS_EXCEEDED',
-        message: `You can schedule at most ${dinnerCredits} dinner meal(s).`,
-      });
-    }
-
     const totalMeals = lunchUsed + dinnerUsed;
+    if (totalMeals > totalCredits) {
+      throw new BadRequestException({
+        code: 'BENTO_MEAL_CREDITS_EXCEEDED',
+        message: `You can schedule at most ${totalCredits} meal(s) on this plan (lunch and dinner combined).`,
+      });
+    }
     if (pkg.code === BentoPackageCode.ONE_TIME && totalMeals !== 1) {
       throw new BadRequestException({
         code: 'BENTO_ONE_TIME_SINGLE_MEAL',
@@ -1336,7 +1306,8 @@ export class BentoService implements OnModuleInit {
       pricePerMealRm: p.pricePerMealCents / 100,
       fixedCheckoutCents: p.fixedCheckoutCents,
       isNewcomer: p.code === BentoPackageCode.NEWCOMER_3,
-      newcomerLunchOnly: p.code === BentoPackageCode.NEWCOMER_3,
+      // Kept for older clients; trial meals are no longer lunch-only.
+      newcomerLunchOnly: false,
       includeFreeSoupAndDrinks,
       perksLabel: includeFreeSoupAndDrinks
         ? 'Free soup + free drinks included'
@@ -1380,7 +1351,6 @@ export class BentoService implements OnModuleInit {
     const rules = this.scheduleRulesInput();
     const earliest = rules.minSchedulableDate;
     const windowEnd = addDaysUtc(earliest, s.package.durationDays - 1);
-    const mealOpt = s.mealOption as BentoMealOption;
 
     return {
       id: s.id,
@@ -1406,8 +1376,9 @@ export class BentoService implements OnModuleInit {
           this.bentoSettings.getSettings(),
           this.bentoMenu.getConfig(),
         ),
-        allowLunch: mealOpt !== BentoMealOption.DINNER,
-        allowDinner: mealOpt !== BentoMealOption.LUNCH,
+        // Credits are a flexible pool — every plan may schedule either meal.
+        allowLunch: true,
+        allowDinner: true,
         lunchScheduled: s.deliveries.reduce((n, d) => n + d.lunchQty, 0),
         dinnerScheduled: s.deliveries.reduce((n, d) => n + d.dinnerQty, 0),
       },

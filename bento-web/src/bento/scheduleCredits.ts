@@ -12,36 +12,21 @@ export function countScheduledMeals(subscriptions: BentoSubscription[]) {
   return { lunch, dinner };
 }
 
-export function allCreditsScheduled(
-  subscriptions: BentoSubscription[],
-  allowLunch: boolean,
-  allowDinner: boolean,
-): boolean {
-  const totalLunch = subscriptions.reduce((s, sub) => s + sub.lunchCredits, 0);
-  const totalDinner = subscriptions.reduce((s, sub) => s + sub.dinnerCredits, 0);
-  const scheduled = countScheduledMeals(subscriptions);
-  return (
-    (!allowLunch || scheduled.lunch >= totalLunch) &&
-    (!allowDinner || scheduled.dinner >= totalDinner)
-  );
+/** Total meal credits across plans — a single pool spendable on lunch or dinner. */
+export function totalMealCredits(subscriptions: BentoSubscription[]): number {
+  return subscriptions.reduce((s, sub) => s + sub.lunchCredits + sub.dinnerCredits, 0);
 }
 
-export function unscheduledCreditSummary(
-  totalLunch: number,
-  totalDinner: number,
+export function allCreditsScheduled(subscriptions: BentoSubscription[]): boolean {
+  const scheduled = countScheduledMeals(subscriptions);
+  return scheduled.lunch + scheduled.dinner >= totalMealCredits(subscriptions);
+}
+
+/** Meals left to schedule (pooled — lunch and dinner combined). */
+export function unscheduledMealCount(
+  totalCredits: number,
   lunchScheduled: number,
   dinnerScheduled: number,
-  allowLunch: boolean,
-  allowDinner: boolean,
-): string[] {
-  const parts: string[] = [];
-  const lunchLeft = totalLunch - lunchScheduled;
-  const dinnerLeft = totalDinner - dinnerScheduled;
-  if (allowLunch && lunchLeft > 0) {
-    parts.push(`${lunchLeft} lunch${lunchLeft === 1 ? '' : 'es'}`);
-  }
-  if (allowDinner && dinnerLeft > 0) {
-    parts.push(`${dinnerLeft} dinner${dinnerLeft === 1 ? '' : 's'}`);
-  }
-  return parts;
+): number {
+  return Math.max(0, totalCredits - lunchScheduled - dinnerScheduled);
 }

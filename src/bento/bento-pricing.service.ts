@@ -52,7 +52,10 @@ export function computePackageListSavings(
   };
 }
 
-/** +RM1 per dinner meal (soup included). */
+/**
+ * @deprecated Meals are now a flexible pool priced at the flat per-meal rate;
+ * no dinner surcharge is collected at checkout.
+ */
 export const BENTO_DINNER_PREMIUM_CENTS = 100;
 
 export const BENTO_BROWN_RICE_CENTS = 200;
@@ -84,6 +87,12 @@ export type BentoQuoteInput = {
   savingsBaselineLabel?: string;
 };
 
+/**
+ * Meal credits are a single flexible pool — members decide lunch vs dinner at
+ * scheduling time, not at checkout. The lunch/dinner split kept here only
+ * seeds the legacy `lunch_credits`/`dinner_credits` columns; scheduling
+ * enforces the pooled total, never the split.
+ */
 export type MealCreditSplit = {
   lunchCredits: number;
   dinnerCredits: number;
@@ -139,30 +148,20 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
 
   const effectiveFreePerks =
     drinksAndSoupEnabled && includeFreeSoupAndDrinks;
-  const dinnerPremiumPerMeal = effectiveFreePerks
-    ? 0
-    : drinksAndSoupEnabled
-      ? BENTO_DINNER_PREMIUM_CENTS
-      : 0;
 
-  if (packageCode === BentoPackageCode.NEWCOMER_3 && mealOption !== BentoMealOption.LUNCH) {
-    throw new Error('NEWCOMER_3 requires lunch-only meal option');
-  }
-
+  // Meals are a flexible pool (lunch or dinner is chosen at scheduling time),
+  // so every credit is priced at the flat per-meal rate. The old +RM1 dinner
+  // surcharge cannot be charged up front — the dinner count isn't known yet.
   const split = splitMealCredits(mealCredits, mealOption);
   const totalMealSlots = split.lunchCredits + split.dinnerCredits;
 
   let subtotalMealsCents: number;
-  let dinnerPremiumCents: number;
+  const dinnerPremiumCents = 0;
 
   if (fixedCheckoutCents != null && packageCode === BentoPackageCode.NEWCOMER_3) {
     subtotalMealsCents = fixedCheckoutCents;
-    dinnerPremiumCents = 0;
   } else {
-    subtotalMealsCents =
-      split.lunchCredits * pricePerMealCents +
-      split.dinnerCredits * (pricePerMealCents + dinnerPremiumPerMeal);
-    dinnerPremiumCents = split.dinnerCredits * dinnerPremiumPerMeal;
+    subtotalMealsCents = totalMealSlots * pricePerMealCents;
   }
 
   const brownRiceAddonCents =
@@ -186,31 +185,16 @@ export function quoteBentoCheckout(input: BentoQuoteInput): BentoQuoteResult {
 
   const lines: BentoQuoteLine[] = [];
 
+  const mealWord = totalMealSlots === 1 ? 'meal' : 'meals';
   if (packageCode === BentoPackageCode.NEWCOMER_3) {
     lines.push({
-      label: `Trial pack (${split.lunchCredits} lunches @ RM39)`,
+      label: `Trial pack (${totalMealSlots} ${mealWord} @ RM39)`,
       amountCents: subtotalMealsCents,
-    });
-  } else if (mealOption === BentoMealOption.LUNCH) {
-    lines.push({
-      label: `${split.lunchCredits} lunches @ RM${(pricePerMealCents / 100).toFixed(2)}`,
-      amountCents: split.lunchCredits * pricePerMealCents,
-    });
-  } else if (mealOption === BentoMealOption.DINNER) {
-    const dinnerRate = pricePerMealCents + dinnerPremiumPerMeal;
-    lines.push({
-      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${drinksAndSoupEnabled && !dinnerPremiumPerMeal ? ' (soup included)' : ''}`,
-      amountCents: split.dinnerCredits * dinnerRate,
     });
   } else {
     lines.push({
-      label: `${split.lunchCredits} lunches @ RM${(pricePerMealCents / 100).toFixed(2)}`,
-      amountCents: split.lunchCredits * pricePerMealCents,
-    });
-    const dinnerRate = pricePerMealCents + dinnerPremiumPerMeal;
-    lines.push({
-      label: `${split.dinnerCredits} dinners @ RM${(dinnerRate / 100).toFixed(2)}${drinksAndSoupEnabled && dinnerPremiumPerMeal ? ' (+RM1/meal)' : drinksAndSoupEnabled ? ' (soup included)' : ''}`,
-      amountCents: split.dinnerCredits * dinnerRate,
+      label: `${totalMealSlots} ${mealWord} @ RM${(pricePerMealCents / 100).toFixed(2)} (lunch or dinner — your choice)`,
+      amountCents: subtotalMealsCents,
     });
   }
 

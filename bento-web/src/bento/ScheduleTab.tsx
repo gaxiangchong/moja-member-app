@@ -12,11 +12,9 @@ import { useI18n } from '../lib/i18n/context';
 // payment — is never offered in the calendar picker.
 const SCHEDULABLE_STATUSES = ['ACTIVE'];
 
-/** A plan still needs scheduling when it has unused lunch/dinner credits. */
+/** A plan still needs scheduling when it has unused meal credits. */
 function planNeedsScheduling(s: BentoSubscription): boolean {
-  const allowLunch = s.scheduling?.allowLunch ?? s.mealOption !== 'DINNER';
-  const allowDinner = s.scheduling?.allowDinner ?? s.mealOption !== 'LUNCH';
-  return !allCreditsScheduled([s], allowLunch, allowDinner);
+  return !allCreditsScheduled([s]);
 }
 
 type Props = {

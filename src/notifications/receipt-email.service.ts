@@ -320,33 +320,20 @@ export class ReceiptEmailService {
       const totalStr = formatMoney(sub.totalCents, currency);
       const paidAtStr = formatDateTime(intent?.updatedAt ?? sub.createdAt);
 
-      const mealOptionLabel =
-        sub.mealOption === 'BOTH'
-          ? 'Lunch + Dinner'
-          : sub.mealOption === 'LUNCH'
-            ? 'Lunch only'
-            : 'Dinner only';
       const dietLabel = (v: string) => (v === 'VEG' ? 'Vegetarian' : 'Regular');
       const riceLabel = sub.riceType === 'BROWN' ? 'Brown rice' : 'White rice';
 
-      // Build a compact list of plan detail rows (label/value pairs).
+      // Build a compact list of plan detail rows (label/value pairs). Meal
+      // credits are a flexible pool — lunch vs dinner is picked when scheduling.
       const details: Array<[string, string]> = [
         ['Package', sub.package.label],
-        ['Meals included', `${sub.mealCreditsTotal} meals`],
-        ['Schedule', mealOptionLabel],
+        [
+          'Meals included',
+          `${sub.mealCreditsTotal} meals — schedule each as lunch or dinner`,
+        ],
+        ['Lunch preference', dietLabel(sub.lunchVariant)],
+        ['Dinner preference', dietLabel(sub.dinnerVariant)],
       ];
-      if (sub.mealOption === 'LUNCH' || sub.mealOption === 'BOTH') {
-        details.push([
-          'Lunch',
-          `${sub.lunchCredits} meals · ${dietLabel(sub.lunchVariant)}`,
-        ]);
-      }
-      if (sub.mealOption === 'DINNER' || sub.mealOption === 'BOTH') {
-        details.push([
-          'Dinner',
-          `${sub.dinnerCredits} meals · ${dietLabel(sub.dinnerVariant)}`,
-        ]);
-      }
       details.push(['Rice', riceLabel]);
       if (sub.includeDrinkAddon) details.push(['Add-on', 'Drink included']);
       if (sub.startDate && sub.endDate) {
@@ -483,12 +470,6 @@ export class ReceiptEmailService {
       const customerPhone = sub.customer.phoneE164?.trim() || '—';
       const pickupCode = sub.customer.kitchenPickupCode?.trim() || '—';
 
-      const mealOptionLabel =
-        sub.mealOption === 'BOTH'
-          ? 'Lunch + Dinner'
-          : sub.mealOption === 'LUNCH'
-            ? 'Lunch only'
-            : 'Dinner only';
       const dietLabel = (v: string) => (v === 'VEG' ? 'Vegetarian' : 'Regular');
       const riceLabel = sub.riceType === 'BROWN' ? 'Brown rice' : 'White rice';
 
@@ -498,21 +479,13 @@ export class ReceiptEmailService {
         ['Email', customerEmail],
         ['Pickup ID', pickupCode],
         ['Package', sub.package.label],
-        ['Meals included', `${sub.mealCreditsTotal} meals`],
-        ['Schedule', mealOptionLabel],
+        [
+          'Meals included',
+          `${sub.mealCreditsTotal} meals — scheduled as lunch or dinner`,
+        ],
+        ['Lunch preference', dietLabel(sub.lunchVariant)],
+        ['Dinner preference', dietLabel(sub.dinnerVariant)],
       ];
-      if (sub.mealOption === 'LUNCH' || sub.mealOption === 'BOTH') {
-        details.push([
-          'Lunch',
-          `${sub.lunchCredits} meals · ${dietLabel(sub.lunchVariant)}`,
-        ]);
-      }
-      if (sub.mealOption === 'DINNER' || sub.mealOption === 'BOTH') {
-        details.push([
-          'Dinner',
-          `${sub.dinnerCredits} meals · ${dietLabel(sub.dinnerVariant)}`,
-        ]);
-      }
       details.push(['Rice', riceLabel]);
       if (sub.includeDrinkAddon) details.push(['Add-on', 'Drink included']);
       details.push(['Total paid', totalStr]);
