@@ -21,6 +21,7 @@ import { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.
 import { AdminDailyCommerceDateDto } from './dto/admin-daily-commerce.dto';
 import { BentoCustomerLookupQueryDto } from './dto/bento-customer-lookup-query.dto';
 import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
+import { SetBentoProgressHiddenDto } from './dto/set-bento-progress-hidden.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { PosPullDto } from './dto/pos-pull.dto';
 import { FinanceOverviewQueryDto } from './dto/finance-overview-query.dto';
@@ -140,6 +141,20 @@ export class AdminReportsController {
   @RequirePermissions(P.REPORT_VIEW)
   bentoPickupProgress() {
     return this.admin.listBentoPickupProgress();
+  }
+
+  /**
+   * Archive or restore a plan on the pickup-progress report (leftover
+   * test/invalid plans). Flag-only: nothing is deleted.
+   */
+  @Post('bento-subscriptions/:id/progress-hidden')
+  @RequirePermissions(P.REPORT_VIEW)
+  setBentoProgressHidden(
+    @Param('id') id: string,
+    @Body() dto: SetBentoProgressHiddenDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.setBentoProgressHidden(id, dto.hidden, auth);
   }
 
   @Get('daily-commerce')

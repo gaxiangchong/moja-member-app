@@ -3278,17 +3278,21 @@ export class AdminDashboardController {
               <div class="sheet-head">
                 <h2>Pickup progress by customer</h2>
                 <div class="sheet-actions">
+                  <label class="field-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+                    <input type="checkbox" id="bsProgressShowArchived" />
+                    Show archived
+                  </label>
                   <input type="search" id="bsProgressSearch" placeholder="Filter by name / phone" style="max-width:220px" />
                   <span class="field-hint" id="bsProgressHint"></span>
                 </div>
               </div>
               <p class="field-hint" style="margin:0 20px 8px">
-                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first.
+                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first. Archiving only hides a row from this report — the plan and its pickup history are untouched.
               </p>
               <div class="table-wrap">
                 <table class="data">
-                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Plan ends</th></tr></thead>
-                  <tbody id="bsProgressBody"><tr><td colspan="10" class="muted-hint">Loading…</td></tr></tbody>
+                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Plan ends</th><th></th></tr></thead>
+                  <tbody id="bsProgressBody"><tr><td colspan="11" class="muted-hint">Loading…</td></tr></tbody>
                 </table>
               </div>
             </div>
@@ -6900,7 +6904,11 @@ export class AdminDashboardController {
       if (!body) return;
       var search = document.getElementById('bsProgressSearch');
       var needle = search && search.value ? search.value.trim().toLowerCase() : '';
+      var showArchivedEl = document.getElementById('bsProgressShowArchived');
+      var showArchived = !!(showArchivedEl && showArchivedEl.checked);
+      var archivedCount = bsProgressRows.filter(function (r) { return r.hiddenAt; }).length;
       var rows = bsProgressRows.filter(function (r) {
+        if (!showArchived && r.hiddenAt) return false;
         if (!needle) return true;
         return ((r.customerName || '') + ' ' + (r.customerPhone || '')).toLowerCase().indexOf(needle) !== -1;
       });
@@ -6908,9 +6916,13 @@ export class AdminDashboardController {
         var statusBadge = r.status === 'ACTIVE'
           ? '<span class="pill ok">Active</span>'
           : '<span class="pill neutral">' + bpAttr(r.status) + '</span>';
+        if (r.hiddenAt) statusBadge += ' <span class="pill neutral">Archived</span>';
         var left = Number(r.remainingMeals) || 0;
         var leftCell = left > 0 ? '<strong>' + left + '</strong>' : '<span class="field-hint" style="margin:0">0 · done</span>';
-        return '<tr>' +
+        var actionBtn = r.hiddenAt
+          ? '<button type="button" class="btn-outline bs-progress-restore" data-id="' + bpAttr(r.subscriptionId) + '" data-name="' + bpAttr(r.customerName || r.customerPhone || 'this plan') + '">Restore</button>'
+          : '<button type="button" class="btn-outline bs-progress-archive" data-id="' + bpAttr(r.subscriptionId) + '" data-name="' + bpAttr(r.customerName || r.customerPhone || 'this plan') + '">Archive</button>';
+        return '<tr' + (r.hiddenAt ? ' style="opacity:.55"' : '') + '>' +
           '<td>' + bpAttr(r.customerName || '—') + '</td>' +
           '<td>' + fmt(r.customerPhone) + '</td>' +
           '<td>' + bpAttr(r.packageLabel || r.packageCode || '—') + '</td>' +
@@ -6921,10 +6933,34 @@ export class AdminDashboardController {
           '<td>' + fmt(r.unscheduledMeals) + '</td>' +
           '<td>' + leftCell + '</td>' +
           '<td>' + fmt(r.endDate) + '</td>' +
+          '<td style="white-space:nowrap">' + actionBtn + '</td>' +
           '</tr>';
       });
-      body.innerHTML = html.join('') || '<tr><td colspan="10" class="muted-hint">' + (needle ? 'No plans match the filter.' : 'No paid bento plans yet.') + '</td></tr>';
-      if (hint) hint.textContent = rows.length + ' plan(s)' + (needle ? ' matching' : '');
+      body.innerHTML = html.join('') || '<tr><td colspan="11" class="muted-hint">' + (needle ? 'No plans match the filter.' : 'No paid bento plans yet.') + '</td></tr>';
+      if (hint) {
+        hint.textContent = rows.length + ' plan(s)' + (needle ? ' matching' : '') +
+          (archivedCount && !showArchived ? ' · ' + archivedCount + ' archived' : '');
+      }
+    }
+    async function bsProgressSetHidden(btn, hidden) {
+      var id = btn.getAttribute('data-id');
+      var name = btn.getAttribute('data-name') || 'this plan';
+      if (!id) return;
+      if (hidden && !window.confirm('Archive the plan for ' + name + '? It only disappears from this report — the plan and its pickup history stay intact, and you can restore it via "Show archived".')) return;
+      btn.disabled = true;
+      btn.textContent = hidden ? 'Archiving…' : 'Restoring…';
+      try {
+        var res = await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/progress-hidden', { hidden: hidden });
+        bsProgressRows.forEach(function (r) {
+          if (r.subscriptionId === id) r.hiddenAt = res.hiddenAt;
+        });
+        renderBentoPickupProgress();
+        statusPanel.textContent = (hidden ? 'Archived ' : 'Restored ') + name + ' on pickup progress.';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = hidden ? 'Archive' : 'Restore';
+        statusPanel.textContent = (e && e.message) ? e.message : String(e);
+      }
     }
     async function loadBentoPickupProgress() {
       var body = document.getElementById('bsProgressBody');
@@ -6933,7 +6969,7 @@ export class AdminDashboardController {
         bsProgressRows = (data && Array.isArray(data.rows)) ? data.rows : [];
         renderBentoPickupProgress();
       } catch (e) {
-        if (body) body.innerHTML = '<tr><td colspan="10" class="muted-hint">' + bpAttr(e.message || String(e)) + '</td></tr>';
+        if (body) body.innerHTML = '<tr><td colspan="11" class="muted-hint">' + bpAttr(e.message || String(e)) + '</td></tr>';
       }
     }
 
@@ -10131,6 +10167,17 @@ export class AdminDashboardController {
     wireBentoRange('bs', loadBentoSales);
     var bsProgressSearchEl = document.getElementById('bsProgressSearch');
     if (bsProgressSearchEl) bsProgressSearchEl.addEventListener('input', renderBentoPickupProgress);
+    var bsProgressShowArchivedEl = document.getElementById('bsProgressShowArchived');
+    if (bsProgressShowArchivedEl) bsProgressShowArchivedEl.addEventListener('change', renderBentoPickupProgress);
+    var bsProgressBodyEl = document.getElementById('bsProgressBody');
+    if (bsProgressBodyEl) {
+      bsProgressBodyEl.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.classList) return;
+        if (t.classList.contains('bs-progress-archive')) bsProgressSetHidden(t, true);
+        else if (t.classList.contains('bs-progress-restore')) bsProgressSetHidden(t, false);
+      });
+    }
     var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
     if (scSitesCatalogSaveBtn) {
       scSitesCatalogSaveBtn.addEventListener('click', function () {

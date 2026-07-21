@@ -2394,6 +2394,8 @@ export class AdminService {
       return {
         subscriptionId: s.id,
         status: s.status,
+        // Archived by admin (test/invalid plan) — UI hides these by default.
+        hiddenAt: s.progressHiddenAt ? s.progressHiddenAt.toISOString() : null,
         customerId: s.customer.id,
         customerName: s.customer.displayName,
         customerPhone: s.customer.phoneE164,
@@ -2416,6 +2418,50 @@ export class AdminService {
     // Plans with the most meals still owed float to the top.
     rows.sort((a, b) => b.remainingMeals - a.remainingMeals);
     return { rows };
+  }
+
+  /**
+   * Archive (or restore) a plan on the pickup-progress report. Used to clear
+   * out leftover test/invalid plans without touching the subscription or its
+   * pickup history.
+   */
+  async setBentoProgressHidden(
+    id: string,
+    hidden: boolean,
+    auth: AdminAuthState,
+  ) {
+    const sub = await this.prisma.bentoSubscription.findUnique({
+      where: { id },
+      select: { id: true, progressHiddenAt: true },
+    });
+    if (!sub) {
+      throw new NotFoundException({
+        code: 'BENTO_SUBSCRIPTION_NOT_FOUND',
+        message: 'Subscription not found',
+      });
+    }
+    const updated = await this.prisma.bentoSubscription.update({
+      where: { id: sub.id },
+      data: { progressHiddenAt: hidden ? new Date() : null },
+      select: { id: true, progressHiddenAt: true },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: hidden
+        ? 'bento.pickup_progress_archived'
+        : 'bento.pickup_progress_restored',
+      entityType: 'bento_subscription',
+      entityId: updated.id,
+      metadata: {
+        previousHiddenAt: sub.progressHiddenAt?.toISOString() ?? null,
+      } as object,
+    });
+    return {
+      id: updated.id,
+      hiddenAt: updated.progressHiddenAt
+        ? updated.progressHiddenAt.toISOString()
+        : null,
+    };
   }
 
   private buildSalesAnalyticsResult(params: {

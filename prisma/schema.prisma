@@ -1163,6 +1163,9 @@ model BentoSubscription {
   status            BentoSubscriptionStatus @default(PENDING_PAYMENT)
   paymentIntentId   String?                 @map("payment_intent_id") @db.Uuid
   createdAt         DateTime                @default(now()) @map("created_at")
+  /// When set, an admin removed this plan from the pickup-progress report
+  /// (old/invalid plan). Reversible; does not affect the plan itself.
+  progressHiddenAt  DateTime?               @map("progress_hidden_at")
   deliveries        BentoDeliveryDay[]
 
   @@index([customerId, createdAt])
