@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  BentoDeliveryStatus,
   BentoSubscriptionStatus,
   CustomerStatus,
   PerksCriteriaKind,
@@ -2344,6 +2345,77 @@ export class AdminService {
             : Number(r.voucher_discount_cents),
       })),
     };
+  }
+
+  /**
+   * Per-customer meal pickup progress for paid bento plans: how many boxes
+   * have been collected (DELIVERED pickup days) and how many meals are still
+   * owed on each plan. Backs the "Pickup progress" table on Bento · Sales.
+   */
+  async listBentoPickupProgress() {
+    const subs = await this.prisma.bentoSubscription.findMany({
+      where: {
+        status: {
+          in: [
+            BentoSubscriptionStatus.ACTIVE,
+            BentoSubscriptionStatus.COMPLETED,
+          ],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      include: {
+        customer: {
+          select: { id: true, displayName: true, phoneE164: true },
+        },
+        package: { select: { code: true, label: true } },
+        deliveries: {
+          select: {
+            includesLunch: true,
+            includesDinner: true,
+            lunchQty: true,
+            dinnerQty: true,
+            status: true,
+          },
+        },
+      },
+    });
+    const rows = subs.map((s) => {
+      let collected = 0;
+      let scheduled = 0;
+      for (const d of s.deliveries) {
+        // Legacy rows predate the qty columns (qty 0 with the boolean set).
+        const packs =
+          (d.lunchQty || (d.includesLunch ? 1 : 0)) +
+          (d.dinnerQty || (d.includesDinner ? 1 : 0));
+        if (d.status === BentoDeliveryStatus.DELIVERED) collected += packs;
+        else if (d.status === BentoDeliveryStatus.SCHEDULED) scheduled += packs;
+      }
+      return {
+        subscriptionId: s.id,
+        status: s.status,
+        customerId: s.customer.id,
+        customerName: s.customer.displayName,
+        customerPhone: s.customer.phoneE164,
+        packageCode: s.package.code,
+        packageLabel: s.package.label,
+        mealOption: s.mealOption,
+        mealCreditsTotal: s.mealCreditsTotal,
+        collectedMeals: collected,
+        scheduledMeals: scheduled,
+        remainingMeals: Math.max(0, s.mealCreditsTotal - collected),
+        unscheduledMeals: Math.max(
+          0,
+          s.mealCreditsTotal - collected - scheduled,
+        ),
+        startDate: s.startDate ? s.startDate.toISOString().slice(0, 10) : null,
+        endDate: s.endDate ? s.endDate.toISOString().slice(0, 10) : null,
+        createdAt: s.createdAt.toISOString(),
+      };
+    });
+    // Plans with the most meals still owed float to the top.
+    rows.sort((a, b) => b.remainingMeals - a.remainingMeals);
+    return { rows };
   }
 
   private buildSalesAnalyticsResult(params: {

@@ -132,6 +132,16 @@ export class AdminReportsController {
     return this.admin.listBentoTransactions(query);
   }
 
+  /**
+   * Per-customer pickup progress: boxes collected so far vs meals left on
+   * each paid bento plan.
+   */
+  @Get('bento/pickup-progress')
+  @RequirePermissions(P.REPORT_VIEW)
+  bentoPickupProgress() {
+    return this.admin.listBentoPickupProgress();
+  }
+
   @Get('daily-commerce')
   @RequirePermissions(P.REPORT_VIEW)
   getDailyCommerce(@Query() query: AdminDailyCommerceDateDto) {

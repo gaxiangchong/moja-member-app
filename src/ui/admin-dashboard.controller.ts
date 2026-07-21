@@ -3273,6 +3273,25 @@ export class AdminDashboardController {
                 </table>
               </div>
             </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Pickup progress by customer</h2>
+                <div class="sheet-actions">
+                  <input type="search" id="bsProgressSearch" placeholder="Filter by name / phone" style="max-width:220px" />
+                  <span class="field-hint" id="bsProgressHint"></span>
+                </div>
+              </div>
+              <p class="field-hint" style="margin:0 20px 8px">
+                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first.
+              </p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Plan ends</th></tr></thead>
+                  <tbody id="bsProgressBody"><tr><td colspan="10" class="muted-hint">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -6838,6 +6857,7 @@ export class AdminDashboardController {
       var hint = document.getElementById('bsTxnHint');
       if (!q) { if (hint) hint.textContent = 'Set from and to dates, then Apply.'; return; }
       if (hint) hint.textContent = 'Loading…';
+      loadBentoPickupProgress();
       try {
         var data = await api('/admin/reports/sales-analytics?category=bento&' + q);
         var sum = data.summary || {};
@@ -6870,6 +6890,50 @@ export class AdminDashboardController {
       } catch (e) {
         if (hint) hint.textContent = e.message || String(e);
         statusPanel.textContent = e.message || String(e);
+      }
+    }
+
+    var bsProgressRows = [];
+    function renderBentoPickupProgress() {
+      var body = document.getElementById('bsProgressBody');
+      var hint = document.getElementById('bsProgressHint');
+      if (!body) return;
+      var search = document.getElementById('bsProgressSearch');
+      var needle = search && search.value ? search.value.trim().toLowerCase() : '';
+      var rows = bsProgressRows.filter(function (r) {
+        if (!needle) return true;
+        return ((r.customerName || '') + ' ' + (r.customerPhone || '')).toLowerCase().indexOf(needle) !== -1;
+      });
+      var html = rows.map(function (r) {
+        var statusBadge = r.status === 'ACTIVE'
+          ? '<span class="pill ok">Active</span>'
+          : '<span class="pill neutral">' + bpAttr(r.status) + '</span>';
+        var left = Number(r.remainingMeals) || 0;
+        var leftCell = left > 0 ? '<strong>' + left + '</strong>' : '<span class="field-hint" style="margin:0">0 · done</span>';
+        return '<tr>' +
+          '<td>' + bpAttr(r.customerName || '—') + '</td>' +
+          '<td>' + fmt(r.customerPhone) + '</td>' +
+          '<td>' + bpAttr(r.packageLabel || r.packageCode || '—') + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + fmt(r.mealCreditsTotal) + '</td>' +
+          '<td>' + fmt(r.collectedMeals) + '</td>' +
+          '<td>' + fmt(r.scheduledMeals) + '</td>' +
+          '<td>' + fmt(r.unscheduledMeals) + '</td>' +
+          '<td>' + leftCell + '</td>' +
+          '<td>' + fmt(r.endDate) + '</td>' +
+          '</tr>';
+      });
+      body.innerHTML = html.join('') || '<tr><td colspan="10" class="muted-hint">' + (needle ? 'No plans match the filter.' : 'No paid bento plans yet.') + '</td></tr>';
+      if (hint) hint.textContent = rows.length + ' plan(s)' + (needle ? ' matching' : '');
+    }
+    async function loadBentoPickupProgress() {
+      var body = document.getElementById('bsProgressBody');
+      try {
+        var data = await api('/admin/reports/bento/pickup-progress');
+        bsProgressRows = (data && Array.isArray(data.rows)) ? data.rows : [];
+        renderBentoPickupProgress();
+      } catch (e) {
+        if (body) body.innerHTML = '<tr><td colspan="10" class="muted-hint">' + bpAttr(e.message || String(e)) + '</td></tr>';
       }
     }
 
@@ -10065,6 +10129,8 @@ export class AdminDashboardController {
     }
     wireBentoRange('bo', loadBentoOverview);
     wireBentoRange('bs', loadBentoSales);
+    var bsProgressSearchEl = document.getElementById('bsProgressSearch');
+    if (bsProgressSearchEl) bsProgressSearchEl.addEventListener('input', renderBentoPickupProgress);
     var scSitesCatalogSaveBtn = document.getElementById('scSitesCatalogSaveBtn');
     if (scSitesCatalogSaveBtn) {
       scSitesCatalogSaveBtn.addEventListener('click', function () {
