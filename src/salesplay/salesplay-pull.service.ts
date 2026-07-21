@@ -123,7 +123,9 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
    */
   async reconcile(): Promise<{ receipts: PullSummary; creditNotes: PullSummary }> {
     const lookbackDays = this.reconcileLookbackDays();
-    const fromDate = isoDate(new Date(Date.now() - lookbackDays * 86_400_000));
+    const fromDate = salesplayFromDateTime(
+      new Date(Date.now() - lookbackDays * 86_400_000),
+    );
     const receipts = await this.pullReceipts({ fromDate, persistCursor: false });
     const creditNotes = await this.pullCreditNotes({ fromDate });
     return { receipts, creditNotes };
@@ -151,9 +153,9 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
 
   private backfillFromDate(): string | null {
     const override = this.config.get<string>('SALESPLAY_BACKFILL_FROM')?.trim();
-    if (override) return override.slice(0, 10);
+    if (override) return `${override.slice(0, 10)} 00:00:00`;
     const cutoff = this.reportingSettings.getSalesStartDate();
-    return cutoff ? isoDate(cutoff) : null;
+    return cutoff ? salesplayFromDateTime(cutoff) : null;
   }
 
   private async pullReceipts(opts: {
@@ -168,6 +170,22 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
   private async pullCreditNotes(opts: {
     fromDate: string | null;
   }): Promise<PullSummary> {
+    // Credit notes are pulled from /credit_note_and_refund (per SalesPlay's
+    // Postman collection). Set SALESPLAY_PULL_CREDIT_NOTES_ENABLED=false to
+    // skip this resource if the endpoint misbehaves for an account.
+    const flag = this.config
+      .get<string>('SALESPLAY_PULL_CREDIT_NOTES_ENABLED')
+      ?.trim()
+      .toLowerCase();
+    if (['0', 'false', 'off', 'no'].includes(flag ?? '')) {
+      return {
+        resource: CREDIT_NOTES_RESOURCE,
+        pagesFetched: 0,
+        itemsSeen: 0,
+        itemsIngested: 0,
+        stoppedReason: 'not_configured',
+      };
+    }
     return this.pullResource(
       CREDIT_NOTES_RESOURCE,
       { ...opts, persistCursor: false },
@@ -326,9 +344,12 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-/** YYYY-MM-DD for a Date (UTC calendar date). */
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+/**
+ * "YYYY-MM-DD 00:00:00" for a Date (UTC calendar day) — SalesPlay's
+ * created_at_min filter requires the full `Y-m-d H:i:s` 24-hour format.
+ */
+function salesplayFromDateTime(d: Date): string {
+  return `${d.toISOString().slice(0, 10)} 00:00:00`;
 }
 
 /** UTC-midnight Date for the current Asia/Kuala_Lumpur calendar day. */
