@@ -33,6 +33,7 @@ const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
 };
 const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
+import { daysUntilBirthdayUtc } from '../common/birthday.util';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
@@ -228,24 +229,6 @@ function validatePerksCampaignRuleFields(input: {
   }
 }
 
-function daysUntilBirthdayUtc(birthday: Date | null): number | null {
-  if (!birthday) return null;
-  const now = new Date();
-  const m = birthday.getUTCMonth();
-  const d = birthday.getUTCDate();
-  const y = now.getUTCFullYear();
-  let next = Date.UTC(y, m, d);
-  const todayUtc = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-  );
-  if (next < todayUtc) {
-    next = Date.UTC(y + 1, m, d);
-  }
-  return Math.round((next - todayUtc) / (24 * 60 * 60 * 1000));
-}
-
 @Injectable()
 export class AdminService {
   constructor(
@@ -295,6 +278,14 @@ export class AdminService {
     if (q.status) parts.push({ status: q.status });
     if (q.memberTier) parts.push({ memberTier: q.memberTier });
     if (q.signupSource) parts.push({ signupSource: q.signupSource });
+
+    if (q.tag?.trim()) {
+      const tags = q.tag
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (tags.length) parts.push({ tags: { hasSome: tags } });
+    }
 
     if (q.minPoints != null || q.maxPoints != null) {
       const range: Prisma.IntFilter = {};
@@ -2305,6 +2296,8 @@ export class AdminService {
         package_label: string | null;
         meal_option: string | null;
         amount_cents: bigint;
+        voucher_code: string | null;
+        voucher_discount_cents: bigint | null;
       }[]
     >`
       SELECT pi.id AS payment_intent_id,
@@ -2315,11 +2308,16 @@ export class AdminService {
              bp.code AS package_code,
              bp.label AS package_label,
              bs.meal_option AS meal_option,
-             pi.amount_cents AS amount_cents
+             pi.amount_cents AS amount_cents,
+             bdv.code AS voucher_code,
+             bdr.discount_cents AS voucher_discount_cents
       FROM payment_intents pi
       LEFT JOIN bento_subscriptions bs ON bs.payment_intent_id = pi.id
       LEFT JOIN bento_packages bp ON bp.id = bs.package_id
       LEFT JOIN customers c ON c.id = pi.customer_id
+      LEFT JOIN bento_discount_redemptions bdr
+        ON bdr.payment_intent_id = pi.id AND bdr.status = 'CONFIRMED'
+      LEFT JOIN bento_discount_vouchers bdv ON bdv.id = bdr.voucher_id
       WHERE pi.purpose = 'bento_subscription'
         AND pi.status = 'SUCCEEDED'
         ${rangeFilter}
@@ -2339,6 +2337,11 @@ export class AdminService {
         packageLabel: r.package_label,
         mealOption: r.meal_option,
         amountCents: Number(r.amount_cents),
+        voucherCode: r.voucher_code,
+        voucherDiscountCents:
+          r.voucher_discount_cents == null
+            ? null
+            : Number(r.voucher_discount_cents),
       })),
     };
   }
@@ -2625,23 +2628,58 @@ export class AdminService {
       ORDER BY qty_sold DESC
     `;
 
-    const totals = await this.prisma.$queryRaw<
-      { orders: bigint; gmv: bigint }[]
-    >`
-      SELECT COUNT(*)::bigint AS orders,
-             COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
-      FROM customer_orders o
-      WHERE o.status = 'completed'
-        AND COALESCE(o.completed_at, o.placed_at) >= ${start}
-        AND COALESCE(o.completed_at, o.placed_at) < ${next}
-    `;
+    const [totals, posTotals, bentoTotals] = await Promise.all([
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(o.total_cents), 0)::bigint AS gmv
+        FROM customer_orders o
+        WHERE o.status = 'completed'
+          AND COALESCE(o.completed_at, o.placed_at) >= ${start}
+          AND COALESCE(o.completed_at, o.placed_at) < ${next}
+      `,
+      // In-store POS, booked on its MYT business date. Exclude online-order
+      // settlement receipts (already counted in the online channel).
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(pr.net_cents), 0)::bigint AS gmv
+        FROM pos_receipts pr
+        WHERE pr.origin_online_order_id IS NULL
+          AND pr.business_date >= (${start} AT TIME ZONE 'UTC')::date
+          AND pr.business_date < (${next} AT TIME ZONE 'UTC')::date
+      `,
+      this.prisma.$queryRaw<{ orders: bigint; gmv: bigint }[]>`
+        SELECT COUNT(*)::bigint AS orders,
+               COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
+        FROM payment_intents pi
+        WHERE pi.purpose = 'bento_subscription'
+          AND pi.status = 'SUCCEEDED'
+          AND pi.updated_at >= ${start}
+          AND pi.updated_at < ${next}
+      `,
+    ]);
+
+    const onlineOrders = Number(totals[0]?.orders ?? 0n);
+    const onlineGmv = Number(totals[0]?.gmv ?? 0n);
+    const posOrders = Number(posTotals[0]?.orders ?? 0n);
+    const posGmv = Number(posTotals[0]?.gmv ?? 0n);
+    const bentoOrders = Number(bentoTotals[0]?.orders ?? 0n);
+    const bentoGmv = Number(bentoTotals[0]?.gmv ?? 0n);
 
     return {
       date: day.toISOString().slice(0, 10),
       closed: !!closed,
       closedAt: closed?.closedAt.toISOString() ?? null,
-      completedOrders: Number(totals[0]?.orders ?? 0n),
-      totalGmvCents: Number(totals[0]?.gmv ?? 0n),
+      // Kept for backward compatibility — the online-shop channel figures.
+      completedOrders: onlineOrders,
+      totalGmvCents: onlineGmv,
+      // All-channel breakdown for the finance daily view.
+      channels: {
+        onlineShop: { orders: onlineOrders, gmvCents: onlineGmv },
+        pos: { orders: posOrders, gmvCents: posGmv },
+        bento: { orders: bentoOrders, gmvCents: bentoGmv },
+      },
+      allChannelsOrders: onlineOrders + posOrders + bentoOrders,
+      allChannelsGmvCents: onlineGmv + posGmv + bentoGmv,
       items: items.map((r) => ({
         productId: r.product_id,
         name: r.name,

@@ -67,13 +67,6 @@ export function Checkout({ draft, onSuccess }: Props) {
   }, [isTrialPack, groupBuy]);
 
   useEffect(() => {
-    if (isSingleMeal && appliedCode) {
-      setAppliedCode(null);
-      setPromoInput('');
-    }
-  }, [isSingleMeal, appliedCode]);
-
-  useEffect(() => {
     if (!draft.packageCode) {
       setQuote(null);
       return;
@@ -87,14 +80,14 @@ export function Checkout({ draft, onSuccess }: Props) {
       riceType: draft.riceType,
       includeDrinkAddon: draft.includeDrinkAddon,
       sets,
-      voucherCode: isSingleMeal ? undefined : appliedCode ?? undefined,
+      voucherCode: appliedCode ?? undefined,
     })
       .then((q) => { if (!cancelled) { setQuote(q); setError(null); } })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : t('checkout.errorQuote'));
       });
     return () => { cancelled = true; };
-  }, [draft, sets, appliedCode, isSingleMeal, t]);
+  }, [draft, sets, appliedCode, t]);
 
   const handlePay = async () => {
     if (!draft.packageCode || !quote) return;
@@ -110,7 +103,7 @@ export function Checkout({ draft, onSuccess }: Props) {
       includeDrinkAddon: draft.includeDrinkAddon,
       channelCode: paymentsDemoMode ? undefined : channelCode || undefined,
       sets,
-      voucherCode: isSingleMeal || !appliedVoucher ? undefined : appliedCode ?? undefined,
+      voucherCode: appliedVoucher ? appliedCode ?? undefined : undefined,
     };
 
     try {
@@ -165,20 +158,15 @@ export function Checkout({ draft, onSuccess }: Props) {
     EXPIRED: 'checkout.promoError.expired',
     CAPACITY_FULL: 'checkout.promoError.capacityFull',
     MIN_SPEND: 'checkout.promoError.minSpend',
-    PACKAGE_NOT_ELIGIBLE: 'checkout.promoError.packageNotEligible',
+    SINGLE_MEAL_MIN: 'checkout.promoError.singleMealMin',
   };
   const voucherErrorText = voucherError
     ? t(PROMO_ERROR_KEYS[voucherError] ?? 'checkout.promoError.generic')
     : null;
 
-  const lunchPart =
-    quote && quote.lunchCredits > 0
-      ? `${quote.lunchCredits * sets} ${t('common.lunch').toLowerCase()}`
-      : '';
-  const dinnerPart =
-    quote && quote.dinnerCredits > 0
-      ? `${quote.dinnerCredits * sets} ${t('common.dinner').toLowerCase()}`
-      : '';
+  // Credits are a flexible pool — show the total meal count; lunch vs dinner
+  // is chosen later on the schedule screen.
+  const totalMeals = quote ? quote.mealCredits * sets : 0;
   const setsPart = sets > 1 ? ` (${sets} ${t('common.sets')})` : '';
 
   const openTakeawayDisclaimer = () => {
@@ -242,9 +230,6 @@ export function Checkout({ draft, onSuccess }: Props) {
             </p>
           )}
 
-          {isSingleMeal ? (
-            <p className="promoSingleMealNote">{t('checkout.promoSingleMealNote')}</p>
-          ) : (
           <div className="promoSection">
             <label className="fieldLabel" htmlFor="promoCode">{t('checkout.promoLabel')}</label>
             {appliedVoucher ? (
@@ -284,11 +269,10 @@ export function Checkout({ draft, onSuccess }: Props) {
             )}
             {voucherErrorText && <p className="err promoError">{voucherErrorText}</p>}
           </div>
-          )}
 
-          {(lunchPart || dinnerPart) && (
+          {totalMeals > 0 && (
             <p className="caption" style={{ marginTop: 6 }}>
-              {[lunchPart, dinnerPart].filter(Boolean).join(' · ')}{setsPart}
+              {t('checkout.flexibleMeals', { count: totalMeals })}{setsPart}
             </p>
           )}
 

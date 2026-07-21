@@ -4,9 +4,15 @@
     {
       "name": "bento-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5199", "--strictPort"],
+      "runtimeArgs": ["run", "dev", "--", "--port", "5195", "--strictPort"],
       "cwd": "bento-web",
-      "port": 5199
+      "port": 5195
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:dev"],
+      "port": 3153
     }
   ]
 }

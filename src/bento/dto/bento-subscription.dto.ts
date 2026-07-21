@@ -91,6 +91,15 @@ export class BentoScheduleDto {
   @ValidateNested({ each: true })
   @Type(() => BentoScheduleSlotDto)
   slots!: BentoScheduleSlotDto[];
+
+  /**
+   * Admin-only: also change or remove days that are past the 5 PM day-before
+   * lock (e.g. switch a locked lunch+dinner day to dinner only). Ignored on
+   * the member endpoint; delivered days stay immutable regardless.
+   */
+  @IsOptional()
+  @IsBoolean()
+  overrideLocked?: boolean;
 }
 
 export class BentoWeeklyOptInDto {

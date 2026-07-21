@@ -9,9 +9,10 @@ const DEFAULT_DASHBOARD_CONFIG = {
     bento: { showGroup: true, showSubmenu: true },
     wallet: { showGroup: false, showSubmenu: true },
     loyalty: { showGroup: true, showSubmenu: true },
-    vouchers: { showGroup: false, showSubmenu: true },
     campaigns: { showGroup: false, showSubmenu: true },
+    mailer: { showGroup: true, showSubmenu: true },
     'data-tools': { showGroup: false, showSubmenu: true },
+    finance: { showGroup: true, showSubmenu: true },
     reports: { showGroup: false, showSubmenu: true },
     settings: { showGroup: true, showSubmenu: true },
     audit: { showGroup: false, showSubmenu: true },
@@ -31,6 +32,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-vouchers': true,
     'voucher-campaigns': true,
     'gift-rewards': true,
+    'mailer-campaigns': true,
     'settings-shopping-catalog': true,
     'settings-shop-layout': true,
     'settings-popular-items': true,
@@ -38,8 +40,10 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'settings-system': true,
     'reports-customers': true,
     'reports-sales': true,
-    'reports-vouchers': true,
-    'reports-loyalty': true,
+    'finance-overview': true,
+    'finance-transactions': true,
+    'finance-daily': true,
+    'finance-sync': true,
   },
 };
 
@@ -766,6 +770,35 @@ export class AdminDashboardController {
       .vc-form { grid-template-columns: 1fr; }
       .vc-form .vc-field { grid-template-columns: 130px 1fr; }
     }
+    /* Bento weekly menu editor cells: stacked EN/中文 dish + description. */
+    .bm-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 160px;
+      padding: 2px 0;
+    }
+    .bm-cell .bm-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 8px;
+    }
+    .bm-cell .bm-lbl:first-child { margin-top: 0; }
+    .bm-cell .bm-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12.5px;
+      font-family: inherit;
+      background: #fff;
+    }
+    .bm-cell .bm-input:disabled { background: #f1f5f9; color: #94a3b8; }
+    .bm-cell textarea.bm-input { resize: vertical; line-height: 1.45; }
     .hidden { display: none !important; }
     body.login-locked { overflow: hidden; }
     .login-screen {
@@ -1152,6 +1185,15 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
+        <details class="nav-group" data-menu-group="mailer" open>
+          <summary>Email marketing</summary>
+          <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="mailer-campaigns">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              Email campaigns
+            </button>
+          </div>
+        </details>
         <details class="nav-group" data-menu-group="data-tools" open>
           <summary>Data Tools</summary>
           <div class="nav-items">
@@ -1173,13 +1215,20 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
+        <details class="nav-group" data-menu-group="finance" open>
+          <summary>Finance</summary>
+          <div class="nav-items">
+            <button type="button" class="nav-btn nav-sub" data-view="finance-overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Revenue overview</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-transactions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>All transactions</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-daily"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Daily close</button>
+            <button type="button" class="nav-btn nav-sub" data-view="finance-sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>POS sync health</button>
+          </div>
+        </details>
         <details class="nav-group" data-menu-group="reports" open>
           <summary>Sales &amp; reports</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="reports-sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/></svg>Sales &amp; transactions</button>
             <button type="button" class="nav-btn nav-sub" data-view="reports-customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>Customer reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-vouchers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/></svg>Voucher reports</button>
-            <button type="button" class="nav-btn nav-sub" data-view="reports-loyalty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Loyalty reports</button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="settings" open>
@@ -1522,6 +1571,10 @@ export class AdminDashboardController {
               <span>
                 <label for="customerSourceFilter">Source</label>
                 <input type="text" id="customerSourceFilter" placeholder="e.g. otp" style="width:120px" />
+              </span>
+              <span>
+                <label for="customerTagFilter">Tag</label>
+                <input type="text" id="customerTagFilter" placeholder="e.g. bento, cake" style="width:130px" title="Comma-separated: members with any of these tags" />
               </span>
               <span style="display:flex;align-items:center;gap:6px">
                 <input type="checkbox" id="customerHasVoucher" style="width:auto" />
@@ -2213,6 +2266,115 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="mailer-campaigns" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Email campaigns</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="mailNewBtn">New campaign</button>
+                <button type="button" class="btn-outline" id="mailRefreshBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Draft marketing emails, send a test to yourself, then send now or schedule for later.
+                Emails go to <strong>active members with an email address</strong>; the default audience only includes members who opted in to marketing.
+                Every email carries an automatic unsubscribe link.
+              </p>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">1 &middot; Start from a template</h3>
+              <div id="mailTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:18px"></div>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 4px;font-size:14px">2 &middot; Draft the email &mdash; <span id="mailEditorMode">new campaign</span></h3>
+                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. With an attached voucher you can also use <code>{{voucher_title}}</code>, <code>{{voucher_code}}</code> and <code>{{voucher_expiry}}</code>. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
+                <input type="hidden" id="mailEditingId" value="" />
+                <input type="hidden" id="mailTemplateKind" value="PLAIN" />
+                <div class="vc-form">
+                  <div class="vc-field">
+                    <label for="mailName">Internal name</label>
+                    <input type="text" id="mailName" placeholder="e.g. July newsletter" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailSubject">Subject</label>
+                    <input type="text" id="mailSubject" placeholder="e.g. This week at Moja Maison" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailPreheader">Preview line</label>
+                    <input type="text" id="mailPreheader" placeholder="Shown next to the subject in the inbox (optional)" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailBody">Body (HTML)</label>
+                    <textarea id="mailBody" rows="12" style="width:100%;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.5;border:1px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&#10;&lt;p&gt;Write your message here...&lt;/p&gt;"></textarea>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailAudience">Audience</label>
+                    <select id="mailAudience">
+                      <option value="OPTED_IN">Opted-in members (recommended)</option>
+                      <option value="ALL_WITH_EMAIL">All members with email</option>
+                      <option value="BIRTHDAY_UPCOMING">🎂 Birthday coming up (opted-in)</option>
+                    </select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailTier">Member tier</label>
+                    <input type="text" id="mailTier" placeholder="all tiers (e.g. gold)" />
+                  </div>
+                  <div class="vc-field" id="mailBirthdayDaysWrap" style="display:none">
+                    <label for="mailBirthdayDays">Birthday within (days)</label>
+                    <input type="number" id="mailBirthdayDays" min="1" max="60" value="14" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherDef">Attach voucher (added to each recipient's wallet)</label>
+                    <select id="mailVoucherDef"><option value="">— no voucher —</option></select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherValidDays">Voucher valid for (days)</label>
+                    <input type="number" id="mailVoucherValidDays" min="1" max="365" placeholder="no expiry" />
+                  </div>
+                </div>
+                <p class="field-hint" id="mailAudienceCount" style="margin:10px 0 0"></p>
+                <div id="mailBirthdayPreview" style="display:none;margin-top:10px"></div>
+                <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="mailSaveBtn">Save draft</button>
+                  <button type="button" class="btn-outline" id="mailPreviewBtn">Preview</button>
+                  <input type="email" id="mailTestEmail" placeholder="you@example.com" style="max-width:220px" />
+                  <button type="button" class="btn-outline" id="mailTestBtn">Send test</button>
+                  <span class="field-hint" id="mailEditorResult" style="margin:0"></span>
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px dashed #cbd5e1;padding-top:12px">
+                  <input type="datetime-local" id="mailScheduleAt" style="max-width:230px" />
+                  <button type="button" class="btn-outline" id="mailScheduleBtn">Schedule</button>
+                  <button type="button" class="btn-primary" id="mailSendNowBtn">Send now</button>
+                  <span class="field-hint" id="mailScheduleResult" style="margin:0"></span>
+                </div>
+                <div id="mailPreviewWrap" style="display:none;margin-top:14px">
+                  <h3 style="margin:0 0 6px;font-size:14px">Preview</h3>
+                  <iframe id="mailPreviewFrame" title="Email preview" style="width:100%;height:460px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+                </div>
+              </div>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">Your campaigns</h3>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Subject</th>
+                      <th>Audience</th>
+                      <th style="text-align:center">Status</th>
+                      <th>Scheduled / sent</th>
+                      <th style="text-align:center">Delivered</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mailCampaignsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="mailListResult"></p>
+            </div>
+          </div>
+        </section>
+
         <section id="data-import" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Import data</h2></div>
@@ -2473,53 +2635,262 @@ export class AdminDashboardController {
           </div>
         </section>
 
-        <section id="reports-vouchers" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Voucher reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Issued</div><div class="kpi-value" id="rpVIssued">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redeemed</div><div class="kpi-value" id="rpVRedeemed">-</div></div>
-              <div class="kpi"><div class="kpi-label">Redemption rate</div><div class="kpi-value" id="rpVRate">-</div></div>
+        <section id="finance-overview" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="finPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="finPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="finPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finFrom">From (UTC)</label>
+                <input type="date" id="finFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finTo">To (UTC, inclusive)</label>
+                <input type="date" id="finTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finBucket">Bucket</label>
+                <select id="finBucket" aria-label="Time bucket">
+                  <option value="day" selected>Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month">Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="finRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <div class="sa-kpi-strip" id="finKpiStrip">
+              <div class="sa-kpi-card is-active">
+                <div class="sa-kpi-card-title">Total revenue (all channels)</div>
+                <div class="sa-kpi-card-value" id="finValRevenue">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaRevenue">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Transactions</div>
+                <div class="sa-kpi-card-value" id="finValOrders">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaOrders">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Avg transaction</div>
+                <div class="sa-kpi-card-value" id="finValAov">—</div>
+                <div class="sa-kpi-card-delta">&nbsp;</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Refunds</div>
+                <div class="sa-kpi-card-value" id="finValRefunds">—</div>
+                <div class="sa-kpi-card-delta" id="finRefundsDetail">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Net revenue</div>
+                <div class="sa-kpi-card-value" id="finValNet">—</div>
+                <div class="sa-kpi-card-delta">after refunds</div>
+              </div>
+            </div>
+
+            <p class="sa-substats">
+              <strong>Scope:</strong> in-store POS (SalesPlay receipts, MYT business day, online-order settlements excluded),
+              online shop (paid orders), and bento (successful payments). One consolidated set of numbers — online orders
+              are never double-counted when they settle at the POS.
+            </p>
+
+            <div class="sa-chart-card">
+              <div class="sa-chart-head">
+                <div class="sa-chart-head-title">Revenue by channel</div>
+                <div class="sa-chart-controls" id="finChartLegend"></div>
+              </div>
+              <div id="finChannelChart" class="sa-line-chart-wrap" aria-label="Revenue by channel chart"></div>
+            </div>
+
+            <div class="sa-split">
+              <div class="sa-panel">
+                <div class="sa-panel-head">Channel breakdown</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Channel</th><th>Revenue</th><th>Txns</th><th>Avg</th><th>Refunds</th></tr></thead>
+                    <tbody id="finChannelBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="sa-panel">
+                <div class="sa-panel-head">Payment methods</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Method</th><th>Revenue</th><th>Txns</th></tr></thead>
+                    <tbody id="finMethodsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Top products across channels</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">By revenue in range</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Channel</th><th>Product</th><th>SKU / code</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="finTopBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="muted-hint" id="finOverviewHint" style="margin:12px 4px 0;font-size:12px"></p>
+          </div>
+        </section>
+
+        <section id="finance-transactions" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-group">
+                <label for="ftFrom">From (UTC)</label>
+                <input type="date" id="ftFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftTo">To (UTC, inclusive)</label>
+                <input type="date" id="ftTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftChannel">Channel</label>
+                <select id="ftChannel" aria-label="Channel filter">
+                  <option value="" selected>All channels</option>
+                  <option value="pos">In-store POS</option>
+                  <option value="online_shop">Online shop</option>
+                  <option value="bento">Bento</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftMinRm">Min amount (RM)</label>
+                <input type="number" id="ftMinRm" min="0" step="0.01" placeholder="—" style="width:110px" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="ftMaxRm">Max amount (RM)</label>
+                <input type="number" id="ftMaxRm" min="0" step="0.01" placeholder="—" style="width:110px" />
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="ftRefreshBtn">Apply</button>
+                <button type="button" class="btn-outline" id="ftExportCsv">Export CSV</button>
+              </div>
+            </div>
+
+            <p class="sa-substats" id="ftSummary"><strong>Filtered total:</strong> — </p>
+
+            <div class="sa-export-block sa-panel">
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Channel</th><th>Date / time (UTC)</th><th>Amount</th><th>Payment</th><th>Ref</th><th>Customer</th><th>Phone</th></tr></thead>
+                  <tbody id="ftBody"></tbody>
+                </table>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px">
+                <button type="button" class="btn-outline" id="ftPrevBtn">‹ Prev</button>
+                <span class="muted-hint" style="margin:0;width:auto" id="ftPageInfo">—</span>
+                <button type="button" class="btn-outline" id="ftNextBtn">Next ›</button>
+              </div>
             </div>
           </div>
         </section>
 
-        <section id="reports-loyalty" class="tab-panel hidden">
-          <div class="kpi-panel" style="margin-top:0">
-            <h2>Loyalty reports</h2>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">Points issued</div><div class="kpi-value" id="rpPtsIssued">-</div></div>
-              <div class="kpi"><div class="kpi-label">Points redeemed</div><div class="kpi-value" id="rpPtsRedeemed">-</div></div>
+        <section id="finance-daily" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-export-block sa-panel" style="margin-top:0">
+              <div class="sa-export-head">
+                <h3>Daily close — all channels</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">UTC business day · close books when reconciled</span>
+              </div>
+              <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+                <div class="form-section" style="margin:0">
+                  <label for="fdDate">Business date (UTC)</label>
+                  <input type="date" id="fdDate" />
+                </div>
+                <button type="button" class="btn-primary" id="fdLoadBtn">Load day</button>
+                <span id="fdClosedBadge" class="muted-hint" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="fdCloseBtn">Close day</button>
+              </div>
+              <div class="sa-kpi-strip" style="padding:0 16px 12px">
+                <div class="sa-kpi-card is-active">
+                  <div class="sa-kpi-card-title">All channels</div>
+                  <div class="sa-kpi-card-value" id="fdValTotal">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountTotal">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">In-store POS</div>
+                  <div class="sa-kpi-card-value" id="fdValPos">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountPos">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Online shop</div>
+                  <div class="sa-kpi-card-value" id="fdValOnline">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountOnline">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Bento</div>
+                  <div class="sa-kpi-card-value" id="fdValBento">—</div>
+                  <div class="sa-kpi-card-delta" id="fdCountBento">—</div>
+                </div>
+              </div>
+              <div class="sa-export-head" style="border-top:1px solid rgba(148,163,184,0.15)">
+                <h3 style="font-size:14px">Online shop items (completed orders)</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">POS item detail lives in SalesPlay receipts</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="fdItemsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="fdResult" style="padding:0 16px 16px;margin:0"></p>
             </div>
           </div>
         </section>
 
-        <section id="settings-roles" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Roles &amp; permissions</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAdminUsersBtn">Refresh</button></div></div>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Permissions</th></tr></thead>
-                <tbody id="adminUsersBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="settings-master-data" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Master data</h2></div>
-            <div class="coming-soon">
-              Master entries and business rules are managed through <code>/admin/master/entries</code> and <code>/admin/master/rules</code>. UI workflow will include staged edits, validation, and rollback-friendly audit trails.
-            </div>
-          </div>
-        </section>
-
-        <section id="settings-notifications" class="tab-panel hidden">
-          <div class="sheet">
-            <div class="sheet-head"><h2>Notification templates</h2></div>
-            <div class="coming-soon">
-              Notification templates are not yet wired in this dashboard. Planned controls include variable previews, test-send to admin-only numbers, and approval checkpoints before activation.
+        <section id="finance-sync" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-export-block sa-panel" style="margin-top:0">
+              <div class="sa-export-head">
+                <h3>SalesPlay POS sync health</h3>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn-outline" id="fsRefreshBtn">Refresh</button>
+                  <button type="button" class="btn-primary" id="fsPullBtn">Pull now (reconcile)</button>
+                  <button type="button" class="btn-outline" id="fsBackfillBtn">Backfill history</button>
+                </div>
+              </div>
+              <div class="sa-kpi-strip" style="padding:12px 16px">
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Connection</div>
+                  <div class="sa-kpi-card-value" id="fsValConfigured" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta" id="fsFlagsDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last webhook</div>
+                  <div class="sa-kpi-card-value" id="fsValWebhook" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">real-time receipt push</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last pull</div>
+                  <div class="sa-kpi-card-value" id="fsValPull" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">backfill / reconciliation</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts today (MYT)</div>
+                  <div class="sa-kpi-card-value" id="fsValToday">—</div>
+                  <div class="sa-kpi-card-delta" id="fsTodayDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts total</div>
+                  <div class="sa-kpi-card-value" id="fsValTotal">—</div>
+                  <div class="sa-kpi-card-delta" id="fsCreditsDetail">—</div>
+                </div>
+              </div>
+              <p class="muted-hint" style="margin:0 16px 12px;font-size:13px" id="fsHint">
+                Webhooks are the live path; the nightly pull is the integrity net. If "Last webhook" goes stale on a
+                trading day, check the SalesPlay Back Office webhook configuration, then run a manual pull.
+              </p>
+              <p class="field-hint" id="fsResult" style="padding:0 16px 16px;margin:0"></p>
             </div>
           </div>
         </section>
@@ -2897,8 +3268,8 @@ export class AdminDashboardController {
               </div>
               <div class="table-wrap">
                 <table class="data">
-                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Amount (RM)</th></tr></thead>
-                  <tbody id="bsTxnBody"><tr><td colspan="6" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Voucher</th><th>Amount (RM)</th></tr></thead>
+                  <tbody id="bsTxnBody"><tr><td colspan="7" class="muted-hint">Apply a date range to load.</td></tr></tbody>
                 </table>
               </div>
             </div>
@@ -3118,6 +3489,7 @@ export class AdminDashboardController {
                       <th>Redeemed / Cap</th>
                       <th>Min spend</th>
                       <th style="text-align:center">Active</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody id="bentoVouchersBody"></tbody>
@@ -3533,9 +3905,13 @@ export class AdminDashboardController {
     </div>
     <div class="modal-body">
       <p class="field-hint" style="margin-top:0" id="bentoSchedSubInfo">—</p>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px">
         <strong>Admin override.</strong> Booking here ignores the daily cutoff, lead time, closed days and the daily capacity cap — use it to fix missed-cutoff complaints, but make sure the kitchen can handle these days.
       </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="bentoSchedOverrideLock" style="margin-top:2px" />
+        <span><strong>Also edit locked days 🔒.</strong> Days lock at 5:00 PM the evening before pickup. Tick this to change or remove a locked day — e.g. switch tomorrow from lunch + dinner to dinner only. Check with the kitchen first; delivered days can never be changed.</span>
+      </label>
       <div id="bentoSchedRows"></div>
       <button type="button" class="btn-outline" id="bentoSchedAddDay" style="margin-top:4px">+ Add pickup day</button>
       <p class="field-hint" id="bentoSchedTotals" style="margin-top:12px;font-weight:600">—</p>
@@ -3558,9 +3934,11 @@ export class AdminDashboardController {
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
       'voucher-campaigns', 'gift-rewards',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
+      'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
-      'reports-customers', 'reports-sales', 'reports-vouchers', 'reports-loyalty',
-      'settings-roles', 'settings-master-data', 'settings-notifications', 'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
+      'reports-customers', 'reports-sales',
+      'finance-overview', 'finance-transactions', 'finance-daily', 'finance-sync',
+      'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -3615,17 +3993,17 @@ export class AdminDashboardController {
       'campaigns-push-points': iconLoyalty,
       'campaigns-push-wallet': iconWallet,
       'campaigns-history': '<path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4"/><polyline points="12 7 12 12 15 15"/>',
+      'mailer-campaigns': '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
       'data-import': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
       'data-export': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
       'data-templates': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><line x1="7" y1="10" x2="17" y2="10"/>',
       'data-import-history': iconAudit,
       'reports-customers': iconUsers,
       'reports-sales': '<path d="M3 3v18h18"/><path d="M7 16l4-6 3 4 5-8"/>',
-      'reports-vouchers': iconVoucher,
-      'reports-loyalty': iconLoyalty,
-      'settings-roles': iconUsers,
-      'settings-master-data': iconAudit,
-      'settings-notifications': iconAudit,
+      'finance-overview': iconLoyalty,
+      'finance-transactions': '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+      'finance-daily': '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+      'finance-sync': '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/>',
       'settings-system': iconAudit,
       'settings-shopping-catalog': iconVoucher,
       'bento-overview': '<path d="M3 3v18h18"/><path d="M18.7 8a6 6 0 0 1-6 6H3"/><circle cx="7" cy="17" r="1"/>',
@@ -3664,17 +4042,17 @@ export class AdminDashboardController {
       'campaigns-push-points': 'Campaigns · Push points',
       'campaigns-push-wallet': 'Campaigns · Push wallet bonus',
       'campaigns-history': 'Campaigns · History',
+      'mailer-campaigns': 'Email marketing · Campaigns',
       'data-import': 'Data Tools · Import data',
       'data-export': 'Data Tools · Export data',
       'data-templates': 'Data Tools · Template downloads',
       'data-import-history': 'Data Tools · Import history',
       'reports-customers': 'Sales & reports · Customer reports',
       'reports-sales': 'Sales & reports · Sales & transactions',
-      'reports-vouchers': 'Sales & reports · Voucher reports',
-      'reports-loyalty': 'Sales & reports · Loyalty reports',
-      'settings-roles': 'Settings · Roles & permissions',
-      'settings-master-data': 'Settings · Master data',
-      'settings-notifications': 'Settings · Notification templates',
+      'finance-overview': 'Finance · Revenue overview',
+      'finance-transactions': 'Finance · All transactions',
+      'finance-daily': 'Finance · Daily close',
+      'finance-sync': 'Finance · POS sync health',
       'settings-system': 'Settings · System config',
       'settings-shopping-catalog': 'Settings · Shopping catalog',
       'bento-overview': 'Bento · Overview & members',
@@ -4745,6 +5123,8 @@ export class AdminDashboardController {
       if (tier) params.push('memberTier=' + encodeURIComponent(tier));
       const source = val('customerSourceFilter');
       if (source) params.push('signupSource=' + encodeURIComponent(source));
+      const tag = val('customerTagFilter');
+      if (tag) params.push('tag=' + encodeURIComponent(tag));
       const hasVoucherEl = document.getElementById('customerHasVoucher');
       if (hasVoucherEl && hasVoucherEl.checked) params.push('hasActiveVoucher=true');
       return params;
@@ -5372,24 +5752,10 @@ export class AdminDashboardController {
         '<tr><td>' + fmt(r.signupSource) + '</td><td>' + fmt(r.count) + '</td></tr>'
       );
       document.getElementById('reportSourceBody').innerHTML = srcRows.join('') || '<tr><td colspan="2">No data</td></tr>';
-      document.getElementById('rpVIssued').textContent = fmt(data.overview?.vouchers?.issued);
-      document.getElementById('rpVRedeemed').textContent = fmt(data.overview?.vouchers?.redeemed);
-      const rr = data.overview?.vouchers?.redemptionRate;
-      document.getElementById('rpVRate').textContent = rr != null ? (Math.round(rr * 10000) / 100) + '%' : '-';
-      document.getElementById('rpPtsIssued').textContent = fmt(data.overview?.loyalty?.pointsIssued);
-      document.getElementById('rpPtsRedeemed').textContent = fmt(data.overview?.loyalty?.pointsRedeemed);
       lastRpMarketing = data.marketing || null;
       paintMarketing(lastRpMarketing, 'mkRp');
       const rpSp = document.getElementById('mkRpSpenderPeriod');
       paintSpenderPeriod('mkRp', lastRpMarketing, rpSp ? rpSp.value : 'all');
-    }
-
-    async function loadAdminUsers() {
-      const data = await api('/admin/users');
-      const rows = (data || []).map((u) =>
-        '<tr><td>' + fmt(u.email) + '</td><td>' + fmt(u.displayName) + '</td><td>' + statusPill(u.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td>' + fmt((u.permissions || []).join(', ')) + '</td></tr>'
-      );
-      document.getElementById('adminUsersBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
     }
 
     var lastBentoMenu = [];
@@ -5442,8 +5808,9 @@ export class AdminDashboardController {
           '<td' + countStyle + '>' + fmt(v.redeemedCount) + ' / ' + fmt(v.redemptionCap) + '</td>' +
           '<td>' + (v.minSpendCents != null ? bvRm(v.minSpendCents) : '—') + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bv-active"' + (v.isActive ? ' checked' : '') + ' /></td>' +
+          '<td style="text-align:center"><button type="button" class="btn-outline bv-delete" data-code="' + bmAttr(v.code) + '" style="padding:4px 10px;color:#b91c1c">Delete</button></td>' +
           '</tr>';
-      }).join('') || '<tr><td colspan="6">No vouchers yet</td></tr>';
+      }).join('') || '<tr><td colspan="7">No vouchers yet</td></tr>';
     }
     async function loadBentoVouchers() {
       var data = await api('/admin/bento-vouchers');
@@ -5500,6 +5867,17 @@ export class AdminDashboardController {
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
         await loadBentoVouchers();
+      }
+    }
+    async function deleteBentoVoucher(id, code) {
+      if (!window.confirm('Delete voucher ' + code + '? This cannot be undone. Codes that were already used cannot be deleted — deactivate those instead.')) return;
+      var out = document.getElementById('bentoVouchersListResult');
+      try {
+        await apiDelete('/admin/bento-vouchers/' + encodeURIComponent(id));
+        if (out) out.textContent = 'Deleted ' + code + '.';
+        await loadBentoVouchers();
+      } catch (e) {
+        if (out) out.textContent = bentoSchedFriendlyError(e);
       }
     }
     function renderBentoPackages() {
@@ -5587,42 +5965,24 @@ export class AdminDashboardController {
         var lunch = d.lunch || {};
         var dinner = d.dinner || {};
         var dis = d.closed ? ' disabled' : '';
-        function stackedInp(field, val, zhVal, zhPlaceholder, enPlaceholder) {
-          return '<div style="display:flex;flex-direction:column;gap:4px">' +
-            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Main dish</span>' +
-            '<input type="text" class="bm-input" data-field="' + field + '" value="' + bmAttr(val) + '"' + dis + ' style="width:100%;min-width:140px" placeholder="' + bmAttr(enPlaceholder || (d.closed ? 'Closed' : 'English')) + '" />' +
-            '<input type="text" class="bm-input" data-field="' + field + 'Zh" value="' + bmAttr(zhVal) + '"' + dis + ' style="width:100%;min-width:140px;font-size:12px" placeholder="' + bmAttr(zhPlaceholder || '中文') + '" />' +
-            '</div>';
-        }
-        function stackedDesc(field, val, zhVal, zhPlaceholder) {
-          return '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">' +
-            '<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Description</span>' +
-            '<textarea class="bm-input" data-field="' + field + '" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="English description">' + bmAttr(val) + '</textarea>' +
-            '<textarea class="bm-input" data-field="' + field + 'Zh" rows="2"' + dis + ' style="width:100%;min-width:140px;font-size:12px;resize:vertical" placeholder="' + bmAttr(zhPlaceholder || '中文描述') + '">' + bmAttr(zhVal) + '</textarea>' +
-            '</div>';
-        }
         function mealCol(prefix, meal, dishField, descField, zhDishPh, zhDescPh, enDishPh) {
-          return stackedInp(prefix + '.' + dishField, meal[dishField], meal[dishField + 'Zh'], zhDishPh, enDishPh) +
-            stackedDesc(prefix + '.' + descField, meal[descField], meal[descField + 'Zh'], zhDescPh);
-        }
-        function photoCtrl(meal, img) {
-          var url = img || '';
-          var thumb = url
-            ? '<img src="' + bmAttr(url) + '" class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0" />'
-            : '<span class="bm-photo-thumb" style="width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px">🍽️</span>';
-          return '<div class="bm-photo" style="display:flex;align-items:center;gap:6px;margin-top:6px">' +
-            thumb +
-            '<input type="hidden" class="bm-input" data-field="' + meal + '.image" value="' + bmAttr(url) + '" />' +
-            '<button type="button" class="btn-outline bm-photo-upload" style="padding:3px 9px;font-size:11px"' + dis + '>Photo</button>' +
-            (url ? '<button type="button" class="bm-photo-remove" title="Remove photo" style="border:none;background:none;cursor:pointer;color:#b91c1c;font-size:16px;line-height:1"' + dis + '>×</button>' : '') +
+          var dishBase = prefix + '.' + dishField;
+          var descBase = prefix + '.' + descField;
+          return '<div class="bm-cell">' +
+            '<span class="bm-lbl">Main dish</span>' +
+            '<input type="text" class="bm-input" data-field="' + dishBase + '" value="' + bmAttr(meal[dishField]) + '"' + dis + ' placeholder="' + bmAttr(d.closed ? 'Closed' : (enDishPh || 'English')) + '" />' +
+            '<input type="text" class="bm-input" data-field="' + dishBase + 'Zh" value="' + bmAttr(meal[dishField + 'Zh']) + '"' + dis + ' placeholder="' + bmAttr(zhDishPh || '中文') + '" />' +
+            '<span class="bm-lbl">Description</span>' +
+            '<textarea class="bm-input" data-field="' + descBase + '" rows="2"' + dis + ' placeholder="English description">' + bmAttr(meal[descField]) + '</textarea>' +
+            '<textarea class="bm-input" data-field="' + descBase + 'Zh" rows="2"' + dis + ' placeholder="' + bmAttr(zhDescPh || '中文描述') + '">' + bmAttr(meal[descField + 'Zh']) + '</textarea>' +
             '</div>';
         }
         return '<tr data-weekday="' + bmAttr(d.weekday) + '">' +
           '<td><strong>' + bmAttr(d.weekday) + '</strong></td>' +
           '<td>' + mealCol('lunch', lunch, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
-          '<td>' + mealCol('lunch', lunch, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('lunch', lunch.image) + '</td>' +
+          '<td>' + mealCol('lunch', lunch, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + '</td>' +
           '<td>' + mealCol('dinner', dinner, 'veg', 'vegDesc', '素食', '素食描述', 'Vegetarian') + '</td>' +
-          '<td>' + mealCol('dinner', dinner, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + photoCtrl('dinner', dinner.image) + '</td>' +
+          '<td>' + mealCol('dinner', dinner, 'regular', 'regularDesc', '荤菜', '荤菜描述', 'Regular') + '</td>' +
           '<td style="text-align:center"><input type="checkbox" class="bm-closed"' + (d.closed ? ' checked' : '') + ' /></td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="6">No data</td></tr>';
@@ -5693,7 +6053,8 @@ export class AdminDashboardController {
               regularDescZh: val('lunch.regularDescZh'),
               vegDesc: val('lunch.vegDesc'),
               vegDescZh: val('lunch.vegDescZh'),
-              image: val('lunch.image'),
+              // image omitted on purpose: the backend keeps the stored photo
+              // when the field is absent (photo upload was removed from this UI).
             },
             dinner: {
               regular: val('dinner.regular'),
@@ -5704,84 +6065,11 @@ export class AdminDashboardController {
               regularDescZh: val('dinner.regularDescZh'),
               vegDesc: val('dinner.vegDesc'),
               vegDescZh: val('dinner.vegDescZh'),
-              image: val('dinner.image'),
             },
           };
         }),
       };
     }
-    async function bentoMenuUploadPhoto(photoEl) {
-      if (!photoEl) return;
-      var fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
-      fileInput.onchange = async function () {
-        var file = fileInput.files && fileInput.files[0];
-        if (!file) return;
-        var btn = photoEl.querySelector('.bm-photo-upload');
-        var out = document.getElementById('bentoMenuSaveResult');
-        if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
-        try {
-          var headers = { ...getAuthHeaders() };
-          delete headers['Content-Type'];
-          var fd = new FormData();
-          fd.append('file', file);
-          var res = await fetch('/admin/bento-menu/image', { method: 'POST', headers, body: fd });
-          if (!res.ok) {
-            var txt = await res.text();
-            throw new Error('Upload failed (' + res.status + '): ' + txt);
-          }
-          var data = await res.json();
-          var url = data && data.url;
-          var hidden = photoEl.querySelector('input[type="hidden"]');
-          if (hidden) hidden.value = url || '';
-          var thumb = photoEl.querySelector('.bm-photo-thumb');
-          if (thumb && url) {
-            var img = document.createElement('img');
-            img.src = url;
-            img.className = 'bm-photo-thumb';
-            img.style.cssText = 'width:42px;height:42px;border-radius:9px;object-fit:cover;border:1px solid #e2e8f0';
-            thumb.replaceWith(img);
-          }
-          if (out) out.textContent = 'Photo uploaded — click Save menu to publish.';
-        } catch (e) {
-          if (out) out.textContent = e.message || String(e);
-        } finally {
-          if (btn) { btn.disabled = false; btn.textContent = 'Photo'; }
-        }
-      };
-      fileInput.click();
-    }
-    (function () {
-      var menuBody = document.getElementById('bentoMenuBody');
-      if (!menuBody) return;
-      menuBody.addEventListener('click', function (e) {
-        var up = e.target.closest ? e.target.closest('.bm-photo-upload') : null;
-        if (up) {
-          var pe = up.closest('.bm-photo');
-          if (pe) bentoMenuUploadPhoto(pe);
-          return;
-        }
-        var rm = e.target.closest ? e.target.closest('.bm-photo-remove') : null;
-        if (rm) {
-          var pe2 = rm.closest('.bm-photo');
-          if (!pe2) return;
-          var hidden = pe2.querySelector('input[type="hidden"]');
-          if (hidden) hidden.value = '';
-          var thumb = pe2.querySelector('.bm-photo-thumb');
-          if (thumb) {
-            var span = document.createElement('span');
-            span.className = 'bm-photo-thumb';
-            span.style.cssText = 'width:42px;height:42px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#94a3b8;font-size:16px';
-            span.textContent = '🍽️';
-            thumb.replaceWith(span);
-          }
-          rm.remove();
-          var out = document.getElementById('bentoMenuSaveResult');
-          if (out) out.textContent = 'Photo removed — click Save menu to publish.';
-        }
-      });
-    })();
 
     async function loadBentoSettings() {
       var capEl = document.getElementById('bentoDailyCapacity');
@@ -5950,6 +6238,7 @@ export class AdminDashboardController {
         mealCredits: s.mealCreditsTotal,
         lunchCredits: s.lunchCredits,
         dinnerCredits: s.dinnerCredits,
+        deliveries: s.deliveries,
         onScheduled: function (count) {
           var msg = document.getElementById('bentoFixMsg');
           if (msg) msg.textContent = 'Scheduled ' + count + ' pickup day(s) for ' + name + '.';
@@ -6196,33 +6485,67 @@ export class AdminDashboardController {
       function p(n) { return (n < 10 ? '0' : '') + n; }
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     }
+    // Meal credits are a flexible pool — every plan can book lunch or dinner.
     function bentoSchedHasLunch() {
-      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'LUNCH' || bentoSchedSub.mealOptionCode === 'BOTH');
+      return !!bentoSchedSub;
     }
     function bentoSchedHasDinner() {
-      return bentoSchedSub && (bentoSchedSub.mealOptionCode === 'DINNER' || bentoSchedSub.mealOptionCode === 'BOTH');
+      return !!bentoSchedSub;
     }
-    function bentoSchedAddRow(dateIso) {
+    // Mirrors the backend rule: a pickup day locks at 17:00 MYT (09:00 UTC)
+    // the day before.
+    function bentoSchedIsLocked(dateIso) {
+      var m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(dateIso || '');
+      if (!m) return false;
+      var deadline = Date.UTC(+m[1], +m[2] - 1, +m[3] - 1, 9, 0, 0);
+      return Date.now() >= deadline;
+    }
+    // state: '' (editable), 'locked' (editable only with the override tick),
+    // 'delivered' (never editable — shown so credit totals stay honest).
+    function bentoSchedAddRow(dateIso, lunchQty, dinnerQty, state) {
       var host = document.getElementById('bentoSchedRows');
       if (!host) return;
+      if (lunchQty === undefined) lunchQty = 1;
+      if (dinnerQty === undefined) dinnerQty = 1;
+      state = state || '';
       var qtyStyle = 'width:64px;text-align:center';
       var lunch = bentoSchedHasLunch()
         ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Lunch'
-          + '<input type="number" min="0" max="50" value="1" class="bento-sched-lunch" style="' + qtyStyle + '" /></label>'
+          + '<input type="number" min="0" max="50" value="' + lunchQty + '" class="bento-sched-lunch" style="' + qtyStyle + '" /></label>'
         : '';
       var dinner = bentoSchedHasDinner()
         ? '<label style="display:flex;flex-direction:column;font-size:12px;color:#475569">Dinner'
-          + '<input type="number" min="0" max="50" value="1" class="bento-sched-dinner" style="' + qtyStyle + '" /></label>'
+          + '<input type="number" min="0" max="50" value="' + dinnerQty + '" class="bento-sched-dinner" style="' + qtyStyle + '" /></label>'
         : '';
+      var tag = '';
+      if (state === 'locked') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#b45309;align-self:center;white-space:nowrap">🔒 Locked</span>';
+      if (state === 'delivered') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#64748b;align-self:center;white-space:nowrap">✓ Delivered</span>';
+      if (state === 'skipped') tag = '<span class="bento-sched-tag" style="font-size:11px;color:#64748b;align-self:center;white-space:nowrap">Skipped</span>';
       var div = document.createElement('div');
       div.className = 'bento-sched-row';
+      div.setAttribute('data-state', state);
       div.style.cssText = 'display:flex;gap:10px;align-items:flex-end;margin-bottom:8px';
       div.innerHTML = '<label style="flex:1;display:flex;flex-direction:column;font-size:12px;color:#475569">Pickup date'
         + '<input type="date" value="' + (dateIso || '') + '" class="bento-sched-date" /></label>'
-        + lunch + dinner
+        + lunch + dinner + tag
         + '<button type="button" class="btn-outline bento-sched-remove" aria-label="Remove day" style="padding:8px 12px">&times;</button>';
       host.appendChild(div);
+      bentoSchedSyncLockedRows();
       bentoSchedUpdateTotals();
+    }
+    // Locked rows follow the override tick; delivered rows are always frozen.
+    function bentoSchedSyncLockedRows() {
+      var override = document.getElementById('bentoSchedOverrideLock');
+      var unlocked = !!(override && override.checked);
+      document.querySelectorAll('#bentoSchedRows .bento-sched-row').forEach(function (row) {
+        var state = row.getAttribute('data-state');
+        if (!state) return;
+        var frozen = state !== 'locked' || !unlocked;
+        row.querySelectorAll('input, button.bento-sched-remove').forEach(function (el) {
+          el.disabled = frozen;
+        });
+        row.style.opacity = frozen ? '0.6' : '';
+      });
     }
     function bentoSchedUpdateTotals() {
       var totals = document.getElementById('bentoSchedTotals');
@@ -6234,26 +6557,41 @@ export class AdminDashboardController {
         lunch += l ? Math.max(0, parseInt(l.value, 10) || 0) : 0;
         dinner += d ? Math.max(0, parseInt(d.value, 10) || 0) : 0;
       });
-      var parts = [];
-      if (bentoSchedHasLunch()) parts.push('Lunch ' + lunch + ' / ' + bentoSchedSub.lunchCredits);
-      if (bentoSchedHasDinner()) parts.push('Dinner ' + dinner + ' / ' + bentoSchedSub.dinnerCredits);
-      var over = (bentoSchedHasLunch() && lunch > bentoSchedSub.lunchCredits)
-        || (bentoSchedHasDinner() && dinner > bentoSchedSub.dinnerCredits);
-      totals.textContent = 'Allocated — ' + parts.join(' · ') + (over ? '  (over plan credits)' : '');
+      // Credits are pooled: lunch + dinner combined against the plan total.
+      var totalCredits = (bentoSchedSub.lunchCredits || 0) + (bentoSchedSub.dinnerCredits || 0);
+      var used = lunch + dinner;
+      var parts = ['Meals ' + used + ' / ' + totalCredits];
+      if (used > 0) parts.push('(' + lunch + ' lunch · ' + dinner + ' dinner)');
+      var over = used > totalCredits;
+      totals.textContent = 'Allocated — ' + parts.join(' ') + (over ? '  (over plan credits)' : '');
       totals.style.color = over ? '#b91c1c' : '#475569';
     }
     function bentoOpenSchedModal(row) {
       bentoSchedSub = row;
       var info = document.getElementById('bentoSchedSubInfo');
       if (info) {
-        info.textContent = row.customerName + ' · ' + row.packageLabel + ' · ' + row.mealOption
-          + ' · ' + row.mealCredits + ' credit(s)';
+        info.textContent = row.customerName + ' · ' + row.packageLabel
+          + ' · ' + row.mealCredits + ' meal credit(s) — lunch or dinner';
       }
       var result = document.getElementById('bentoSchedResult');
       if (result) { result.textContent = ''; }
+      var override = document.getElementById('bentoSchedOverrideLock');
+      if (override) { override.checked = false; }
       var host = document.getElementById('bentoSchedRows');
       if (host) { host.innerHTML = ''; }
-      bentoSchedAddRow(bentoSchedTomorrowIso());
+      // Pre-fill the plan's existing pickup days so saving edits the schedule
+      // instead of silently replacing it. Delivered days are shown frozen so
+      // the credit totals stay honest; locked days need the override tick.
+      var existing = Array.isArray(row.deliveries) ? row.deliveries : [];
+      existing.forEach(function (d) {
+        var iso = String(d.deliveryDate || '').slice(0, 10);
+        if (!iso) return;
+        var state = d.status === 'SCHEDULED'
+          ? (bentoSchedIsLocked(iso) ? 'locked' : '')
+          : (d.status === 'DELIVERED' ? 'delivered' : 'skipped');
+        bentoSchedAddRow(iso, d.lunchQty || 0, d.dinnerQty || 0, state);
+      });
+      if (!existing.length) bentoSchedAddRow(bentoSchedTomorrowIso());
       document.getElementById('bentoSchedBackdrop').classList.remove('hidden');
       document.getElementById('bentoSchedModal').classList.remove('hidden');
     }
@@ -6313,8 +6651,12 @@ export class AdminDashboardController {
       var onScheduled = bentoSchedSub.onScheduled;
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
       if (result) { result.style.color = '#475569'; result.textContent = 'Saving…'; }
+      var overrideEl = document.getElementById('bentoSchedOverrideLock');
       try {
-        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/schedule', { slots: collected.slots });
+        await apiPost('/admin/reports/bento-subscriptions/' + encodeURIComponent(id) + '/schedule', {
+          slots: collected.slots,
+          overrideLocked: !!(overrideEl && overrideEl.checked),
+        });
         bentoCloseSchedModal();
         var out = document.getElementById('bentoAwaitCopyResult');
         if (out) out.textContent = 'Scheduled ' + collected.slots.length + ' pickup day(s) for ' + name + '.';
@@ -6516,9 +6858,13 @@ export class AdminDashboardController {
         var list = (txn && Array.isArray(txn.transactions)) ? txn.transactions : [];
         var xb = document.getElementById('bsTxnBody');
         var xrows = list.map(function (x) {
-          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
+          var voucherCell = x.voucherCode
+            ? '<code style="font-size:11px">' + bpAttr(x.voucherCode) + '</code>'
+              + (x.voucherDiscountCents ? '<br><span class="field-hint" style="margin:0">−' + moneyFromCents(x.voucherDiscountCents) + '</span>' : '')
+            : '—';
+          return '<tr><td>' + bentoFmtDateTime(x.paidAt) + '</td><td>' + bpAttr(x.customerName || '—') + '</td><td>' + fmt(x.customerPhone) + '</td><td>' + bpAttr(x.packageLabel || x.packageCode || '—') + '</td><td>' + fmt(x.mealOption) + '</td><td>' + voucherCell + '</td><td>' + moneyFromCents(x.amountCents) + '</td></tr>';
         });
-        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="6" class="muted-hint">No transactions in this range.</td></tr>';
+        if (xb) xb.innerHTML = xrows.join('') || '<tr><td colspan="7" class="muted-hint">No transactions in this range.</td></tr>';
         if (hint) hint.textContent = list.length + ' shown (latest 100)';
         statusPanel.textContent = 'Bento sales updated.';
       } catch (e) {
@@ -7596,6 +7942,338 @@ export class AdminDashboardController {
       await Promise.all([loadEmTimeEntries(), loadEmCalendarTable()]);
     }
 
+    // ---- Email marketing (mailer) ----
+    var mailerInitialized = false;
+
+    function mailSetResult(id, msg, isError) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = isError ? '#dc2626' : '';
+    }
+    function mailEditorErr(e) { mailSetResult('mailEditorResult', e.message, true); }
+    function mailScheduleErr(e) { mailSetResult('mailScheduleResult', e.message, true); }
+    function mailListErr(e) { mailSetResult('mailListResult', e.message, true); }
+
+    function mailerInit() {
+      if (mailerInitialized) return;
+      mailerInitialized = true;
+      document.getElementById('mailNewBtn').addEventListener('click', mailResetEditor);
+      document.getElementById('mailRefreshBtn').addEventListener('click', function () {
+        loadMailCampaigns().catch(mailListErr);
+        mailUpdateAudienceCount();
+      });
+      document.getElementById('mailSaveBtn').addEventListener('click', function () {
+        mailSave().then(function () {
+          mailSetResult('mailEditorResult', 'Draft saved.');
+        }).catch(mailEditorErr);
+      });
+      document.getElementById('mailPreviewBtn').addEventListener('click', function () {
+        mailPreview().catch(mailEditorErr);
+      });
+      document.getElementById('mailTestBtn').addEventListener('click', function () {
+        mailTestSend().catch(mailEditorErr);
+      });
+      document.getElementById('mailScheduleBtn').addEventListener('click', function () {
+        mailSchedule(false).catch(mailScheduleErr);
+      });
+      document.getElementById('mailSendNowBtn').addEventListener('click', function () {
+        mailSchedule(true).catch(mailScheduleErr);
+      });
+      document.getElementById('mailAudience').addEventListener('change', function () {
+        mailSyncBirthdayVisibility();
+        mailUpdateAudienceCount();
+      });
+      document.getElementById('mailTier').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailBirthdayDays').addEventListener('change', mailUpdateAudienceCount);
+      document.getElementById('mailCampaignsBody').addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('button[data-mail-act]') : null;
+        if (btn) mailTableAction(btn.getAttribute('data-mail-act'), btn.getAttribute('data-id')).catch(mailListErr);
+      });
+      mailLoadTemplates().catch(function () {});
+      mailLoadVoucherDefs().catch(function () {});
+      loadMailCampaigns().catch(mailListErr);
+      mailUpdateAudienceCount();
+    }
+
+    function mailSyncBirthdayVisibility() {
+      var wrap = document.getElementById('mailBirthdayDaysWrap');
+      if (wrap) wrap.style.display =
+        document.getElementById('mailAudience').value === 'BIRTHDAY_UPCOMING' ? '' : 'none';
+    }
+
+    async function mailLoadVoucherDefs() {
+      var sel = document.getElementById('mailVoucherDef');
+      if (!sel) return;
+      var defs = await api('/admin/voucher-definitions');
+      var current = sel.value;
+      sel.innerHTML = '<option value="">— no voucher —</option>' + (defs || [])
+        .filter(function (d) { return d.isActive; })
+        .map(function (d) {
+          var extra = d.rebateValueSen ? ' (RM' + (d.rebateValueSen / 100).toFixed(2) + ' off)' : '';
+          return '<option value="' + vcEsc(d.id) + '">' + vcEsc(d.code + ' — ' + d.title + extra) + '</option>';
+        }).join('');
+      if (current) sel.value = current;
+    }
+
+    async function mailLoadTemplates() {
+      var grid = document.getElementById('mailTemplateGrid');
+      if (!grid) return;
+      var data = await api('/admin/mailer/templates');
+      var icons = { WELCOME: '👋', WEEKLY: '🍱', EVENT: '🎉', BIRTHDAY: '🎂', PLAIN: '📝' };
+      grid.innerHTML = (data.templates || []).map(function (t) {
+        return '<button type="button" class="btn-outline" data-mail-template="' + vcEsc(t.kind) + '"' +
+          ' style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;text-align:left;height:auto;cursor:pointer">' +
+          '<span style="font-size:20px">' + (icons[t.kind] || '📝') + '</span>' +
+          '<strong style="font-size:13px">' + vcEsc(t.label) + '</strong>' +
+          '<span class="field-hint" style="margin:0;font-size:11.5px">' + vcEsc(t.description) + '</span></button>';
+      }).join('');
+      grid.querySelectorAll('button[data-mail-template]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var kind = btn.getAttribute('data-mail-template');
+          var t = (data.templates || []).find(function (x) { return x.kind === kind; });
+          if (!t) return;
+          var bodyEl = document.getElementById('mailBody');
+          if (bodyEl.value.trim() && !window.confirm('Replace the current draft content with the "' + t.label + '" template?')) return;
+          document.getElementById('mailTemplateKind').value = t.kind;
+          document.getElementById('mailSubject').value = t.subject || '';
+          document.getElementById('mailPreheader').value = t.preheader || '';
+          bodyEl.value = t.bodyHtml || '';
+          if (t.kind === 'BIRTHDAY') {
+            document.getElementById('mailAudience').value = 'BIRTHDAY_UPCOMING';
+            mailSyncBirthdayVisibility();
+            mailUpdateAudienceCount();
+          }
+          var nameEl = document.getElementById('mailName');
+          if (!nameEl.value.trim()) nameEl.value = t.label;
+          grid.querySelectorAll('button[data-mail-template]').forEach(function (b) {
+            b.style.borderColor = '';
+            b.style.background = '';
+          });
+          btn.style.borderColor = '#2563eb';
+          btn.style.background = '#eff6ff';
+          mailSetResult('mailEditorResult', 'Template loaded — edit and save as draft.');
+        });
+      });
+    }
+
+    function mailResetEditor() {
+      document.getElementById('mailEditingId').value = '';
+      document.getElementById('mailTemplateKind').value = 'PLAIN';
+      ['mailName', 'mailSubject', 'mailPreheader', 'mailBody', 'mailTestEmail', 'mailScheduleAt'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('mailAudience').value = 'OPTED_IN';
+      document.getElementById('mailTier').value = '';
+      document.getElementById('mailBirthdayDays').value = '14';
+      document.getElementById('mailVoucherDef').value = '';
+      document.getElementById('mailVoucherValidDays').value = '';
+      mailSyncBirthdayVisibility();
+      document.getElementById('mailEditorMode').textContent = 'new campaign';
+      document.getElementById('mailPreviewWrap').style.display = 'none';
+      mailSetResult('mailEditorResult', '');
+      mailSetResult('mailScheduleResult', '');
+      mailUpdateAudienceCount();
+    }
+
+    function mailEditorPayload() {
+      var birthdayDays = parseInt(document.getElementById('mailBirthdayDays').value, 10);
+      var voucherValidDays = parseInt(document.getElementById('mailVoucherValidDays').value, 10);
+      return {
+        name: document.getElementById('mailName').value.trim(),
+        templateKind: document.getElementById('mailTemplateKind').value || 'PLAIN',
+        subject: document.getElementById('mailSubject').value.trim(),
+        preheader: document.getElementById('mailPreheader').value.trim() || null,
+        bodyHtml: document.getElementById('mailBody').value,
+        audience: document.getElementById('mailAudience').value,
+        tierFilter: document.getElementById('mailTier').value.trim() || null,
+        birthdayWindowDays: Number.isFinite(birthdayDays) ? birthdayDays : null,
+        voucherDefinitionId: document.getElementById('mailVoucherDef').value || null,
+        voucherValidDays: Number.isFinite(voucherValidDays) ? voucherValidDays : null,
+      };
+    }
+
+    async function mailSave() {
+      var payload = mailEditorPayload();
+      if (!payload.name) throw new Error('Give the campaign an internal name.');
+      if (!payload.subject) throw new Error('Subject is required.');
+      if (!payload.bodyHtml.trim()) throw new Error('The email body is empty.');
+      var editingId = document.getElementById('mailEditingId').value;
+      var res;
+      if (editingId) {
+        res = await apiPatch('/admin/mailer/campaigns/' + editingId, payload);
+      } else {
+        res = await apiPost('/admin/mailer/campaigns', payload);
+        document.getElementById('mailEditingId').value = res.campaign.id;
+      }
+      document.getElementById('mailEditorMode').textContent = 'editing "' + res.campaign.name + '"';
+      await loadMailCampaigns();
+      return res.campaign.id;
+    }
+
+    async function mailEnsureSaved() {
+      var editingId = document.getElementById('mailEditingId').value;
+      if (editingId) { await mailSave(); return editingId; }
+      return mailSave();
+    }
+
+    async function mailPreview() {
+      var id = await mailEnsureSaved();
+      var data = await api('/admin/mailer/campaigns/' + id + '/preview');
+      var frame = document.getElementById('mailPreviewFrame');
+      frame.srcdoc = data.html;
+      document.getElementById('mailPreviewWrap').style.display = 'block';
+      mailSetResult('mailEditorResult', 'Preview updated (subject: ' + data.subject + ')');
+    }
+
+    async function mailTestSend() {
+      var address = document.getElementById('mailTestEmail').value.trim();
+      if (!address) throw new Error('Enter an email address for the test send.');
+      var id = await mailEnsureSaved();
+      mailSetResult('mailEditorResult', 'Sending test…');
+      await apiPost('/admin/mailer/campaigns/' + id + '/test-send', { email: address });
+      mailSetResult('mailEditorResult', 'Test email sent to ' + address + '.');
+    }
+
+    async function mailUpdateAudienceCount() {
+      var el = document.getElementById('mailAudienceCount');
+      var preview = document.getElementById('mailBirthdayPreview');
+      if (!el) return;
+      try {
+        var aud = document.getElementById('mailAudience').value;
+        var tier = document.getElementById('mailTier').value.trim();
+        var days = document.getElementById('mailBirthdayDays').value;
+        var data = await api('/admin/mailer/audience-preview?audience=' + encodeURIComponent(aud) +
+          '&tier=' + encodeURIComponent(tier) + '&birthdayDays=' + encodeURIComponent(days));
+        el.textContent = 'This audience currently has ' + data.count + ' recipient(s).' +
+          (aud === 'BIRTHDAY_UPCOMING' ? ' Members with a birthday in the next ' + (data.birthdayWindowDays || days) + ' days, soonest first:' : '');
+        if (preview) {
+          if (aud === 'BIRTHDAY_UPCOMING' && (data.recipients || []).length) {
+            preview.style.display = '';
+            preview.innerHTML = '<div class="table-wrap" style="max-height:220px;overflow:auto">' +
+              '<table class="data"><thead><tr><th>Birthday in</th><th>Name</th><th>Email</th><th>Birthday</th></tr></thead><tbody>' +
+              data.recipients.map(function (r) {
+                var when = r.birthdayDaysUntil === 0 ? '🎂 today' : r.birthdayDaysUntil + ' day(s)';
+                var bday = r.birthday ? String(r.birthday).slice(5, 10) : '—';
+                return '<tr><td>' + when + '</td><td>' + vcEsc(r.name || '—') + '</td><td>' + vcEsc(r.email || '—') + '</td><td>' + vcEsc(bday) + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+          } else {
+            preview.style.display = 'none';
+            preview.innerHTML = '';
+          }
+        }
+      } catch (e) {
+        el.textContent = '';
+        if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+      }
+    }
+
+    async function mailSchedule(sendNow) {
+      var id = await mailEnsureSaved();
+      var body = {};
+      var label;
+      if (sendNow) {
+        var countEl = document.getElementById('mailAudienceCount');
+        var confirmMsg = 'Send this campaign now?' + (countEl && countEl.textContent ? '\\n' + countEl.textContent : '');
+        if (!window.confirm(confirmMsg)) return;
+        label = 'Sending — refresh the list to follow progress.';
+      } else {
+        var v = document.getElementById('mailScheduleAt').value;
+        if (!v) throw new Error('Pick a date and time to schedule.');
+        var when = new Date(v);
+        if (isNaN(when.getTime())) throw new Error('Invalid schedule date.');
+        if (when.getTime() < Date.now() - 60000) throw new Error('The schedule time is in the past.');
+        body.scheduledAt = when.toISOString();
+        label = 'Scheduled for ' + when.toLocaleString() + '.';
+      }
+      await apiPost('/admin/mailer/campaigns/' + id + '/schedule', body);
+      mailSetResult('mailScheduleResult', label);
+      await loadMailCampaigns();
+    }
+
+    function mailStatusBadge(status) {
+      var colors = {
+        DRAFT: '#64748b', SCHEDULED: '#2563eb', SENDING: '#d97706',
+        SENT: '#059669', CANCELLED: '#94a3b8', FAILED: '#dc2626',
+      };
+      return '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:' + (colors[status] || '#64748b') + '">' + vcEsc(status) + '</span>';
+    }
+
+    async function loadMailCampaigns() {
+      var body = document.getElementById('mailCampaignsBody');
+      if (!body) return;
+      var data = await api('/admin/mailer/campaigns');
+      var rows = (data.campaigns || []).map(function (c) {
+        var audience = (c.audience === 'ALL_WITH_EMAIL' ? 'All with email'
+          : c.audience === 'BIRTHDAY_UPCOMING' ? '🎂 Birthday ≤ ' + (c.birthdayWindowDays || 14) + 'd'
+          : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '') +
+          (c.voucherDefinitionId ? ' · 🎟️ voucher' : '');
+        var whenTxt = '';
+        if (c.status === 'SCHEDULED' && c.scheduledAt) whenTxt = new Date(c.scheduledAt).toLocaleString();
+        else if (c.completedAt) whenTxt = new Date(c.completedAt).toLocaleString();
+        var delivered = c.totalRecipients ? (c.sentCount + '/' + c.totalRecipients + (c.failedCount ? ' (' + c.failedCount + ' failed)' : '')) : '—';
+        var actions = '<button type="button" class="btn-outline" data-mail-act="open" data-id="' + c.id + '">Open</button> ' +
+          '<button type="button" class="btn-outline" data-mail-act="duplicate" data-id="' + c.id + '">Duplicate</button>';
+        if (c.status === 'SCHEDULED') actions += ' <button type="button" class="btn-outline" data-mail-act="cancel" data-id="' + c.id + '">Cancel</button>';
+        if (c.status === 'DRAFT' || c.status === 'CANCELLED' || c.status === 'SENT' || c.status === 'FAILED') {
+          actions += ' <button type="button" class="btn-outline" data-mail-act="delete" data-id="' + c.id + '">Delete</button>';
+        }
+        return '<tr>' +
+          '<td>' + vcEsc(c.name) + '</td>' +
+          '<td>' + vcEsc(c.subject) + '</td>' +
+          '<td>' + audience + '</td>' +
+          '<td style="text-align:center">' + mailStatusBadge(c.status) + '</td>' +
+          '<td>' + vcEsc(whenTxt) + '</td>' +
+          '<td style="text-align:center">' + vcEsc(delivered) + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + actions + '</td>' +
+          '</tr>';
+      });
+      body.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">No campaigns yet — draft your first one above.</td></tr>';
+      mailSetResult('mailListResult', '');
+    }
+
+    async function mailTableAction(act, id) {
+      if (act === 'open') {
+        var data = await api('/admin/mailer/campaigns/' + id);
+        var c = data.campaign;
+        document.getElementById('mailEditingId').value = c.id;
+        document.getElementById('mailTemplateKind').value = c.templateKind || 'PLAIN';
+        document.getElementById('mailName').value = c.name || '';
+        document.getElementById('mailSubject').value = c.subject || '';
+        document.getElementById('mailPreheader').value = c.preheader || '';
+        document.getElementById('mailBody').value = c.bodyHtml || '';
+        document.getElementById('mailAudience').value = c.audience || 'OPTED_IN';
+        document.getElementById('mailTier').value = c.tierFilter || '';
+        document.getElementById('mailBirthdayDays').value = c.birthdayWindowDays || '14';
+        document.getElementById('mailVoucherDef').value = c.voucherDefinitionId || '';
+        document.getElementById('mailVoucherValidDays').value = c.voucherValidDays || '';
+        mailSyncBirthdayVisibility();
+        var editable = c.status === 'DRAFT' || c.status === 'SCHEDULED';
+        document.getElementById('mailEditorMode').textContent =
+          (editable ? 'editing "' : 'viewing "') + c.name + '" (' + c.status.toLowerCase() + ')';
+        document.getElementById('mailPreviewWrap').style.display = 'none';
+        mailSetResult('mailEditorResult', editable ? '' : 'This campaign has already run — duplicate it to send again.');
+        mailSetResult('mailScheduleResult', c.lastError ? 'Last run: ' + c.lastError : '');
+        mailUpdateAudienceCount();
+        document.getElementById('mailName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (act === 'duplicate') {
+        await apiPost('/admin/mailer/campaigns/' + id + '/duplicate', {});
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign duplicated as a new draft.');
+      } else if (act === 'cancel') {
+        if (!window.confirm('Cancel this scheduled campaign?')) return;
+        await apiPost('/admin/mailer/campaigns/' + id + '/cancel', {});
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign cancelled.');
+      } else if (act === 'delete') {
+        if (!window.confirm('Delete this campaign? This cannot be undone.')) return;
+        await apiDelete('/admin/mailer/campaigns/' + id);
+        await loadMailCampaigns();
+        mailSetResult('mailListResult', 'Campaign deleted.');
+      }
+    }
+
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
       const tasks = [
@@ -7613,7 +8291,6 @@ export class AdminDashboardController {
         loadImportHistory(),
         loadExportJobs(),
         loadReporting(),
-        loadAdminUsers(),
         loadPerksCampaignRules(),
         loadShopCatalog(),
         loadBentoMenu(),
@@ -7662,6 +8339,9 @@ export class AdminDashboardController {
       if (view === 'voucher-campaigns') {
         vcInitTemplates();
         vcInitDates();
+      }
+      if (view === 'mailer-campaigns') {
+        mailerInit();
       }
     }
 
@@ -7827,7 +8507,7 @@ export class AdminDashboardController {
     });
     const customerHasVoucherEl = document.getElementById('customerHasVoucher');
     if (customerHasVoucherEl) customerHasVoucherEl.addEventListener('change', reloadCustomersFromPageOne);
-    ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+    ['customerSearch', 'customerTierFilter', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); reloadCustomersFromPageOne(); }
@@ -7838,7 +8518,7 @@ export class AdminDashboardController {
     const customerClearBtn = document.getElementById('customerClearBtn');
     if (customerClearBtn) {
       customerClearBtn.addEventListener('click', function () {
-        ['customerSearch', 'customerTierFilter', 'customerSourceFilter'].forEach(function (id) {
+        ['customerSearch', 'customerTierFilter', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
           const el = document.getElementById(id);
           if (el) el.value = '';
         });
@@ -7923,7 +8603,6 @@ export class AdminDashboardController {
     });
     document.getElementById('refreshImportHistoryBtn').addEventListener('click', () => loadImportHistory().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshExportJobsBtn').addEventListener('click', () => loadExportJobs().catch((e) => { statusPanel.textContent = e.message; }));
-    document.getElementById('refreshAdminUsersBtn').addEventListener('click', () => loadAdminUsers().catch((e) => { statusPanel.textContent = e.message; }));
 
     function saBind(id, fn) {
       const el = document.getElementById(id);
@@ -8016,6 +8695,384 @@ export class AdminDashboardController {
         refreshSalesViz();
       });
     }
+
+    // ---- Finance (consolidated cross-channel) -------------------------------
+
+    const FIN_CHANNELS = [
+      { key: 'pos', field: 'posRevenueCents', label: 'In-store POS', color: '#38bdf8' },
+      { key: 'online_shop', field: 'onlineShopRevenueCents', label: 'Online shop', color: '#a78bfa' },
+      { key: 'bento', field: 'bentoRevenueCents', label: 'Bento', color: '#34d399' },
+    ];
+    let lastFinanceOverview = null;
+    let ftPage = 1;
+
+    function finChannelLabel(key) {
+      const c = FIN_CHANNELS.find(function (x) { return x.key === key; });
+      return c ? c.label : key;
+    }
+
+    function finRm(cents) {
+      return 'RM ' + moneyFromCents(cents);
+    }
+
+    function finPct(p) {
+      if (p === null || p === undefined) return 'no prior data';
+      const v = Math.round(p * 1000) / 10;
+      return (v >= 0 ? '▲ +' : '▼ ') + v + '% vs previous period';
+    }
+
+    function finSetDates(startDaysAgo, monthToDate) {
+      const t = new Date();
+      const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+      const start = monthToDate
+        ? new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))
+        : new Date(end);
+      if (!monthToDate) start.setUTCDate(start.getUTCDate() - startDaysAgo);
+      const fe = document.getElementById('finFrom');
+      const te = document.getElementById('finTo');
+      if (fe) fe.value = saIsoDateUtc(start);
+      if (te) te.value = saIsoDateUtc(end);
+    }
+
+    function finRangeQuery(fromId, toId) {
+      const fromStr = document.getElementById(fromId).value;
+      const toStr = document.getElementById(toId).value;
+      if (!fromStr || !toStr) return null;
+      const toEnd = new Date(toStr + 'T00:00:00.000Z');
+      toEnd.setUTCDate(toEnd.getUTCDate() + 1);
+      return (
+        'from=' + encodeURIComponent(fromStr + 'T00:00:00.000Z') +
+        '&to=' + encodeURIComponent(toEnd.toISOString())
+      );
+    }
+
+    async function loadFinanceOverview() {
+      const base = finRangeQuery('finFrom', 'finTo');
+      if (!base) {
+        statusPanel.textContent = 'Set from and to dates first.';
+        return;
+      }
+      const bucket = document.getElementById('finBucket').value || 'day';
+      statusPanel.textContent = 'Loading finance overview…';
+      const data = await api('/admin/reports/finance-overview?' + base + '&bucket=' + bucket);
+      lastFinanceOverview = data;
+
+      document.getElementById('finValRevenue').textContent = finRm(data.totals.revenueCents);
+      document.getElementById('finDeltaRevenue').textContent = finPct(data.deltas.revenuePct);
+      document.getElementById('finValOrders').textContent = fmt(data.totals.orders);
+      document.getElementById('finDeltaOrders').textContent = finPct(data.deltas.ordersPct);
+      document.getElementById('finValAov').textContent = finRm(data.totals.averageOrderValueCents);
+      document.getElementById('finValRefunds').textContent = finRm(data.totals.refundsCents);
+      document.getElementById('finRefundsDetail').textContent =
+        data.refunds.posCount + ' POS · ' + data.refunds.bentoCount + ' bento';
+      document.getElementById('finValNet').textContent = finRm(data.totals.netRevenueCents);
+
+      const chBody = document.getElementById('finChannelBody');
+      chBody.innerHTML = data.byChannel.length
+        ? data.byChannel
+            .map(function (c) {
+              return (
+                '<tr><td>' + finChannelLabel(c.channel) + '</td><td>' + finRm(c.revenueCents) +
+                '</td><td>' + fmt(c.orders) + '</td><td>' + finRm(c.averageOrderValueCents) +
+                '</td><td>' + (c.refundsCents ? finRm(c.refundsCents) : '—') + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="5">No data.</td></tr>';
+
+      const pmBody = document.getElementById('finMethodsBody');
+      pmBody.innerHTML = data.paymentMethods.length
+        ? data.paymentMethods
+            .map(function (m) {
+              return (
+                '<tr><td>' + emEscapeHtml(m.method) + '</td><td>' + finRm(m.revenueCents) +
+                '</td><td>' + fmt(m.count) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="3">No transactions in range.</td></tr>';
+
+      const topBody = document.getElementById('finTopBody');
+      topBody.innerHTML = data.topProducts.length
+        ? data.topProducts
+            .map(function (p) {
+              return (
+                '<tr><td>' + finChannelLabel(p.channel) + '</td><td>' + emEscapeHtml(p.name) +
+                '</td><td>' + emEscapeHtml(p.productId) + '</td><td>' + fmt(p.qtySold) +
+                '</td><td>' + finRm(p.revenueCents) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="5">No products sold in range.</td></tr>';
+
+      paintFinanceChart();
+      document.getElementById('finOverviewHint').textContent =
+        'Range ' + data.meta.from.slice(0, 10) + ' → ' + data.meta.to.slice(0, 10) +
+        ' vs previous ' + data.meta.previousFrom.slice(0, 10) + ' → ' + data.meta.previousTo.slice(0, 10) +
+        ' · generated ' + data.meta.generatedAt.slice(11, 19) + ' UTC';
+      statusPanel.textContent = 'Finance overview loaded.';
+    }
+
+    function paintFinanceChart() {
+      const wrap = document.getElementById('finChannelChart');
+      const legendEl = document.getElementById('finChartLegend');
+      if (!wrap) return;
+      const arr = (lastFinanceOverview && lastFinanceOverview.series) || [];
+
+      if (legendEl) {
+        legendEl.innerHTML = FIN_CHANNELS.map(function (c) {
+          return (
+            '<span style="display:inline-flex;align-items:center;gap:5px;margin-left:12px;font-size:12px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + c.color + '"></span>' +
+            c.label + '</span>'
+          );
+        }).join('');
+      }
+
+      if (!arr.length) {
+        wrap.innerHTML =
+          '<p class="muted-hint" style="margin:0;padding:48px 16px;text-align:center">No revenue in this range.</p>';
+        return;
+      }
+
+      const W = 880;
+      const H = 260;
+      const padL = 58;
+      const padR = 20;
+      const padT = 16;
+      const padB = 44;
+      const iw = W - padL - padR;
+      const ih = H - padT - padB;
+      const n = arr.length;
+      const totals = arr.map(function (s) { return Number(s.totalRevenueCents) || 0; });
+      const maxV = Math.max(1, ...totals) * 1.06;
+      const slot = iw / n;
+      const barW = Math.max(3, Math.min(48, slot * 0.62));
+
+      let gridAndLabels = '';
+      const yTicks = 5;
+      for (let t = 0; t <= yTicks; t += 1) {
+        const frac = t / yTicks;
+        const y = padT + ih * frac;
+        gridAndLabels +=
+          '<line class="sa-chart-grid" x1="' + padL + '" y1="' + y.toFixed(1) +
+          '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" />' +
+          '<text class="sa-chart-axis" x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) +
+          '" text-anchor="end">' + moneyFromCents(Math.round(maxV * (1 - frac))) + '</text>';
+      }
+
+      let bars = '';
+      let xLabels = '';
+      const step = n <= 8 ? 1 : Math.ceil(n / 8);
+      arr.forEach(function (s, i) {
+        const xc = padL + slot * i + slot / 2;
+        let yCursor = padT + ih;
+        FIN_CHANNELS.forEach(function (c) {
+          const v = Number(s[c.field]) || 0;
+          if (v <= 0) return;
+          const h = (ih * v) / maxV;
+          yCursor -= h;
+          const tip =
+            String(s.periodStart || '').slice(0, 10) + ' · ' + c.label + ': RM ' + moneyFromCents(v) +
+            ' (total RM ' + moneyFromCents(s.totalRevenueCents) + ')';
+          bars +=
+            '<rect x="' + (xc - barW / 2).toFixed(1) + '" y="' + yCursor.toFixed(1) +
+            '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) +
+            '" fill="' + c.color + '" rx="1.5"><title>' + tip + '</title></rect>';
+        });
+        if (i % step === 0 || i === n - 1) {
+          xLabels +=
+            '<text class="sa-chart-axis" x="' + xc.toFixed(1) + '" y="' + (H - 12) +
+            '" text-anchor="middle">' + String(s.periodStart || '').slice(5, 10) + '</text>';
+        }
+      });
+
+      wrap.innerHTML =
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' +
+        gridAndLabels + bars + xLabels + '</svg>';
+    }
+
+    function ftBuildQuery() {
+      const base = finRangeQuery('ftFrom', 'ftTo');
+      if (!base) return null;
+      let q = base + '&page=' + ftPage + '&pageSize=50';
+      const ch = document.getElementById('ftChannel').value;
+      if (ch) q += '&channel=' + encodeURIComponent(ch);
+      const minRm = parseFloat(document.getElementById('ftMinRm').value);
+      if (Number.isFinite(minRm)) q += '&minAmountCents=' + Math.round(minRm * 100);
+      const maxRm = parseFloat(document.getElementById('ftMaxRm').value);
+      if (Number.isFinite(maxRm)) q += '&maxAmountCents=' + Math.round(maxRm * 100);
+      return q;
+    }
+
+    async function loadFinanceTransactions() {
+      const q = ftBuildQuery();
+      if (!q) {
+        statusPanel.textContent = 'Set from and to dates first.';
+        return;
+      }
+      statusPanel.textContent = 'Loading transactions…';
+      const data = await api('/admin/reports/transactions?' + q);
+      const tb = document.getElementById('ftBody');
+      tb.innerHTML = data.transactions.length
+        ? data.transactions
+            .map(function (t) {
+              return (
+                '<tr><td>' + finChannelLabel(t.channel) + '</td><td>' +
+                t.occurredAt.slice(0, 16).replace('T', ' ') + '</td><td>' + finRm(t.amountCents) +
+                '</td><td>' + fmt(t.paymentMethod) + '</td><td>' + fmt(t.reference) +
+                '</td><td>' + fmt(t.customerName) + '</td><td>' + fmt(t.customerPhone) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="7">No transactions match these filters.</td></tr>';
+      document.getElementById('ftSummary').innerHTML =
+        '<strong>Filtered total:</strong> ' + finRm(data.totalsInFilter.amountCents) +
+        ' across ' + fmt(data.totalsInFilter.count) + ' transaction(s)';
+      document.getElementById('ftPageInfo').textContent =
+        'Page ' + data.meta.page + ' of ' + Math.max(1, data.meta.totalPages) +
+        ' · ' + data.meta.total + ' rows';
+      const prev = document.getElementById('ftPrevBtn');
+      const next = document.getElementById('ftNextBtn');
+      if (prev) prev.disabled = data.meta.page <= 1;
+      if (next) next.disabled = data.meta.page >= data.meta.totalPages;
+      statusPanel.textContent = 'Transactions loaded.';
+    }
+
+    async function loadFinanceDaily() {
+      const dce = document.getElementById('fdDate');
+      if (!dce || !dce.value) return;
+      statusPanel.textContent = 'Loading daily close…';
+      const data = await api('/admin/reports/daily-commerce?date=' + encodeURIComponent(dce.value));
+      const ch = data.channels || {};
+      const setPair = function (valId, cntId, entry) {
+        const e = entry || { orders: 0, gmvCents: 0 };
+        document.getElementById(valId).textContent = finRm(e.gmvCents);
+        document.getElementById(cntId).textContent = fmt(e.orders) + ' txns';
+      };
+      document.getElementById('fdValTotal').textContent = finRm(data.allChannelsGmvCents || 0);
+      document.getElementById('fdCountTotal').textContent = fmt(data.allChannelsOrders || 0) + ' txns';
+      setPair('fdValPos', 'fdCountPos', ch.pos);
+      setPair('fdValOnline', 'fdCountOnline', ch.onlineShop);
+      setPair('fdValBento', 'fdCountBento', ch.bento);
+      document.getElementById('fdClosedBadge').textContent = data.closed
+        ? 'Closed at ' + String(data.closedAt || '').slice(0, 16).replace('T', ' ') + ' UTC'
+        : 'Day is still open';
+      const items = data.items || [];
+      document.getElementById('fdItemsBody').innerHTML = items.length
+        ? items
+            .map(function (r) {
+              return (
+                '<tr><td>' + emEscapeHtml(r.name) + '</td><td>' + emEscapeHtml(r.productId) +
+                '</td><td>' + fmt(r.qtySold) + '</td><td>' + finRm(r.revenueCents) + '</td></tr>'
+              );
+            })
+            .join('')
+        : '<tr><td colspan="4">No completed online orders this day.</td></tr>';
+      statusPanel.textContent = 'Daily close loaded.';
+    }
+
+    function fsAgo(iso) {
+      if (!iso) return 'never';
+      const ms = Date.now() - new Date(iso).getTime();
+      if (!Number.isFinite(ms) || ms < 0) return iso.slice(0, 16).replace('T', ' ');
+      const mins = Math.floor(ms / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 48) return hrs + 'h ago';
+      return Math.floor(hrs / 24) + 'd ago';
+    }
+
+    async function loadFinanceSync() {
+      statusPanel.textContent = 'Loading POS sync health…';
+      const d = await api('/admin/reports/pos/sync-health');
+      document.getElementById('fsValConfigured').textContent = d.configured ? 'Configured' : 'Not configured';
+      document.getElementById('fsFlagsDetail').textContent =
+        'pull ' + (d.pullEnabled ? 'on' : 'off') + ' · reconcile ' + (d.reconcileEnabled ? 'on' : 'off');
+      document.getElementById('fsValWebhook').textContent = fsAgo(d.lastWebhookAt);
+      document.getElementById('fsValPull').textContent = fsAgo(d.lastPulledAt);
+      document.getElementById('fsValToday').textContent = fmt(d.receiptsToday);
+      document.getElementById('fsTodayDetail').textContent =
+        d.unmatchedReceiptsToday + ' walk-in · ' + d.onlineSettlementReceiptsToday + ' online settlement';
+      document.getElementById('fsValTotal').textContent = fmt(d.totalReceipts);
+      document.getElementById('fsCreditsDetail').textContent = d.creditNotesToday + ' credit note(s) today';
+      statusPanel.textContent = 'POS sync health loaded.';
+    }
+
+    function finRunPull(mode) {
+      const out = document.getElementById('fsResult');
+      out.textContent = (mode === 'backfill' ? 'Backfill' : 'Reconcile') + ' running… this can take a while.';
+      apiPost('/admin/reports/pos/pull', { mode: mode })
+        .then(function (r) {
+          const rc = r.receipts || {};
+          const cn = r.creditNotes || {};
+          out.textContent =
+            'Receipts: ' + (rc.itemsIngested || 0) + ' new of ' + (rc.itemsSeen || 0) + ' seen (' +
+            (rc.stoppedReason || '-') + ') · Credit notes: ' + (cn.itemsIngested || 0) + ' new of ' +
+            (cn.itemsSeen || 0) + ' seen (' + (cn.stoppedReason || '-') + ')';
+          return loadFinanceSync();
+        })
+        .catch(function (e) {
+          out.textContent = e.message || String(e);
+        });
+    }
+
+    saBind('finRefreshBtn', function () {
+      loadFinanceOverview().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('finPreset7', function () { finSetDates(6, false); });
+    saBind('finPreset30', function () { finSetDates(29, false); });
+    saBind('finPresetMtd', function () { finSetDates(0, true); });
+    saBind('ftRefreshBtn', function () {
+      ftPage = 1;
+      loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('ftPrevBtn', function () {
+      if (ftPage > 1) {
+        ftPage -= 1;
+        loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+      }
+    });
+    saBind('ftNextBtn', function () {
+      ftPage += 1;
+      loadFinanceTransactions().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('ftExportCsv', function () {
+      const q = ftBuildQuery();
+      if (!q) {
+        statusPanel.textContent = 'Set from and to dates before exporting.';
+        return;
+      }
+      apiDownload('/admin/reports/transactions?' + q + '&format=csv', 'transactions.csv').catch(function (e) {
+        statusPanel.textContent = e.message || String(e);
+      });
+    });
+    saBind('fdLoadBtn', function () {
+      loadFinanceDaily().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('fdCloseBtn', function () {
+      const dce = document.getElementById('fdDate');
+      const out = document.getElementById('fdResult');
+      if (!dce || !dce.value) {
+        statusPanel.textContent = 'Pick a business date first.';
+        return;
+      }
+      apiPost('/admin/reports/daily-commerce/close', { date: dce.value })
+        .then(function (r) {
+          out.textContent = r.alreadyClosed
+            ? 'Day was already closed at ' + r.closedAt + '.'
+            : 'Day closed at ' + r.closedAt + '.';
+          return loadFinanceDaily();
+        })
+        .catch(function (e) { out.textContent = e.message || String(e); });
+    });
+    saBind('fsRefreshBtn', function () {
+      loadFinanceSync().catch(function (e) { statusPanel.textContent = e.message || String(e); });
+    });
+    saBind('fsPullBtn', function () { finRunPull('reconcile'); });
+    saBind('fsBackfillBtn', function () { finRunPull('backfill'); });
+
     document.querySelectorAll('.template-dl-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.getAttribute('data-kind');
@@ -8885,6 +9942,13 @@ export class AdminDashboardController {
         if (!tr) return;
         toggleBentoVoucherActive(tr.getAttribute('data-voucher-id'), target.checked);
       });
+      bentoVouchersBody.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button.bv-delete') : null;
+        if (!btn) return;
+        var tr = btn.closest('tr[data-voucher-id]');
+        if (!tr) return;
+        deleteBentoVoucher(tr.getAttribute('data-voucher-id'), btn.getAttribute('data-code') || 'this voucher');
+      });
     }
     var bentoMenuBody = document.getElementById('bentoMenuBody');
     if (bentoMenuBody) {
@@ -8948,6 +10012,10 @@ export class AdminDashboardController {
       document.getElementById('bentoSchedSave').addEventListener('click', function () {
         bentoSchedSubmit().catch(function () {});
       });
+      var bentoSchedOverrideEl = document.getElementById('bentoSchedOverrideLock');
+      if (bentoSchedOverrideEl) {
+        bentoSchedOverrideEl.addEventListener('change', bentoSchedSyncLockedRows);
+      }
       var bentoSchedRowsEl = document.getElementById('bentoSchedRows');
       if (bentoSchedRowsEl) {
         bentoSchedRowsEl.addEventListener('click', function (e) {
@@ -10216,6 +11284,46 @@ export class AdminDashboardController {
               statusPanel.textContent = err.message || String(err);
             });
             loadDailyCommerceReport().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-overview' && isConnected) {
+            const fe = document.getElementById('finFrom');
+            if (fe && !fe.value) finSetDates(29, false);
+            loadFinanceOverview().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-transactions' && isConnected) {
+            const fe = document.getElementById('ftFrom');
+            const te = document.getElementById('ftTo');
+            if (fe && !fe.value) {
+              const t = new Date();
+              const end = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+              const start = new Date(end);
+              start.setUTCDate(start.getUTCDate() - 29);
+              fe.value = saIsoDateUtc(start);
+              if (te) te.value = saIsoDateUtc(end);
+            }
+            ftPage = 1;
+            loadFinanceTransactions().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-daily' && isConnected) {
+            const dce = document.getElementById('fdDate');
+            if (dce && !dce.value) {
+              const t = new Date();
+              dce.value = saIsoDateUtc(
+                new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())),
+              );
+            }
+            loadFinanceDaily().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+          }
+          if (view === 'finance-sync' && isConnected) {
+            loadFinanceSync().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

@@ -355,4 +355,34 @@ export class BentoVoucherService {
       },
     });
   }
+
+  /**
+   * Delete a voucher outright. Blocked once the code has confirmed (or
+   * in-flight reserved) redemptions — deleting would cascade-erase the usage
+   * history that sales reviews rely on; deactivate instead. Vouchers that were
+   * never successfully used can be removed freely.
+   */
+  async adminDelete(id: string) {
+    const voucher = await this.prisma.bentoDiscountVoucher.findUnique({
+      where: { id },
+      select: { id: true, code: true },
+    });
+    if (!voucher) {
+      throw new NotFoundException({
+        code: 'BENTO_VOUCHER_NOT_FOUND',
+        message: 'Voucher not found.',
+      });
+    }
+    const usedCount = await this.prisma.bentoDiscountRedemption.count({
+      where: { voucherId: id, status: { in: ['CONFIRMED', 'RESERVED'] } },
+    });
+    if (usedCount > 0) {
+      throw new BadRequestException({
+        code: 'BENTO_VOUCHER_IN_USE',
+        message: `${voucher.code} has ${usedCount} redemption(s) — deactivate it instead of deleting so the usage history stays reviewable.`,
+      });
+    }
+    await this.prisma.bentoDiscountVoucher.delete({ where: { id } });
+    return { id, code: voucher.code, deleted: true as const };
+  }
 }

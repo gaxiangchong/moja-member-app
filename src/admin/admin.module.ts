@@ -8,6 +8,7 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ApprovalsService } from './approvals.service';
+import { FinanceReportService } from './finance-report.service';
 import { ReportingSettingsModule } from './reporting-settings.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { HomeAdsModule } from '../home-ads/home-ads.module';
@@ -17,6 +18,7 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
 import { BentoModule } from '../bento/bento.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SalesplayModule } from '../salesplay/salesplay.module';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { PaymentsModule } from '../payments/payments.module';
     ReportingSettingsModule,
     BentoVoucherModule,
     PaymentsModule,
+    SalesplayModule,
   ],
   controllers: [
     AdminController,
@@ -39,6 +42,6 @@ import { PaymentsModule } from '../payments/payments.module';
     AdminReportsController,
     AdminEmployeesController,
   ],
-  providers: [AdminService, ApprovalsService],
+  providers: [AdminService, ApprovalsService, FinanceReportService],
 })
 export class AdminModule {}

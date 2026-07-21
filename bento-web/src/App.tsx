@@ -25,7 +25,6 @@ import type {
 } from './bento/types';
 import { formatRm } from './bento/types';
 import { Checkout } from './bento/Checkout';
-import { MealOptionPicker } from './bento/MealOptionPicker';
 import { MenuPicker } from './bento/MenuPicker';
 import { MenuTab } from './bento/MenuTab';
 import { OrderHero } from './bento/OrderHero';
@@ -324,9 +323,11 @@ export default function App() {
   const [drinksAndSoupEnabled, setDrinksAndSoupEnabled] = useState(true);
   const [paymentBanner, setPaymentBanner] = useState<'success' | 'paid_schedule' | 'failed' | null>(null);
 
+  // Meal credits are a flexible pool — lunch vs dinner is decided when
+  // scheduling, so checkout always quotes the plan as plain meal credits.
   const [draft, setDraft] = useState<OrderDraft>(() => ({
     packageCode: null,
-    mealOption: 'LUNCH',
+    mealOption: 'BOTH',
     lunchVariant: 'NONVEG',
     dinnerVariant: 'NONVEG',
     riceType: 'WHITE',
@@ -488,16 +489,7 @@ export default function App() {
   const selectPackage = (code: BentoPackageCode) => {
     const pkg = packages.find((p) => p.code === code);
     if (!pkg) return;
-    setDraft((d) => ({
-      ...d,
-      packageCode: code,
-      mealOption:
-        pkg.newcomerLunchOnly || pkg.code === 'ONE_TIME'
-          ? 'LUNCH'
-          : d.mealOption === 'BOTH' && pkg.mealCredits === 1
-            ? 'LUNCH'
-            : d.mealOption,
-    }));
+    setDraft((d) => ({ ...d, packageCode: code }));
   };
 
   if (!authed) {
@@ -557,13 +549,6 @@ export default function App() {
             />
             {draft.packageCode && selectedPkg && (
               <>
-                <MealOptionPicker
-                  value={draft.mealOption}
-                  packageCode={draft.packageCode}
-                  mealCredits={selectedPkg.mealCredits}
-                  drinksAndSoupEnabled={drinksAndSoupEnabled}
-                  onChange={(mealOption) => setDraft((d) => ({ ...d, mealOption }))}
-                />
                 <MenuPicker
                   mealOption={draft.mealOption}
                   lunchVariant={draft.lunchVariant}

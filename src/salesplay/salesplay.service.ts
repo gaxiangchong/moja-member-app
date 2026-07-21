@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import type {
   SalesplayOnlineOrderInput,
   SalesplayOnlineOrderPushResult,
+  SalesplayPage,
+  SalesplayPageQuery,
 } from './salesplay-online-order.types';
 
 const SALESPLAY_TIMEZONE = 'Asia/Kuala_Lumpur';
@@ -67,6 +69,130 @@ export class SalesplayService {
       this.config.get<string>('SALESPLAY_API_BASE')?.trim().replace(/\/$/, '') ||
       'https://api.salesplaypos.com/v1.0'
     );
+  }
+
+  // ---- Pull sync (GET) --------------------------------------------------
+
+  /**
+   * Fetches one page of receipts from SalesPlay for the pull sync
+   * (backfill + reconciliation). See {@link getResourcePage} for the defensive
+   * response handling — the list/cursor shapes are undocumented.
+   */
+  async getReceiptsPage(opts: SalesplayPageQuery): Promise<SalesplayPage | null> {
+    return this.getResourcePage('receipts', opts);
+  }
+
+  /** Fetches one page of credit notes (in-store refunds) for the pull sync. */
+  async getCreditNotesPage(
+    opts: SalesplayPageQuery,
+  ): Promise<SalesplayPage | null> {
+    return this.getResourcePage('credit_notes', opts);
+  }
+
+  /** Max page size — SalesPlay caps at 250. */
+  pullPageSize(): number {
+    const n = Number(this.config.get<string>('SALESPLAY_PULL_PAGE_SIZE'));
+    if (!Number.isFinite(n) || n <= 0) return 250;
+    return Math.min(Math.floor(n), 250);
+  }
+
+  /**
+   * Low-level GET with cursor pagination. Never throws — returns null on any
+   * failure so a pull run degrades gracefully rather than crashing a loop.
+   *
+   * The exact query-param and response-envelope names are not documented, so
+   * they are configurable (with sensible defaults) and the response is parsed
+   * defensively. The raw first page is logged so the shape can be confirmed.
+   */
+  private async getResourcePage(
+    resource: 'receipts' | 'credit_notes',
+    opts: SalesplayPageQuery,
+  ): Promise<SalesplayPage | null> {
+    if (!this.isConfigured()) return null;
+    const token = this.config.getOrThrow<string>('SALESPLAY_ACCESS_TOKEN').trim();
+
+    const cursorParam =
+      this.config.get<string>('SALESPLAY_PULL_CURSOR_PARAM')?.trim() || 'cursor';
+    const fromParam =
+      this.config.get<string>('SALESPLAY_PULL_FROM_PARAM')?.trim() ||
+      'date_from';
+
+    const url = new URL(`${this.apiBase()}/${resource}`);
+    url.searchParams.set('limit', String(opts.limit ?? this.pullPageSize()));
+    if (opts.cursor) url.searchParams.set(cursorParam, opts.cursor);
+    if (opts.fromDate) url.searchParams.set(fromParam, opts.fromDate);
+    const shopId = this.config.get<string>('SALESPLAY_SHOP_ID')?.trim();
+    if (shopId) url.searchParams.set('shop_id', shopId);
+
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        this.logger.error(
+          `SalesPlay ${resource} GET failed (${res.status}): ${text.slice(0, 500)}`,
+        );
+        return null;
+      }
+      if (!opts.cursor) {
+        this.logger.debug(
+          `SalesPlay ${resource} first page: ${text.slice(0, 800)}`,
+        );
+      }
+      return this.parseResourcePage(text);
+    } catch (err) {
+      this.logger.error(
+        `SalesPlay ${resource} GET error: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  private parseResourcePage(text: string): SalesplayPage {
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return { items: [], nextCursor: null };
+    }
+
+    const root =
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const success =
+      root.success && typeof root.success === 'object'
+        ? (root.success as Record<string, unknown>)
+        : null;
+
+    // The array of records may sit under a few different envelope keys.
+    const items =
+      [root.receipts, root.credit_notes, root.data, root.items, root.results]
+        .concat(success ? [success.receipts, success.credit_notes, success.data] : [])
+        .find((v) => Array.isArray(v)) ?? (Array.isArray(data) ? data : []);
+
+    // The forward cursor likewise may be reported under several keys.
+    const paging =
+      root.paging && typeof root.paging === 'object'
+        ? (root.paging as Record<string, unknown>)
+        : root.meta && typeof root.meta === 'object'
+          ? (root.meta as Record<string, unknown>)
+          : {};
+    const nextCursor =
+      firstString([
+        root.next_cursor,
+        root.cursor,
+        root.next,
+        paging.next_cursor,
+        paging.cursor,
+        paging.next,
+        success?.next_cursor,
+        success?.cursor,
+      ]) ?? null;
+
+    return { items: Array.isArray(items) ? items : [], nextCursor };
   }
 
   /**
@@ -362,4 +488,13 @@ export class SalesplayService {
       return null;
     }
   }
+}
+
+/** First value that is a non-empty string (accepts numbers), else null. */
+function firstString(values: unknown[]): string | null {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  }
+  return null;
 }

@@ -22,9 +22,14 @@ import { AdminDailyCommerceDateDto } from './dto/admin-daily-commerce.dto';
 import { BentoCustomerLookupQueryDto } from './dto/bento-customer-lookup-query.dto';
 import { BentoOrdersReportQueryDto } from './dto/bento-orders-report-query.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
+import { PosPullDto } from './dto/pos-pull.dto';
+import { FinanceOverviewQueryDto } from './dto/finance-overview-query.dto';
+import { UnifiedTransactionsQueryDto } from './dto/unified-transactions-query.dto';
 import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
 import { BentoService } from '../bento/bento.service';
 import { BentoScheduleDto } from '../bento/dto/bento-subscription.dto';
+import { SalesplayPullService } from '../salesplay/salesplay-pull.service';
+import { FinanceReportService } from './finance-report.service';
 
 @Controller('admin/reports')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -33,7 +38,63 @@ export class AdminReportsController {
     private readonly admin: AdminService,
     private readonly bentoOrdersReport: BentoOrdersReportService,
     private readonly bento: BentoService,
+    private readonly salesplayPull: SalesplayPullService,
+    private readonly finance: FinanceReportService,
   ) {}
+
+  /**
+   * Consolidated cross-channel finance overview (POS + online shop + bento):
+   * per-channel totals, merged revenue series, payment-method mix, refunds,
+   * top products, and prior-period comparison.
+   */
+  @Get('finance-overview')
+  @RequirePermissions(P.REPORT_VIEW)
+  financeOverview(@Query() query: FinanceOverviewQueryDto) {
+    return this.finance.getFinanceOverview(query);
+  }
+
+  /**
+   * Unified transaction ledger across all three channels, each row tagged with
+   * its channel. Supports date / channel / payment-method / customer / amount
+   * filters, pagination, and CSV export.
+   */
+  @Get('transactions')
+  @RequirePermissions(P.REPORT_VIEW)
+  async transactions(
+    @Query() query: UnifiedTransactionsQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const payload = await this.finance.getUnifiedTransactions(query);
+    if (query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="transactions.csv"',
+      );
+      return this.finance.unifiedTransactionsToCsv(payload);
+    }
+    return payload;
+  }
+
+  /** SalesPlay POS ingest health for the finance dashboard sync panel. */
+  @Get('pos/sync-health')
+  @RequirePermissions(P.REPORT_VIEW)
+  posSyncHealth() {
+    return this.salesplayPull.getSyncHealth();
+  }
+
+  /**
+   * Manually trigger a SalesPlay pull. `mode=reconcile` (default) catches
+   * missed webhooks over a recent window; `mode=backfill` walks history from
+   * the sales reporting cutoff. Idempotent — safe to run anytime.
+   */
+  @Post('pos/pull')
+  @RequirePermissions(P.REPORT_VIEW)
+  posPull(@Body() body: PosPullDto) {
+    return body.mode === 'backfill'
+      ? this.salesplayPull.backfill()
+      : this.salesplayPull.reconcile();
+  }
 
   @Get('dashboard')
   @RequirePermissions(P.REPORT_VIEW)
@@ -164,6 +225,8 @@ export class AdminReportsController {
   /**
    * Schedule pickup days on a customer's behalf. Runs with admin override so
    * staff can resolve missed-cutoff / closed-day complaints from the dashboard.
+   * Pass `overrideLocked: true` to also edit days past the 5 PM day-before
+   * lock (e.g. switch a locked lunch+dinner day to dinner only).
    */
   @Post('bento-subscriptions/:id/schedule')
   @RequirePermissions(P.REPORT_VIEW)
