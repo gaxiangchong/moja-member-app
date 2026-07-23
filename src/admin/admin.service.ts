@@ -2368,7 +2368,7 @@ export class AdminService {
         customer: {
           select: { id: true, displayName: true, phoneE164: true },
         },
-        package: { select: { code: true, label: true } },
+        package: { select: { code: true, label: true, durationDays: true } },
         deliveries: {
           select: {
             includesLunch: true,
@@ -2380,6 +2380,13 @@ export class AdminService {
         },
       },
     });
+    const now = new Date();
+    const todayUtc = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const MS_PER_DAY = 86_400_000;
     const rows = subs.map((s) => {
       let collected = 0;
       let scheduled = 0;
@@ -2391,6 +2398,19 @@ export class AdminService {
         if (d.status === BentoDeliveryStatus.DELIVERED) collected += packs;
         else if (d.status === BentoDeliveryStatus.SCHEDULED) scheduled += packs;
       }
+      // Validity countdown: the package window (e.g. 90 days for 30 meals)
+      // counted from the purchase day, losing one day per calendar day.
+      // Day-of-purchase shows the full window; 0 = window used up.
+      const purchasedUtc = Date.UTC(
+        s.createdAt.getUTCFullYear(),
+        s.createdAt.getUTCMonth(),
+        s.createdAt.getUTCDate(),
+      );
+      const daysElapsed = Math.floor((todayUtc - purchasedUtc) / MS_PER_DAY);
+      const daysLeft = Math.max(0, s.package.durationDays - daysElapsed);
+      const validUntil = new Date(
+        purchasedUtc + s.package.durationDays * MS_PER_DAY,
+      );
       return {
         subscriptionId: s.id,
         status: s.status,
@@ -2412,6 +2432,9 @@ export class AdminService {
         ),
         startDate: s.startDate ? s.startDate.toISOString().slice(0, 10) : null,
         endDate: s.endDate ? s.endDate.toISOString().slice(0, 10) : null,
+        durationDays: s.package.durationDays,
+        daysLeft,
+        validUntil: validUntil.toISOString().slice(0, 10),
         createdAt: s.createdAt.toISOString(),
       };
     });

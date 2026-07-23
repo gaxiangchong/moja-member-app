@@ -3287,11 +3287,11 @@ export class AdminDashboardController {
                 </div>
               </div>
               <p class="field-hint" style="margin:0 20px 8px">
-                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first. Archiving only hides a row from this report — the plan and its pickup history are untouched.
+                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first. Days left counts down the package validity window (e.g. 90 days on the 30-meal plan) from the day of purchase — nudge customers with few days and many meals left to book their pickups. Archiving only hides a row from this report — the plan and its pickup history are untouched.
               </p>
               <div class="table-wrap">
                 <table class="data">
-                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Plan ends</th><th></th></tr></thead>
+                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Days left</th><th></th></tr></thead>
                   <tbody id="bsProgressBody"><tr><td colspan="11" class="muted-hint">Loading…</td></tr></tbody>
                 </table>
               </div>
@@ -6919,6 +6919,19 @@ export class AdminDashboardController {
         if (r.hiddenAt) statusBadge += ' <span class="pill neutral">Archived</span>';
         var left = Number(r.remainingMeals) || 0;
         var leftCell = left > 0 ? '<strong>' + left + '</strong>' : '<span class="field-hint" style="margin:0">0 · done</span>';
+        // Validity countdown: package window counted from purchase day.
+        var daysLeftCell;
+        var daysLeft = (r.daysLeft == null) ? null : Number(r.daysLeft);
+        if (daysLeft == null) {
+          daysLeftCell = '—';
+        } else if (r.status !== 'ACTIVE' || left <= 0) {
+          daysLeftCell = '<span class="field-hint" style="margin:0">—</span>';
+        } else if (daysLeft <= 0) {
+          daysLeftCell = '<span class="pill warn" title="Validity window used up (' + bpAttr(r.durationDays) + ' days from purchase)">0d · expired</span>';
+        } else {
+          var daysPill = daysLeft <= 7 ? '<span class="pill warn">' + daysLeft + 'd</span>' : '<strong>' + daysLeft + 'd</strong>';
+          daysLeftCell = daysPill + ' <span class="field-hint" style="margin:0" title="Valid until ' + bpAttr(r.validUntil || '') + '">of ' + bpAttr(r.durationDays) + 'd</span>';
+        }
         var actionBtn = r.hiddenAt
           ? '<button type="button" class="btn-outline bs-progress-restore" data-id="' + bpAttr(r.subscriptionId) + '" data-name="' + bpAttr(r.customerName || r.customerPhone || 'this plan') + '">Restore</button>'
           : '<button type="button" class="btn-outline bs-progress-archive" data-id="' + bpAttr(r.subscriptionId) + '" data-name="' + bpAttr(r.customerName || r.customerPhone || 'this plan') + '">Archive</button>';
@@ -6932,7 +6945,7 @@ export class AdminDashboardController {
           '<td>' + fmt(r.scheduledMeals) + '</td>' +
           '<td>' + fmt(r.unscheduledMeals) + '</td>' +
           '<td>' + leftCell + '</td>' +
-          '<td>' + fmt(r.endDate) + '</td>' +
+          '<td style="white-space:nowrap">' + daysLeftCell + '</td>' +
           '<td style="white-space:nowrap">' + actionBtn + '</td>' +
           '</tr>';
       });
