@@ -124,3 +124,64 @@ describe('SalesplayService.getReceiptsPage', () => {
     expect(url).toContain('/credit_note_and_refund');
   });
 });
+
+describe('SalesplayService.pushOnlineOrder', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const ONLINE_ENABLED = { ...ENABLED, SALESPLAY_SHOP_ID: 'SHOP-1' };
+
+  const orderInput = (
+    lines: {
+      productId: string;
+      salesplayProductCode?: string | null;
+    }[],
+  ) => ({
+    orderId: 'order-1',
+    orderNumber: 1001,
+    totalCents: 16800,
+    placedAt: new Date('2026-07-01T04:00:00Z'),
+    fulfillmentSummaryLines: [],
+    lines: lines.map((l) => ({
+      productId: l.productId,
+      name: 'Burnt Basque Cheesecake',
+      variantLabel: null,
+      unitPriceCents: 16800,
+      qty: 1,
+      salesplayProductCode: l.salesplayProductCode,
+    })),
+    customer: { displayName: 'Test Member', phoneE164: '+60123456789', email: null },
+  });
+
+  function mockFetch() {
+    const spy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({ success: { system_unique_id: 'SP-1' } }),
+    } as unknown as Response);
+    return spy;
+  }
+
+  it('sends the mapped SalesPlay product code as product_code', async () => {
+    const svc = new SalesplayService(configWith(ONLINE_ENABLED), prismaStub);
+    const spy = mockFetch();
+    await svc.pushOnlineOrder(
+      orderInput([{ productId: 'wc-basque', salesplayProductCode: 'SP-BASQUE' }]),
+    );
+    const payload = JSON.parse(
+      (spy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(payload.order_items[0].product_code).toBe('SP-BASQUE');
+  });
+
+  it('falls back to the catalog product id when no SalesPlay code is mapped', async () => {
+    const svc = new SalesplayService(configWith(ONLINE_ENABLED), prismaStub);
+    const spy = mockFetch();
+    await svc.pushOnlineOrder(
+      orderInput([{ productId: 'wc-basque', salesplayProductCode: null }]),
+    );
+    const payload = JSON.parse(
+      (spy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(payload.order_items[0].product_code).toBe('wc-basque');
+  });
+});

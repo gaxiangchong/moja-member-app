@@ -3081,12 +3081,18 @@ export class AdminDashboardController {
                 <label>Variants (sizes)</label>
                 <div class="table-wrap">
                   <table class="data" style="margin-bottom:8px">
-                    <thead><tr><th>Label</th><th style="width:140px">Price (RM)</th><th style="width:100px;text-align:center">Available</th><th style="width:60px">Remove</th></tr></thead>
+                    <thead><tr><th>Label</th><th style="width:140px">Price (RM)</th><th style="width:150px">SalesPlay code</th><th style="width:100px;text-align:center">Available</th><th style="width:60px">Remove</th></tr></thead>
                     <tbody id="scVariantsBody"></tbody>
                   </table>
                 </div>
                 <button type="button" class="btn-outline" id="scAddVariantBtn">Add variant</button>
                 <p class="field-hint">Add one row per size (e.g. <code>6 inch</code>, <code>8 inch</code>). The storefront shows the lowest available variant price. Leave empty for single-size products and rely on the Base price above.</p>
+              </div>
+              <div class="form-section">
+                <label for="scSalesplayCode">SalesPlay product code (POS)</label>
+                <input type="text" id="scSalesplayCode" list="scSalesplayCodesList" placeholder="Code of the matching product in SalesPlay" />
+                <datalist id="scSalesplayCodesList"></datalist>
+                <p class="field-hint">Links this product to its SalesPlay POS product so online orders pushed to SalesPlay carry the POS product code, and in-store receipts count toward the same product in reports. For sized products, also fill the per-variant <strong>SalesPlay code</strong> column above — a variant code wins over this product-level code. Suggestions are codes seen on synced POS receipts.</p>
               </div>
               <div class="form-row-2">
                 <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
@@ -7161,6 +7167,22 @@ export class AdminDashboardController {
       lastShopCatalogProducts = data || [];
       scPopulateCategoryFilter();
       renderShopCatalog();
+      scLoadSalesplayCodes();
+    }
+
+    var scSalesplayCodesLoaded = false;
+    /** Fills the SalesPlay-code datalist with codes seen on POS receipts (best-effort). */
+    function scLoadSalesplayCodes() {
+      if (scSalesplayCodesLoaded) return;
+      scSalesplayCodesLoaded = true;
+      api('/admin/shop-catalog/salesplay-codes').then(function (codes) {
+        var dl = document.getElementById('scSalesplayCodesList');
+        if (!dl || !Array.isArray(codes)) return;
+        dl.innerHTML = codes.map(function (c) {
+          var hint = (c.name ? c.name + ' — ' : '') + c.lineCount + ' receipt lines' + (c.mappedProductId ? ' (already mapped)' : '');
+          return '<option value="' + fmt(c.code) + '" label="' + fmt(hint) + '"></option>';
+        }).join('');
+      }).catch(function () { scSalesplayCodesLoaded = false; });
     }
     function renderShopCatalog() {
       var body = document.getElementById('shopCatalogBody');
@@ -7183,7 +7205,11 @@ export class AdminDashboardController {
         var lockBadge = (Array.isArray(p.syncOverrides) && p.syncOverrides.length > 0)
           ? ' <span title="Manual edits — protected from sync" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">\uD83D\uDD12 EDITED</span>'
           : '';
-        return '<tr><td>' + fmt(p.name) + lockBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
+        var hasSpCode = !!(p.salesplayProductCode || (p.salesplayVariantCodes && Object.keys(p.salesplayVariantCodes).length > 0));
+        var posBadge = hasSpCode
+          ? ' <span title="Mapped to a SalesPlay POS product" style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">POS</span>'
+          : ' <span title="No SalesPlay product code — in-store sales cannot be matched to this product in reports" style="background:#f1f5f9;color:#94a3b8;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:6px">NO POS</span>';
+        return '<tr><td>' + fmt(p.name) + lockBadge + posBadge + '</td><td>' + fmt(p.categoryLabel || p.category) + '</td><td>' + priceCell + '</td><td>' + fmt(p.sortOrder) + '</td><td>' +
           (p.isActive ? statusPill('YES') : statusPill('NO')) + '</td><td class="td-actions"><button type="button" class="icon-btn sc-edit-btn" data-id="' + fmt(p.id) + '">' + editSvg + '</button> <button type="button" class="icon-btn sc-delete-btn" data-id="' + fmt(p.id) + '" data-name="' + fmt(p.name) + '" title="Delete product">' + trashSvg + '</button></td></tr>';
       }).join('') || '<tr><td colspan="6" class="muted-hint">No products match.</td></tr>';
       scUpdateSortIndicators();
@@ -10866,15 +10892,17 @@ export class AdminDashboardController {
       var rows = (variants || []).map(function (v) {
         var label = (v && v.label) || '';
         var rm = v && v.priceCents != null ? (Number(v.priceCents) / 100).toFixed(2) : '';
+        var spCode = (v && v.salesplayCode) || '';
         var checked = v && v.available === false ? '' : 'checked';
         return '<tr class="sc-variant-row">' +
           '<td><input type="text" class="sc-var-label" value="' + fmt(label) + '" placeholder="6 inch" /></td>' +
           '<td><input type="number" class="sc-var-price" min="0" step="0.01" value="' + fmt(rm) + '" placeholder="0.00" /></td>' +
+          '<td><input type="text" class="sc-var-spcode" list="scSalesplayCodesList" value="' + fmt(spCode) + '" placeholder="POS code" /></td>' +
           '<td style="text-align:center"><input type="checkbox" class="sc-var-avail" ' + checked + ' /></td>' +
           '<td class="td-actions"><button type="button" class="icon-btn sc-var-remove" title="Remove">×</button></td>' +
           '</tr>';
       }).join('');
-      body.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:12px">No variants. Click <strong>Add variant</strong> to add one (e.g. 6 inch, 8 inch).</td></tr>';
+      body.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:12px">No variants. Click <strong>Add variant</strong> to add one (e.g. 6 inch, 8 inch).</td></tr>';
     }
 
     function scCollectVariants() {
@@ -10887,7 +10915,9 @@ export class AdminDashboardController {
         var rm = parseFloat(priceStr);
         var priceCents = Number.isFinite(rm) ? Math.round(rm * 100) : 0;
         var available = row.querySelector('.sc-var-avail').checked;
-        out.push({ label: label, priceCents: priceCents, available: available });
+        var spEl = row.querySelector('.sc-var-spcode');
+        var salesplayCode = spEl ? (spEl.value || '').trim() : '';
+        out.push({ label: label, priceCents: priceCents, available: available, salesplayCode: salesplayCode });
       });
       return out;
     }
@@ -11070,7 +11100,11 @@ export class AdminDashboardController {
       document.getElementById('scBadge').value = p.badge || '';
       document.getElementById('scActive').checked = !!p.isActive;
       document.getElementById('scSoldOut').checked = !!p.soldOut;
-      scRenderVariants(Array.isArray(p.variants) ? p.variants : []);
+      document.getElementById('scSalesplayCode').value = p.salesplayProductCode || '';
+      var spVarCodes = (p.salesplayVariantCodes && typeof p.salesplayVariantCodes === 'object') ? p.salesplayVariantCodes : {};
+      scRenderVariants((Array.isArray(p.variants) ? p.variants : []).map(function (v) {
+        return Object.assign({}, v, { salesplayCode: spVarCodes[(v.label || '').trim()] || '' });
+      }));
       document.getElementById('scSaveResult').textContent = '';
       var fileInput = document.getElementById('scImageFile');
       if (fileInput) fileInput.value = '';
@@ -11111,6 +11145,7 @@ export class AdminDashboardController {
       document.getElementById('scBadge').value = '';
       document.getElementById('scActive').checked = true;
       document.getElementById('scSoldOut').checked = false;
+      document.getElementById('scSalesplayCode').value = '';
       scRenderVariants([]);
       document.getElementById('scSaveResult').textContent = '';
       var fileInput = document.getElementById('scImageFile');
@@ -11222,6 +11257,10 @@ export class AdminDashboardController {
       var slug = document.getElementById('scIdVisible').value.trim();
       var out = document.getElementById('scSaveResult');
       var variants = scCollectVariants();
+      var spVariantCodes = {};
+      variants.forEach(function (v) {
+        if (v.label && v.salesplayCode) spVariantCodes[v.label] = v.salesplayCode;
+      });
       var body = {
         name: document.getElementById('scName').value.trim(),
         category: document.getElementById('scCategory').value,
@@ -11238,7 +11277,11 @@ export class AdminDashboardController {
         badge: document.getElementById('scBadge').value.trim() || undefined,
         isActive: document.getElementById('scActive').checked,
         soldOut: document.getElementById('scSoldOut').checked,
-        variants: variants,
+        variants: variants.map(function (v) {
+          return { label: v.label, priceCents: v.priceCents, available: v.available };
+        }),
+        salesplayProductCode: document.getElementById('scSalesplayCode').value.trim(),
+        salesplayVariantCodes: spVariantCodes,
       };
       if (!body.name) {
         out.textContent = 'Name is required.';

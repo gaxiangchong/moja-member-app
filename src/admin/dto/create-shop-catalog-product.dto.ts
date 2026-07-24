@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -107,4 +108,15 @@ export class CreateShopCatalogProductDto {
   @ValidateNested({ each: true })
   @Type(() => ShopCatalogVariantDto)
   variants?: ShopCatalogVariantDto[];
+
+  /** SalesPlay POS product code for this product (empty string clears it). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  salesplayProductCode?: string;
+
+  /** SalesPlay product code per variant, keyed by variant label. */
+  @IsOptional()
+  @IsObject()
+  salesplayVariantCodes?: Record<string, string>;
 }

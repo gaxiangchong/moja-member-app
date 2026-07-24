@@ -649,7 +649,7 @@ export class SalesplayService {
           ? `${line.name} (${line.variantLabel})`
           : line.name;
         return {
-          product_code: line.productId,
+          product_code: line.salesplayProductCode?.trim() || line.productId,
           product_name: productName,
           product_qty: line.qty,
           product_unit_price: unitRm,

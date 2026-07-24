@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   applySyncToMemberCatalog,
   buildSyncPreview,
@@ -63,12 +64,33 @@ export type ShopCatalogProduct = {
   isActive: boolean;
   sortOrder: number;
   /**
+   * SalesPlay POS product code for this product. Used as `product_code` when
+   * pushing online orders to SalesPlay, and to fold POS receipt lines back
+   * onto this catalog product in cross-channel reporting.
+   */
+  salesplayProductCode?: string | null;
+  /**
+   * SalesPlay product code per variant, keyed by the variant label (e.g.
+   * "6 inch" → "SP-BASQUE-6"). Sizes are usually separate SalesPlay products.
+   * Kept at product level (not on the variant objects) so sync from
+   * moja-sites, which replaces the variants array wholesale, cannot drop it.
+   */
+  salesplayVariantCodes?: Record<string, string>;
+  /**
    * Field names that the admin has manually edited. Sync from moja-sites will
    * skip these fields so manual prices, photos, and variants don't get
    * silently reverted on the next sync. Auto-populated by `updateProduct` and
    * `attachProductImage`. Cleared via the admin "Reset sync overrides" action.
    */
   syncOverrides?: string[];
+};
+
+/** One SalesPlay code with the catalog product it maps back to. */
+export type SalesplayCodeMapping = {
+  code: string;
+  productId: string;
+  productName: string;
+  variantLabel: string | null;
 };
 
 export type ShopCatalogSection = {
@@ -197,6 +219,25 @@ function clampScale(v: unknown): number | undefined {
   return Math.max(0.5, Math.min(3, Math.round(n * 100) / 100));
 }
 
+function normalizeSalesplayCode(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).trim();
+  return s ? s.slice(0, 64) : undefined;
+}
+
+function normalizeSalesplayVariantCodes(
+  v: unknown,
+): Record<string, string> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [label, code] of Object.entries(v as Record<string, unknown>)) {
+    const key = String(label ?? '').trim();
+    const val = normalizeSalesplayCode(code);
+    if (key && val) out[key] = val;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function detectChangedFields(
   before: ShopCatalogProduct | undefined,
   after: ShopCatalogProduct,
@@ -213,6 +254,8 @@ function detectChangedFields(
 
 @Injectable()
 export class ShopCatalogService {
+  constructor(private readonly prisma: PrismaService) {}
+
   private filePath(): string {
     return resolve(process.cwd(), 'data', 'shop-catalog.products.json');
   }
@@ -549,6 +592,14 @@ export class ShopCatalogService {
         raw.sortOrder != null && Number.isFinite(Number(raw.sortOrder))
           ? Number(raw.sortOrder)
           : (base.sortOrder ?? 0),
+      salesplayProductCode:
+        raw.salesplayProductCode !== undefined
+          ? normalizeSalesplayCode(raw.salesplayProductCode)
+          : (base.salesplayProductCode ?? undefined),
+      salesplayVariantCodes:
+        raw.salesplayVariantCodes !== undefined
+          ? normalizeSalesplayVariantCodes(raw.salesplayVariantCodes)
+          : (base.salesplayVariantCodes ?? undefined),
       syncOverrides: Array.isArray(raw.syncOverrides)
         ? expandSyncOverrides(raw.syncOverrides as string[])
         : (base.syncOverrides ?? undefined),
@@ -945,6 +996,93 @@ export class ShopCatalogService {
       productsCreated: createMissing ? preview.summary.toCreate : 0,
       layoutUpdated,
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // SalesPlay product mapping
+  // ---------------------------------------------------------------------
+
+  /**
+   * Resolves the SalesPlay product code for an order line: the variant-level
+   * code when the line has a matching variant label, else the product-level
+   * code, else null (caller falls back to the catalog product id).
+   */
+  resolveSalesplayProductCode(
+    productId: string,
+    variantLabel?: string | null,
+  ): string | null {
+    const product = this.readAll().find((p) => p.id === productId);
+    if (!product) return null;
+    const label = variantLabel?.trim();
+    if (label && product.salesplayVariantCodes) {
+      const exact = product.salesplayVariantCodes[label];
+      if (exact?.trim()) return exact.trim();
+    }
+    return product.salesplayProductCode?.trim() || null;
+  }
+
+  /**
+   * Every configured SalesPlay code → catalog product, for folding POS receipt
+   * lines back onto catalog identities in reporting. Variant codes map to
+   * their parent product (reporting is product-level). Codes are matched
+   * case-insensitively (keys are lower-cased).
+   */
+  salesplayCodeIndex(): Map<string, SalesplayCodeMapping> {
+    const index = new Map<string, SalesplayCodeMapping>();
+    for (const p of this.readAll()) {
+      const productCode = p.salesplayProductCode?.trim();
+      if (productCode) {
+        index.set(productCode.toLowerCase(), {
+          code: productCode,
+          productId: p.id,
+          productName: p.name,
+          variantLabel: null,
+        });
+      }
+      for (const [label, code] of Object.entries(
+        p.salesplayVariantCodes ?? {},
+      )) {
+        const trimmed = code?.trim();
+        if (!trimmed) continue;
+        index.set(trimmed.toLowerCase(), {
+          code: trimmed,
+          productId: p.id,
+          productName: p.name,
+          variantLabel: label,
+        });
+      }
+    }
+    return index;
+  }
+
+  /**
+   * Distinct product codes seen on POS receipt lines (with a sample name and
+   * how often each sold), to help the admin match catalog products to
+   * SalesPlay codes without leaving the dashboard.
+   */
+  async listKnownSalesplayCodes(): Promise<
+    { code: string; name: string; lineCount: number; mappedProductId: string | null }[]
+  > {
+    const rows = await this.prisma.posReceiptLine.groupBy({
+      by: ['productCode'],
+      where: { productCode: { not: null } },
+      _count: { _all: true },
+      _max: { name: true },
+      orderBy: { _count: { productCode: 'desc' } },
+      take: 500,
+    });
+    const index = this.salesplayCodeIndex();
+    return rows
+      .filter((r) => r.productCode?.trim())
+      .map((r) => {
+        const code = r.productCode!.trim();
+        return {
+          code,
+          name: r._max.name ?? '',
+          lineCount: r._count._all,
+          mappedProductId: index.get(code.toLowerCase())?.productId ?? null,
+        };
+      });
   }
 
   // ---------------------------------------------------------------------

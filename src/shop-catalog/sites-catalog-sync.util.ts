@@ -211,6 +211,9 @@ export function mergeSitesIntoMemberProduct(
       isActive: existing.isActive,
       sortOrder: existing.sortOrder,
       syncOverrides: existing.syncOverrides,
+      // Admin-managed POS mapping — never sourced from moja-sites.
+      salesplayProductCode: existing.salesplayProductCode,
+      salesplayVariantCodes: existing.salesplayVariantCodes,
       category: pickField(existing, fromSites, 'category', locks),
       categoryLabel: pickField(existing, fromSites, 'categoryLabel', locks),
       name: pickField(existing, fromSites, 'name', locks),

@@ -11,6 +11,12 @@ export type SalesplayOnlineOrderInput = {
     variantLabel: string | null;
     unitPriceCents: number;
     qty: number;
+    /**
+     * SalesPlay product code mapped in the shop catalog admin. When set it is
+     * sent as `product_code` (instead of our catalog product id) so the order
+     * lines match SalesPlay's own product catalog.
+     */
+    salesplayProductCode?: string | null;
   }[];
   customer: {
     displayName: string | null;

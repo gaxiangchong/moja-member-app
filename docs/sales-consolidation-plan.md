@@ -170,8 +170,14 @@ New nav group in `src/ui/admin-dashboard.controller.ts`:
 
 - Alert (email via new mailer) when a business day passes with zero POS
   receipts (webhook silently broken).
-- Product mapping table SalesPlay product code ↔ shop-catalog product, for
-  true cross-channel product-level reporting.
+- ~~Product mapping table SalesPlay product code ↔ shop-catalog product, for
+  true cross-channel product-level reporting.~~ **Done** — shop-catalog
+  products carry `salesplayProductCode` (+ per-variant `salesplayVariantCodes`,
+  keyed by variant label), editable in the admin Shopping catalog editor.
+  Online-order pushes send the mapped code as `product_code`, and finance
+  top-products folds POS receipt lines onto catalog identities via the same
+  mapping (`GET /admin/shop-catalog/salesplay-codes` lists codes seen on
+  receipts to help matching).
 - Monthly finance export (P&L-style summary) as XLSX.
 - Later: settlement reconciliation of Xendit payouts vs recorded online sales.
 

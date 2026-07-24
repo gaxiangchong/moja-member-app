@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { ReportingSettingsService } from './reporting-settings.service';
 import { FinanceOverviewQueryDto } from './dto/finance-overview-query.dto';
 import {
@@ -49,6 +50,7 @@ export class FinanceReportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reportingSettings: ReportingSettingsService,
+    private readonly shopCatalog: ShopCatalogService,
   ) {}
 
   private salesFloor(): Date | null {
@@ -420,11 +422,50 @@ export class FinanceReportService {
 
     return [
       ...tag(online, 'online_shop'),
-      ...tag(pos, 'pos'),
+      ...this.unifyPosProductRows(tag(pos, 'pos')),
       ...tag(bento, 'bento'),
     ]
       .sort((a, b) => b.revenueCents - a.revenueCents)
       .slice(0, 25);
+  }
+
+  /**
+   * Folds POS rows keyed by SalesPlay product codes onto shop-catalog product
+   * identities, using the mapping maintained in the shop catalog admin
+   * (`salesplayProductCode` / `salesplayVariantCodes`). Mapped rows take the
+   * catalog product id and name — so the same cake sold in-store and online
+   * shares one identity — and rows collapsing onto the same product (e.g.
+   * per-size POS codes) are re-aggregated. Unmapped codes pass through as-is.
+   */
+  private unifyPosProductRows(
+    rows: FinanceOverviewResult['topProducts'],
+  ): FinanceOverviewResult['topProducts'] {
+    const index = this.shopCatalog.salesplayCodeIndex();
+    if (index.size === 0) return rows;
+
+    const byProduct = new Map<string, FinanceOverviewResult['topProducts'][number]>();
+    const out: FinanceOverviewResult['topProducts'] = [];
+    for (const row of rows) {
+      const mapping = index.get(row.productId.trim().toLowerCase());
+      if (!mapping) {
+        out.push(row);
+        continue;
+      }
+      const existing = byProduct.get(mapping.productId);
+      if (existing) {
+        existing.qtySold += row.qtySold;
+        existing.revenueCents += row.revenueCents;
+      } else {
+        const merged = {
+          ...row,
+          productId: mapping.productId,
+          name: mapping.productName,
+        };
+        byProduct.set(mapping.productId, merged);
+        out.push(merged);
+      }
+    }
+    return out;
   }
 
   private emptyOverview(

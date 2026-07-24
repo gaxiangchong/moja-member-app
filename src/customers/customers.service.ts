@@ -18,6 +18,7 @@ import {
 import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
+import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 
 /**
@@ -124,6 +125,7 @@ export class CustomersService {
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
     private readonly salesplay: SalesplayService,
+    private readonly shopCatalog: ShopCatalogService,
     private readonly config: ConfigService,
   ) {}
 
@@ -943,6 +945,10 @@ export class CustomersService {
           variantLabel: line.variantLabel,
           unitPriceCents: line.unitPriceCents,
           qty: line.qty,
+          salesplayProductCode: this.shopCatalog.resolveSalesplayProductCode(
+            line.productId,
+            line.variantLabel,
+          ),
         })),
         customer: {
           displayName: order.customer.displayName,

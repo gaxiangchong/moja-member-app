@@ -413,6 +413,13 @@ export class AdminController {
     return this.shopCatalog.listAdminProducts();
   }
 
+  /** Distinct SalesPlay product codes seen on POS receipts, for mapping UI. */
+  @Get('shop-catalog/salesplay-codes')
+  @RequirePermissions(P.VOUCHER_READ)
+  listShopCatalogSalesplayCodes() {
+    return this.shopCatalog.listKnownSalesplayCodes();
+  }
+
   @Post('shop-catalog/products')
   @RequirePermissions(P.VOUCHER_CREATE)
   createShopCatalogProduct(@Body() dto: CreateShopCatalogProductDto) {
