@@ -19,6 +19,7 @@ import { BentoSettingsService } from './bento-settings.service';
 import { BentoFeaturesService } from './bento-features.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import { packsInDeliveryRow } from './bento-capacity.util';
+import { totalMealsAfterScheduleReplace } from './bento-schedule-credits.util';
 import {
   buildRemainingByDate,
   evaluatePurchaseCapacity,
@@ -690,6 +691,61 @@ export class BentoService implements OnModuleInit {
       });
     }
 
+    // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
+    // rows for this customer+package and clutter their list (and the "blocks
+    // scheduling" state). Clear them *before* claiming a promo slot so a retry
+    // can reuse the same code — otherwise a limited voucher stays CAPACITY_FULL
+    // until Xendit eventually emits payment.failure (or forever if it never does).
+    // Reconcile each with Xendit first so we never cancel an attempt that was
+    // actually paid but whose webhook is still in flight — a reconcile flips a
+    // paid one to ACTIVE, and the updateMany below only touches rows still
+    // PENDING_PAYMENT.
+    const priorPending = await this.prisma.bentoSubscription.findMany({
+      where: {
+        customerId,
+        packageId: pkg.id,
+        status: BentoSubscriptionStatus.PENDING_PAYMENT,
+      },
+      select: { id: true, paymentIntentId: true },
+    });
+    for (const prior of priorPending) {
+      await this.payments.reconcileBentoSubscriptionPayment(prior.id);
+    }
+    const stillPending =
+      priorPending.length === 0
+        ? []
+        : await this.prisma.bentoSubscription.findMany({
+            where: {
+              customerId,
+              packageId: pkg.id,
+              status: BentoSubscriptionStatus.PENDING_PAYMENT,
+            },
+            select: { id: true, paymentIntentId: true },
+          });
+    for (const prior of stillPending) {
+      if (prior.paymentIntentId) {
+        await this.bentoVouchers
+          .releaseByPaymentIntent(prior.paymentIntentId)
+          .catch(() => {});
+      }
+    }
+    if (stillPending.some((p) => !p.paymentIntentId)) {
+      // Mid-checkout crash: reservation exists but was never linked to an intent.
+      await this.bentoVouchers
+        .releaseUnattachedReservations(customerId)
+        .catch(() => {});
+    }
+    if (stillPending.length > 0) {
+      await this.prisma.bentoSubscription.updateMany({
+        where: {
+          customerId,
+          packageId: pkg.id,
+          status: BentoSubscriptionStatus.PENDING_PAYMENT,
+        },
+        data: { status: BentoSubscriptionStatus.CANCELLED },
+      });
+    }
+
     // Reserve the promo code (atomic capacity claim) and apply the discount to
     // the amount we charge. The reservation is released below if anything after
     // it fails, so capacity is never silently consumed by an abandoned checkout.
@@ -740,35 +796,6 @@ export class BentoService implements OnModuleInit {
       totalCents: quote.totalCents,
       status: BentoSubscriptionStatus.PENDING_PAYMENT,
     };
-
-    // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
-    // rows for this customer+package and clutter their list (and the "blocks
-    // scheduling" state). Before recording this new attempt, clear the earlier
-    // unpaid ones. Reconcile each with Xendit first so we never cancel an
-    // attempt that was actually paid but whose webhook is still in flight — a
-    // reconcile flips a paid one to ACTIVE, and the updateMany below only
-    // touches rows still PENDING_PAYMENT.
-    const priorPending = await this.prisma.bentoSubscription.findMany({
-      where: {
-        customerId,
-        packageId: pkg.id,
-        status: BentoSubscriptionStatus.PENDING_PAYMENT,
-      },
-      select: { id: true },
-    });
-    for (const prior of priorPending) {
-      await this.payments.reconcileBentoSubscriptionPayment(prior.id);
-    }
-    if (priorPending.length > 0) {
-      await this.prisma.bentoSubscription.updateMany({
-        where: {
-          customerId,
-          packageId: pkg.id,
-          status: BentoSubscriptionStatus.PENDING_PAYMENT,
-        },
-        data: { status: BentoSubscriptionStatus.CANCELLED },
-      });
-    }
 
     try {
       const subscriptions = await this.prisma.$transaction(async (tx) => {
@@ -911,6 +938,25 @@ export class BentoService implements OnModuleInit {
         (!unlockForAdmin && isPickupDateLocked(formatDateOnly(d.deliveryDate))),
     );
 
+    // validateScheduleSlots only sees the request payload. Delivered/skipped/
+    // locked days are kept even when omitted from the dto — count them too so
+    // a client cannot schedule a full new plan on top of already-consumed meals.
+    const immutableDates = new Set(
+      immutableDeliveries.map((d) => formatDateOnly(d.deliveryDate)),
+    );
+    const totalCredits = sub.lunchCredits + sub.dinnerCredits;
+    const finalMeals = totalMealsAfterScheduleReplace({
+      preservedDeliveries: immutableDeliveries,
+      proposedRows: rows,
+      immutableDates,
+    });
+    if (finalMeals > totalCredits) {
+      throw new BadRequestException({
+        code: 'BENTO_MEAL_CREDITS_EXCEEDED',
+        message: `You can schedule at most ${totalCredits} meal(s) on this plan (lunch and dinner combined).`,
+      });
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.bentoDeliveryDay.deleteMany({
         where: {
@@ -924,10 +970,6 @@ export class BentoService implements OnModuleInit {
 
       // Locked or already-delivered days are frozen and kept as-is — there is
       // one row per (subscription, date), so we never recreate them.
-      const immutableDates = new Set(
-        immutableDeliveries.map((d) => formatDateOnly(d.deliveryDate)),
-      );
-
       for (const row of rows) {
         const iso = formatDateOnly(row.deliveryDate);
         if (immutableDates.has(iso)) continue;
