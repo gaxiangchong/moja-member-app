@@ -9,6 +9,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 import { PaymentsController, WebhooksController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { PaymentsSettingsService } from './payments-settings.service';
 import { XenditApiService } from './xendit-api.service';
 
 @Module({
@@ -23,7 +24,7 @@ import { XenditApiService } from './xendit-api.service';
     BentoVoucherModule,
   ],
   controllers: [PaymentsController, WebhooksController],
-  providers: [PaymentsService, XenditApiService],
-  exports: [PaymentsService],
+  providers: [PaymentsService, XenditApiService, PaymentsSettingsService],
+  exports: [PaymentsService, PaymentsSettingsService],
 })
 export class PaymentsModule {}

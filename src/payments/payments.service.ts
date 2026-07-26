@@ -21,6 +21,7 @@ import {
   loadDefinitionDiscountMap,
 } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
+import { PaymentsSettingsService } from './payments-settings.service';
 import type { XenditPaymentRequestResponse } from './xendit-api.service';
 import { XenditApiService } from './xendit-api.service';
 
@@ -47,6 +48,7 @@ export class PaymentsService {
     private readonly rewardsWorkflow: RewardsWorkflowService,
     private readonly receiptEmail: ReceiptEmailService,
     private readonly bentoVoucher: BentoVoucherService,
+    private readonly paymentsSettings: PaymentsSettingsService,
   ) {}
 
   private memberPublicBase(): string {
@@ -74,6 +76,8 @@ export class PaymentsService {
 
   /** When true, checkout skips Xendit; client completes via demo endpoints. */
   paymentsDemoModeEnabled(): boolean {
+    const override = this.paymentsSettings.getDemoModeOverride();
+    if (override !== null) return override;
     const v = this.config
       .get<string>('PAYMENTS_DEMO_MODE')
       ?.trim()

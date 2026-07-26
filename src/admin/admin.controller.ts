@@ -35,6 +35,8 @@ import { AdminWalletReversalDto } from './dto/admin-wallet-reversal.dto';
 import { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
+import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
+import { UpdatePaymentsDemoModeDto } from './dto/update-payments-demo-mode.dto';
 import { RequestWalletReversalDto } from './dto/request-wallet-reversal.dto';
 import { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
@@ -251,6 +253,23 @@ export class AdminController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.revokeCustomerVoucher(id, voucherId, dto, auth);
+  }
+
+  @Get('customers/:id/vouchers/redeemable')
+  @RequirePermissions(P.VOUCHER_READ)
+  listRedeemableVouchers(@Param('id') id: string) {
+    return this.admin.listRedeemableVouchers(id);
+  }
+
+  @Post('customers/:id/vouchers/:voucherId/redeem')
+  @RequirePermissions(P.VOUCHER_REDEEM)
+  redeemVoucherInStore(
+    @Param('id') id: string,
+    @Param('voucherId') voucherId: string,
+    @Body() dto: RedeemVoucherDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.redeemVoucherInStore(id, voucherId, dto, auth);
   }
 
   @Get('voucher-definitions')
@@ -562,6 +581,23 @@ export class AdminController {
     return this.reportingSettings.setSettings({
       salesStartDate: dto.salesStartDate ?? null,
     });
+  }
+
+  // --- Payments demo/test mode (System config) ---
+
+  @Get('payments/demo-mode')
+  @RequirePermissions(P.MASTER_MANAGE)
+  getPaymentsDemoMode() {
+    return this.admin.getPaymentsDemoMode();
+  }
+
+  @Put('payments/demo-mode')
+  @RequirePermissions(P.MASTER_MANAGE)
+  setPaymentsDemoMode(
+    @Body() dto: UpdatePaymentsDemoModeDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.setPaymentsDemoMode(dto, auth);
   }
 
   @Get('bento-settings')

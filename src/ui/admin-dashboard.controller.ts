@@ -31,6 +31,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-orders': true,
     'bento-vouchers': true,
     'voucher-campaigns': true,
+    'voucher-redeem': true,
     'gift-rewards': true,
     'mailer-campaigns': true,
     'settings-shopping-catalog': true,
@@ -1154,6 +1155,10 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/><path d="M7 12h.01M17 12h.01M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
               Vouchers
             </button>
+            <button type="button" class="nav-btn nav-sub" data-view="voucher-redeem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+              Redeem voucher (in-store)
+            </button>
             <button type="button" class="nav-btn nav-sub" data-view="gift-rewards">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
               Gift rewards
@@ -2060,6 +2065,51 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="voucher-redeem" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Redeem voucher (in-store)</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:760px">
+              <p class="field-hint" style="margin-top:0">
+                For walk-in members: find them by phone, then mark whichever voucher they're using as redeemed.
+                SalesPlay has no voucher/discount API, so apply the matching discount manually on the till first,
+                then redeem it here so it can't be reused.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px">
+                <div>
+                  <label for="vrPhone">Member phone</label>
+                  <input type="text" id="vrPhone" placeholder="e.g. 60123456789" />
+                </div>
+                <div style="display:flex;align-items:flex-end">
+                  <button type="button" class="btn-primary" id="vrFindBtn">Find member</button>
+                </div>
+              </div>
+              <p class="field-hint" id="vrFindResult"></p>
+
+              <div id="vrMemberPanel" style="display:none;margin-top:16px">
+                <h3 style="margin:0 0 8px;font-size:14px">Vouchers for <span id="vrMemberName"></span></h3>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Title</th>
+                        <th>Discount</th>
+                        <th>Source</th>
+                        <th>Expires</th>
+                        <th style="text-align:center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vrVouchersBody"></tbody>
+                  </table>
+                </div>
+                <p class="field-hint" id="vrVouchersResult"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="gift-rewards" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
@@ -2918,9 +2968,29 @@ export class AdminDashboardController {
           </div>
 
           <div class="sheet" style="margin-top:16px">
-            <div class="sheet-head"><h2>System config</h2></div>
-            <div class="coming-soon">
-              System configuration (feature flags and sensitive runtime settings) should be read-only by default, with explicit privileged edit mode and full audit logging for each change.
+            <div class="sheet-head">
+              <h2>Payments test mode</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="demoModeSaveBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:560px">
+              <p class="field-hint" style="margin-top:0">
+                For staff training/rehearsal only. When ON, every shop checkout on this server skips
+                Xendit/TNG and completes as a dummy payment instead &mdash; for <strong>all customers</strong>,
+                not just staff. The order still gets a pickup QR, staff still scan it to collect, and
+                points are still awarded automatically.
+              </p>
+              <div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#991b1b;margin-bottom:12px">
+                <strong>Never enable this in production.</strong> It disables real payment collection for everyone.
+              </div>
+              <label for="demoModeSelect">Mode</label>
+              <select id="demoModeSelect" style="max-width:280px">
+                <option value="true">On &mdash; force test mode</option>
+                <option value="false">Off &mdash; force real payments</option>
+                <option value="null">Use server default (.env)</option>
+              </select>
+              <p class="field-hint" id="demoModeResult" style="margin-top:10px"></p>
             </div>
           </div>
         </section>
@@ -3961,7 +4031,7 @@ export class AdminDashboardController {
       'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders', 'bento-vouchers',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
-      'voucher-campaigns', 'gift-rewards',
+      'voucher-campaigns', 'voucher-redeem', 'gift-rewards',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
@@ -4016,6 +4086,7 @@ export class AdminDashboardController {
       'loyalty-rules': iconLoyalty,
       'loyalty-campaigns': iconLoyalty,
       'voucher-campaigns': iconVoucher,
+      'voucher-redeem': iconVoucher,
       'gift-rewards': iconLoyalty,
       'campaigns-segments': iconUsers,
       'campaigns-push-voucher': iconVoucher,
@@ -4065,6 +4136,7 @@ export class AdminDashboardController {
       'loyalty-rules': 'Loyalty · Points rules',
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
       'voucher-campaigns': 'Loyalty · Vouchers',
+      'voucher-redeem': 'Loyalty · Redeem voucher (in-store)',
       'gift-rewards': 'Loyalty · Gift rewards',
       'campaigns-segments': 'Campaigns · Customer segments',
       'campaigns-push-voucher': 'Campaigns · Push voucher',
@@ -7090,6 +7162,38 @@ export class AdminDashboardController {
       }
     }
 
+    function demoModeStatusText(state) {
+      var source = state.override !== null ? 'admin override' : 'server .env default';
+      return 'Currently ' + (state.effective ? 'ON' : 'OFF') + ' (' + source + ').';
+    }
+    async function loadDemoModeSetting() {
+      var sel = document.getElementById('demoModeSelect');
+      var out = document.getElementById('demoModeResult');
+      if (!sel) return;
+      try {
+        var state = await api('/admin/payments/demo-mode');
+        sel.value = state.override === null ? 'null' : String(state.override);
+        if (out) out.textContent = demoModeStatusText(state);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function saveDemoModeSetting() {
+      var sel = document.getElementById('demoModeSelect');
+      var out = document.getElementById('demoModeResult');
+      if (!sel) return;
+      var raw = sel.value;
+      var enabled = raw === 'null' ? null : raw === 'true';
+      if (out) out.textContent = 'Saving…';
+      try {
+        var state = await apiPut('/admin/payments/demo-mode', { enabled: enabled });
+        sel.value = state.override === null ? 'null' : String(state.override);
+        if (out) out.textContent = 'Saved. ' + demoModeStatusText(state);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+
     var scTableState = { sortKey: null, sortDir: 'asc', filters: { name: '', category: '', price: '', sort: '', visible: '' } };
     function scPriceNumeric(p) {
       if (Array.isArray(p.variants) && p.variants.length) {
@@ -8635,6 +8739,12 @@ export class AdminDashboardController {
         saveReportingSettings(true).catch(function (e) { statusPanel.textContent = e.message; });
       });
     }
+    var demoModeSaveBtn = document.getElementById('demoModeSaveBtn');
+    if (demoModeSaveBtn) {
+      demoModeSaveBtn.addEventListener('click', function () {
+        saveDemoModeSetting().catch(function (e) { statusPanel.textContent = e.message; });
+      });
+    }
     // Any filter/sort change jumps back to page 1 and reloads.
     function reloadCustomersFromPageOne() {
       customerPage = 1;
@@ -9927,6 +10037,73 @@ export class AdminDashboardController {
         if (out) out.textContent = e.message || String(e);
       }
     }
+    async function vrFindMember() {
+      var phone = String((document.getElementById('vrPhone') || {}).value || '').trim();
+      var out = document.getElementById('vrFindResult');
+      var panel = document.getElementById('vrMemberPanel');
+      if (!phone) { if (out) out.textContent = 'Enter a member phone.'; return; }
+      if (out) out.textContent = 'Searching…';
+      if (panel) panel.style.display = 'none';
+      try {
+        var res = await api('/admin/customers?search=' + encodeURIComponent(phone) + '&pageSize=5');
+        var items = (res && res.items) || [];
+        if (!items.length) throw new Error('No member found for that phone.');
+        var match = items.find(function (m) { return (m.phoneE164 || '').replace(/\D/g, '').indexOf(phone.replace(/\D/g, '')) !== -1; }) || items[0];
+        if (out) out.textContent = '';
+        var nameEl = document.getElementById('vrMemberName');
+        if (nameEl) nameEl.textContent = match.displayName || match.phoneE164 || 'Member';
+        if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
+        await vrLoadVouchers(match.id);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrLoadVouchers(customerId) {
+      var body = document.getElementById('vrVouchersBody');
+      var out = document.getElementById('vrVouchersResult');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="6" class="muted-hint">Loading…</td></tr>';
+      try {
+        var items = await api('/admin/customers/' + encodeURIComponent(customerId) + '/vouchers/redeemable');
+        if (!items || !items.length) {
+          body.innerHTML = '<tr><td colspan="6" class="muted-hint">No redeemable vouchers.</td></tr>';
+          if (out) out.textContent = '';
+          return;
+        }
+        body.innerHTML = items.map(function (v) {
+          var action = v.locked
+            ? '<span class="muted-hint">Locked (online checkout)</span>'
+            : '<button type="button" class="btn-primary vr-redeem-btn" data-id="' + vcEsc(v.id) + '" data-source="' + vcEsc(v.source) + '" data-code="' + vcEsc(v.code) + '" style="padding:3px 8px;font-size:12px">Redeem</button>';
+          return '<tr>' +
+            '<td><code style="font-size:11px">' + vcEsc(v.code) + '</code></td>' +
+            '<td>' + vcEsc(v.title || '') + '</td>' +
+            '<td>' + vcEsc(v.discountLabel || '') + '</td>' +
+            '<td>' + (v.source === 'CATALOG' ? 'Catalog' : 'Campaign') + '</td>' +
+            '<td style="font-size:12px">' + (v.expiresAt ? vcEsc(vcShortDate(v.expiresAt)) : '—') + '</td>' +
+            '<td style="text-align:center">' + action + '</td>' +
+            '</tr>';
+        }).join('');
+        if (out) out.textContent = '';
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="6" class="muted-hint">Error loading vouchers.</td></tr>';
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrRedeem(voucherId, source, code) {
+      var panel = document.getElementById('vrMemberPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      if (!window.confirm('Redeem voucher ' + code + ' now? This cannot be undone.')) return;
+      var out = document.getElementById('vrVouchersResult');
+      if (out) out.textContent = 'Redeeming…';
+      try {
+        await apiPost('/admin/customers/' + encodeURIComponent(customerId) + '/vouchers/' + encodeURIComponent(voucherId) + '/redeem', { source: source, reason: 'staff_instore_redeem' });
+        if (out) out.textContent = 'Redeemed ' + code + '.';
+        await vrLoadVouchers(customerId);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
     function grSyncType() {
       var typeSel = document.getElementById('grType');
       var wrap = document.getElementById('grCampaignWrap');
@@ -10056,6 +10233,19 @@ export class AdminDashboardController {
       if (!t || !t.closest) return;
       var b = t.closest('.iv-withdraw-btn');
       if (b) ivWithdraw(b.getAttribute('data-id'), b.getAttribute('data-code'));
+    });
+    var vrFindBtn = document.getElementById('vrFindBtn');
+    if (vrFindBtn) vrFindBtn.addEventListener('click', function () { vrFindMember(); });
+    var vrPhoneEl = document.getElementById('vrPhone');
+    if (vrPhoneEl) vrPhoneEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') vrFindMember();
+    });
+    var vrVouchersBodyEl = document.getElementById('vrVouchersBody');
+    if (vrVouchersBodyEl) vrVouchersBodyEl.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var b = t.closest('.vr-redeem-btn');
+      if (b) vrRedeem(b.getAttribute('data-id'), b.getAttribute('data-source'), b.getAttribute('data-code'));
     });
     var giftRewardsBodyEl = document.getElementById('giftRewardsBody');
     if (giftRewardsBodyEl) {
@@ -11558,6 +11748,9 @@ export class AdminDashboardController {
           }
           if (view === 'settings-system' && isConnected) {
             loadReportingSettings().catch(function (err) {
+              statusPanel.textContent = err.message || String(err);
+            });
+            loadDemoModeSetting().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
           }

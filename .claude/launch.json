@@ -13,6 +13,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start:dev"],
       "port": 3153
+    },
+    {
+      "name": "ops-queue-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "ops-queue-web",
+      "port": 5194
     }
   ]
 }
