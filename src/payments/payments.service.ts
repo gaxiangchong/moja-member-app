@@ -1272,19 +1272,36 @@ export class PaymentsService {
         : undefined;
 
     try {
-      await this.wallet.appendTransaction({
-        customerId: intent.customerId,
-        type: WalletTxnType.TOPUP,
-        amountCents: intent.amountCents,
-        reason: 'xendit_wallet_topup',
-        createdByType: 'system',
-        metadata: {
-          paymentIntentId: intent.id,
-          referenceId: intent.referenceId,
-          xenditPaymentRequestId: intent.xenditPaymentRequestId,
-          xenditPaymentId: paymentId,
-        },
-      });
+      // Idempotent: if a prior attempt credited the wallet then failed while
+      // marking SUCCEEDED (catch resets to PENDING), do not credit again.
+      const alreadyCredited =
+        await this.prisma.storedWalletLedgerEntry.findFirst({
+          where: {
+            customerId: intent.customerId,
+            type: WalletTxnType.TOPUP,
+            reason: 'xendit_wallet_topup',
+            metadata: {
+              path: ['paymentIntentId'],
+              equals: intent.id,
+            },
+          },
+          select: { id: true },
+        });
+      if (!alreadyCredited) {
+        await this.wallet.appendTransaction({
+          customerId: intent.customerId,
+          type: WalletTxnType.TOPUP,
+          amountCents: intent.amountCents,
+          reason: 'xendit_wallet_topup',
+          createdByType: 'system',
+          metadata: {
+            paymentIntentId: intent.id,
+            referenceId: intent.referenceId,
+            xenditPaymentRequestId: intent.xenditPaymentRequestId,
+            xenditPaymentId: paymentId,
+          },
+        });
+      }
 
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
@@ -1523,13 +1540,29 @@ export class PaymentsService {
       input.pointsCost != null &&
       input.pointsCost > 0
     ) {
-      await this.loyalty.appendLedgerEntry({
-        customerId: input.customerId,
-        deltaPoints: -input.pointsCost,
-        reason: `checkout_redeem_${input.rewardDefinitionId}`,
-        referenceType: 'customer_order',
-        referenceId: input.orderId,
+      const redeemReason = `checkout_redeem_${input.rewardDefinitionId}`;
+      // Idempotent across payment finalize retries: order purchase credits use
+      // the same referenceType/referenceId but a different reason, so key on
+      // the redeem reason to avoid double-deducting after a SUCCEEDED update
+      // failure resets the intent to PENDING.
+      const alreadyRedeemed = await this.prisma.loyaltyLedgerEntry.findFirst({
+        where: {
+          customerId: input.customerId,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+          reason: redeemReason,
+        },
+        select: { id: true },
       });
+      if (!alreadyRedeemed) {
+        await this.loyalty.appendLedgerEntry({
+          customerId: input.customerId,
+          deltaPoints: -input.pointsCost,
+          reason: redeemReason,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+        });
+      }
     }
   }
 }
