@@ -293,21 +293,32 @@ export function parseReceipt(raw: unknown): ParsedReceipt | null {
   };
 }
 
-/** Parses a credit-note (refund/void) record. Null when no stable id present. */
+/**
+ * Parses a credit-note (refund/void) record. Null when no stable id present.
+ *
+ * Live SalesPlay `/credit_note_and_refund` (and `credit_note.update` webhooks)
+ * return receipt-shaped objects: `receipt_number`, `refund_for`, `total_money`
+ * — the same field names as GET /receipts — not a separate credit_note_* schema.
+ * Keep the speculative credit_note_* keys as fallbacks for older guesses / tests.
+ */
 export function parseCreditNote(raw: unknown): ParsedCreditNote | null {
   const note = asRecord(raw);
   if (!note) return null;
 
   const salesplayCreditNoteId = pickString(note, [
     'credit_note_id',
-    'id',
     'credit_note_number',
     'cn_number',
+    // Live API id for cash refunds / credit notes (developer.salesplay.com).
+    'receipt_number',
+    'id',
   ]);
   if (!salesplayCreditNoteId) return null;
 
   const soldAt = parseMytInstant(pickString(note, RECEIPT_DATE_KEYS));
   const amount = pickNumber(note, [
+    // total_money is the live API's name (same as receipts).
+    'total_money',
     'total',
     'total_amount',
     'net_amount',
@@ -317,11 +328,13 @@ export function parseCreditNote(raw: unknown): ParsedCreditNote | null {
 
   return {
     salesplayCreditNoteId,
+    // refund_for is the original SALE receipt number on the live API.
+    // Do not treat this note's own receipt_number as the parent sale.
     salesplayReceiptId: pickString(note, [
-      'receipt_id',
-      'receipt_number',
+      'refund_for',
       'original_receipt_id',
       'reference_receipt_id',
+      'receipt_id',
     ]),
     businessDate: mytBusinessDate(soldAt ?? new Date()),
     amountCents: rmToCents(amount),
