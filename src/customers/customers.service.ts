@@ -45,6 +45,14 @@ export function interestTagForSource(
   }
 }
 
+/**
+ * Per-year birthday gift key stored on LoyaltyLedgerEntry.referenceType.
+ * Must not use referenceId for the calendar year: that column is @db.Uuid.
+ */
+export function birthdayRewardYearKey(year: number): string {
+  return `birthday:${year}`;
+}
+
 function fulfillmentSummaryLinesFromJson(
   raw: Prisma.JsonValue | null,
 ): string[] {
@@ -170,46 +178,47 @@ export class CustomersService {
    * gift. No scheduler required.
    */
   private async maybeGrantBirthdayReward(customerId: string): Promise<void> {
-    const rewardPoints = this.birthdayRewardPoints();
-    if (rewardPoints <= 0) return;
-
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: customerId },
-      select: { id: true, birthday: true },
-    });
-    if (!customer?.birthday) return;
-
-    const now = new Date();
-    const currentMonth = now.getUTCMonth();
-    const currentYear = now.getUTCFullYear();
-    if (customer.birthday.getUTCMonth() !== currentMonth) return;
-
-    const yearRef = String(currentYear);
-    const already = await this.prisma.loyaltyLedgerEntry.findFirst({
-      where: {
-        customerId,
-        reason: 'birthday_reward',
-        referenceType: 'birthday',
-        referenceId: yearRef,
-      },
-      select: { id: true },
-    });
-    if (already) return;
-
+    // Entire grant path is fail-soft: profile load/update must never 500
+    // because of a birthday gift lookup or ledger write.
     try {
+      const rewardPoints = this.birthdayRewardPoints();
+      if (rewardPoints <= 0) return;
+
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, birthday: true },
+      });
+      if (!customer?.birthday) return;
+
+      const now = new Date();
+      const currentMonth = now.getUTCMonth();
+      const currentYear = now.getUTCFullYear();
+      if (customer.birthday.getUTCMonth() !== currentMonth) return;
+
+      // Year is stored in referenceType — LoyaltyLedgerEntry.referenceId is UUID.
+      const yearKey = birthdayRewardYearKey(currentYear);
+      const already = await this.prisma.loyaltyLedgerEntry.findFirst({
+        where: {
+          customerId,
+          reason: 'birthday_reward',
+          referenceType: yearKey,
+        },
+        select: { id: true },
+      });
+      if (already) return;
+
       const result = await this.loyalty.appendLedgerEntry({
         customerId,
         deltaPoints: rewardPoints,
         reason: 'birthday_reward',
-        referenceType: 'birthday',
-        referenceId: yearRef,
+        referenceType: yearKey,
+        referenceId: null,
       });
       this.logger.log(
         `Awarded ${rewardPoints} birthday points to member ${customerId} ` +
-          `for ${yearRef} (balanceAfter=${result.balanceAfter}).`,
+          `for ${yearKey} (balanceAfter=${result.balanceAfter}).`,
       );
     } catch (err) {
-      // A birthday gift must never break profile load/update.
       this.logger.error(
         `Birthday reward grant failed for member ${customerId}`,
         err as Error,
