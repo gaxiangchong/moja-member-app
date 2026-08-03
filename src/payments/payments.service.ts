@@ -36,6 +36,12 @@ export class PaymentsService {
     SHOPEEPAY_MY: 'SHOPEEPAY',
     FPX_MY: 'FPX',
   };
+  /**
+   * Finalize lease: PENDING → PROCESSING is the mutex. A process crash can leave
+   * PROCESSING forever (catch never resets to PENDING). After this age, webhook /
+   * status reconcile may reclaim the lease. Side effects must be idempotent.
+   */
+  private static readonly FINALIZE_LEASE_STALE_MS = 2 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -879,11 +885,12 @@ export class PaymentsService {
       });
     }
 
-    // Active reconciliation: if the intent is still pending, pull the latest
-    // status straight from Xendit and finalize it. This makes e-wallet
-    // payments (TnG, ShopeePay) succeed even when the webhook can't reach us
-    // (common in test/local), instead of getting stuck on PENDING_PAYMENT.
-    if (intent.status === 'PENDING' && intent.xenditPaymentRequestId) {
+    // Active reconciliation: if the intent is still open (or left PROCESSING
+    // after a crash), pull the latest status from Xendit and finalize it.
+    if (
+      this.isOpenForFinalize(intent.status) &&
+      intent.xenditPaymentRequestId
+    ) {
       try {
         const data = await this.xendit.getPaymentRequest(
           intent.xenditPaymentRequestId,
@@ -954,7 +961,7 @@ export class PaymentsService {
     });
     if (
       !intent ||
-      intent.status !== 'PENDING' ||
+      !this.isOpenForFinalize(intent.status) ||
       intent.purpose !== 'bento_subscription' ||
       !intent.xenditPaymentRequestId
     ) {
@@ -987,6 +994,50 @@ export class PaymentsService {
     await this.creditWalletIfNeeded(intent.id, referenceId, data);
   }
 
+  private isOpenForFinalize(status: string): boolean {
+    return status === 'PENDING' || status === 'PROCESSING';
+  }
+
+  /**
+   * Acquire (or reclaim a stale) finalize lease. Concurrent callers lose until
+   * the holder finishes or the lease ages past FINALIZE_LEASE_STALE_MS.
+   */
+  private async acquirePaymentFinalizeLock(intentId: string): Promise<boolean> {
+    const pending = await this.prisma.paymentIntent.updateMany({
+      where: { id: intentId, status: 'PENDING' },
+      data: { status: 'PROCESSING' },
+    });
+    if (pending.count > 0) return true;
+
+    const staleBefore = new Date(
+      Date.now() - PaymentsService.FINALIZE_LEASE_STALE_MS,
+    );
+    const stale = await this.prisma.paymentIntent.findFirst({
+      where: {
+        id: intentId,
+        status: 'PROCESSING',
+        updatedAt: { lt: staleBefore },
+      },
+      select: { id: true, metadata: true },
+    });
+    if (!stale) return false;
+
+    // Bump metadata (and @updatedAt) atomically so a second reclaim loses.
+    const reclaimed = await this.prisma.paymentIntent.updateMany({
+      where: {
+        id: intentId,
+        status: 'PROCESSING',
+        updatedAt: { lt: staleBefore },
+      },
+      data: {
+        metadata: mergeMetadata(stale.metadata, {
+          finalizeLeaseReclaimedAt: new Date().toISOString(),
+        }) as object,
+      },
+    });
+    return reclaimed.count > 0;
+  }
+
   private async applyBentoSubscriptionFromXendit(
     referenceId: string,
     data: XenditPaymentRequestResponse,
@@ -997,11 +1048,8 @@ export class PaymentsService {
     if (!intent || intent.purpose !== 'bento_subscription') return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
-    if (lock.count === 0) return;
+    const locked = await this.acquirePaymentFinalizeLock(intent.id);
+    if (!locked) return;
 
     const meta = intent.metadata as {
       subscriptionId?: string;
@@ -1074,11 +1122,8 @@ export class PaymentsService {
     if (!intent || intent.purpose !== 'shop_order') return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
-    if (lock.count === 0) return;
+    const locked = await this.acquirePaymentFinalizeLock(intent.id);
+    if (!locked) return;
 
     const meta = intent.metadata as {
       orderId?: string;
@@ -1260,11 +1305,8 @@ export class PaymentsService {
     if (!intent || intent.referenceId !== referenceId) return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
-    if (lock.count === 0) return;
+    const locked = await this.acquirePaymentFinalizeLock(intent.id);
+    if (!locked) return;
 
     const paymentId =
       typeof _xenditData.payment_id === 'string'
@@ -1272,19 +1314,36 @@ export class PaymentsService {
         : undefined;
 
     try {
-      await this.wallet.appendTransaction({
-        customerId: intent.customerId,
-        type: WalletTxnType.TOPUP,
-        amountCents: intent.amountCents,
-        reason: 'xendit_wallet_topup',
-        createdByType: 'system',
-        metadata: {
-          paymentIntentId: intent.id,
-          referenceId: intent.referenceId,
-          xenditPaymentRequestId: intent.xenditPaymentRequestId,
-          xenditPaymentId: paymentId,
-        },
-      });
+      // Idempotent: crash after credit (or SUCCEEDED write failure that reset
+      // to PENDING) must not credit the stored wallet again on reclaim/retry.
+      const alreadyCredited =
+        await this.prisma.storedWalletLedgerEntry.findFirst({
+          where: {
+            customerId: intent.customerId,
+            type: WalletTxnType.TOPUP,
+            reason: 'xendit_wallet_topup',
+            metadata: {
+              path: ['paymentIntentId'],
+              equals: intent.id,
+            },
+          },
+          select: { id: true },
+        });
+      if (!alreadyCredited) {
+        await this.wallet.appendTransaction({
+          customerId: intent.customerId,
+          type: WalletTxnType.TOPUP,
+          amountCents: intent.amountCents,
+          reason: 'xendit_wallet_topup',
+          createdByType: 'system',
+          metadata: {
+            paymentIntentId: intent.id,
+            referenceId: intent.referenceId,
+            xenditPaymentRequestId: intent.xenditPaymentRequestId,
+            xenditPaymentId: paymentId,
+          },
+        });
+      }
 
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },
@@ -1523,13 +1582,26 @@ export class PaymentsService {
       input.pointsCost != null &&
       input.pointsCost > 0
     ) {
-      await this.loyalty.appendLedgerEntry({
-        customerId: input.customerId,
-        deltaPoints: -input.pointsCost,
-        reason: `checkout_redeem_${input.rewardDefinitionId}`,
-        referenceType: 'customer_order',
-        referenceId: input.orderId,
+      const redeemReason = `checkout_redeem_${input.rewardDefinitionId}`;
+      // Idempotent across finalize retries / stale PROCESSING reclaim.
+      const alreadyRedeemed = await this.prisma.loyaltyLedgerEntry.findFirst({
+        where: {
+          customerId: input.customerId,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+          reason: redeemReason,
+        },
+        select: { id: true },
       });
+      if (!alreadyRedeemed) {
+        await this.loyalty.appendLedgerEntry({
+          customerId: input.customerId,
+          deltaPoints: -input.pointsCost,
+          reason: redeemReason,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+        });
+      }
     }
   }
 }
