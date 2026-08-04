@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WalletTxnType } from '@prisma/client';
+import { VoucherStatus, WalletTxnType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
@@ -367,6 +367,7 @@ export class PaymentsService {
     let voucherLockToken: string | null = null;
     let customerVoucherId: string | null = null;
     let rewardPointsCost: number | null = null;
+    let pointsReservedForOrderId: string | null = null;
     const subtotalCents = this.computeSubtotal(dto);
 
     if (voucherId && rewardDefinitionId) {
@@ -416,6 +417,36 @@ export class PaymentsService {
     dto.discountCents = discountCents;
     dto.totalCents = Math.max(0, subtotalCents - discountCents);
 
+    const releaseCheckoutReservations = async (orderId?: string | null) => {
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.releaseVoucherLock(voucherLockToken);
+      }
+      if (customerVoucherId) {
+        await this.releaseCustomerVoucherCheckout(customerVoucherId, customerId);
+      }
+      if (
+        pointsReservedForOrderId &&
+        rewardPointsCost != null &&
+        rewardPointsCost > 0
+      ) {
+        await this.releaseCheckoutPointsReservation({
+          customerId,
+          orderId: pointsReservedForOrderId,
+          pointsCost: rewardPointsCost,
+          rewardDefinitionId: rewardDefinitionId!,
+        });
+        pointsReservedForOrderId = null;
+      } else if (orderId && rewardPointsCost != null && rewardPointsCost > 0) {
+        // Reserved under the order id even if the local flag was lost.
+        await this.releaseCheckoutPointsReservation({
+          customerId,
+          orderId,
+          pointsCost: rewardPointsCost,
+          rewardDefinitionId: rewardDefinitionId!,
+        });
+      }
+    };
+
     const promoFinalize = async (orderId: string) => {
       await this.finalizeShopPromotions({
         customerId,
@@ -427,12 +458,40 @@ export class PaymentsService {
       });
     };
 
+    const reservePromosForOrder = async (orderId: string) => {
+      if (customerVoucherId) {
+        await this.claimCustomerVoucherForCheckout(
+          customerId,
+          customerVoucherId,
+        );
+      }
+      if (
+        rewardDefinitionId &&
+        rewardPointsCost != null &&
+        rewardPointsCost > 0
+      ) {
+        await this.reserveCheckoutPoints({
+          customerId,
+          orderId,
+          pointsCost: rewardPointsCost,
+          rewardDefinitionId,
+        });
+        pointsReservedForOrderId = orderId;
+      }
+    };
+
     if (this.isDemoMode()) {
       const order = await this.customers.createPendingMemberOrder(
         customerId,
         dto,
       );
-      await promoFinalize(order.id);
+      try {
+        await reservePromosForOrder(order.id);
+        await promoFinalize(order.id);
+      } catch (err) {
+        await releaseCheckoutReservations(order.id);
+        throw err;
+      }
       return {
         demoMode: true as const,
         orderId: order.id,
@@ -448,8 +507,14 @@ export class PaymentsService {
         customerId,
         dto,
       );
-      await this.customers.finalizeShopOrderAfterPayment(order.id);
-      await promoFinalize(order.id);
+      try {
+        await reservePromosForOrder(order.id);
+        await this.customers.finalizeShopOrderAfterPayment(order.id);
+        await promoFinalize(order.id);
+      } catch (err) {
+        await releaseCheckoutReservations(order.id);
+        throw err;
+      }
       const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
         where: { id: order.id },
       });
@@ -497,6 +562,14 @@ export class PaymentsService {
       customerId,
       dto,
     );
+
+    try {
+      await reservePromosForOrder(order.id);
+    } catch (err) {
+      await releaseCheckoutReservations(order.id);
+      throw err;
+    }
+
     const referenceId = randomUUID();
     const base = this.memberPublicBase();
     const successUrl = `${base}/?tab=shop&shopPayment=success&orderNumber=${encodeURIComponent(String(order.orderNumber))}`;
@@ -520,17 +593,23 @@ export class PaymentsService {
       }
     }
 
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount,
-      ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
-      description: `Moja shop order #${order.orderNumber}`,
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: paymentMetadata,
-    });
+    let xenditResponse: XenditPaymentRequestResponse;
+    try {
+      xenditResponse = await this.xendit.createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount,
+        ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
+        description: `Moja shop order #${order.orderNumber}`,
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: paymentMetadata,
+      });
+    } catch (err) {
+      await releaseCheckoutReservations(order.id);
+      throw err;
+    }
 
     const paymentRequestId =
       typeof xenditResponse.payment_request_id === 'string'
@@ -541,28 +620,33 @@ export class PaymentsService {
         ? xenditResponse.status
         : 'UNKNOWN';
 
-    await this.prisma.paymentIntent.create({
-      data: {
-        customerId,
-        referenceId,
-        purpose: 'shop_order',
-        amountCents: dto.totalCents,
-        currency,
-        country,
-        channelCode,
-        status: 'PENDING',
-        xenditPaymentRequestId: paymentRequestId,
-        metadata: {
-          orderId: order.id,
-          voucherLockToken: voucherLockToken ?? null,
-          voucherId: voucherId ?? null,
-          customerVoucherId: customerVoucherId ?? null,
-          rewardDefinitionId: rewardDefinitionId ?? null,
-          rewardPointsCost: rewardPointsCost ?? null,
-          idempotencyKey,
-        } as object,
-      },
-    });
+    try {
+      await this.prisma.paymentIntent.create({
+        data: {
+          customerId,
+          referenceId,
+          purpose: 'shop_order',
+          amountCents: dto.totalCents,
+          currency,
+          country,
+          channelCode,
+          status: 'PENDING',
+          xenditPaymentRequestId: paymentRequestId,
+          metadata: {
+            orderId: order.id,
+            voucherLockToken: voucherLockToken ?? null,
+            voucherId: voucherId ?? null,
+            customerVoucherId: customerVoucherId ?? null,
+            rewardDefinitionId: rewardDefinitionId ?? null,
+            rewardPointsCost: rewardPointsCost ?? null,
+            idempotencyKey,
+          } as object,
+        },
+      });
+    } catch (err) {
+      await releaseCheckoutReservations(order.id);
+      throw err;
+    }
 
     if (apiStatus === 'SUCCEEDED') {
       await this.applyShopOrderFromXendit(referenceId, xenditResponse);
@@ -1212,11 +1296,36 @@ export class PaymentsService {
       const intent = await this.prisma.paymentIntent.findUnique({
         where: { referenceId },
       });
-      const meta = intent?.metadata as { voucherLockToken?: string } | null;
+      const meta = intent?.metadata as {
+        voucherLockToken?: string;
+        customerVoucherId?: string;
+        rewardDefinitionId?: string;
+        rewardPointsCost?: number;
+        orderId?: string;
+      } | null;
       if (meta?.voucherLockToken) {
         await this.rewardsWorkflow.releaseVoucherLock(meta.voucherLockToken);
       }
       if (intent?.purpose === 'shop_order') {
+        if (typeof meta?.customerVoucherId === 'string') {
+          await this.releaseCustomerVoucherCheckout(
+            meta.customerVoucherId,
+            intent.customerId,
+          );
+        }
+        if (
+          typeof meta?.orderId === 'string' &&
+          typeof meta?.rewardDefinitionId === 'string' &&
+          typeof meta?.rewardPointsCost === 'number' &&
+          meta.rewardPointsCost > 0
+        ) {
+          await this.releaseCheckoutPointsReservation({
+            customerId: intent.customerId,
+            orderId: meta.orderId,
+            pointsCost: meta.rewardPointsCost,
+            rewardDefinitionId: meta.rewardDefinitionId,
+          });
+        }
         await this.prisma.paymentIntent.updateMany({
           where: { referenceId, status: { not: 'SUCCEEDED' } },
           data: {
@@ -1509,28 +1618,218 @@ export class PaymentsService {
       );
     }
     if (input.customerVoucherId) {
-      await this.prisma.customerVoucher.updateMany({
+      // Prefer LOCKED→REDEEMED (reserved at checkout). Also accept ISSUED for
+      // in-flight intents created before reservation landed.
+      const redeemed = await this.prisma.customerVoucher.updateMany({
         where: {
           id: input.customerVoucherId,
           customerId: input.customerId,
-          status: 'ISSUED',
+          status: { in: [VoucherStatus.LOCKED, VoucherStatus.ISSUED] },
         },
-        data: { status: 'REDEEMED', redeemedAt: new Date() },
+        data: { status: VoucherStatus.REDEEMED, redeemedAt: new Date() },
       });
+      if (redeemed.count === 0) {
+        const current = await this.prisma.customerVoucher.findFirst({
+          where: {
+            id: input.customerVoucherId,
+            customerId: input.customerId,
+          },
+          select: { status: true },
+        });
+        if (current?.status !== VoucherStatus.REDEEMED) {
+          throw new BadRequestException({
+            code: 'VOUCHER_NOT_REDEEMABLE',
+            message: 'Voucher could not be redeemed for this order.',
+          });
+        }
+      }
     }
     if (
       input.rewardDefinitionId &&
       input.pointsCost != null &&
       input.pointsCost > 0
     ) {
-      await this.loyalty.appendLedgerEntry({
+      const alreadyReserved = await this.prisma.loyaltyLedgerEntry.findFirst({
+        where: {
+          customerId: input.customerId,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+          deltaPoints: { lt: 0 },
+          reason: {
+            in: [
+              `checkout_reserve_${input.rewardDefinitionId}`,
+              `checkout_redeem_${input.rewardDefinitionId}`,
+            ],
+          },
+        },
+      });
+      if (!alreadyReserved) {
+        await this.loyalty.appendLedgerEntry({
+          customerId: input.customerId,
+          deltaPoints: -input.pointsCost,
+          reason: `checkout_redeem_${input.rewardDefinitionId}`,
+          referenceType: 'customer_order',
+          referenceId: input.orderId,
+        });
+      }
+    }
+  }
+
+  /**
+   * Atomically reserve a legacy CustomerVoucher for checkout (ISSUED→LOCKED).
+   * Stale LOCKED rows (no open payment, older than the grace window) are
+   * reclaimable so abandoned checkouts do not permanently burn the voucher.
+   */
+  private static readonly CUSTOMER_VOUCHER_LOCK_GRACE_MS = 30 * 60 * 1000;
+
+  private async claimCustomerVoucherForCheckout(
+    customerId: string,
+    customerVoucherId: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{
+          id: string;
+          status: string;
+          expires_at: Date | null;
+          updated_at: Date;
+        }>
+      >`
+        SELECT id, status::text AS status, expires_at, updated_at
+        FROM customer_vouchers
+        WHERE id = ${customerVoucherId}::uuid
+          AND customer_id = ${customerId}::uuid
+        FOR UPDATE
+      `;
+      const row = rows[0];
+      if (!row) {
+        throw new NotFoundException({
+          code: 'VOUCHER_NOT_FOUND',
+          message: 'Voucher not found in your wallet.',
+        });
+      }
+      if (row.expires_at && row.expires_at.getTime() <= Date.now()) {
+        throw new BadRequestException({
+          code: 'VOUCHER_EXPIRED',
+          message: 'This voucher has expired.',
+        });
+      }
+      if (row.status === VoucherStatus.ISSUED) {
+        await tx.customerVoucher.update({
+          where: { id: customerVoucherId },
+          data: { status: VoucherStatus.LOCKED },
+        });
+        return;
+      }
+      if (row.status === VoucherStatus.LOCKED) {
+        const openIntent = await tx.paymentIntent.findFirst({
+          where: {
+            customerId,
+            purpose: 'shop_order',
+            status: { in: ['PENDING', 'PROCESSING'] },
+            metadata: {
+              path: ['customerVoucherId'],
+              equals: customerVoucherId,
+            },
+          },
+          select: { id: true },
+        });
+        const lockAgeMs = Date.now() - new Date(row.updated_at).getTime();
+        const stale =
+          !openIntent &&
+          lockAgeMs >= PaymentsService.CUSTOMER_VOUCHER_LOCK_GRACE_MS;
+        if (!stale) {
+          throw new BadRequestException({
+            code: 'VOUCHER_LOCKED',
+            message: 'This voucher is already reserved by another checkout.',
+          });
+        }
+        // Stale abandoned lock — refresh updatedAt by re-writing LOCKED.
+        await tx.customerVoucher.update({
+          where: { id: customerVoucherId },
+          data: { status: VoucherStatus.LOCKED },
+        });
+        return;
+      }
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_AVAILABLE',
+        message: 'This voucher is no longer available.',
+      });
+    });
+  }
+
+  private async releaseCustomerVoucherCheckout(
+    customerVoucherId: string,
+    customerId: string,
+  ): Promise<void> {
+    await this.prisma.customerVoucher.updateMany({
+      where: {
+        id: customerVoucherId,
+        customerId,
+        status: VoucherStatus.LOCKED,
+      },
+      data: { status: VoucherStatus.ISSUED, redeemedAt: null },
+    });
+  }
+
+  private async reserveCheckoutPoints(input: {
+    customerId: string;
+    orderId: string;
+    pointsCost: number;
+    rewardDefinitionId: string;
+  }): Promise<void> {
+    const existing = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
         customerId: input.customerId,
-        deltaPoints: -input.pointsCost,
-        reason: `checkout_redeem_${input.rewardDefinitionId}`,
         referenceType: 'customer_order',
         referenceId: input.orderId,
-      });
-    }
+        reason: `checkout_reserve_${input.rewardDefinitionId}`,
+        deltaPoints: { lt: 0 },
+      },
+    });
+    if (existing) return;
+    await this.loyalty.appendLedgerEntry({
+      customerId: input.customerId,
+      deltaPoints: -input.pointsCost,
+      reason: `checkout_reserve_${input.rewardDefinitionId}`,
+      referenceType: 'customer_order',
+      referenceId: input.orderId,
+    });
+  }
+
+  private async releaseCheckoutPointsReservation(input: {
+    customerId: string;
+    orderId: string;
+    pointsCost: number;
+    rewardDefinitionId: string;
+  }): Promise<void> {
+    const reserved = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
+        customerId: input.customerId,
+        referenceType: 'customer_order',
+        referenceId: input.orderId,
+        reason: `checkout_reserve_${input.rewardDefinitionId}`,
+        deltaPoints: { lt: 0 },
+      },
+    });
+    if (!reserved) return;
+    const alreadyReleased = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
+        customerId: input.customerId,
+        referenceType: 'customer_order',
+        referenceId: input.orderId,
+        reason: `checkout_release_${input.rewardDefinitionId}`,
+        deltaPoints: { gt: 0 },
+      },
+    });
+    if (alreadyReleased) return;
+    await this.loyalty.appendLedgerEntry({
+      customerId: input.customerId,
+      deltaPoints: input.pointsCost,
+      reason: `checkout_release_${input.rewardDefinitionId}`,
+      referenceType: 'customer_order',
+      referenceId: input.orderId,
+    });
   }
 }
 

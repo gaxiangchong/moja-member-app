@@ -68,6 +68,14 @@ export class LoyaltyService {
     },
   ): Promise<{ balanceAfter: number }> {
     await this.ensureWalletInTx(tx, params.customerId);
+    // Serialize concurrent balance mutations for the same wallet. Without this,
+    // two shop checkouts can both pass a points check and both deduct, or one
+    // checkout can reserve while another spends the same balance.
+    await tx.$executeRaw`
+      SELECT 1 FROM loyalty_wallets
+      WHERE customer_id = ${params.customerId}::uuid
+      FOR UPDATE
+    `;
     const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
     });
