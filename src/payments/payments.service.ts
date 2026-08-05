@@ -351,6 +351,10 @@ export class PaymentsService {
 
   /**
    * Shop checkout: pending order + Xendit payment request (or demo / zero-total).
+   *
+   * `idempotencyKey` is stored on `PaymentIntent.idempotencyKey` (unique) and
+   * looked up before creating a new order/Xendit PAY so retries and double
+   * submits with the same key cannot open a second charge.
    */
   async createShopOrderCheckout(
     customerId: string,
@@ -368,6 +372,12 @@ export class PaymentsService {
     let customerVoucherId: string | null = null;
     let rewardPointsCost: number | null = null;
     const subtotalCents = this.computeSubtotal(dto);
+
+    const existingCheckout = await this.resumeShopCheckoutByIdempotencyKey(
+      customerId,
+      idempotencyKey,
+    );
+    if (existingCheckout) return existingCheckout;
 
     if (voucherId && rewardDefinitionId) {
       throw new BadRequestException({
@@ -493,11 +503,51 @@ export class PaymentsService {
     const currency =
       this.config.get<string>('XENDIT_CURRENCY')?.trim().toUpperCase() || 'MYR';
 
+    // Claim the idempotency key before creating an order or calling Xendit so
+    // a concurrent retry with the same key cannot open a second charge.
+    const referenceId = randomUUID();
+    const intentMeta: Record<string, unknown> = {
+      voucherLockToken: voucherLockToken ?? null,
+      voucherId: voucherId ?? null,
+      customerVoucherId: customerVoucherId ?? null,
+      rewardDefinitionId: rewardDefinitionId ?? null,
+      rewardPointsCost: rewardPointsCost ?? null,
+      subtotalCents,
+      discountCents,
+    };
+    let intent;
+    try {
+      intent = await this.prisma.paymentIntent.create({
+        data: {
+          customerId,
+          referenceId,
+          purpose: 'shop_order',
+          amountCents: dto.totalCents,
+          currency,
+          country,
+          channelCode,
+          status: 'PENDING',
+          idempotencyKey,
+          metadata: intentMeta as object,
+        },
+      });
+    } catch (err) {
+      if (this.isUniqueConstraintError(err)) {
+        // Do not release voucher locks here — the winning request owns the
+        // same idempotency-keyed lock and still needs it for finalize.
+        const resumed = await this.resumeShopCheckoutByIdempotencyKey(
+          customerId,
+          idempotencyKey,
+        );
+        if (resumed) return resumed;
+      }
+      throw err;
+    }
+
     const order = await this.customers.createPendingMemberOrder(
       customerId,
       dto,
     );
-    const referenceId = randomUUID();
     const base = this.memberPublicBase();
     const successUrl = `${base}/?tab=shop&shopPayment=success&orderNumber=${encodeURIComponent(String(order.orderNumber))}`;
     const failureUrl = `${base}/?tab=shop&shopPayment=failed`;
@@ -520,17 +570,34 @@ export class PaymentsService {
       }
     }
 
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount,
-      ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
-      description: `Moja shop order #${order.orderNumber}`,
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: paymentMetadata,
-    });
+    let xenditResponse: XenditPaymentRequestResponse;
+    try {
+      xenditResponse = await this.xendit.createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount,
+        ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
+        description: `Moja shop order #${order.orderNumber}`,
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: paymentMetadata,
+      });
+    } catch (err) {
+      await this.prisma.paymentIntent.update({
+        where: { id: intent.id },
+        data: {
+          status: 'FAILED',
+          // Free the unique key so the client can retry with the same key.
+          idempotencyKey: null,
+          metadata: { ...intentMeta, orderId: order.id } as object,
+        },
+      });
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.releaseVoucherLock(voucherLockToken);
+      }
+      throw err;
+    }
 
     const paymentRequestId =
       typeof xenditResponse.payment_request_id === 'string'
@@ -541,25 +608,15 @@ export class PaymentsService {
         ? xenditResponse.status
         : 'UNKNOWN';
 
-    await this.prisma.paymentIntent.create({
+    const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
+    await this.prisma.paymentIntent.update({
+      where: { id: intent.id },
       data: {
-        customerId,
-        referenceId,
-        purpose: 'shop_order',
-        amountCents: dto.totalCents,
-        currency,
-        country,
-        channelCode,
-        status: 'PENDING',
         xenditPaymentRequestId: paymentRequestId,
         metadata: {
+          ...intentMeta,
           orderId: order.id,
-          voucherLockToken: voucherLockToken ?? null,
-          voucherId: voucherId ?? null,
-          customerVoucherId: customerVoucherId ?? null,
-          rewardDefinitionId: rewardDefinitionId ?? null,
-          rewardPointsCost: rewardPointsCost ?? null,
-          idempotencyKey,
+          redirectUrl,
         } as object,
       },
     });
@@ -568,7 +625,6 @@ export class PaymentsService {
       await this.applyShopOrderFromXendit(referenceId, xenditResponse);
     }
 
-    const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
     if (!redirectUrl && voucherLockToken) {
       await this.rewardsWorkflow.releaseVoucherLock(voucherLockToken);
     }
@@ -1326,6 +1382,80 @@ export class PaymentsService {
       (sum, line) => sum + line.unitPriceCents * line.qty,
       0,
     );
+  }
+
+  private isUniqueConstraintError(err: unknown): boolean {
+    return (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: string }).code === 'P2002'
+    );
+  }
+
+  /**
+   * Return the prior shop checkout response when `idempotencyKey` already
+   * claimed a PaymentIntent. Skips FAILED intents so the client can start a
+   * fresh attempt with a new key after a hard failure.
+   */
+  private async resumeShopCheckoutByIdempotencyKey(
+    customerId: string,
+    idempotencyKey: string,
+  ) {
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { idempotencyKey },
+    });
+    if (!intent) return null;
+    if (intent.customerId !== customerId || intent.purpose !== 'shop_order') {
+      throw new BadRequestException({
+        code: 'IDEMPOTENCY_KEY_CONFLICT',
+        message: 'idempotencyKey is already in use.',
+      });
+    }
+    if (intent.status === 'FAILED') return null;
+
+    const meta = (intent.metadata ?? {}) as {
+      orderId?: string;
+      redirectUrl?: string | null;
+      voucherLockToken?: string | null;
+      voucherId?: string | null;
+      subtotalCents?: number;
+      discountCents?: number;
+    };
+    if (!meta.orderId) {
+      // Intent claimed but order/Xendit not finished yet — ask the client to
+      // retry with the same key rather than opening a parallel checkout.
+      throw new BadRequestException({
+        code: 'CHECKOUT_IN_PROGRESS',
+        message:
+          'A checkout with this idempotency key is already in progress. Retry shortly.',
+      });
+    }
+
+    const order = await this.prisma.customerOrder.findFirst({
+      where: { id: meta.orderId, customerId },
+    });
+    if (!order) return null;
+
+    return {
+      demoMode: false as const,
+      zeroPaid: false as const,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      referenceId: intent.referenceId,
+      paymentRequestId: intent.xenditPaymentRequestId,
+      status: intent.status === 'SUCCEEDED' ? 'SUCCEEDED' : intent.status,
+      redirectUrl: meta.redirectUrl ?? null,
+      channelCode: intent.channelCode,
+      country: intent.country,
+      currency: intent.currency,
+      amountCents: intent.amountCents,
+      subtotalCents: meta.subtotalCents ?? intent.amountCents,
+      discountCents: meta.discountCents ?? 0,
+      voucherId: meta.voucherId ?? null,
+      voucherLockToken: meta.voucherLockToken ?? null,
+      idempotentReplay: true as const,
+    };
   }
 
   private async resolveCustomerVoucherDiscount(
