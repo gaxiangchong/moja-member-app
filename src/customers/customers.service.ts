@@ -978,7 +978,13 @@ export class CustomersService {
    * Grants the referrer loyalty points the first time a member they referred
    * completes a paid order. Runs inside the order-finalization transaction so
    * it is atomic with the purchase. Idempotent: a referrer is rewarded at most
-   * once per referred member (guarded by a unique ledger reference).
+   * once per referred member.
+   *
+   * Concurrency: under READ COMMITTED, two concurrent first paid orders for the
+   * same buyer can each observe paidOrderCount === 1 and no ledger row before
+   * either commits. There is no unique constraint on LoyaltyLedgerEntry for
+   * (reason, referenceType, referenceId), so we serialize on the buyer row
+   * before the count + ledger check.
    */
   private async maybeRewardReferrerOnFirstOrder(
     tx: Prisma.TransactionClient,
@@ -994,6 +1000,14 @@ export class CustomersService {
     });
     const referrerId = buyer?.referredByCustomerId;
     if (!referrerId) return;
+
+    // Serialize concurrent finalizations for this buyer so the first-order
+    // count and referral ledger idempotency check cannot race.
+    await tx.$executeRaw`
+      SELECT 1 FROM customers
+      WHERE id = ${buyerCustomerId}::uuid
+      FOR UPDATE
+    `;
 
     // Only on the buyer's FIRST paid order. The current order was just moved to
     // 'placed' in this transaction, so a count of 1 paid order means first.
