@@ -11,22 +11,30 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { auditActorBase } from '../admin-auth/audit-context.util';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator';
 import { RequirePermissions } from '../admin-auth/decorators/require-permissions.decorator';
 import { AdminAuthGuard } from '../admin-auth/guards/admin-auth.guard';
 import { AdminPermissionsGuard } from '../admin-auth/guards/admin-permissions.guard';
 import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminCreateRewardCatalogDto } from './dto/admin-create-reward-catalog.dto';
 import { AdminCreateVoucherCampaignDto } from './dto/admin-create-voucher-campaign.dto';
 import { AdminImportGiftCodesDto } from './dto/admin-import-gift-codes.dto';
 import { AdminUpdateRewardCatalogDto } from './dto/admin-update-reward-catalog.dto';
+import { RewardsWorkflowService } from './rewards-workflow.service';
 
 @Controller('admin/rewards-workflow')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
 export class RewardsWorkflowAdminController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workflow: RewardsWorkflowService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Get('reward-catalog')
   @RequirePermissions(P.VOUCHER_READ)
@@ -196,6 +204,37 @@ export class RewardsWorkflowAdminController {
         }),
       ]);
     return { wallet, points, walletTxns, vouchers };
+  }
+
+  /**
+   * Staff-assisted points redemption for walk-in members who can't complete
+   * the self-service flow in their own app. Reuses the exact same validated
+   * path a member's own redeem-reward action goes through.
+   */
+  @Post('customers/:customerId/redeem-reward/:rewardCatalogId')
+  @RequirePermissions(P.LOYALTY_REDEEM)
+  async redeemRewardOnBehalf(
+    @Param('customerId') customerId: string,
+    @Param('rewardCatalogId') rewardCatalogId: string,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    const result = await this.workflow.redeemRewardByPoints(
+      customerId,
+      rewardCatalogId,
+      randomUUID(),
+    );
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'loyalty.reward_redeemed_in_store',
+      entityType: 'user_reward',
+      entityId: result.userReward.id,
+      metadata: {
+        customerId,
+        rewardCatalogId,
+        idempotent: result.idempotent,
+      },
+    });
+    return result;
   }
 
   @Get('points-ledger')
