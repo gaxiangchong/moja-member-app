@@ -22,6 +22,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'dashboard-activity': true,
     'dashboard-employees': true,
     'customers-list': true,
+    'customers-walkin': true,
     'customer-orders': true,
     'bento-overview': true,
     'bento-sales': true,
@@ -1064,6 +1065,10 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
               Customer list
             </button>
+            <button type="button" class="nav-btn nav-sub" data-view="customers-walkin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+              Create member (walk-in)
+            </button>
             <button type="button" class="nav-btn nav-sub" data-view="customer-orders">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
               Customer orders
@@ -1626,6 +1631,67 @@ export class AdminDashboardController {
               </span>
               <button type="button" class="btn-outline" id="customersPrevBtn" disabled>‹ Prev</button>
               <button type="button" class="btn-outline" id="customersNextBtn" disabled>Next ›</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="customers-walkin" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Create member (walk-in)</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                For a customer who doesn't have the app yet. Creates their member record from just a phone
+                number (they can fill in their email later, in their own app) and immediately issues a login
+                code you can hand to them right now.
+              </p>
+              <label for="wmPhone">Phone number</label>
+              <input type="text" id="wmPhone" placeholder="e.g. 60123456789" />
+              <label for="wmName" style="margin-top:10px">Display name (optional)</label>
+              <input type="text" id="wmName" placeholder="Customer's name" />
+              <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="wmCreateBtn">Create member</button>
+              </div>
+              <div id="wmCreateResultBox" style="display:none;margin-top:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px">
+                <p id="wmCreateResult" style="margin:0"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Backfill points</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                Retroactively credit points for purchases made before a member joined. Requires your own
+                admin password as confirmation.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px">
+                <div>
+                  <label for="wmBfPhone">Member phone</label>
+                  <input type="text" id="wmBfPhone" placeholder="e.g. 60123456789" />
+                </div>
+                <div style="display:flex;align-items:flex-end">
+                  <button type="button" class="btn-primary" id="wmBfFindBtn">Find member</button>
+                </div>
+              </div>
+              <p class="field-hint" id="wmBfFindResult"></p>
+
+              <div id="wmBfPanel" style="display:none;margin-top:16px">
+                <h3 style="margin:0 0 8px;font-size:14px">Backfill points for <span id="wmBfMemberName"></span></h3>
+                <label for="wmBfPoints">Points to credit</label>
+                <input type="text" id="wmBfPoints" inputmode="numeric" placeholder="e.g. 100" />
+                <label for="wmBfReason" style="margin-top:10px">Reason</label>
+                <input type="text" id="wmBfReason" placeholder="e.g. Purchases before joining, 2026-05 to 2026-07" />
+                <label for="wmBfPassword" style="margin-top:10px">Your admin password</label>
+                <input type="password" id="wmBfPassword" placeholder="Re-enter your password to confirm" />
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="wmBfSubmitBtn">Credit points</button>
+                  <span class="field-hint" id="wmBfResult" style="margin:0"></span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -4023,7 +4089,7 @@ export class AdminDashboardController {
     const navButtons = () => document.querySelectorAll('.nav-btn');
     const views = [
       'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
-      'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
+      'customers-list', 'customers-walkin', 'customer-orders', 'customers-segments', 'customers-merge',
       'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders', 'bento-vouchers',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
@@ -4069,6 +4135,7 @@ export class AdminDashboardController {
       'dashboard-activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
       'dashboard-employees': iconUsers,
       'customers-list': iconUsers,
+      'customers-walkin': iconUsers,
       'customer-orders':
         '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
       'customers-segments': iconUsers,
@@ -4120,6 +4187,7 @@ export class AdminDashboardController {
       'dashboard-activity': 'Dashboard · Activity feed',
       'dashboard-employees': 'Settings · Employees & payroll',
       'customers-list': 'Customers · List',
+      'customers-walkin': 'Customers · Create member (walk-in)',
       'customer-orders': 'Customers · Customer orders',
       'customers-segments': 'Customers · Tags / segments',
       'customers-merge': 'Customers · Merge duplicates',
@@ -10117,6 +10185,76 @@ export class AdminDashboardController {
         if (out) out.textContent = e.message || String(e);
       }
     }
+    async function wmCreateMember() {
+      var phone = String((document.getElementById('wmPhone') || {}).value || '').trim();
+      var name = String((document.getElementById('wmName') || {}).value || '').trim();
+      var box = document.getElementById('wmCreateResultBox');
+      var out = document.getElementById('wmCreateResult');
+      if (!phone) { if (out) { out.textContent = 'Enter a phone number.'; box.style.display = ''; } return; }
+      if (box) box.style.display = '';
+      if (out) out.textContent = 'Creating…';
+      try {
+        var body = { phoneE164: phone };
+        if (name) body.displayName = name;
+        var res = await apiPost('/admin/customers/walk-in', body);
+        var who = (res.customer && (res.customer.displayName || res.customer.phoneE164)) || 'Member';
+        if (out) out.innerHTML = 'Created <strong>' + vcEsc(who) + '</strong>. Login code: <strong style="font-size:16px;letter-spacing:1px">' + vcEsc(res.loginPin) + '</strong><br />' +
+          'Give this to the member — they log in with their phone number, then this code. No OTP needed.';
+        var bfPhone = document.getElementById('wmBfPhone');
+        if (bfPhone) bfPhone.value = phone;
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function wmBfFindMember() {
+      var phone = String((document.getElementById('wmBfPhone') || {}).value || '').trim();
+      var out = document.getElementById('wmBfFindResult');
+      var panel = document.getElementById('wmBfPanel');
+      if (!phone) { if (out) out.textContent = 'Enter a member phone.'; return; }
+      if (out) out.textContent = 'Searching…';
+      if (panel) panel.style.display = 'none';
+      try {
+        var res = await api('/admin/customers?search=' + encodeURIComponent(phone) + '&pageSize=5');
+        var items = (res && res.items) || [];
+        if (!items.length) throw new Error('No member found for that phone.');
+        var match = items.find(function (m) { return (m.phoneE164 || '').replace(/\D/g, '').indexOf(phone.replace(/\D/g, '')) !== -1; }) || items[0];
+        if (out) out.textContent = '';
+        var nameEl = document.getElementById('wmBfMemberName');
+        if (nameEl) nameEl.textContent = match.displayName || match.phoneE164 || 'Member';
+        if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
+        var resultEl = document.getElementById('wmBfResult');
+        if (resultEl) resultEl.textContent = '';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function wmBfSubmit() {
+      var panel = document.getElementById('wmBfPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      var out = document.getElementById('wmBfResult');
+      var pointsRaw = String((document.getElementById('wmBfPoints') || {}).value || '').trim();
+      var reason = String((document.getElementById('wmBfReason') || {}).value || '').trim();
+      var password = String((document.getElementById('wmBfPassword') || {}).value || '');
+      var points = parseInt(pointsRaw, 10);
+      if (!points || points < 1) { if (out) out.textContent = 'Enter a positive number of points.'; return; }
+      if (!reason) { if (out) out.textContent = 'Enter a reason.'; return; }
+      if (!password) { if (out) out.textContent = 'Enter your admin password.'; return; }
+      if (!window.confirm('Credit ' + points + ' points now? This cannot be undone.')) return;
+      if (out) out.textContent = 'Submitting…';
+      try {
+        var res = await apiPost('/admin/customers/' + encodeURIComponent(customerId) + '/loyalty/backfill', {
+          deltaPoints: points,
+          reason: reason,
+          adminPassword: password,
+        });
+        if (out) out.textContent = 'Credited ' + points + ' points. New balance: ' + res.pointsBalance + '.';
+        var pwEl = document.getElementById('wmBfPassword');
+        if (pwEl) pwEl.value = '';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
     function grSyncType() {
       var typeSel = document.getElementById('grType');
       var wrap = document.getElementById('grCampaignWrap');
@@ -10267,6 +10405,12 @@ export class AdminDashboardController {
       var b = t.closest('.vr-claim-btn');
       if (b) vrClaimReward(b.getAttribute('data-id'), b.getAttribute('data-name'), b.getAttribute('data-cost'));
     });
+    var wmCreateBtn = document.getElementById('wmCreateBtn');
+    if (wmCreateBtn) wmCreateBtn.addEventListener('click', function () { wmCreateMember(); });
+    var wmBfFindBtn = document.getElementById('wmBfFindBtn');
+    if (wmBfFindBtn) wmBfFindBtn.addEventListener('click', function () { wmBfFindMember(); });
+    var wmBfSubmitBtn = document.getElementById('wmBfSubmitBtn');
+    if (wmBfSubmitBtn) wmBfSubmitBtn.addEventListener('click', function () { wmBfSubmit(); });
     var giftRewardsBodyEl = document.getElementById('giftRewardsBody');
     if (giftRewardsBodyEl) {
       giftRewardsBodyEl.addEventListener('click', function (ev) {

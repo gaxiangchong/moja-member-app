@@ -25,6 +25,7 @@ import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { ApprovalsService } from './approvals.service';
 import { AdminService } from './admin.service';
+import { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
@@ -34,6 +35,7 @@ import { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import { AdminWalletReversalDto } from './dto/admin-wallet-reversal.dto';
 import { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
+import { CreateWalkInCustomerDto } from './dto/create-walk-in-customer.dto';
 import { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import { RequestWalletReversalDto } from './dto/request-wallet-reversal.dto';
@@ -112,6 +114,18 @@ export class AdminController {
     });
   }
 
+  // Declared before 'customers/:id' so the literal path wins over the param route.
+  // Admin-assisted walk-in signup: creates an ACTIVE member from just a phone
+  // number and immediately issues a login PIN in the same call.
+  @Post('customers/walk-in')
+  @RequirePermissions(P.CUSTOMER_CREATE)
+  createWalkInMember(
+    @Body() dto: CreateWalkInCustomerDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.createWalkInMember(dto, auth);
+  }
+
   @Get('customers/:id/audit-logs')
   @RequirePermissions(P.AUDIT_READ)
   listCustomerAuditLogs(
@@ -155,6 +169,16 @@ export class AdminController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.adjustCustomerLoyalty(id, dto, auth);
+  }
+
+  @Post('customers/:id/loyalty/backfill')
+  @RequirePermissions(P.LOYALTY_BACKFILL)
+  backfillLoyalty(
+    @Param('id') id: string,
+    @Body() dto: AdminBackfillLoyaltyDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.backfillCustomerLoyalty(id, dto, auth);
   }
 
   @Get('customers/:id/wallet')

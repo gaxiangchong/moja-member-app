@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -36,9 +37,11 @@ const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
 const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
 import { daysUntilBirthdayUtc } from '../common/birthday.util';
+import { AdminAuthService } from '../admin-auth/admin-auth.service';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
+import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -47,6 +50,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { stringify } from 'csv-stringify/sync';
 import { ReportingSettingsService } from './reporting-settings.service';
 import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
+import type { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
@@ -56,6 +60,7 @@ import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto
 import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
+import type { CreateWalkInCustomerDto } from './dto/create-walk-in-customer.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
 import type { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
@@ -243,6 +248,8 @@ export class AdminService {
     private readonly phoneNormalizer: PhoneNormalizerService,
     private readonly reportingSettings: ReportingSettingsService,
     private readonly payments: PaymentsService,
+    private readonly customers: CustomersService,
+    private readonly adminAuth: AdminAuthService,
   ) {}
 
   /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
@@ -565,6 +572,29 @@ export class AdminService {
     });
 
     return { pin };
+  }
+
+  /**
+   * Admin-assisted walk-in signup: creates an ACTIVE member from just a phone
+   * number and immediately issues a login PIN, so staff can hand a walk-in
+   * customer one working login in a single action.
+   */
+  async createWalkInMember(dto: CreateWalkInCustomerDto, auth: AdminAuthState) {
+    const phoneE164 = this.phoneNormalizer.normalizeToE164(dto.phoneE164);
+    const customer = await this.customers.createWalkInCustomer(phoneE164, {
+      displayName: dto.displayName,
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'customer.created_by_admin',
+      entityType: 'customer',
+      entityId: customer.id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+
+    const { pin } = await this.setCustomerLoginPin(customer.id, auth);
+    return { customer, loginPin: pin };
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {
@@ -1743,6 +1773,71 @@ export class AdminService {
         balanceAfter,
         referenceType: dto.referenceType ?? null,
         referenceId: dto.referenceId ?? null,
+      },
+    });
+
+    return { customerId, pointsBalance: balanceAfter };
+  }
+
+  /**
+   * Retroactively credits points for past purchases (e.g. a walk-in who
+   * shopped before joining). Requires the admin to re-enter their own
+   * password as a step-up confirmation, since crediting free points is easy
+   * to abuse — only available under a real JWT admin session, not the
+   * legacy API-key auth mode (there's no per-request admin identity to
+   * verify a password against).
+   */
+  async backfillCustomerLoyalty(
+    customerId: string,
+    dto: AdminBackfillLoyaltyDto,
+    auth: AdminAuthState,
+  ) {
+    if (!auth.adminUserId) {
+      throw new BadRequestException({
+        code: 'PASSWORD_STEP_UP_UNAVAILABLE',
+        message:
+          'Backfilling points requires signing in as an admin user (not an API key), so your password can be re-verified.',
+      });
+    }
+    const passwordOk = await this.adminAuth.verifyPassword(
+      auth.adminUserId,
+      dto.adminPassword,
+    );
+    if (!passwordOk) {
+      throw new UnauthorizedException({
+        code: 'ADMIN_PASSWORD_INCORRECT',
+        message: 'Incorrect password.',
+      });
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+
+    const { balanceAfter } = await this.loyalty.appendLedgerEntry({
+      customerId,
+      deltaPoints: dto.deltaPoints,
+      reason: dto.reason,
+      referenceType: 'backfill',
+      referenceId: null,
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'loyalty.backfilled_by_admin',
+      entityType: 'customer',
+      entityId: customerId,
+      reason: dto.reason,
+      metadata: {
+        deltaPoints: dto.deltaPoints,
+        balanceAfter,
+        passwordVerified: true,
       },
     });
 
