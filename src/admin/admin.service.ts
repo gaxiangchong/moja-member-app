@@ -13,6 +13,7 @@ import {
   PerksCriteriaKind,
   PerksProgramKind,
   Prisma,
+  VoucherLifecycleStatus,
   VoucherStatus,
   WalletTxnType,
 } from '@prisma/client';
@@ -56,6 +57,7 @@ import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto
 import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
+import type { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import type {
   BentoMemberFunnelResult,
@@ -1483,6 +1485,225 @@ export class AdminService {
         status: updated.status,
         voucherCode: updated.definition.code,
       } as object,
+      metadata: { customerId },
+    });
+    return updated;
+  }
+
+  private formatCampaignVoucherDiscount(campaign: {
+    voucherType: string;
+    percentageOff: number | null;
+    fixedAmountOff: number | null;
+    deliveryDiscountAmount: number | null;
+    walletCreditAmount: number | null;
+  }): string {
+    switch (campaign.voucherType) {
+      case 'PERCENTAGE':
+        return `${campaign.percentageOff ?? 0}% off`;
+      case 'FIXED_AMOUNT':
+        return `RM${((campaign.fixedAmountOff ?? 0) / 100).toFixed(2)} off`;
+      case 'DELIVERY_DISCOUNT':
+        return `RM${((campaign.deliveryDiscountAmount ?? 0) / 100).toFixed(2)} delivery discount`;
+      case 'WALLET_TOPUP_CODE':
+        return `RM${((campaign.walletCreditAmount ?? 0) / 100).toFixed(2)} wallet credit`;
+      case 'FREE_ITEM':
+        return 'Free item';
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * Vouchers a walk-in member currently holds that staff can redeem in-store,
+   * merged across both voucher systems (same union used for the member's
+   * in-app "My Vouchers" list, see customers.service.ts:getMeRewards).
+   */
+  async listRedeemableVouchers(customerId: string) {
+    await this.getCustomer(customerId);
+    const now = new Date();
+    const [customerVouchers, campaignVouchers] = await Promise.all([
+      this.prisma.customerVoucher.findMany({
+        where: { customerId, status: VoucherStatus.ISSUED },
+        include: {
+          definition: {
+            select: { code: true, title: true, description: true },
+          },
+        },
+        orderBy: { issuedAt: 'desc' },
+      }),
+      this.prisma.voucher.findMany({
+        where: {
+          customerId,
+          status: {
+            in: [VoucherLifecycleStatus.ACTIVE, VoucherLifecycleStatus.LOCKED],
+          },
+        },
+        include: { voucherCampaign: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const catalogItems = customerVouchers.map((cv) => ({
+      id: cv.id,
+      source: 'CATALOG' as const,
+      code: cv.definition.code,
+      title: cv.definition.title,
+      discountLabel: cv.definition.description ?? '',
+      expiresAt: cv.expiresAt,
+      locked: false,
+    }));
+
+    const campaignItems = campaignVouchers.map((v) => ({
+      id: v.id,
+      source: 'CAMPAIGN' as const,
+      code: v.code,
+      title: v.name,
+      discountLabel: v.voucherCampaign
+        ? this.formatCampaignVoucherDiscount(v.voucherCampaign)
+        : '',
+      expiresAt: v.expiresAt,
+      locked:
+        v.status === VoucherLifecycleStatus.LOCKED &&
+        !!v.lockExpiresAt &&
+        v.lockExpiresAt.getTime() > now.getTime(),
+    }));
+
+    return [...catalogItems, ...campaignItems];
+  }
+
+  /**
+   * Marks a member's voucher as used because staff redeemed it in-store for
+   * a walk-in (SalesPlay has no voucher/discount API, so the discount is
+   * applied manually at the till; this just prevents the voucher being
+   * reused afterwards).
+   */
+  async redeemVoucherInStore(
+    customerId: string,
+    voucherId: string,
+    dto: RedeemVoucherDto,
+    auth: AdminAuthState,
+  ) {
+    await this.getCustomer(customerId);
+
+    if (dto.source === 'CATALOG') {
+      const row = await this.prisma.customerVoucher.findFirst({
+        where: { id: voucherId, customerId },
+        include: { definition: { select: { code: true } } },
+      });
+      if (!row) {
+        throw new NotFoundException({
+          code: 'CUSTOMER_VOUCHER_NOT_FOUND',
+          message: 'Voucher not found for this member',
+        });
+      }
+      if (row.status !== VoucherStatus.ISSUED) {
+        throw new BadRequestException({
+          code: 'VOUCHER_NOT_REDEEMABLE',
+          message: 'Only issued vouchers can be redeemed.',
+        });
+      }
+      const updated = await this.prisma.customerVoucher.update({
+        where: { id: voucherId },
+        data: { status: VoucherStatus.REDEEMED, redeemedAt: new Date() },
+        include: { definition: { select: { code: true } } },
+      });
+      await this.audit.log({
+        ...auditActorBase(auth),
+        action: 'voucher.redeemed_in_store',
+        entityType: 'customer_voucher',
+        entityId: voucherId,
+        reason: dto.reason ?? null,
+        beforeValue: { status: row.status, voucherCode: row.definition.code } as object,
+        afterValue: {
+          status: updated.status,
+          voucherCode: updated.definition.code,
+        } as object,
+        metadata: { customerId },
+      });
+      return updated;
+    }
+
+    const row = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, customerId },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'VOUCHER_NOT_FOUND',
+        message: 'Voucher not found for this member',
+      });
+    }
+    if (
+      row.status === VoucherLifecycleStatus.USED ||
+      row.status === VoucherLifecycleStatus.VOID ||
+      row.status === VoucherLifecycleStatus.EXPIRED
+    ) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_REDEEMABLE',
+        message: 'Only active vouchers can be redeemed.',
+      });
+    }
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException({
+        code: 'VOUCHER_EXPIRED',
+        message: 'This voucher has expired.',
+      });
+    }
+    const now = new Date();
+    if (
+      row.status === VoucherLifecycleStatus.LOCKED &&
+      row.lockExpiresAt &&
+      row.lockExpiresAt.getTime() > now.getTime()
+    ) {
+      throw new BadRequestException({
+        code: 'VOUCHER_LOCKED',
+        message: 'Voucher is currently locked by an in-progress online checkout.',
+      });
+    }
+
+    const updateResult = await this.prisma.voucher.updateMany({
+      where: {
+        id: voucherId,
+        customerId,
+        OR: [
+          { status: VoucherLifecycleStatus.ACTIVE },
+          {
+            status: VoucherLifecycleStatus.LOCKED,
+            lockExpiresAt: { lt: now },
+          },
+        ],
+      },
+      data: {
+        status: VoucherLifecycleStatus.USED,
+        usageCount: { increment: 1 },
+        usedAt: now,
+        lockToken: null,
+        lockedAt: null,
+        lockExpiresAt: null,
+        metadata: {
+          ...(row.metadata && typeof row.metadata === 'object'
+            ? (row.metadata as Record<string, unknown>)
+            : {}),
+          redeemedInStoreByAdminId: auth.adminUserId ?? auth.actorLabel ?? null,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    if (updateResult.count === 0) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_REDEEMABLE',
+        message: 'Voucher could not be redeemed (it may have just been used).',
+      });
+    }
+    const updated = await this.prisma.voucher.findUnique({
+      where: { id: voucherId },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher.redeemed_in_store',
+      entityType: 'voucher',
+      entityId: voucherId,
+      reason: dto.reason ?? null,
+      beforeValue: { status: row.status, voucherCode: row.code } as object,
+      afterValue: { status: updated?.status, voucherCode: updated?.code } as object,
       metadata: { customerId },
     });
     return updated;

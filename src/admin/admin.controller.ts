@@ -35,6 +35,7 @@ import { AdminWalletReversalDto } from './dto/admin-wallet-reversal.dto';
 import { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
+import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import { RequestWalletReversalDto } from './dto/request-wallet-reversal.dto';
 import { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition.dto';
@@ -251,6 +252,23 @@ export class AdminController {
     @CurrentAdmin() auth: AdminAuthState,
   ) {
     return this.admin.revokeCustomerVoucher(id, voucherId, dto, auth);
+  }
+
+  @Get('customers/:id/vouchers/redeemable')
+  @RequirePermissions(P.VOUCHER_READ)
+  listRedeemableVouchers(@Param('id') id: string) {
+    return this.admin.listRedeemableVouchers(id);
+  }
+
+  @Post('customers/:id/vouchers/:voucherId/redeem')
+  @RequirePermissions(P.VOUCHER_REDEEM)
+  redeemVoucherInStore(
+    @Param('id') id: string,
+    @Param('voucherId') voucherId: string,
+    @Body() dto: RedeemVoucherDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.redeemVoucherInStore(id, voucherId, dto, auth);
   }
 
   @Get('voucher-definitions')
