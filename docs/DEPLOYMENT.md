@@ -192,6 +192,33 @@ The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem
 
 After mounting, re-upload your carousel slides once via `/admin-dashboard → Settings → Home ad carousel`, then trigger a second redeploy to confirm they survive.
 
+#### Persistence verification record
+
+The API creates `data/.persistence-probe.json` on its first startup. Check
+`GET /health/metrics` after that deploy: `dataPersistence.writable` must be
+`true` and `dataPersistence.status` will be `awaiting_restart`. Redeploy or
+restart the service, then check the endpoint again. The disk is confirmed only
+when `dataPersistence.status` is `verified`, `markerSeenAfterRestart` is `true`,
+and `markerCreatedAt` is unchanged. An `error` status includes a filesystem
+error message for diagnosis. Do not delete or recreate the marker between the
+two checks.
+
+Complete and commit this record for each production service:
+
+| Verification item | Record |
+|---|---|
+| Service / environment | `<service name / environment>` |
+| Disk attached | `yes / no` |
+| Expected mount path | `/opt/render/project/src/data` |
+| First-deploy marker timestamp | `<dataPersistence.markerCreatedAt>` |
+| Post-restart status | `verified / awaiting_restart / error` |
+| Verified by (owner) | `<name>` |
+| Verification date (UTC) | `<YYYY-MM-DD>` |
+| Evidence / deploy reference | `<URL or deploy ID>` |
+
+Repository implementation does not attach or configure the Render Disk. The
+service owner must perform and sign off the live infrastructure check above.
+
 ---
 
 ## 7. Build and host static frontends

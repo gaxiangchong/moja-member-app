@@ -6,6 +6,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
+import { DataPersistenceService } from './health/data-persistence.service';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RewardsModule } from './rewards/rewards.module';
@@ -58,5 +59,6 @@ import { MailerModule } from './mailer/mailer.module';
     MailerModule,
   ],
   controllers: [HealthController, AdminDashboardController],
+  providers: [DataPersistenceService],
 })
 export class AppModule {}
