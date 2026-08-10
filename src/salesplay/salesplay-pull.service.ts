@@ -98,12 +98,12 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
     return this.flagOn('SALESPLAY_RECONCILE_ENABLED');
   }
 
-  private reconcileIntervalHours(): number {
-    const n = Number(this.config.get<string>('SALESPLAY_RECONCILE_INTERVAL_HOURS'));
-    return Number.isFinite(n) && n > 0 ? n : 24;
-  }
-
-  /** Nightly reconcile: run only if enough time has passed since the last pull. */
+  /**
+   * Nightly reconcile: run once per Malaysia calendar day, the first time the
+   * hourly poll ticks after local midnight — not a rolling "N hours since last
+   * run" window, so it lands at ~12am MYT every day regardless of exactly when
+   * the server started or when yesterday's run happened to fire.
+   */
   private async runReconcileIfDue(): Promise<void> {
     if (!this.reconcileEnabled() || this.running) return;
     const state = await this.prisma.salesplaySyncState.findUnique({
@@ -111,9 +111,8 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
       select: { lastPulledAt: true },
     });
     const last = state?.lastPulledAt?.getTime() ?? 0;
-    const dueMs = this.reconcileIntervalHours() * 60 * 60 * 1000;
-    if (Date.now() - last < dueMs) return;
-    this.logger.log('SalesPlay reconcile is due; pulling recent records.');
+    if (last >= startOfTodayMyt().getTime()) return; // already ran today (MYT)
+    this.logger.log('SalesPlay reconcile is due (new MYT day); pulling recent records.');
     await this.reconcile();
   }
 

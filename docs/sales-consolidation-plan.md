@@ -77,11 +77,13 @@ Changes:
 
 Implemented in `salesplay-pull.service.ts` + GET pagination on
 `SalesplayService`. Config flags (all default off): `SALESPLAY_PULL_ENABLED`,
-`SALESPLAY_RECONCILE_ENABLED`, `SALESPLAY_RECONCILE_INTERVAL_HOURS` (24),
-`SALESPLAY_RECONCILE_LOOKBACK_DAYS` (3), `SALESPLAY_BACKFILL_FROM` (defaults to
-`salesStartDate`), `SALESPLAY_PULL_PAGE_SIZE` (250), and undocumented-API
-overrides `SALESPLAY_PULL_CURSOR_PARAM` / `SALESPLAY_PULL_FROM_PARAM`. Admin
-endpoints: `GET /admin/reports/pos/sync-health`, `POST /admin/reports/pos/pull`.
+`SALESPLAY_RECONCILE_ENABLED` (once enabled, runs once per Malaysia calendar
+day at ~12am MYT — an hourly poll checks whether today's run has happened
+yet), `SALESPLAY_RECONCILE_LOOKBACK_DAYS` (3), `SALESPLAY_BACKFILL_FROM`
+(defaults to `salesStartDate`), `SALESPLAY_PULL_PAGE_SIZE` (250), and
+undocumented-API overrides `SALESPLAY_PULL_CURSOR_PARAM` /
+`SALESPLAY_PULL_FROM_PARAM`. Admin endpoints:
+`GET /admin/reports/pos/sync-health`, `POST /admin/reports/pos/pull`.
 
 Original spec:
 
