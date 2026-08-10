@@ -1,0 +1,46 @@
+        <section id="finance-sync" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-export-block sa-panel" style="margin-top:0">
+              <div class="sa-export-head">
+                <h3>SalesPlay POS sync health</h3>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn-outline" id="fsRefreshBtn">Refresh</button>
+                  <button type="button" class="btn-primary" id="fsPullBtn">Pull now (reconcile)</button>
+                  <button type="button" class="btn-outline" id="fsBackfillBtn">Backfill history</button>
+                </div>
+              </div>
+              <div class="sa-kpi-strip" style="padding:12px 16px">
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Connection</div>
+                  <div class="sa-kpi-card-value" id="fsValConfigured" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta" id="fsFlagsDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last webhook</div>
+                  <div class="sa-kpi-card-value" id="fsValWebhook" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">real-time receipt push</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Last pull</div>
+                  <div class="sa-kpi-card-value" id="fsValPull" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta">backfill / reconciliation</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts today (MYT)</div>
+                  <div class="sa-kpi-card-value" id="fsValToday">—</div>
+                  <div class="sa-kpi-card-delta" id="fsTodayDetail">—</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Receipts total</div>
+                  <div class="sa-kpi-card-value" id="fsValTotal">—</div>
+                  <div class="sa-kpi-card-delta" id="fsCreditsDetail">—</div>
+                </div>
+              </div>
+              <p class="muted-hint" style="margin:0 16px 12px;font-size:13px" id="fsHint">
+                Webhooks are the live path; the nightly pull is the integrity net. If "Last webhook" goes stale on a
+                trading day, check the SalesPlay Back Office webhook configuration, then run a manual pull.
+              </p>
+              <p class="field-hint" id="fsResult" style="padding:0 16px 16px;margin:0"></p>
+            </div>
+          </div>
+        </section>

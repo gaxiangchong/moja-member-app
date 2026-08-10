@@ -1,0 +1,49 @@
+        <section id="settings-system" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Sales reporting start date</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="reportingClearBtn">Clear</button>
+                <button type="button" class="btn-primary" id="reportingSaveBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:560px">
+              <p class="field-hint" style="margin-top:0">
+                Charges dated <strong>before</strong> this date are hidden from all sales reports — Sales &amp; transactions (cake and bento), Bento overview, daily commerce, and dashboard GMV. Set it to your <strong>launch date</strong> to exclude test-phase charges and reset the displayed sales to 0. Leave it empty to show full history.
+              </p>
+              <div style="padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:13px;color:#065f46;margin-bottom:12px">
+                <strong>Non-destructive.</strong> This only filters what reports show — no payment records are deleted. Clearing the date brings every charge back.
+              </div>
+              <label for="reportingStartDate">Start date (UTC)</label>
+              <input type="date" id="reportingStartDate" style="max-width:200px" />
+              <p class="field-hint" id="reportingSaveResult" style="margin-top:10px"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Payments test mode</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="demoModeSaveBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:560px">
+              <p class="field-hint" style="margin-top:0">
+                For staff training/rehearsal only. When ON, every shop checkout on this server skips
+                Xendit/TNG and completes as a dummy payment instead &mdash; for <strong>all customers</strong>,
+                not just staff. The order still gets a pickup QR, staff still scan it to collect, and
+                points are still awarded automatically.
+              </p>
+              <div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#991b1b;margin-bottom:12px">
+                <strong>Never enable this in production.</strong> It disables real payment collection for everyone.
+              </div>
+              <label for="demoModeSelect">Mode</label>
+              <select id="demoModeSelect" style="max-width:280px">
+                <option value="true">On &mdash; force test mode</option>
+                <option value="false">Off &mdash; force real payments</option>
+                <option value="null">Use server default (.env)</option>
+              </select>
+              <p class="field-hint" id="demoModeResult" style="margin-top:10px"></p>
+            </div>
+          </div>
+        </section>

@@ -1,0 +1,105 @@
+        <section id="bento-sales" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="bsPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="bsPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="bsPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsFrom">From (UTC)</label>
+                <input type="date" id="bsFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsTo">To (UTC, inclusive)</label>
+                <input type="date" id="bsTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="bsBucket">Bucket</label>
+                <select id="bsBucket" aria-label="Time bucket">
+                  <option value="day">Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month" selected>Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="bsRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <p class="field-hint" style="margin:0 0 12px">
+              Bento-only sales — successful subscription payments by payment date (UTC). Fully separate from cake-shop sales.
+            </p>
+
+            <div class="sa-kpi-strip">
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Bento revenue (paid)</div>
+                <div class="sa-kpi-card-value" id="bsValGmv">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Paid plans</div>
+                <div class="sa-kpi-card-value" id="bsValOrders">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Avg plan value</div>
+                <div class="sa-kpi-card-value" id="bsValAov">—</div>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head"><h2>Sales by period</h2></div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Period</th><th>Payments</th><th>Revenue (RM)</th></tr></thead>
+                  <tbody id="bsSeriesBody"><tr><td colspan="3" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head"><h2>Top packages (sales)</h2></div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Package</th><th>Code</th><th>Sales</th><th>Revenue (RM)</th><th>Payments</th></tr></thead>
+                  <tbody id="bsTopBody"><tr><td colspan="5" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Recent transactions</h2>
+                <div class="sheet-actions"><span class="field-hint" id="bsTxnHint"></span></div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Paid at (UTC)</th><th>Member</th><th>Phone</th><th>Package</th><th>Meal</th><th>Voucher</th><th>Amount (RM)</th></tr></thead>
+                  <tbody id="bsTxnBody"><tr><td colspan="7" class="muted-hint">Apply a date range to load.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sheet" style="margin-top:16px">
+              <div class="sheet-head">
+                <h2>Pickup progress by customer</h2>
+                <div class="sheet-actions">
+                  <label class="field-hint" style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+                    <input type="checkbox" id="bsProgressShowArchived" />
+                    Show archived
+                  </label>
+                  <input type="search" id="bsProgressSearch" placeholder="Filter by name / phone" style="max-width:220px" />
+                  <span class="field-hint" id="bsProgressHint"></span>
+                </div>
+              </div>
+              <p class="field-hint" style="margin:0 20px 8px">
+                All paid plans (active + completed), independent of the date range above. Collected = boxes handed over at the kitchen; Left = meals the customer can still pick up. Plans with the most meals owed are listed first. Days left counts down the package validity window (e.g. 90 days on the 30-meal plan) from the day of purchase — nudge customers with few days and many meals left to book their pickups. Archiving only hides a row from this report — the plan and its pickup history are untouched.
+              </p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Member</th><th>Phone</th><th>Package</th><th>Plan status</th><th>Total meals</th><th>Collected</th><th>Booked upcoming</th><th>Not yet booked</th><th>Left to collect</th><th>Days left</th><th></th></tr></thead>
+                  <tbody id="bsProgressBody"><tr><td colspan="11" class="muted-hint">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>

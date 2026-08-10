@@ -1,0 +1,12 @@
+export const walletTransactionsView = `        <section id="wallet-transactions" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Wallet transactions</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshWalletLedgerBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>When</th><th>Member</th><th>Type</th><th>Amount (¢)</th><th>Balance after</th><th>Reason</th></tr></thead>
+                <tbody id="walletLedgerBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+`;

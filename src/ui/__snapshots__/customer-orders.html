@@ -1,0 +1,72 @@
+        <section id="customer-orders" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            Member-app commerce orders across all customers. Filter by status and date (placed or completed), or by <strong>Product contains</strong> / <strong>Product / SKU id</strong> on order lines.
+          </div>
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Customer orders</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="oqRefreshBtn">Apply filters</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:end">
+              <div class="form-section" style="margin:0">
+                <label for="oqStatus">Status</label>
+                <select id="oqStatus">
+                  <option value="all">All</option>
+                  <option value="placed">Open (placed)</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqDateField">Date field</label>
+                <select id="oqDateField">
+                  <option value="placed">Placed at</option>
+                  <option value="completed">Completed at</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqFrom">From (UTC date)</label>
+                <input type="date" id="oqFrom" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqTo">To (UTC, inclusive)</label>
+                <input type="date" id="oqTo" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqProductContains">Product contains</label>
+                <input type="text" id="oqProductContains" maxlength="120" placeholder="e.g. cheesecake" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqProductId">Product / SKU id</label>
+                <input type="text" id="oqProductId" maxlength="120" placeholder="exact line productId" />
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqSort">Sort</label>
+                <select id="oqSort">
+                  <option value="placed_desc">Placed · newest first</option>
+                  <option value="placed_asc">Placed · oldest first</option>
+                  <option value="completed_desc">Completed · newest first</option>
+                  <option value="completed_asc">Completed · oldest first</option>
+                  <option value="total_desc">Total · high → low</option>
+                  <option value="total_asc">Total · low → high</option>
+                </select>
+              </div>
+              <div class="form-section" style="margin:0">
+                <label for="oqLimit">Row limit</label>
+                <select id="oqLimit">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="200">200</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>#</th><th>Status</th><th>Placed</th><th>Completed</th><th>Customer</th><th>Phone</th><th>Total</th><th>Lines</th></tr></thead>
+                <tbody id="oqBody"></tbody>
+              </table>
+            </div>
+            <p class="field-hint" id="oqHint" style="padding:0 20px 16px;margin:0"></p>
+          </div>
+        </section>

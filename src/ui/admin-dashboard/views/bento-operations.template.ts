@@ -1,0 +1,67 @@
+export const bentoOperationsView = `        <section id="bento-operations" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Bento operations</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="bentoSettingsSaveBtn">Save capacity</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                Limit how many <strong>packs</strong> (each lunch or dinner counts as one pack) can be scheduled on the same calendar day across all customers. Scheduling is rejected when a day would exceed this limit.
+              </p>
+              <label for="bentoDailyCapacity">Daily capacity (packs)</label>
+              <input type="number" id="bentoDailyCapacity" min="1" max="10000" step="1" value="50" style="max-width:160px" />
+              <label for="bentoEarliestPickupDate" style="margin-top:14px">Earliest pickup date (service launch)</label>
+              <input type="date" id="bentoEarliestPickupDate" style="max-width:200px" />
+              <p class="field-hint" style="margin-top:4px">
+                Optional. Members cannot schedule pickups before this date (combined with lead days below). Leave empty for no launch date.
+              </p>
+              <label for="bentoMinScheduleLeadDays" style="margin-top:14px">Min schedule lead (days)</label>
+              <input type="number" id="bentoMinScheduleLeadDays" min="0" max="30" step="1" value="1" style="max-width:120px" />
+              <p class="field-hint" style="margin-top:4px">
+                Pickup must be at least this many days after today (e.g. 1 = tomorrow at earliest, 2 = day after tomorrow).
+              </p>
+              <label for="bentoScheduleCutoffHour" style="margin-top:14px">Daily order cutoff (hour, 0–23)</label>
+              <input type="number" id="bentoScheduleCutoffHour" min="0" max="23" step="1" value="18" style="max-width:120px" />
+              <p class="field-hint" style="margin-top:4px">
+                Malaysia time. After this hour the nearest lead day closes. With lead = 1 and cutoff = 18, members can book tomorrow only before 6pm today; after 6pm the earliest becomes the day after.
+              </p>
+              <label for="bentoClosedDates" style="margin-top:14px">Extra closed dates</label>
+              <textarea id="bentoClosedDates" rows="3" placeholder="2026-12-25&#10;2026-01-01" style="max-width:320px;font-family:inherit"></textarea>
+              <p class="field-hint" style="margin-top:4px">
+                One-off closures (public holidays). One <code>YYYY-MM-DD</code> per line.
+              </p>
+              <label class="field-hint" style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
+                <input type="checkbox" id="bentoBlockNewOrders" />
+                Pause all new meal plan orders (manual override)
+              </label>
+              <p class="field-hint" style="margin-top:4px">
+                When paused, customers cannot checkout even if individual days have slots. Automatic capacity checks still apply when this is off.
+              </p>
+              <p class="field-hint" id="bentoSettingsSaveResult"></p>
+              <p class="field-hint" id="bentoSettingsEnvHint" style="display:none;color:#b45309"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Member booking fix</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:820px">
+              <p class="field-hint" style="margin-top:0">
+                Customer paid but <strong>can't schedule</strong>? Look them up by phone to check their plan status. A plan stuck on <strong>PENDING_PAYMENT</strong> is what blocks scheduling — click <strong>Activate</strong> to unblock it (this re-checks Xendit first, then lets you force it with a reason). For any <strong>ACTIVE</strong> plan, click <strong>Schedule</strong> to pick meal pickup days on the member's behalf.
+              </p>
+              <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <label for="bentoFixPhone">Customer phone</label>
+                  <input type="tel" id="bentoFixPhone" placeholder="012-345 6789 or +60123456789" style="min-width:260px" />
+                </div>
+                <button type="button" class="btn-primary" id="bentoFixSearchBtn">Look up</button>
+              </div>
+              <p class="field-hint" id="bentoFixMsg" style="margin-top:8px"></p>
+              <div id="bentoFixResult" style="margin-top:12px"></div>
+            </div>
+          </div>
+        </section>
+`;

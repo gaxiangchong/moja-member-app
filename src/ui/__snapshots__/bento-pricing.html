@@ -1,0 +1,33 @@
+        <section id="bento-pricing" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Bento package pricing</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshBentoPackagesBtn">Refresh</button>
+                <button type="button" class="btn-primary" id="bentoPackagesSaveBtn">Save pricing</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1100px">
+              <p class="field-hint" style="margin-top:0">
+                Prices shown in the Bento client app at checkout. Amounts are in <strong>RM</strong> (stored as cents in the database). The trial pack can use a <strong>fixed checkout</strong> total instead of per-meal pricing. Inactive packages are hidden from customers.
+              </p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Label</th>
+                      <th>Meals</th>
+                      <th>Valid (days)</th>
+                      <th>Price / meal (RM)</th>
+                      <th>Fixed checkout (RM)</th>
+                      <th style="text-align:center">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoPackagesBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoPackagesSaveResult"></p>
+            </div>
+          </div>
+        </section>

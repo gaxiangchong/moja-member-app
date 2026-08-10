@@ -1,0 +1,86 @@
+        <section id="customers-list" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            Browse members and open <strong>Edit</strong> for full profile, tags, and recent orders for that customer.
+          </div>
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Customer list</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="exportCustomersBtn">Export CSV</button>
+                <button type="button" class="btn-outline" id="refreshCustomersBtn">Refresh list</button>
+              </div>
+            </div>
+            <div class="customer-sort-bar">
+              <span style="flex:1 1 240px;min-width:220px">
+                <label for="customerSearch">Search</label>
+                <input type="search" id="customerSearch" placeholder="Phone, name, email, or member id" style="width:100%" />
+              </span>
+              <span>
+                <label for="customerStatusFilter">Status</label>
+                <select id="customerStatusFilter">
+                  <option value="">All</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="DRAFT">Draft</option>
+                  <option value="SUSPENDED">Suspended</option>
+                </select>
+              </span>
+              <span>
+                <label for="customerTierFilter">Tier</label>
+                <input type="text" id="customerTierFilter" placeholder="e.g. standard" style="width:120px" />
+              </span>
+              <span>
+                <label for="customerSourceFilter">Source</label>
+                <input type="text" id="customerSourceFilter" placeholder="e.g. otp" style="width:120px" />
+              </span>
+              <span>
+                <label for="customerTagFilter">Tag</label>
+                <input type="text" id="customerTagFilter" placeholder="e.g. bento, cake" style="width:130px" title="Comma-separated: members with any of these tags" />
+              </span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="customerHasVoucher" style="width:auto" />
+                <label for="customerHasVoucher" style="margin:0">Has active voucher</label>
+              </span>
+              <span>
+                <label for="customerSortBy">Sort by</label>
+                <select id="customerSortBy">
+                  <option value="createdAt">Joined</option>
+                  <option value="lastLoginAt">Last visit</option>
+                  <option value="points">Points</option>
+                  <option value="spent">Lifetime spent</option>
+                  <option value="referrals">Referrals made</option>
+                  <option value="name">Name</option>
+                </select>
+              </span>
+              <span>
+                <label for="customerSortDir">Direction</label>
+                <select id="customerSortDir">
+                  <option value="desc">High → low / New first</option>
+                  <option value="asc">Low → high / Old first</option>
+                </select>
+              </span>
+              <span style="display:flex;gap:8px;align-items:flex-end">
+                <button type="button" class="btn-primary" id="customerSearchBtn">Search</button>
+                <button type="button" class="btn-outline" id="customerClearBtn">Clear</button>
+              </span>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Phone</th><th>Name</th><th>Email</th><th>Tier</th><th>Source</th><th>Birthday in</th><th>Vouchers</th><th>Status</th><th>Points</th><th>Spent</th><th>Refs</th><th>Last visit</th><th>Edit</th></tr></thead>
+                <tbody id="customersBody"></tbody>
+              </table>
+            </div>
+            <div class="customer-pager">
+              <span class="pager-info" id="customersPageInfo"></span>
+              <span>
+                <label for="customerPageSize">Per page</label>
+                <select id="customerPageSize">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </span>
+              <button type="button" class="btn-outline" id="customersPrevBtn" disabled>‹ Prev</button>
+              <button type="button" class="btn-outline" id="customersNextBtn" disabled>Next ›</button>
+            </div>
+          </div>
+        </section>

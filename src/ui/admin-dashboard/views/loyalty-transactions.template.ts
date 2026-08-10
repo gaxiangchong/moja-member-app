@@ -1,0 +1,12 @@
+export const loyaltyTransactionsView = `        <section id="loyalty-transactions" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Loyalty transactions</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshLoyaltyBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Customer</th><th>Delta</th><th>Balance after</th><th>Reference</th></tr></thead>
+                <tbody id="loyaltyBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+`;

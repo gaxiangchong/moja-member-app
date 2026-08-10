@@ -1,0 +1,73 @@
+        <section id="bento-vouchers" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Bento discount vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshBentoVouchersBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Create a shared promo code to email to customers. Each code gives a <strong>fixed RM amount off</strong> the Bento checkout total, is valid within a date window, and can be used up to its <strong>redemption capacity</strong>. Once the capacity is reached the code stops working automatically.
+              </p>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 10px;font-size:14px">New voucher</h3>
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="bvCode">Code</label>
+                    <input type="text" id="bvCode" placeholder="e.g. MOJA5" style="text-transform:uppercase" />
+                  </div>
+                  <div>
+                    <label for="bvAmount">Amount off (RM)</label>
+                    <input type="text" id="bvAmount" inputmode="decimal" placeholder="5.00" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="bvStart">Valid from</label>
+                    <input type="datetime-local" id="bvStart" />
+                  </div>
+                  <div>
+                    <label for="bvEnd">Valid until</label>
+                    <input type="datetime-local" id="bvEnd" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:12px;max-width:680px;margin-top:8px">
+                  <div>
+                    <label for="bvCap">Redemption capacity</label>
+                    <input type="text" id="bvCap" inputmode="numeric" placeholder="100" />
+                  </div>
+                  <div>
+                    <label for="bvMinSpend">Min spend (RM, optional)</label>
+                    <input type="text" id="bvMinSpend" inputmode="decimal" placeholder="—" />
+                  </div>
+                </div>
+                <div style="margin-top:8px;max-width:680px">
+                  <label for="bvDesc">Description (optional)</label>
+                  <input type="text" id="bvDesc" placeholder="Internal note shown in this list" />
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                  <button type="button" class="btn-primary" id="bentoVoucherCreateBtn">Create voucher</button>
+                  <span class="field-hint" id="bentoVoucherCreateResult" style="margin:0"></span>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Amount off</th>
+                      <th>Window</th>
+                      <th>Redeemed / Cap</th>
+                      <th>Min spend</th>
+                      <th style="text-align:center">Active</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="bentoVouchersBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="bentoVouchersListResult"></p>
+            </div>
+          </div>
+        </section>

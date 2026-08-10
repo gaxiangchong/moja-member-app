@@ -1,0 +1,216 @@
+        <section id="voucher-campaigns" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="refreshVoucherCampaignsBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Create a voucher campaign and push it to your members. Pick a template to pre-fill the common settings, adjust the amount and dates, then create. Members receive the voucher in their app wallet — no codes or IDs to type.
+              </p>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">1 &middot; Pick a template</h3>
+              <div id="vcTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px"></div>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 12px;font-size:14px">2 &middot; Configure &amp; create</h3>
+                <input type="hidden" id="vcTemplate" value="CUSTOM" />
+                <div class="vc-form">
+                  <div class="vc-field">
+                    <label for="vcName">Voucher name</label>
+                    <input type="text" id="vcName" placeholder="e.g. Welcome RM5 off" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcType">Discount type</label>
+                    <select id="vcType">
+                      <option value="FIXED_AMOUNT">RM amount off</option>
+                      <option value="PERCENTAGE">Percentage off</option>
+                      <option value="FREE_ITEM">Free item</option>
+                      <option value="DELIVERY_DISCOUNT">Delivery discount</option>
+                    </select>
+                  </div>
+                  <div class="vc-field" id="vcAmountWrap">
+                    <label for="vcAmount">Amount off (RM)</label>
+                    <input type="text" id="vcAmount" inputmode="decimal" placeholder="5.00" />
+                  </div>
+                  <div class="vc-field" id="vcPercentWrap" style="display:none">
+                    <label for="vcPercent">Percentage off (%)</label>
+                    <input type="text" id="vcPercent" inputmode="numeric" placeholder="15" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcMinSpend">Min spend (RM)</label>
+                    <input type="text" id="vcMinSpend" inputmode="decimal" placeholder="optional" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcStart">Valid from</label>
+                    <input type="date" id="vcStart" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcEnd">Campaign ends</label>
+                    <input type="date" id="vcEnd" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcValidDays">Voucher valid (days)</label>
+                    <input type="text" id="vcValidDays" inputmode="numeric" placeholder="30" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcMaxIssued">Max total issued</label>
+                    <input type="text" id="vcMaxIssued" inputmode="numeric" placeholder="unlimited" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="vcTnc">Terms / note</label>
+                    <input type="text" id="vcTnc" placeholder="Shown to members in their wallet (optional)" />
+                  </div>
+                </div>
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="vcCreateBtn">Create voucher campaign</button>
+                  <span class="field-hint" id="vcCreateResult" style="margin:0"></span>
+                </div>
+              </div>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">Your campaigns</h3>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Name</th>
+                      <th>Discount</th>
+                      <th>Issued</th>
+                      <th>Window</th>
+                      <th style="text-align:center">Status</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="voucherCampaignsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="voucherCampaignsListResult"></p>
+
+              <div id="vcIssuePanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-top:14px">
+                <h3 style="margin:0 0 6px;font-size:14px">Push voucher to members &mdash; <span id="vcIssueCampaignName"></span></h3>
+                <p class="field-hint" style="margin-top:0">Issuing creates a voucher in the member's wallet so it shows up in their app. Find one member by phone, or push to every active member at once.</p>
+                <div class="form-row-2" style="gap:12px;max-width:680px">
+                  <div>
+                    <label for="vcIssuePhone">Member phone</label>
+                    <input type="text" id="vcIssuePhone" placeholder="e.g. 60123456789" />
+                  </div>
+                  <div style="display:flex;align-items:flex-end">
+                    <button type="button" class="btn-primary" id="vcIssueOneBtn">Find &amp; issue</button>
+                  </div>
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-outline" id="vcIssueAllBtn">Issue to all active members</button>
+                  <button type="button" class="btn-outline" id="vcIssueCloseBtn">Close</button>
+                  <span class="field-hint" id="vcIssueResult" style="margin:0"></span>
+                </div>
+              </div>
+
+              <div id="vcEditPanel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-top:14px">
+                <h3 style="margin:0 0 12px;font-size:14px">Edit campaign &mdash; <span id="vcEditCode"></span></h3>
+                <input type="hidden" id="vcEditId" />
+                <div class="vc-form">
+                  <div class="vc-field">
+                    <label for="vcEditName">Name</label>
+                    <input type="text" id="vcEditName" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcEditActive">Status</label>
+                    <select id="vcEditActive">
+                      <option value="true">Active</option>
+                      <option value="false">Paused</option>
+                    </select>
+                  </div>
+                  <div class="vc-field" id="vcEditAmountWrap">
+                    <label for="vcEditAmount">Amount off (RM)</label>
+                    <input type="text" id="vcEditAmount" inputmode="decimal" />
+                  </div>
+                  <div class="vc-field" id="vcEditPercentWrap" style="display:none">
+                    <label for="vcEditPercent">Percentage off (%)</label>
+                    <input type="text" id="vcEditPercent" inputmode="numeric" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcEditMinSpend">Min spend (RM)</label>
+                    <input type="text" id="vcEditMinSpend" inputmode="decimal" placeholder="optional" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcEditValidDays">Voucher valid (days)</label>
+                    <input type="text" id="vcEditValidDays" inputmode="numeric" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="vcEditMaxIssued">Max total issued</label>
+                    <input type="text" id="vcEditMaxIssued" inputmode="numeric" placeholder="unlimited" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="vcEditTnc">Terms / note</label>
+                    <input type="text" id="vcEditTnc" />
+                  </div>
+                </div>
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="vcEditSaveBtn">Save changes</button>
+                  <button type="button" class="btn-outline" id="vcEditCancelBtn">Cancel</button>
+                  <span class="field-hint" id="vcEditResult" style="margin:0"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Issued vouchers</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="ivRefreshBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px">
+              <p class="field-hint" style="margin-top:0">Every voucher issued to a member &mdash; search by code, name or phone, filter by status or campaign, and withdraw any unredeemed voucher. Set status to <strong>Used</strong> to see who redeemed.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+                <div>
+                  <label for="ivSearch">Search</label>
+                  <input type="text" id="ivSearch" placeholder="code, name or phone" style="min-width:200px" />
+                </div>
+                <div>
+                  <label for="ivStatus">Status</label>
+                  <select id="ivStatus">
+                    <option value="">All</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="USED">Used (redeemed)</option>
+                    <option value="LOCKED">Locked (in checkout)</option>
+                    <option value="EXPIRED">Expired</option>
+                    <option value="VOID">Withdrawn</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="ivCampaign">Campaign</label>
+                  <select id="ivCampaign"><option value="">All</option></select>
+                </div>
+                <button type="button" class="btn-primary" id="ivApplyBtn">Apply</button>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Recipient</th>
+                      <th>Phone</th>
+                      <th>Campaign</th>
+                      <th style="text-align:center">Status</th>
+                      <th>Issued</th>
+                      <th>Used / Expiry</th>
+                      <th style="text-align:center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="issuedVouchersBody"></tbody>
+                </table>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap">
+                <button type="button" class="btn-outline" id="ivPrevBtn">Prev</button>
+                <span class="field-hint" id="ivPageInfo" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="ivNextBtn">Next</button>
+                <span class="field-hint" id="ivResult" style="margin:0"></span>
+              </div>
+            </div>
+          </div>
+        </section>

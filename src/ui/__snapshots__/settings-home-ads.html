@@ -1,0 +1,52 @@
+        <section id="settings-home-ads" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Home ad carousel</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshHomeAdsBtn">Refresh</button></div></div>
+            <div style="padding:12px 20px 4px 20px;color:#64748b;font-size:13px">
+              Slides shown on the client home screen between the points card and the rewards tiles. Active slides are rotated automatically.
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Preview</th><th>Image</th><th>Title</th><th>Body</th><th>Sort</th><th>Visible</th><th>Edit</th><th>Delete</th></tr></thead>
+                <tbody id="homeAdsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Edit slide</h2></div>
+            <div style="padding:16px 20px;max-width:720px">
+              <input type="hidden" id="haId" />
+              <div class="form-section"><label for="haTitle">Title</label><input type="text" id="haTitle" maxlength="120" placeholder="e.g. Double Points" /></div>
+              <div class="form-section"><label for="haBody">Body</label><input type="text" id="haBody" maxlength="500" placeholder="e.g. Coffee + Pastry before 11 AM" /></div>
+              <div class="form-section">
+                <label for="haImageFile">Image (optional)</label>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                  <div id="haImageThumb" style="width:160px;height:96px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">No image</div>
+                  <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
+                    <input type="file" id="haImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn-outline" id="haImageUploadBtn">Upload image</button>
+                      <button type="button" class="btn-outline" id="haImageClearBtn">Remove image</button>
+                    </div>
+                    <p class="field-hint">PNG / JPEG / WEBP / GIF, max 3 MB. Save the slide first, then upload.</p>
+                    <p class="field-hint" id="haImageResult"></p>
+                  </div>
+                </div>
+              </div>
+              <div class="form-section">
+                <label for="haBg">Fallback background (used when no image is set)</label>
+                <input type="text" id="haBg" maxlength="300" placeholder="linear-gradient(135deg, #fef3c7, #fde68a)" />
+                <p class="field-hint">Any valid CSS <code>background</code> value. Examples: <code>#fde68a</code>, <code>linear-gradient(135deg,#fef3c7,#fde68a)</code>.</p>
+                <div id="haPreview" style="margin-top:10px;height:96px;border-radius:12px;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#334155;font-weight:600;background-size:cover;background-position:center"></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="haSort">Sort order</label><input type="number" id="haSort" step="1" value="0" /></div>
+                <div class="form-section"><label><input type="checkbox" id="haActive" style="width:auto;margin-right:8px" /> Show in client app</label></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="haSaveBtn">Save slide</button>
+                <button type="button" class="btn-outline" id="haNewBtn">New slide</button>
+              </div>
+              <p class="field-hint" id="haSaveResult"></p>
+            </div>
+          </div>
+        </section>

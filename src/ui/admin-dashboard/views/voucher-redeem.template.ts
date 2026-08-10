@@ -1,0 +1,45 @@
+export const voucherRedeemView = `        <section id="voucher-redeem" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Redeem voucher (in-store)</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:760px">
+              <p class="field-hint" style="margin-top:0">
+                For walk-in members: find them by phone, then mark whichever voucher they're using as redeemed.
+                SalesPlay has no voucher/discount API, so apply the matching discount manually on the till first,
+                then redeem it here so it can't be reused.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px">
+                <div>
+                  <label for="vrPhone">Member phone</label>
+                  <input type="text" id="vrPhone" placeholder="e.g. 60123456789" />
+                </div>
+                <div style="display:flex;align-items:flex-end">
+                  <button type="button" class="btn-primary" id="vrFindBtn">Find member</button>
+                </div>
+              </div>
+              <p class="field-hint" id="vrFindResult"></p>
+
+              <div id="vrMemberPanel" style="display:none;margin-top:16px">
+                <h3 style="margin:0 0 8px;font-size:14px">Vouchers for <span id="vrMemberName"></span></h3>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Title</th>
+                        <th>Discount</th>
+                        <th>Source</th>
+                        <th>Expires</th>
+                        <th style="text-align:center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vrVouchersBody"></tbody>
+                  </table>
+                </div>
+                <p class="field-hint" id="vrVouchersResult"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+`;

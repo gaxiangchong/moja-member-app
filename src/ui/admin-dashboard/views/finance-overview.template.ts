@@ -1,0 +1,108 @@
+export const financeOverviewView = `        <section id="finance-overview" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="finPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="finPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="finPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finFrom">From (UTC)</label>
+                <input type="date" id="finFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finTo">To (UTC, inclusive)</label>
+                <input type="date" id="finTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="finBucket">Bucket</label>
+                <select id="finBucket" aria-label="Time bucket">
+                  <option value="day" selected>Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month">Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="finRefreshBtn">Apply</button>
+              </div>
+            </div>
+
+            <div class="sa-kpi-strip" id="finKpiStrip">
+              <div class="sa-kpi-card is-active">
+                <div class="sa-kpi-card-title">Total revenue (all channels)</div>
+                <div class="sa-kpi-card-value" id="finValRevenue">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaRevenue">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Transactions</div>
+                <div class="sa-kpi-card-value" id="finValOrders">—</div>
+                <div class="sa-kpi-card-delta" id="finDeltaOrders">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Avg transaction</div>
+                <div class="sa-kpi-card-value" id="finValAov">—</div>
+                <div class="sa-kpi-card-delta">&nbsp;</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Refunds</div>
+                <div class="sa-kpi-card-value" id="finValRefunds">—</div>
+                <div class="sa-kpi-card-delta" id="finRefundsDetail">—</div>
+              </div>
+              <div class="sa-kpi-card">
+                <div class="sa-kpi-card-title">Net revenue</div>
+                <div class="sa-kpi-card-value" id="finValNet">—</div>
+                <div class="sa-kpi-card-delta">after refunds</div>
+              </div>
+            </div>
+
+            <p class="sa-substats">
+              <strong>Scope:</strong> in-store POS (SalesPlay receipts, MYT business day, online-order settlements excluded),
+              online shop (paid orders), and bento (successful payments). One consolidated set of numbers — online orders
+              are never double-counted when they settle at the POS.
+            </p>
+
+            <div class="sa-chart-card">
+              <div class="sa-chart-head">
+                <div class="sa-chart-head-title">Revenue by channel</div>
+                <div class="sa-chart-controls" id="finChartLegend"></div>
+              </div>
+              <div id="finChannelChart" class="sa-line-chart-wrap" aria-label="Revenue by channel chart"></div>
+            </div>
+
+            <div class="sa-split">
+              <div class="sa-panel">
+                <div class="sa-panel-head">Channel breakdown</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Channel</th><th>Revenue</th><th>Txns</th><th>Avg</th><th>Refunds</th></tr></thead>
+                    <tbody id="finChannelBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="sa-panel">
+                <div class="sa-panel-head">Payment methods</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>Method</th><th>Revenue</th><th>Txns</th></tr></thead>
+                    <tbody id="finMethodsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Top products across channels</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">By revenue in range</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Channel</th><th>Product</th><th>SKU / code</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="finTopBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="muted-hint" id="finOverviewHint" style="margin:12px 4px 0;font-size:12px"></p>
+          </div>
+        </section>
+`;

@@ -1,0 +1,91 @@
+export const dashboardEmployeesView = `        <section id="dashboard-employees" class="tab-panel hidden">
+          <div class="info-banner" style="margin-top:0">
+            <strong>Clock in/out</strong> runs from the ops order queue (Timesheet window). Here: staff records, work calendar (off / public holiday), closed punches, payroll rules (hours, decimal multipliers, percentage), and a period salary preview you can print.
+          </div>
+          <div class="sheet">
+            <div class="sheet-head"><h2>Payroll rules</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emPayrollReloadBtn">Reload</button><button type="button" class="btn-primary" id="emPayrollSaveBtn">Save</button></div></div>
+            <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+              <div class="form-section" style="margin:0"><label for="emStdHours">Standard day (hours)</label><input type="number" id="emStdHours" min="0.1" step="0.1" title="Converted to minutes for payroll (e.g. 8.0 = 480 min)" /></div>
+              <div class="form-section" style="margin:0"><label for="emOtMul">Overtime multiplier</label><input type="number" id="emOtMul" min="0" step="0.01" title="e.g. 1.50 = 1.5× on minutes after the standard day" /></div>
+              <div class="form-section" style="margin:0"><label for="emPhMul">Public holiday multiplier</label><input type="number" id="emPhMul" min="0" step="0.01" title="e.g. 2.00 = 2× for all minutes that day" /></div>
+              <div class="form-section" style="margin:0"><label for="emOffMul">Off-day worked multiplier</label><input type="number" id="emOffMul" min="0" step="0.01" title="Applied to pay for minutes worked on calendar off days" /></div>
+            </div>
+            <p class="field-hint" id="emPayrollSaveHint" style="padding:0 20px 16px;margin:0"></p>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Employees</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emEmpReloadBtn">Refresh</button></div></div>
+            <div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.08)">
+              <p class="muted-hint" style="margin:0 0 12px">New hire — <strong>Employee ID</strong> is what staff type at the queue timesheet.</p>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emNewCode">Employee ID</label><input type="text" id="emNewCode" maxlength="64" /></div>
+                <div class="form-section" style="margin:0"><label for="emNewName">Display name</label><input type="text" id="emNewName" maxlength="200" /></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emNewPos">Position</label><input type="text" id="emNewPos" maxlength="120" placeholder="Barista, shift lead…" /></div>
+                <div class="form-section" style="margin:0"><label for="emNewRate">Monthly salary (¢)</label><input type="number" id="emNewRate" min="0" step="1" value="0" /></div>
+              </div>
+              <div class="form-section" style="margin:0"><label for="emNewComm">Percentage (% of wage subtotal)</label><input type="number" id="emNewComm" min="0" step="0.01" value="0" title="e.g. 5.00 means 5%" /></div>
+              <p class="field-hint" style="margin:0 0 8px">Monthly salary is converted to an implied hourly rate using 173.33 hours per month (40 h/week basis) for the same wage engine.</p>
+              <button type="button" class="btn-primary" id="emEmpCreateBtn" style="margin-top:12px">Add employee</button>
+              <p class="field-hint" id="emEmpCreateHint" style="margin-top:8px"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Monthly ¢</th><th>%</th><th>Active</th><th>Save row</th></tr></thead>
+                <tbody id="emEmpBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Work calendar</h2></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emCalFrom">From</label><input type="date" id="emCalFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emCalTo">To</label><input type="date" id="emCalTo" /></div>
+              <button type="button" class="btn-outline" id="emCalLoadBtn">Load range</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Date</th><th>Type</th><th>Label</th></tr></thead>
+                <tbody id="emCalBody"></tbody>
+              </table>
+            </div>
+            <div style="padding:16px 20px;border-top:1px solid rgba(0,0,0,0.08)">
+              <p class="muted-hint" style="margin:0 0 10px">Set one day (UTC date) — <strong>REGULAR</strong>, <strong>OFF</strong>, or <strong>PUBLIC_HOLIDAY</strong>.</p>
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0"><label for="emCalDay">Date</label><input type="date" id="emCalDay" /></div>
+                <div class="form-section" style="margin:0"><label for="emCalType">Type</label>
+                  <select id="emCalType"><option value="REGULAR">REGULAR</option><option value="OFF">OFF</option><option value="PUBLIC_HOLIDAY">PUBLIC_HOLIDAY</option></select>
+                </div>
+              </div>
+              <div class="form-section" style="margin:0"><label for="emCalLabel">Label (optional)</label><input type="text" id="emCalLabel" maxlength="120" placeholder="CNY, team off…" /></div>
+              <button type="button" class="btn-primary" id="emCalSaveBtn" style="margin-top:10px">Save calendar day</button>
+              <p class="field-hint" id="emCalHint"></p>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Clock in / out report</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emTeReloadBtn">Load</button></div></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emTeFrom">From</label><input type="date" id="emTeFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emTeTo">To</label><input type="date" id="emTeTo" /></div>
+              <div class="form-section" style="margin:0"><label for="emTeEmp">Employee (optional)</label><select id="emTeEmp"><option value="">All</option></select></div>
+            </div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>In</th><th>Out</th><th>Minutes</th><th>ID</th><th>Name</th><th>Position</th></tr></thead>
+                <tbody id="emTeBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head"><h2>Salary calculator (period)</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="emPayPrintBtn">Print payslip</button></div></div>
+            <div style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+              <div class="form-section" style="margin:0"><label for="emPayEmp">Employee</label><select id="emPayEmp"></select></div>
+              <div class="form-section" style="margin:0"><label for="emPayFrom">From</label><input type="date" id="emPayFrom" /></div>
+              <div class="form-section" style="margin:0"><label for="emPayTo">To</label><input type="date" id="emPayTo" /></div>
+              <div class="form-section" style="margin:0"><label for="emPayManual">Manual add-on (¢)</label><input type="number" id="emPayManual" min="0" step="1" value="0" /></div>
+              <button type="button" class="btn-primary" id="emPayCalcBtn">Calculate</button>
+            </div>
+            <div id="emPayslipRoot" style="margin:16px 20px;max-height:520px;overflow:auto"></div>
+          </div>
+        </section>
+`;

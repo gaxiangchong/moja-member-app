@@ -1,0 +1,152 @@
+        <section id="reports-sales" class="tab-panel hidden">
+          <div class="sa-page">
+            <div class="sa-toolbar">
+              <div class="sa-toolbar-presets">
+                <button type="button" class="btn-outline" id="saPreset7">Last 7 days</button>
+                <button type="button" class="btn-outline" id="saPreset30">Last 30 days</button>
+                <button type="button" class="btn-outline" id="saPresetMtd">Month to date</button>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saFrom">From (UTC)</label>
+                <input type="date" id="saFrom" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saTo">To (UTC, inclusive)</label>
+                <input type="date" id="saTo" />
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saCategory">Category</label>
+                <select id="saCategory" aria-label="Sales category">
+                  <option value="cake" selected>Cake (shop)</option>
+                  <option value="bento">Bento (meal plans)</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saBucket">Bucket</label>
+                <select id="saBucket" aria-label="Time bucket">
+                  <option value="day">Days</option>
+                  <option value="week">Weeks</option>
+                  <option value="month" selected>Months</option>
+                </select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saStoreFilter">Store</label>
+                <select id="saStoreFilter" disabled title="Not tracked in this build"><option>All stores</option></select>
+              </div>
+              <div class="sa-toolbar-group">
+                <label for="saStaffFilter">Staff</label>
+                <select id="saStaffFilter" disabled title="Not tracked in this build"><option>All staff</option></select>
+              </div>
+              <div class="sa-toolbar-actions">
+                <button type="button" class="btn-primary" id="saRefreshBtn">Apply</button>
+                <button type="button" class="btn-outline" id="saExportCsv">Export CSV</button>
+                <button type="button" class="btn-outline" id="saExportJson">Export JSON</button>
+              </div>
+            </div>
+
+            <div class="sa-kpi-strip" id="saKpiStrip">
+              <button type="button" class="sa-kpi-card is-active" data-sa-metric="gmv" id="saCardGmv">
+                <div class="sa-kpi-card-title" id="saKpiGmvTitle">GMV (paid)</div>
+                <div class="sa-kpi-card-value" id="saValGmv">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaGmv">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="orders" id="saCardOrders">
+                <div class="sa-kpi-card-title" id="saKpiOrdersTitle">Paid transactions</div>
+                <div class="sa-kpi-card-value" id="saValOrders">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaOrders">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card" data-sa-metric="aov" id="saCardAov">
+                <div class="sa-kpi-card-title" id="saKpiAovTitle">Avg transaction</div>
+                <div class="sa-kpi-card-value" id="saValAov">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaAov">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card sa-kpi-cake-only" data-sa-metric="wallet" id="saCardWallet">
+                <div class="sa-kpi-card-title">Wallet spend</div>
+                <div class="sa-kpi-card-value" id="saValWallet">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaWallet">—</div>
+              </button>
+              <button type="button" class="sa-kpi-card sa-kpi-cake-only" data-sa-metric="points" id="saCardPts">
+                <div class="sa-kpi-card-title">Points redeemed</div>
+                <div class="sa-kpi-card-value" id="saValPts">—</div>
+                <div class="sa-kpi-card-delta" id="saDeltaPts">—</div>
+              </button>
+            </div>
+
+            <p class="sa-substats" id="saSubstats">
+              <strong>Scope:</strong> <span id="saScopeText">Cake — paid shop orders by <code>placed_at</code> (UTC). Includes placed and completed; excludes unpaid/cancelled.</span>
+              <span id="saSubstatsCake"> · <strong>Open orders (placed in range):</strong> <span id="saOpen">—</span>
+              · <strong>Points issued:</strong> <span id="saPtsIn">—</span>
+              · <strong>Wallet top-up:</strong> <span id="saWalTop">—</span>
+              · <strong>Vouchers issued / redeemed:</strong> <span id="saVIss">—</span> / <span id="saVRed">—</span></span>
+            </p>
+
+            <div class="sa-chart-card">
+              <div class="sa-chart-head">
+                <div class="sa-chart-head-title" id="saChartTitleLabel">Gross merchandise value</div>
+                <div class="sa-chart-controls">
+                  <label class="muted-hint" style="width:auto;margin:0;font-size:12px">Chart
+                    <select id="saChartStyle" aria-label="Chart type" style="margin-left:6px">
+                      <option value="area">Area</option>
+                      <option value="line">Line</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div id="saLineChart" class="sa-line-chart-wrap" aria-label="Sales trend chart"></div>
+            </div>
+
+            <div class="sa-split">
+              <div class="sa-panel">
+                <div class="sa-panel-head">Best seller</div>
+                <div class="sa-panel-body"><div class="sa-panel-body-inner" id="saBestSeller">Apply filters to load data.</div></div>
+              </div>
+              <div class="sa-panel">
+                <div class="sa-panel-head" id="saTopPanelHead">Top products (quantity)</div>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead id="saTopHead"><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr></thead>
+                    <tbody id="saTopBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Export</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">Period breakdown</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Period start (UTC)</th><th>GMV</th><th>Orders</th><th>Avg basket</th></tr></thead>
+                  <tbody id="saSeriesBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="sa-export-block sa-panel" id="saDailySalesPanel" style="margin-top:20px">
+              <div class="sa-export-head">
+                <h3>Daily sales by item (completed orders)</h3>
+                <span class="muted-hint" style="width:auto;margin:0;font-size:12px">UTC business day · close books when reconciled</span>
+              </div>
+              <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+                <div class="form-section" style="margin:0">
+                  <label for="dcDate">Business date (UTC)</label>
+                  <input type="date" id="dcDate" />
+                </div>
+                <button type="button" class="btn-primary" id="dcLoadBtn">Load day</button>
+                <span id="dcClosedBadge" class="muted-hint" style="margin:0"></span>
+                <button type="button" class="btn-outline" id="dcCloseBtn">Close day</button>
+              </div>
+              <p class="muted-hint" id="dcSummary" style="margin:0 16px 12px;font-size:13px"></p>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Revenue</th></tr></thead>
+                  <tbody id="dcItemsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="dcResult" style="padding:0 16px 16px;margin:0"></p>
+            </div>
+            <p class="muted-hint" id="saLoadHint" style="margin:12px 4px 0;font-size:12px"></p>
+          </div>
+        </section>

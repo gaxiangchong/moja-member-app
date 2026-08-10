@@ -1,0 +1,12 @@
+export const dataExportView = `        <section id="data-export" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Export data</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshExportJobsBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Created</th><th>Kind</th><th>Format</th><th>Status</th><th>File</th></tr></thead>
+                <tbody id="exportJobsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+`;

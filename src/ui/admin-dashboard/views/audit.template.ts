@@ -1,0 +1,12 @@
+export const auditView = `        <section id="audit" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Audit activity</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshAuditBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead>
+                <tbody id="auditBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+`;

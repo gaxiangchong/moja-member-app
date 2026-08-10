@@ -1,0 +1,109 @@
+export const mailerCampaignsView = `        <section id="mailer-campaigns" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Email campaigns</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="mailNewBtn">New campaign</button>
+                <button type="button" class="btn-outline" id="mailRefreshBtn">Refresh</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Draft marketing emails, send a test to yourself, then send now or schedule for later.
+                Emails go to <strong>active members with an email address</strong>; the default audience only includes members who opted in to marketing.
+                Every email carries an automatic unsubscribe link.
+              </p>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">1 &middot; Start from a template</h3>
+              <div id="mailTemplateGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:18px"></div>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+                <h3 style="margin:0 0 4px;font-size:14px">2 &middot; Draft the email &mdash; <span id="mailEditorMode">new campaign</span></h3>
+                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. With an attached voucher you can also use <code>{{voucher_title}}</code>, <code>{{voucher_code}}</code> and <code>{{voucher_expiry}}</code>. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
+                <input type="hidden" id="mailEditingId" value="" />
+                <input type="hidden" id="mailTemplateKind" value="PLAIN" />
+                <div class="vc-form">
+                  <div class="vc-field">
+                    <label for="mailName">Internal name</label>
+                    <input type="text" id="mailName" placeholder="e.g. July newsletter" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailSubject">Subject</label>
+                    <input type="text" id="mailSubject" placeholder="e.g. This week at Moja Maison" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailPreheader">Preview line</label>
+                    <input type="text" id="mailPreheader" placeholder="Shown next to the subject in the inbox (optional)" />
+                  </div>
+                  <div class="vc-field vc-field--full">
+                    <label for="mailBody">Body (HTML)</label>
+                    <textarea id="mailBody" rows="12" style="width:100%;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.5;border:1px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&#10;&lt;p&gt;Write your message here...&lt;/p&gt;"></textarea>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailAudience">Audience</label>
+                    <select id="mailAudience">
+                      <option value="OPTED_IN">Opted-in members (recommended)</option>
+                      <option value="ALL_WITH_EMAIL">All members with email</option>
+                      <option value="BIRTHDAY_UPCOMING">🎂 Birthday coming up (opted-in)</option>
+                    </select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailTier">Member tier</label>
+                    <input type="text" id="mailTier" placeholder="all tiers (e.g. gold)" />
+                  </div>
+                  <div class="vc-field" id="mailBirthdayDaysWrap" style="display:none">
+                    <label for="mailBirthdayDays">Birthday within (days)</label>
+                    <input type="number" id="mailBirthdayDays" min="1" max="60" value="14" />
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherDef">Attach voucher (added to each recipient's wallet)</label>
+                    <select id="mailVoucherDef"><option value="">— no voucher —</option></select>
+                  </div>
+                  <div class="vc-field">
+                    <label for="mailVoucherValidDays">Voucher valid for (days)</label>
+                    <input type="number" id="mailVoucherValidDays" min="1" max="365" placeholder="no expiry" />
+                  </div>
+                </div>
+                <p class="field-hint" id="mailAudienceCount" style="margin:10px 0 0"></p>
+                <div id="mailBirthdayPreview" style="display:none;margin-top:10px"></div>
+                <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="mailSaveBtn">Save draft</button>
+                  <button type="button" class="btn-outline" id="mailPreviewBtn">Preview</button>
+                  <input type="email" id="mailTestEmail" placeholder="you@example.com" style="max-width:220px" />
+                  <button type="button" class="btn-outline" id="mailTestBtn">Send test</button>
+                  <span class="field-hint" id="mailEditorResult" style="margin:0"></span>
+                </div>
+                <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px dashed #cbd5e1;padding-top:12px">
+                  <input type="datetime-local" id="mailScheduleAt" style="max-width:230px" />
+                  <button type="button" class="btn-outline" id="mailScheduleBtn">Schedule</button>
+                  <button type="button" class="btn-primary" id="mailSendNowBtn">Send now</button>
+                  <span class="field-hint" id="mailScheduleResult" style="margin:0"></span>
+                </div>
+                <div id="mailPreviewWrap" style="display:none;margin-top:14px">
+                  <h3 style="margin:0 0 6px;font-size:14px">Preview</h3>
+                  <iframe id="mailPreviewFrame" title="Email preview" style="width:100%;height:460px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+                </div>
+              </div>
+
+              <h3 style="margin:18px 0 8px;font-size:14px">Your campaigns</h3>
+              <div class="table-wrap">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Subject</th>
+                      <th>Audience</th>
+                      <th style="text-align:center">Status</th>
+                      <th>Scheduled / sent</th>
+                      <th style="text-align:center">Delivered</th>
+                      <th style="text-align:center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mailCampaignsBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint" id="mailListResult"></p>
+            </div>
+          </div>
+        </section>
+`;

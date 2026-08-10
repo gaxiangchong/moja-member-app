@@ -1,0 +1,60 @@
+        <section id="campaigns-push-voucher" class="tab-panel hidden">
+          <div class="kpi-panel" style="margin-top:0">
+            <h2>Audience summary</h2>
+            <div class="kpi-row">
+              <div class="kpi"><div class="kpi-label">Birthday today</div><div class="kpi-value" id="cpvBirthdayCount">-</div></div>
+              <div class="kpi"><div class="kpi-label">Not returning</div><div class="kpi-value" id="cpvNotReturningCount">-</div></div>
+              <div class="kpi"><div class="kpi-label">Overlap</div><div class="kpi-value" id="cpvOverlapCount">-</div></div>
+              <div class="kpi"><div class="kpi-label">Total targetable</div><div class="kpi-value" id="cpvTotalCount">-</div></div>
+            </div>
+          </div>
+          <div class="sheet">
+            <div class="sheet-head"><h2>Push voucher campaign</h2></div>
+            <div style="padding:16px 20px">
+              <div class="form-row-2">
+                <div class="form-section" style="margin:0">
+                  <label for="cpvVoucherCode">Voucher code</label>
+                  <input type="text" id="cpvVoucherCode" placeholder="e.g. BDAY_10_OFF" />
+                </div>
+                <div class="form-section" style="margin:0">
+                  <label for="cpvStrategy">Campaign strategy</label>
+                  <select id="cpvStrategy">
+                    <option value="birthday">Birthday today voucher</option>
+                    <option value="reengagement">Re-engagement (not returning)</option>
+                    <option value="mixed">Mixed strategy (birthday + not returning)</option>
+                    <option value="all">All customers</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row-2" style="margin-top:8px;align-items:end">
+                <div class="form-section" style="margin:0">
+                  <label for="cpvPhoneSearch">Target by phone (optional)</label>
+                  <input type="text" id="cpvPhoneSearch" placeholder="+6591234567" />
+                </div>
+                <div class="form-section" style="margin:0">
+                  <label for="cpvInactiveDays">Not-returning threshold (days)</label>
+                  <input type="number" id="cpvInactiveDays" value="60" min="1" max="3650" />
+                </div>
+              </div>
+              <div class="form-section" style="margin-top:10px">
+                <label><input type="checkbox" id="cpvUseBirthdayToday" checked style="width:auto;margin-right:8px" />Include members with birthday today</label>
+                <label style="margin-top:6px;display:block"><input type="checkbox" id="cpvUseNotReturning" checked style="width:auto;margin-right:8px" />Include members who have not returned within threshold</label>
+              </div>
+              <div class="sheet-actions" style="padding:8px 0 0">
+                <button type="button" class="btn-outline" id="refreshCampaignVoucherInsightsBtn">Refresh audience</button>
+                <button type="button" class="btn-primary" id="runCampaignPushVoucherBtn">Push voucher now</button>
+              </div>
+              <p class="field-hint" id="cpvRunResult" style="margin-top:10px"></p>
+              <p class="field-hint">Safety: use phone search for precise targeting, and always refresh audience before running bulk push.</p>
+            </div>
+          </div>
+          <div class="sheet">
+            <div class="sheet-head"><h2>Guest list (strategy candidates)</h2></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th>Phone</th><th>Name</th><th>Tier</th><th>Birthday today</th><th>Not returning</th><th>Days since seen</th><th>Last login</th></tr></thead>
+                <tbody id="cpvGuestBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>

@@ -1,0 +1,190 @@
+export const settingsShoppingCatalogView = `        <section id="settings-shopping-catalog" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head"><h2>Shopping catalog</h2><div class="sheet-actions"><button type="button" class="btn-primary" id="scAddProductBtn">+ New product</button><button type="button" class="btn-outline" id="refreshShopCatalogBtn">Refresh</button></div></div>
+            <div class="table-wrap">
+              <table class="data">
+                <thead>
+                  <tr>
+                    <th class="sc-sortable" data-sort="name">Name <span class="sc-sort-ind" data-ind="name"></span></th>
+                    <th class="sc-sortable" data-sort="category">Category <span class="sc-sort-ind" data-ind="category"></span></th>
+                    <th class="sc-sortable" data-sort="price">Price <span class="sc-sort-ind" data-ind="price"></span></th>
+                    <th class="sc-sortable" data-sort="sort">Sort <span class="sc-sort-ind" data-ind="sort"></span></th>
+                    <th class="sc-sortable" data-sort="visible">Visible <span class="sc-sort-ind" data-ind="visible"></span></th>
+                    <th>Edit</th>
+                  </tr>
+                  <tr class="sc-filter-row">
+                    <th><input type="text" id="scFilterName" placeholder="Filter name…" /></th>
+                    <th><select id="scFilterCategory"><option value="">All</option></select></th>
+                    <th><input type="text" id="scFilterPrice" placeholder="Filter price…" /></th>
+                    <th><input type="text" id="scFilterSort" placeholder="Filter…" /></th>
+                    <th><select id="scFilterVisible"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="shopCatalogBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Sync from moja-sites</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="scSyncPreviewBtn">Preview sync</button>
+                <button type="button" class="btn-primary" id="scSyncApplyBtn">Apply sync</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;max-width:960px">
+              <p class="field-hint" style="margin-top:0">
+                Pull prices, images, and availability from moja-sites <code>products.catalog.json</code> into the live member catalog (<code>data/shop-catalog.products.json</code>).
+                Use this when the shop site and member app show different prices or pictures.
+              </p>
+              <div style="padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:13px;color:#065f46;margin-bottom:12px">
+                <strong>Manual edits win.</strong> Any field you have edited in admin (price, photo, variants, etc.) is locked from sync and will <em>not</em> be reverted.
+                To let sync take over a product again, open the product and click <em>Allow sync to overwrite this product</em>.
+              </div>
+              <div class="form-section" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+                <label for="scSitesCatalogFile"><strong>Catalog file on server</strong> (required on Render)</label>
+                <p class="field-hint" id="scSitesCatalogFileHint" style="margin:6px 0 10px">Checking…</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <input type="file" id="scSitesCatalogFile" accept=".json,application/json" />
+                  <button type="button" class="btn-outline" id="scSitesCatalogSaveBtn">Save catalog to server</button>
+                </div>
+                <p class="field-hint" style="margin:8px 0 0">Upload once from your PC — stored at <code>data/products.catalog.json</code> on your persistent disk. Sync always reads this file (no path picker). Or set <code>MOJA_SITES_CATALOG_URL</code> on Render.</p>
+                <p class="field-hint" id="scSitesCatalogSaveResult"></p>
+              </div>
+              <div class="form-section">
+                <label for="scSyncMode">Sync mode</label>
+                <select id="scSyncMode">
+                  <option value="pricing_and_media" selected>Pricing &amp; media only (keep names/descriptions)</option>
+                  <option value="full">Full product copy (keep visibility &amp; sort order)</option>
+                </select>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncCreateMissing" style="width:auto;margin-right:8px" checked /> Add products that exist in moja-sites but not in member catalog</label>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncLayout" style="width:auto;margin-right:8px" /> Also sync shop layout (featured + sections)</label>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="scSyncWriteSeed" style="width:auto;margin-right:8px" /> Also update <code>config/</code> seed files (for git commits)</label>
+              </div>
+              <p class="field-hint" id="scSyncSourceHint">Source: server default path or <code>MOJA_SITES_CATALOG_URL</code> when set.</p>
+              <p class="field-hint" id="scSyncResult"></p>
+              <div id="scSyncSummary" style="display:none;margin:12px 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px"></div>
+              <div class="table-wrap" id="scSyncPreviewWrap" style="display:none">
+                <table class="data">
+                  <thead><tr><th style="width:64px">Image</th><th>Product</th><th style="width:110px">Status</th><th>Changes</th></tr></thead>
+                  <tbody id="scSyncPreviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="scModalBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
+          <div id="scModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="scModalTitle" style="width:min(760px, calc(100vw - 24px))">
+            <div class="modal-head">
+              <h2 id="scModalTitle">Edit product</h2>
+              <button type="button" class="icon-btn" id="scModalClose" aria-label="Close" style="margin:0">&times;</button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="scId" />
+              <div class="form-row-2">
+                <div class="form-section"><label for="scIdVisible">Product ID (slug)</label><input type="text" id="scIdVisible" placeholder="e.g. caramel-espresso-gateau" /></div>
+                <div class="form-section"><label for="scCategoryLabel">Storefront category label</label><input type="text" id="scCategoryLabel" placeholder="e.g. Premium Cake" /></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="scName">Name</label><input type="text" id="scName" /></div>
+                <div class="form-section"><label for="scCategory">Category</label>
+                  <select id="scCategory">
+                    <option value="whole_cakes">whole_cakes</option>
+                    <option value="cake_slices">cake_slices</option>
+                    <option value="drinks">drinks</option>
+                    <option value="specials">specials</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
+              <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
+              <div class="form-section">
+                <label for="scImageFile">Product image</label>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                  <div id="scImageThumb" style="position:relative;width:160px;height:120px;border-radius:12px;border:1px dashed #cbd5e1;background:#f8fafc center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;flex-shrink:0;cursor:grab;user-select:none" title="Drag to recenter the focal point">No image</div>
+                  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
+                    <input type="file" id="scImageFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn-outline" id="scImageUploadBtn">Upload image</button>
+                      <button type="button" class="btn-outline" id="scImageClearBtn">Remove image</button>
+                    </div>
+                    <p class="field-hint">PNG / JPEG / WEBP / GIF, max 5 MB. <strong>Save the product first</strong>, then upload an image.</p>
+                    <p class="field-hint" id="scImageResult"></p>
+                  </div>
+                </div>
+                <input type="hidden" id="scImageUrl" />
+              </div>
+
+              <div class="form-section" id="scImageFramingSection">
+                <label>Image framing</label>
+                <p class="field-hint" style="margin-top:0">Drag the preview above, or use the sliders to recenter the photo. Useful when the product isn't centered in the source image.</p>
+                <div class="form-row-2" style="gap:16px">
+                  <div>
+                    <label for="scImageOffsetX" style="font-size:12px;color:#64748b">Horizontal <span id="scImageOffsetXVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetX" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                  <div>
+                    <label for="scImageOffsetY" style="font-size:12px;color:#64748b">Vertical <span id="scImageOffsetYVal">50</span>%</label>
+                    <input type="range" id="scImageOffsetY" min="0" max="100" step="1" value="50" style="width:100%" />
+                  </div>
+                </div>
+                <div class="form-row-2" style="gap:16px;margin-top:8px;align-items:end">
+                  <div>
+                    <label for="scImageScale" style="font-size:12px;color:#64748b">Zoom <span id="scImageScaleVal">1.00</span>×</label>
+                    <input type="range" id="scImageScale" min="1" max="3" step="0.05" value="1" style="width:100%" />
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:4px">
+                    <button type="button" class="btn-outline" id="scImageRecenterBtn">Reset framing</button>
+                  </div>
+                </div>
+                <p class="field-hint" style="margin-top:6px;color:#92400e">Click <strong>Save product</strong> below to apply.</p>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="scPrice">Base price (cents)</label><input type="number" id="scPrice" min="0" step="1" /></div>
+                <div class="form-section"><label for="scPriceDisplay">Price label</label><input type="text" id="scPriceDisplay" placeholder="RM168.00" /></div>
+              </div>
+              <div class="form-section">
+                <label>Variants (sizes)</label>
+                <div class="table-wrap">
+                  <table class="data" style="margin-bottom:8px">
+                    <thead><tr><th>Label</th><th style="width:140px">Price (RM)</th><th style="width:150px">SalesPlay code</th><th style="width:100px;text-align:center">Available</th><th style="width:60px">Remove</th></tr></thead>
+                    <tbody id="scVariantsBody"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn-outline" id="scAddVariantBtn">Add variant</button>
+                <p class="field-hint">Add one row per size (e.g. <code>6 inch</code>, <code>8 inch</code>). The storefront shows the lowest available variant price. Leave empty for single-size products and rely on the Base price above.</p>
+              </div>
+              <div class="form-section">
+                <label for="scSalesplayCode">SalesPlay product code (POS)</label>
+                <input type="text" id="scSalesplayCode" list="scSalesplayCodesList" placeholder="Code of the matching product in SalesPlay" />
+                <datalist id="scSalesplayCodesList"></datalist>
+                <p class="field-hint">Links this product to its SalesPlay POS product so online orders pushed to SalesPlay carry the POS product code, and in-store receipts count toward the same product in reports. For sized products, also fill the per-variant <strong>SalesPlay code</strong> column above — a variant code wins over this product-level code. Suggestions are codes seen on synced POS receipts.</p>
+              </div>
+              <div class="form-row-2">
+                <div class="form-section"><label for="scSort">Sort order</label><input type="number" id="scSort" step="1" value="0" /></div>
+                <div class="form-section"><label for="scBadge">Badge (optional)</label><input type="text" id="scBadge" placeholder="New, Best seller…" /></div>
+              </div>
+              <div class="form-section"><label><input type="checkbox" id="scActive" style="width:auto;margin-right:8px" /> Show in shop</label></div>
+              <div class="form-section"><label><input type="checkbox" id="scSoldOut" style="width:auto;margin-right:8px" /> Mark sold out</label></div>
+              <div class="form-section" id="scOverridesPanel" style="padding:10px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:none">
+                <strong style="color:#92400e">Manual edits protected from sync</strong>
+                <p class="field-hint" id="scOverridesList" style="margin:6px 0 8px">—</p>
+                <button type="button" class="btn-outline" id="scResetOverridesBtn">Allow sync to overwrite this product</button>
+                <p class="field-hint" id="scResetOverridesResult"></p>
+              </div>
+              <p class="field-hint" id="scSaveResult"></p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn-outline" id="scModalCancel">Cancel</button>
+              <button type="button" class="btn-primary" id="scSaveBtn">Save product</button>
+            </div>
+          </div>
+        </section>
+`;
