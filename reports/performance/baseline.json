@@ -1,8 +1,9 @@
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-08-10T14:37:22.794Z",
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-10T15:25:28.230Z",
   "runs": 3,
   "profile": {
+    "cache": "cold-per-sample",
     "viewport": "390x844",
     "cpuSlowdown": 4,
     "latencyMs": 150,
@@ -20,25 +21,28 @@
       "app": "client-web",
       "samples": [
         {
-          "lcpMs": 2616,
+          "lcpMs": 2596,
           "cls": 0,
-          "inpMs": 64
+          "inpMs": 48,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 2428,
+          "lcpMs": 2420,
           "cls": 0,
-          "inpMs": 56
+          "inpMs": 40,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 2432,
+          "lcpMs": 2420,
           "cls": 0,
-          "inpMs": 56
+          "inpMs": 48,
+          "interactionObserved": true
         }
       ],
       "median": {
-        "lcpMs": 2432,
+        "lcpMs": 2420,
         "cls": 0,
-        "inpMs": 56
+        "inpMs": 48
       },
       "pass": {
         "lcp": true,
@@ -51,25 +55,28 @@
       "app": "client-web",
       "samples": [
         {
-          "lcpMs": 2444,
+          "lcpMs": 2428,
           "cls": 0,
-          "inpMs": 32
+          "inpMs": 40,
+          "interactionObserved": true
         },
         {
           "lcpMs": 2428,
           "cls": 0,
-          "inpMs": 48
+          "inpMs": 40,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 2420,
-          "cls": 0.0141,
-          "inpMs": 48
+          "lcpMs": 2452,
+          "cls": 0,
+          "inpMs": 48,
+          "interactionObserved": true
         }
       ],
       "median": {
         "lcpMs": 2428,
         "cls": 0,
-        "inpMs": 48
+        "inpMs": 40
       },
       "pass": {
         "lcp": true,
@@ -82,23 +89,26 @@
       "app": "client-web",
       "samples": [
         {
-          "lcpMs": 2424,
+          "lcpMs": 2420,
           "cls": 0,
-          "inpMs": 48
+          "inpMs": 40,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 2432,
-          "cls": 0.0141,
-          "inpMs": 40
+          "lcpMs": 2428,
+          "cls": 0,
+          "inpMs": 40,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 2424,
+          "lcpMs": 2440,
           "cls": 0,
-          "inpMs": 40
+          "inpMs": 40,
+          "interactionObserved": true
         }
       ],
       "median": {
-        "lcpMs": 2424,
+        "lcpMs": 2428,
         "cls": 0,
         "inpMs": 40
       },
@@ -113,25 +123,28 @@
       "app": "bento-web",
       "samples": [
         {
-          "lcpMs": 4704,
+          "lcpMs": 4664,
           "cls": 0,
-          "inpMs": 0
+          "inpMs": 96,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 3316,
+          "lcpMs": 4740,
           "cls": 0,
-          "inpMs": 0
+          "inpMs": 72,
+          "interactionObserved": true
         },
         {
-          "lcpMs": 3240,
+          "lcpMs": 4768,
           "cls": 0,
-          "inpMs": 16
+          "inpMs": 64,
+          "interactionObserved": true
         }
       ],
       "median": {
-        "lcpMs": 3316,
+        "lcpMs": 4740,
         "cls": 0,
-        "inpMs": 0
+        "inpMs": 72
       },
       "pass": {
         "lcp": false,

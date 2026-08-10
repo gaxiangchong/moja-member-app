@@ -13,10 +13,10 @@ const chrome = process.env.CHROME_PATH ?? (process.platform === 'win32'
   : '/usr/bin/google-chrome');
 const ports = { api: 4317, client: 4318, bento: 4319 };
 const targets = [
-  { id: 'client-home', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=home`, ready: 'nav.bottomTabs' },
-  { id: 'client-shop-list', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopProductHit' },
-  { id: 'client-product-detail', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopDetailCard', setup: '.shopProductHit' },
-  { id: 'bento-landing', app: 'bento-web', url: `http://127.0.0.1:${ports.bento}/`, ready: '.landing' },
+  { id: 'client-home', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=home`, ready: 'nav.bottomTabs', interaction: 'button[aria-label="Rewards"]' },
+  { id: 'client-shop-list', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopProductHit', interaction: '.shopProductHit' },
+  { id: 'client-product-detail', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopDetailCard', setup: '.shopProductHit', interaction: '.shopDetailBody > button' },
+  { id: 'bento-landing', app: 'bento-web', url: `http://127.0.0.1:${ports.bento}/`, ready: '.landing', interaction: '.landingLoginLink' },
 ];
 const thresholds = { lcpMs: 2500, cls: 0.1, inpMs: 200 };
 
@@ -71,32 +71,48 @@ const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.l
 const round = (value, digits = 0) => Number(value.toFixed(digits));
 
 async function measure(browser, target) {
-  const page = await browser.newPage();
+  // A new context gives every sample an independent, cold browser cache and
+  // fresh storage. Explicit cache disabling makes that contract unambiguous.
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
   const session = await page.createCDPSession();
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await session.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1_600_000 / 8, uploadThroughput: 750_000 / 8, connectionType: 'cellular4g' });
+  await session.send('Network.setCacheDisabled', { cacheDisabled: true });
   await session.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await page.evaluateOnNewDocument((app) => {
     if (app === 'client-web') localStorage.setItem('moja_access_token', 'performance-fixture-token');
     else { localStorage.removeItem('moja_access_token'); localStorage.removeItem('bento-known-member'); }
-    window.__perf = { lcp: 0, cls: 0, inp: 0 };
+    window.__perf = { lcp: 0, cls: 0, inp: null, interactions: 0 };
     new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__perf.lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
     new PerformanceObserver((list) => { for (const e of list.getEntries()) if (!e.hadRecentInput) window.__perf.cls += e.value; }).observe({ type: 'layout-shift', buffered: true });
-    try { new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__perf.inp = Math.max(window.__perf.inp, e.duration); }).observe({ type: 'event', buffered: true, durationThreshold: 16 }); } catch { /* Event Timing unavailable */ }
+    try { new PerformanceObserver((list) => { for (const e of list.getEntries()) { window.__perf.interactions += 1; window.__perf.inp = Math.max(window.__perf.inp ?? 0, e.duration); } }).observe({ type: 'event', buffered: true, durationThreshold: 16 }); } catch { /* Event Timing unavailable */ }
   }, target.app);
-  await page.goto(target.url, { waitUntil: 'networkidle0', timeout: 45_000 });
-  if (target.setup) { await page.waitForSelector(target.setup); await page.click(target.setup); }
-  await page.waitForSelector(target.ready, { timeout: 15_000 });
-  await page.click(target.ready).catch(() => {});
-  await new Promise((ok) => setTimeout(ok, 1000));
-  const metrics = await page.evaluate(() => ({ ...window.__perf }));
-  await page.close();
-  return { lcpMs: round(metrics.lcp), cls: round(metrics.cls, 4), inpMs: round(metrics.inp) };
+  try {
+    await page.goto(target.url, { waitUntil: 'networkidle0', timeout: 45_000 });
+    if (target.setup) { await page.waitForSelector(target.setup); await page.click(target.setup); }
+    await page.waitForSelector(target.ready, { timeout: 15_000 });
+    await new Promise((ok) => setTimeout(ok, 1000));
+    // Freeze navigation metrics before the INP interaction changes the view.
+    const navigation = await page.evaluate(() => ({ lcp: window.__perf.lcp, cls: window.__perf.cls }));
+    await page.waitForSelector(target.interaction, { timeout: 15_000 });
+    await page.click(target.interaction);
+    await new Promise((ok) => setTimeout(ok, 1000));
+    const interaction = await page.evaluate(() => ({ inp: window.__perf.inp, interactions: window.__perf.interactions }));
+    return {
+      lcpMs: round(navigation.lcp),
+      cls: round(navigation.cls, 4),
+      inpMs: interaction.inp == null ? null : round(interaction.inp),
+      interactionObserved: interaction.interactions > 0,
+    };
+  } finally {
+    await context.close();
+  }
 }
 
 function markdown(report) {
-  const rows = report.pages.map((p) => `| ${p.id} | ${p.median.lcpMs} ms ${p.pass.lcp ? '✅' : '⚠️'} | ${p.median.cls} ${p.pass.cls ? '✅' : '⚠️'} | ${p.median.inpMs} ms ${p.pass.inp ? '✅' : '⚠️'} |`).join('\n');
-  return `# Web performance baseline\n\nGenerated: ${report.generatedAt}\n\nProfile: mobile 390×844, 4× CPU slowdown, 1.6 Mbps down / 750 Kbps up, 150 ms latency. Values are median of ${report.runs} runs. Targets are advisory.\n\n| Page | LCP (< 2500 ms) | CLS (< 0.1) | INP (< 200 ms) |\n|---|---:|---:|---:|\n${rows}\n\nRaw samples and machine-readable pass flags are in \`baseline.json\`.\n`;
+  const rows = report.pages.map((p) => `| ${p.id} | ${p.median.lcpMs} ms ${p.pass.lcp ? '✅' : '⚠️'} | ${p.median.cls} ${p.pass.cls ? '✅' : '⚠️'} | ${p.median.inpMs == null ? 'unavailable' : `${p.median.inpMs} ms`} ${p.pass.inp ? '✅' : '⚠️'} |`).join('\n');
+  return `# Web performance baseline\n\nGenerated: ${report.generatedAt}\n\nProfile: cold cache per sample, mobile 390×844, 4× CPU slowdown, 1.6 Mbps down / 750 Kbps up, 150 ms latency. Values are median of ${report.runs} independent runs. Targets are advisory.\n\n| Page | LCP (< 2500 ms) | CLS (< 0.1) | INP (< 200 ms) |\n|---|---:|---:|---:|\n${rows}\n\nRaw samples and machine-readable pass flags are in \`baseline.json\`. An unavailable INP means Chrome did not expose a qualifying Event Timing entry; it is not counted as a pass.\n`;
 }
 
 async function main() {
@@ -112,11 +128,12 @@ async function main() {
       for (const target of targets) {
         const samples = [];
         for (let i = 0; i < runs; i += 1) samples.push(await measure(browser, target));
-        const med = { lcpMs: median(samples.map((x) => x.lcpMs)), cls: median(samples.map((x) => x.cls)), inpMs: median(samples.map((x) => x.inpMs)) };
-        pages.push({ id: target.id, app: target.app, samples, median: med, pass: { lcp: med.lcpMs < thresholds.lcpMs, cls: med.cls < thresholds.cls, inp: med.inpMs < thresholds.inpMs } });
+        const inpSamples = samples.map((x) => x.inpMs).filter((value) => value != null);
+        const med = { lcpMs: median(samples.map((x) => x.lcpMs)), cls: median(samples.map((x) => x.cls)), inpMs: inpSamples.length === samples.length ? median(inpSamples) : null };
+        pages.push({ id: target.id, app: target.app, samples, median: med, pass: { lcp: med.lcpMs < thresholds.lcpMs, cls: med.cls < thresholds.cls, inp: med.inpMs != null && med.inpMs < thresholds.inpMs } });
       }
     } finally { await browser.close(); }
-    const report = { schemaVersion: 1, generatedAt: new Date().toISOString(), runs, profile: { viewport: '390x844', cpuSlowdown: 4, latencyMs: 150, downloadKbps: 1600, uploadKbps: 750 }, thresholds, pages };
+    const report = { schemaVersion: 2, generatedAt: new Date().toISOString(), runs, profile: { cache: 'cold-per-sample', viewport: '390x844', cpuSlowdown: 4, latencyMs: 150, downloadKbps: 1600, uploadKbps: 750 }, thresholds, pages };
     await mkdir(outputDir, { recursive: true });
     await writeFile(join(outputDir, 'baseline.json'), `${JSON.stringify(report, null, 2)}\n`);
     await writeFile(join(outputDir, 'baseline.md'), markdown(report));
