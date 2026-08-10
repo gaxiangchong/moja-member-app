@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-10T14:37:22.794Z",
+  "runs": 3,
+  "profile": {
+    "viewport": "390x844",
+    "cpuSlowdown": 4,
+    "latencyMs": 150,
+    "downloadKbps": 1600,
+    "uploadKbps": 750
+  },
+  "thresholds": {
+    "lcpMs": 2500,
+    "cls": 0.1,
+    "inpMs": 200
+  },
+  "pages": [
+    {
+      "id": "client-home",
+      "app": "client-web",
+      "samples": [
+        {
+          "lcpMs": 2616,
+          "cls": 0,
+          "inpMs": 64
+        },
+        {
+          "lcpMs": 2428,
+          "cls": 0,
+          "inpMs": 56
+        },
+        {
+          "lcpMs": 2432,
+          "cls": 0,
+          "inpMs": 56
+        }
+      ],
+      "median": {
+        "lcpMs": 2432,
+        "cls": 0,
+        "inpMs": 56
+      },
+      "pass": {
+        "lcp": true,
+        "cls": true,
+        "inp": true
+      }
+    },
+    {
+      "id": "client-shop-list",
+      "app": "client-web",
+      "samples": [
+        {
+          "lcpMs": 2444,
+          "cls": 0,
+          "inpMs": 32
+        },
+        {
+          "lcpMs": 2428,
+          "cls": 0,
+          "inpMs": 48
+        },
+        {
+          "lcpMs": 2420,
+          "cls": 0.0141,
+          "inpMs": 48
+        }
+      ],
+      "median": {
+        "lcpMs": 2428,
+        "cls": 0,
+        "inpMs": 48
+      },
+      "pass": {
+        "lcp": true,
+        "cls": true,
+        "inp": true
+      }
+    },
+    {
+      "id": "client-product-detail",
+      "app": "client-web",
+      "samples": [
+        {
+          "lcpMs": 2424,
+          "cls": 0,
+          "inpMs": 48
+        },
+        {
+          "lcpMs": 2432,
+          "cls": 0.0141,
+          "inpMs": 40
+        },
+        {
+          "lcpMs": 2424,
+          "cls": 0,
+          "inpMs": 40
+        }
+      ],
+      "median": {
+        "lcpMs": 2424,
+        "cls": 0,
+        "inpMs": 40
+      },
+      "pass": {
+        "lcp": true,
+        "cls": true,
+        "inp": true
+      }
+    },
+    {
+      "id": "bento-landing",
+      "app": "bento-web",
+      "samples": [
+        {
+          "lcpMs": 4704,
+          "cls": 0,
+          "inpMs": 0
+        },
+        {
+          "lcpMs": 3316,
+          "cls": 0,
+          "inpMs": 0
+        },
+        {
+          "lcpMs": 3240,
+          "cls": 0,
+          "inpMs": 16
+        }
+      ],
+      "median": {
+        "lcpMs": 3316,
+        "cls": 0,
+        "inpMs": 0
+      },
+      "pass": {
+        "lcp": false,
+        "cls": true,
+        "inp": true
+      }
+    }
+  ]
+}

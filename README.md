@@ -326,6 +326,12 @@ For a step-by-step runbook (API, PostgreSQL / Prisma, `client-web`, `ops-queue-w
 
 Generic NestJS hosting notes: [NestJS deployment](https://docs.nestjs.com/deployment).
 
+## Local web performance baseline
+
+Run `npm run perf:baseline` to build `client-web` and `bento-web`, serve them with deterministic local API fixtures, and measure the member home, shop list, product detail, and bento landing pages under a simulated mobile/slow-4G profile. The command requires Chrome (override its location with `CHROME_PATH`) and writes stable-schema reports to `reports/performance/baseline.json` and `baseline.md`.
+
+Each page is sampled three times and reported as the median. LCP under 2.5 s, CLS under 0.1, and INP under 200 ms are advisory flags: a missed target is recorded but does not fail the command. Set `PERF_RUNS` or `PERF_OUTPUT_DIR` to override the sample count or output directory.
+
 ## Resources
 
 Check out a few resources that may come in handy when working with NestJS:

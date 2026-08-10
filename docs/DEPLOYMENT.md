@@ -334,3 +334,11 @@ cd ops-queue-web && npm ci && npm run build
 ```
 
 Document the **exact** hostnames, key rotation dates, and migration versions applied in your internal runbook when you execute a real deployment.
+
+---
+
+## 17. Pre-deploy performance baseline (advisory)
+
+From the repository root, run `npm run perf:baseline`. This development-only check rebuilds both public web apps against a deterministic local fixture API; it does not contact production or change runtime configuration. Chrome must be installed, or supplied through `CHROME_PATH`.
+
+Read `reports/performance/baseline.md` for the median summary and `baseline.json` for raw samples. A warning means the page exceeded LCP 2.5 s, CLS 0.1, or INP 200 ms under the simulated 390×844, slow-4G, 4× CPU profile. These thresholds are initially non-blocking; compare the JSON `schemaVersion`, page IDs, metric keys, and sample counts between runs when checking report stability.
