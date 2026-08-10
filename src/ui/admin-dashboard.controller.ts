@@ -2088,7 +2088,23 @@ export class AdminDashboardController {
               <p class="field-hint" id="vrFindResult"></p>
 
               <div id="vrMemberPanel" style="display:none;margin-top:16px">
-                <h3 style="margin:0 0 8px;font-size:14px">Vouchers for <span id="vrMemberName"></span></h3>
+                <h3 style="margin:0 0 4px;font-size:14px">Claim a reward with points &mdash; <span id="vrPointsBalance"></span></h3>
+                <p class="field-hint" style="margin-top:0">For members who can't redeem in their own app. Claiming spends their points and, if the reward is linked to a voucher, adds it to the list below immediately.</p>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead>
+                      <tr>
+                        <th>Reward</th>
+                        <th>Points cost</th>
+                        <th style="text-align:center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vrRewardsBody"></tbody>
+                  </table>
+                </div>
+                <p class="field-hint" id="vrRewardsResult"></p>
+
+                <h3 style="margin:18px 0 8px;font-size:14px">Vouchers for <span id="vrMemberName"></span></h3>
                 <div class="table-wrap">
                   <table class="data">
                     <thead>
@@ -9995,7 +10011,62 @@ export class AdminDashboardController {
         var nameEl = document.getElementById('vrMemberName');
         if (nameEl) nameEl.textContent = match.displayName || match.phoneE164 || 'Member';
         if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
-        await vrLoadVouchers(match.id);
+        await Promise.all([vrLoadVouchers(match.id), vrLoadRewards(match.id)]);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrLoadRewards(customerId) {
+      var body = document.getElementById('vrRewardsBody');
+      var balEl = document.getElementById('vrPointsBalance');
+      var out = document.getElementById('vrRewardsResult');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="3" class="muted-hint">Loading…</td></tr>';
+      try {
+        var walletRes = await api('/admin/rewards-workflow/user-wallet/' + encodeURIComponent(customerId));
+        var pointsBalance = (walletRes && walletRes.wallet && walletRes.wallet.pointsBalance) || 0;
+        if (balEl) balEl.textContent = pointsBalance + ' pts';
+        var catalog = await api('/admin/rewards-workflow/reward-catalog');
+        var now = Date.now();
+        var claimable = (catalog || []).filter(function (r) {
+          if (!r.isActive) return false;
+          if (r.startsAt && new Date(r.startsAt).getTime() > now) return false;
+          if (r.endsAt && new Date(r.endsAt).getTime() <= now) return false;
+          return true;
+        });
+        if (!claimable.length) {
+          body.innerHTML = '<tr><td colspan="3" class="muted-hint">No rewards available to claim.</td></tr>';
+          if (out) out.textContent = '';
+          return;
+        }
+        body.innerHTML = claimable.map(function (r) {
+          var afford = pointsBalance >= r.pointsCost;
+          var action = afford
+            ? '<button type="button" class="btn-primary vr-claim-btn" data-id="' + vcEsc(r.id) + '" data-name="' + vcEsc(r.name) + '" data-cost="' + vcEsc(String(r.pointsCost)) + '" style="padding:3px 8px;font-size:12px">Claim</button>'
+            : '<span class="muted-hint">Not enough points</span>';
+          return '<tr>' +
+            '<td>' + vcEsc(r.name) + '</td>' +
+            '<td>' + vcEsc(String(r.pointsCost)) + '</td>' +
+            '<td style="text-align:center">' + action + '</td>' +
+            '</tr>';
+        }).join('');
+        if (out) out.textContent = '';
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="3" class="muted-hint">Error loading rewards.</td></tr>';
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrClaimReward(rewardCatalogId, name, pointsCost) {
+      var panel = document.getElementById('vrMemberPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      if (!window.confirm('Claim "' + name + '" for ' + pointsCost + ' points now? This cannot be undone.')) return;
+      var out = document.getElementById('vrRewardsResult');
+      if (out) out.textContent = 'Claiming…';
+      try {
+        var res = await apiPost('/admin/rewards-workflow/customers/' + encodeURIComponent(customerId) + '/redeem-reward/' + encodeURIComponent(rewardCatalogId), {});
+        if (out) out.textContent = res && res.idempotent ? ('Already claimed earlier — ' + name + '.') : ('Claimed ' + name + '.');
+        await Promise.all([vrLoadRewards(customerId), vrLoadVouchers(customerId)]);
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
       }
@@ -10188,6 +10259,13 @@ export class AdminDashboardController {
       if (!t || !t.closest) return;
       var b = t.closest('.vr-redeem-btn');
       if (b) vrRedeem(b.getAttribute('data-id'), b.getAttribute('data-source'), b.getAttribute('data-code'));
+    });
+    var vrRewardsBodyEl = document.getElementById('vrRewardsBody');
+    if (vrRewardsBodyEl) vrRewardsBodyEl.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var b = t.closest('.vr-claim-btn');
+      if (b) vrClaimReward(b.getAttribute('data-id'), b.getAttribute('data-name'), b.getAttribute('data-cost'));
     });
     var giftRewardsBodyEl = document.getElementById('giftRewardsBody');
     if (giftRewardsBodyEl) {
