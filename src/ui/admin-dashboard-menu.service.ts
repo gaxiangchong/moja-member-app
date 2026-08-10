@@ -39,6 +39,7 @@ const DEFAULT_DASHBOARD_CONFIG: LegacyDashboardConfig = {
     'dashboard-activity': true,
     'dashboard-employees': true,
     'customers-list': true,
+    'customers-walkin': true,
     'customer-orders': true,
     'bento-overview': true,
     'bento-sales': true,

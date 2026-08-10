@@ -23,6 +23,7 @@ export const DASHBOARD_MENU: DashboardMenuGroup[] = [
     label: 'Customers',
     views: [
       { id: 'customers-list', label: 'Customer list' },
+      { id: 'customers-walkin', label: 'Create member (walk-in)' },
       { id: 'customer-orders', label: 'Customer orders' },
       { id: 'customers-segments', label: 'Tags / segments' },
       { id: 'customers-merge', label: 'Merge duplicates' },
