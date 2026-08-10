@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  Prisma,
   VoucherLifecycleStatus,
   VoucherOrderType,
   VoucherRedemptionStatus,
@@ -63,6 +64,8 @@ export class RewardsWorkflowService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Serialize redemptions of the same gift code before capacity checks.
+      await this.lockGiftVoucherCodeInTx(tx, code);
       const gift = await tx.giftVoucherCode.findUnique({ where: { code } });
       if (!gift) throw new NotFoundException('Gift voucher code not found.');
       if (gift.status !== 'ACTIVE') {
@@ -75,7 +78,13 @@ export class RewardsWorkflowService {
         throw new BadRequestException('Gift voucher redemption limit reached.');
       }
 
-      const wallet = await this.ensureUserWalletBalance(customerId, tx);
+      // Serialize cached walletBalance updates so concurrent gift credits
+      // cannot overwrite each other with stale absolute writes.
+      await this.ensureUserWalletBalance(customerId, tx);
+      await this.lockUserWalletBalanceInTx(tx, customerId);
+      const wallet = await tx.userWalletBalance.findUniqueOrThrow({
+        where: { customerId },
+      });
       const before = wallet.walletBalance;
       const after = before + gift.amount;
       const transaction = await tx.walletTransaction.create({
@@ -143,7 +152,26 @@ export class RewardsWorkflowService {
         throw new BadRequestException('Reward has ended.');
       }
 
-      const wallet = await this.ensureUserWalletBalance(customerId, tx);
+      // Lock the wallet before re-checking prior redemptions and points so
+      // concurrent redeems cannot both spend the same pointsBalance.
+      await this.ensureUserWalletBalance(customerId, tx);
+      await this.lockUserWalletBalanceInTx(tx, customerId);
+
+      const alreadyRedeemed = await tx.userReward.findFirst({
+        where: {
+          customerId,
+          rewardCatalogId,
+          status: 'REDEEMED',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (alreadyRedeemed) {
+        return { idempotent: true as const, userReward: alreadyRedeemed };
+      }
+
+      const wallet = await tx.userWalletBalance.findUniqueOrThrow({
+        where: { customerId },
+      });
       if (wallet.pointsBalance < reward.pointsCost) {
         throw new BadRequestException('Insufficient points.');
       }
@@ -458,5 +486,29 @@ export class RewardsWorkflowService {
       create: { customerId },
       update: {},
     });
+  }
+
+  private async lockUserWalletBalanceInTx(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await tx.$queryRaw`
+      SELECT id
+      FROM "user_wallet_balance"
+      WHERE "customer_id" = ${customerId}::uuid
+      FOR UPDATE
+    `;
+  }
+
+  private async lockGiftVoucherCodeInTx(
+    tx: Prisma.TransactionClient,
+    code: string,
+  ): Promise<void> {
+    await tx.$queryRaw`
+      SELECT id
+      FROM "gift_voucher_codes"
+      WHERE "code" = ${code}
+      FOR UPDATE
+    `;
   }
 }
