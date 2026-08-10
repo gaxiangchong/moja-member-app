@@ -177,7 +177,10 @@ describe('RewardsWorkflowService balance locking', () => {
         rewardCatalogId,
         status: 'REDEEMED',
       };
-      tx.userReward.findFirst.mockResolvedValue(existing);
+      tx.userReward.findFirst.mockImplementation(async () => {
+        callOrder.push('userRewardLookup');
+        return existing;
+      });
 
       const result = await service.redeemRewardByPoints(
         customerId,
