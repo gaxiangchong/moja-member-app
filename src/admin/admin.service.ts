@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -13,6 +14,7 @@ import {
   PerksCriteriaKind,
   PerksProgramKind,
   Prisma,
+  VoucherLifecycleStatus,
   VoucherStatus,
   WalletTxnType,
 } from '@prisma/client';
@@ -35,9 +37,11 @@ const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
 const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
 import { daysUntilBirthdayUtc } from '../common/birthday.util';
+import { AdminAuthService } from '../admin-auth/admin-auth.service';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
+import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -46,6 +50,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { stringify } from 'csv-stringify/sync';
 import { ReportingSettingsService } from './reporting-settings.service';
 import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
+import type { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
@@ -55,7 +60,9 @@ import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto
 import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
 import type { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import type { CreateVoucherPushRuleDto } from './dto/create-voucher-push-rule.dto';
+import type { CreateWalkInCustomerDto } from './dto/create-walk-in-customer.dto';
 import type { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
+import type { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import type { RevokeCustomerVoucherDto } from './dto/revoke-customer-voucher.dto';
 import type {
   BentoMemberFunnelResult,
@@ -241,6 +248,8 @@ export class AdminService {
     private readonly phoneNormalizer: PhoneNormalizerService,
     private readonly reportingSettings: ReportingSettingsService,
     private readonly payments: PaymentsService,
+    private readonly customers: CustomersService,
+    private readonly adminAuth: AdminAuthService,
   ) {}
 
   /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
@@ -563,6 +572,29 @@ export class AdminService {
     });
 
     return { pin };
+  }
+
+  /**
+   * Admin-assisted walk-in signup: creates an ACTIVE member from just a phone
+   * number and immediately issues a login PIN, so staff can hand a walk-in
+   * customer one working login in a single action.
+   */
+  async createWalkInMember(dto: CreateWalkInCustomerDto, auth: AdminAuthState) {
+    const phoneE164 = this.phoneNormalizer.normalizeToE164(dto.phoneE164);
+    const customer = await this.customers.createWalkInCustomer(phoneE164, {
+      displayName: dto.displayName,
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'customer.created_by_admin',
+      entityType: 'customer',
+      entityId: customer.id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+
+    const { pin } = await this.setCustomerLoginPin(customer.id, auth);
+    return { customer, loginPin: pin };
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {
@@ -1488,6 +1520,225 @@ export class AdminService {
     return updated;
   }
 
+  private formatCampaignVoucherDiscount(campaign: {
+    voucherType: string;
+    percentageOff: number | null;
+    fixedAmountOff: number | null;
+    deliveryDiscountAmount: number | null;
+    walletCreditAmount: number | null;
+  }): string {
+    switch (campaign.voucherType) {
+      case 'PERCENTAGE':
+        return `${campaign.percentageOff ?? 0}% off`;
+      case 'FIXED_AMOUNT':
+        return `RM${((campaign.fixedAmountOff ?? 0) / 100).toFixed(2)} off`;
+      case 'DELIVERY_DISCOUNT':
+        return `RM${((campaign.deliveryDiscountAmount ?? 0) / 100).toFixed(2)} delivery discount`;
+      case 'WALLET_TOPUP_CODE':
+        return `RM${((campaign.walletCreditAmount ?? 0) / 100).toFixed(2)} wallet credit`;
+      case 'FREE_ITEM':
+        return 'Free item';
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * Vouchers a walk-in member currently holds that staff can redeem in-store,
+   * merged across both voucher systems (same union used for the member's
+   * in-app "My Vouchers" list, see customers.service.ts:getMeRewards).
+   */
+  async listRedeemableVouchers(customerId: string) {
+    await this.getCustomer(customerId);
+    const now = new Date();
+    const [customerVouchers, campaignVouchers] = await Promise.all([
+      this.prisma.customerVoucher.findMany({
+        where: { customerId, status: VoucherStatus.ISSUED },
+        include: {
+          definition: {
+            select: { code: true, title: true, description: true },
+          },
+        },
+        orderBy: { issuedAt: 'desc' },
+      }),
+      this.prisma.voucher.findMany({
+        where: {
+          customerId,
+          status: {
+            in: [VoucherLifecycleStatus.ACTIVE, VoucherLifecycleStatus.LOCKED],
+          },
+        },
+        include: { voucherCampaign: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const catalogItems = customerVouchers.map((cv) => ({
+      id: cv.id,
+      source: 'CATALOG' as const,
+      code: cv.definition.code,
+      title: cv.definition.title,
+      discountLabel: cv.definition.description ?? '',
+      expiresAt: cv.expiresAt,
+      locked: false,
+    }));
+
+    const campaignItems = campaignVouchers.map((v) => ({
+      id: v.id,
+      source: 'CAMPAIGN' as const,
+      code: v.code,
+      title: v.name,
+      discountLabel: v.voucherCampaign
+        ? this.formatCampaignVoucherDiscount(v.voucherCampaign)
+        : '',
+      expiresAt: v.expiresAt,
+      locked:
+        v.status === VoucherLifecycleStatus.LOCKED &&
+        !!v.lockExpiresAt &&
+        v.lockExpiresAt.getTime() > now.getTime(),
+    }));
+
+    return [...catalogItems, ...campaignItems];
+  }
+
+  /**
+   * Marks a member's voucher as used because staff redeemed it in-store for
+   * a walk-in (SalesPlay has no voucher/discount API, so the discount is
+   * applied manually at the till; this just prevents the voucher being
+   * reused afterwards).
+   */
+  async redeemVoucherInStore(
+    customerId: string,
+    voucherId: string,
+    dto: RedeemVoucherDto,
+    auth: AdminAuthState,
+  ) {
+    await this.getCustomer(customerId);
+
+    if (dto.source === 'CATALOG') {
+      const row = await this.prisma.customerVoucher.findFirst({
+        where: { id: voucherId, customerId },
+        include: { definition: { select: { code: true } } },
+      });
+      if (!row) {
+        throw new NotFoundException({
+          code: 'CUSTOMER_VOUCHER_NOT_FOUND',
+          message: 'Voucher not found for this member',
+        });
+      }
+      if (row.status !== VoucherStatus.ISSUED) {
+        throw new BadRequestException({
+          code: 'VOUCHER_NOT_REDEEMABLE',
+          message: 'Only issued vouchers can be redeemed.',
+        });
+      }
+      const updated = await this.prisma.customerVoucher.update({
+        where: { id: voucherId },
+        data: { status: VoucherStatus.REDEEMED, redeemedAt: new Date() },
+        include: { definition: { select: { code: true } } },
+      });
+      await this.audit.log({
+        ...auditActorBase(auth),
+        action: 'voucher.redeemed_in_store',
+        entityType: 'customer_voucher',
+        entityId: voucherId,
+        reason: dto.reason ?? null,
+        beforeValue: { status: row.status, voucherCode: row.definition.code } as object,
+        afterValue: {
+          status: updated.status,
+          voucherCode: updated.definition.code,
+        } as object,
+        metadata: { customerId },
+      });
+      return updated;
+    }
+
+    const row = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, customerId },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'VOUCHER_NOT_FOUND',
+        message: 'Voucher not found for this member',
+      });
+    }
+    if (
+      row.status === VoucherLifecycleStatus.USED ||
+      row.status === VoucherLifecycleStatus.VOID ||
+      row.status === VoucherLifecycleStatus.EXPIRED
+    ) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_REDEEMABLE',
+        message: 'Only active vouchers can be redeemed.',
+      });
+    }
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException({
+        code: 'VOUCHER_EXPIRED',
+        message: 'This voucher has expired.',
+      });
+    }
+    const now = new Date();
+    if (
+      row.status === VoucherLifecycleStatus.LOCKED &&
+      row.lockExpiresAt &&
+      row.lockExpiresAt.getTime() > now.getTime()
+    ) {
+      throw new BadRequestException({
+        code: 'VOUCHER_LOCKED',
+        message: 'Voucher is currently locked by an in-progress online checkout.',
+      });
+    }
+
+    const updateResult = await this.prisma.voucher.updateMany({
+      where: {
+        id: voucherId,
+        customerId,
+        OR: [
+          { status: VoucherLifecycleStatus.ACTIVE },
+          {
+            status: VoucherLifecycleStatus.LOCKED,
+            lockExpiresAt: { lt: now },
+          },
+        ],
+      },
+      data: {
+        status: VoucherLifecycleStatus.USED,
+        usageCount: { increment: 1 },
+        usedAt: now,
+        lockToken: null,
+        lockedAt: null,
+        lockExpiresAt: null,
+        metadata: {
+          ...(row.metadata && typeof row.metadata === 'object'
+            ? (row.metadata as Record<string, unknown>)
+            : {}),
+          redeemedInStoreByAdminId: auth.adminUserId ?? auth.actorLabel ?? null,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    if (updateResult.count === 0) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_REDEEMABLE',
+        message: 'Voucher could not be redeemed (it may have just been used).',
+      });
+    }
+    const updated = await this.prisma.voucher.findUnique({
+      where: { id: voucherId },
+    });
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'voucher.redeemed_in_store',
+      entityType: 'voucher',
+      entityId: voucherId,
+      reason: dto.reason ?? null,
+      beforeValue: { status: row.status, voucherCode: row.code } as object,
+      afterValue: { status: updated?.status, voucherCode: updated?.code } as object,
+      metadata: { customerId },
+    });
+    return updated;
+  }
+
   async adjustCustomerLoyalty(
     customerId: string,
     dto: AdminLoyaltyAdjustmentDto,
@@ -1522,6 +1773,71 @@ export class AdminService {
         balanceAfter,
         referenceType: dto.referenceType ?? null,
         referenceId: dto.referenceId ?? null,
+      },
+    });
+
+    return { customerId, pointsBalance: balanceAfter };
+  }
+
+  /**
+   * Retroactively credits points for past purchases (e.g. a walk-in who
+   * shopped before joining). Requires the admin to re-enter their own
+   * password as a step-up confirmation, since crediting free points is easy
+   * to abuse — only available under a real JWT admin session, not the
+   * legacy API-key auth mode (there's no per-request admin identity to
+   * verify a password against).
+   */
+  async backfillCustomerLoyalty(
+    customerId: string,
+    dto: AdminBackfillLoyaltyDto,
+    auth: AdminAuthState,
+  ) {
+    if (!auth.adminUserId) {
+      throw new BadRequestException({
+        code: 'PASSWORD_STEP_UP_UNAVAILABLE',
+        message:
+          'Backfilling points requires signing in as an admin user (not an API key), so your password can be re-verified.',
+      });
+    }
+    const passwordOk = await this.adminAuth.verifyPassword(
+      auth.adminUserId,
+      dto.adminPassword,
+    );
+    if (!passwordOk) {
+      throw new UnauthorizedException({
+        code: 'ADMIN_PASSWORD_INCORRECT',
+        message: 'Incorrect password.',
+      });
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+
+    const { balanceAfter } = await this.loyalty.appendLedgerEntry({
+      customerId,
+      deltaPoints: dto.deltaPoints,
+      reason: dto.reason,
+      referenceType: 'backfill',
+      referenceId: null,
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'loyalty.backfilled_by_admin',
+      entityType: 'customer',
+      entityId: customerId,
+      reason: dto.reason,
+      metadata: {
+        deltaPoints: dto.deltaPoints,
+        balanceAfter,
+        passwordVerified: true,
       },
     });
 

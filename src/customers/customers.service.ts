@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -364,6 +365,44 @@ export class CustomersService {
         ...(initialInterestTag ? { tags: [initialInterestTag] } : {}),
         referralCode,
         referredByCustomerId: referredById,
+      },
+    });
+    await this.loyalty.ensureWallet(customer.id);
+    await this.wallet.ensureWallet(customer.id);
+    await this.ensureKitchenPickupCode(customer.id);
+    this.syncToSalesplay(customer);
+    return customer;
+  }
+
+  /**
+   * Admin-initiated walk-in signup: creates an ACTIVE member from just a
+   * phone number (email stays empty until the customer fills it in
+   * themselves later). Unlike `ensureCustomerForPhone`, this rejects rather
+   * than silently patching if the phone is already registered — creating a
+   * new member should always be a deliberate, explicit action.
+   */
+  async createWalkInCustomer(
+    phoneE164: string,
+    opts?: { displayName?: string | null },
+  ) {
+    const existing = await this.findByPhoneE164(phoneE164);
+    if (existing) {
+      throw new ConflictException({
+        code: 'CUSTOMER_PHONE_EXISTS',
+        message: 'A member with this phone number already exists.',
+      });
+    }
+
+    const referralCode = await this.generateUniqueReferralCode();
+    const displayName = opts?.displayName?.trim() || null;
+
+    const customer = await this.prisma.customer.create({
+      data: {
+        phoneE164,
+        status: CustomerStatus.ACTIVE,
+        signupSource: 'admin_manual',
+        ...(displayName ? { displayName } : {}),
+        referralCode,
       },
     });
     await this.loyalty.ensureWallet(customer.id);

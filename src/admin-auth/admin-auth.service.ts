@@ -80,6 +80,15 @@ export class AdminAuthService {
     };
   }
 
+  /** Re-verifies an already-authenticated admin's password (step-up confirmation). */
+  async verifyPassword(adminUserId: string, password: string): Promise<boolean> {
+    const user = await this.prisma.adminUser.findUnique({
+      where: { id: adminUserId },
+    });
+    if (!user?.isActive) return false;
+    return bcrypt.compare(password, user.passwordHash);
+  }
+
   async login(dto: AdminLoginDto, ip?: string) {
     const user = await this.prisma.adminUser.findUnique({
       where: { email: dto.email.toLowerCase().trim() },

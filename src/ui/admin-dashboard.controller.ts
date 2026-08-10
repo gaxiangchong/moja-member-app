@@ -22,6 +22,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'dashboard-activity': true,
     'dashboard-employees': true,
     'customers-list': true,
+    'customers-walkin': true,
     'customer-orders': true,
     'bento-overview': true,
     'bento-sales': true,
@@ -31,6 +32,7 @@ const DEFAULT_DASHBOARD_CONFIG = {
     'bento-orders': true,
     'bento-vouchers': true,
     'voucher-campaigns': true,
+    'voucher-redeem': true,
     'gift-rewards': true,
     'mailer-campaigns': true,
     'settings-shopping-catalog': true,
@@ -1063,6 +1065,10 @@ export class AdminDashboardController {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
               Customer list
             </button>
+            <button type="button" class="nav-btn nav-sub" data-view="customers-walkin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+              Create member (walk-in)
+            </button>
             <button type="button" class="nav-btn nav-sub" data-view="customer-orders">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
               Customer orders
@@ -1153,6 +1159,10 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="voucher-campaigns">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8V21"/><path d="M7 12h.01M17 12h.01M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
               Vouchers
+            </button>
+            <button type="button" class="nav-btn nav-sub" data-view="voucher-redeem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+              Redeem voucher (in-store)
             </button>
             <button type="button" class="nav-btn nav-sub" data-view="gift-rewards">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
@@ -1625,6 +1635,67 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="customers-walkin" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Create member (walk-in)</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                For a customer who doesn't have the app yet. Creates their member record from just a phone
+                number (they can fill in their email later, in their own app) and immediately issues a login
+                code you can hand to them right now.
+              </p>
+              <label for="wmPhone">Phone number</label>
+              <input type="text" id="wmPhone" placeholder="e.g. 60123456789" />
+              <label for="wmName" style="margin-top:10px">Display name (optional)</label>
+              <input type="text" id="wmName" placeholder="Customer's name" />
+              <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="wmCreateBtn">Create member</button>
+              </div>
+              <div id="wmCreateResultBox" style="display:none;margin-top:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px">
+                <p id="wmCreateResult" style="margin:0"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Backfill points</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                Retroactively credit points for purchases made before a member joined. Requires your own
+                admin password as confirmation.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px">
+                <div>
+                  <label for="wmBfPhone">Member phone</label>
+                  <input type="text" id="wmBfPhone" placeholder="e.g. 60123456789" />
+                </div>
+                <div style="display:flex;align-items:flex-end">
+                  <button type="button" class="btn-primary" id="wmBfFindBtn">Find member</button>
+                </div>
+              </div>
+              <p class="field-hint" id="wmBfFindResult"></p>
+
+              <div id="wmBfPanel" style="display:none;margin-top:16px">
+                <h3 style="margin:0 0 8px;font-size:14px">Backfill points for <span id="wmBfMemberName"></span></h3>
+                <label for="wmBfPoints">Points to credit</label>
+                <input type="text" id="wmBfPoints" inputmode="numeric" placeholder="e.g. 100" />
+                <label for="wmBfReason" style="margin-top:10px">Reason</label>
+                <input type="text" id="wmBfReason" placeholder="e.g. Purchases before joining, 2026-05 to 2026-07" />
+                <label for="wmBfPassword" style="margin-top:10px">Your admin password</label>
+                <input type="password" id="wmBfPassword" placeholder="Re-enter your password to confirm" />
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <button type="button" class="btn-primary" id="wmBfSubmitBtn">Credit points</button>
+                  <span class="field-hint" id="wmBfResult" style="margin:0"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="customer-orders" class="tab-panel hidden">
           <div class="info-banner" style="margin-top:0">
             Member-app commerce orders across all customers. Filter by status and date (placed or completed), or by <strong>Product contains</strong> / <strong>Product / SKU id</strong> on order lines.
@@ -2055,6 +2126,67 @@ export class AdminDashboardController {
                 <span class="field-hint" id="ivPageInfo" style="margin:0"></span>
                 <button type="button" class="btn-outline" id="ivNextBtn">Next</button>
                 <span class="field-hint" id="ivResult" style="margin:0"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="voucher-redeem" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Redeem voucher (in-store)</h2>
+            </div>
+            <div style="padding:12px 20px;max-width:760px">
+              <p class="field-hint" style="margin-top:0">
+                For walk-in members: find them by phone, then mark whichever voucher they're using as redeemed.
+                SalesPlay has no voucher/discount API, so apply the matching discount manually on the till first,
+                then redeem it here so it can't be reused.
+              </p>
+              <div class="form-row-2" style="gap:12px;max-width:520px">
+                <div>
+                  <label for="vrPhone">Member phone</label>
+                  <input type="text" id="vrPhone" placeholder="e.g. 60123456789" />
+                </div>
+                <div style="display:flex;align-items:flex-end">
+                  <button type="button" class="btn-primary" id="vrFindBtn">Find member</button>
+                </div>
+              </div>
+              <p class="field-hint" id="vrFindResult"></p>
+
+              <div id="vrMemberPanel" style="display:none;margin-top:16px">
+                <h3 style="margin:0 0 4px;font-size:14px">Claim a reward with points &mdash; <span id="vrPointsBalance"></span></h3>
+                <p class="field-hint" style="margin-top:0">For members who can't redeem in their own app. Claiming spends their points and, if the reward is linked to a voucher, adds it to the list below immediately.</p>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead>
+                      <tr>
+                        <th>Reward</th>
+                        <th>Points cost</th>
+                        <th style="text-align:center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vrRewardsBody"></tbody>
+                  </table>
+                </div>
+                <p class="field-hint" id="vrRewardsResult"></p>
+
+                <h3 style="margin:18px 0 8px;font-size:14px">Vouchers for <span id="vrMemberName"></span></h3>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Title</th>
+                        <th>Discount</th>
+                        <th>Source</th>
+                        <th>Expires</th>
+                        <th style="text-align:center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vrVouchersBody"></tbody>
+                  </table>
+                </div>
+                <p class="field-hint" id="vrVouchersResult"></p>
               </div>
             </div>
           </div>
@@ -3957,11 +4089,11 @@ export class AdminDashboardController {
     const navButtons = () => document.querySelectorAll('.nav-btn');
     const views = [
       'dashboard-overview', 'dashboard-activity', 'dashboard-employees',
-      'customers-list', 'customer-orders', 'customers-segments', 'customers-merge',
+      'customers-list', 'customers-walkin', 'customer-orders', 'customers-segments', 'customers-merge',
       'bento-overview', 'bento-sales', 'bento-menu', 'bento-pricing', 'bento-operations', 'bento-orders', 'bento-vouchers',
       'wallet-balances', 'wallet-transactions', 'wallet-adjustment', 'wallet-rules',
       'loyalty-balances', 'loyalty-transactions', 'loyalty-rules', 'loyalty-campaigns',
-      'voucher-campaigns', 'gift-rewards',
+      'voucher-campaigns', 'voucher-redeem', 'gift-rewards',
       'campaigns-segments', 'campaigns-push-voucher', 'campaigns-push-points', 'campaigns-push-wallet', 'campaigns-history',
       'mailer-campaigns',
       'data-import', 'data-export', 'data-templates', 'data-import-history',
@@ -4003,6 +4135,7 @@ export class AdminDashboardController {
       'dashboard-activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
       'dashboard-employees': iconUsers,
       'customers-list': iconUsers,
+      'customers-walkin': iconUsers,
       'customer-orders':
         '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
       'customers-segments': iconUsers,
@@ -4016,6 +4149,7 @@ export class AdminDashboardController {
       'loyalty-rules': iconLoyalty,
       'loyalty-campaigns': iconLoyalty,
       'voucher-campaigns': iconVoucher,
+      'voucher-redeem': iconVoucher,
       'gift-rewards': iconLoyalty,
       'campaigns-segments': iconUsers,
       'campaigns-push-voucher': iconVoucher,
@@ -4053,6 +4187,7 @@ export class AdminDashboardController {
       'dashboard-activity': 'Dashboard · Activity feed',
       'dashboard-employees': 'Settings · Employees & payroll',
       'customers-list': 'Customers · List',
+      'customers-walkin': 'Customers · Create member (walk-in)',
       'customer-orders': 'Customers · Customer orders',
       'customers-segments': 'Customers · Tags / segments',
       'customers-merge': 'Customers · Merge duplicates',
@@ -4065,6 +4200,7 @@ export class AdminDashboardController {
       'loyalty-rules': 'Loyalty · Points rules',
       'loyalty-campaigns': 'Loyalty · Bonus campaigns',
       'voucher-campaigns': 'Loyalty · Vouchers',
+      'voucher-redeem': 'Loyalty · Redeem voucher (in-store)',
       'gift-rewards': 'Loyalty · Gift rewards',
       'campaigns-segments': 'Campaigns · Customer segments',
       'campaigns-push-voucher': 'Campaigns · Push voucher',
@@ -9927,6 +10063,198 @@ export class AdminDashboardController {
         if (out) out.textContent = e.message || String(e);
       }
     }
+    async function vrFindMember() {
+      var phone = String((document.getElementById('vrPhone') || {}).value || '').trim();
+      var out = document.getElementById('vrFindResult');
+      var panel = document.getElementById('vrMemberPanel');
+      if (!phone) { if (out) out.textContent = 'Enter a member phone.'; return; }
+      if (out) out.textContent = 'Searching…';
+      if (panel) panel.style.display = 'none';
+      try {
+        var res = await api('/admin/customers?search=' + encodeURIComponent(phone) + '&pageSize=5');
+        var items = (res && res.items) || [];
+        if (!items.length) throw new Error('No member found for that phone.');
+        var match = items.find(function (m) { return (m.phoneE164 || '').replace(/\D/g, '').indexOf(phone.replace(/\D/g, '')) !== -1; }) || items[0];
+        if (out) out.textContent = '';
+        var nameEl = document.getElementById('vrMemberName');
+        if (nameEl) nameEl.textContent = match.displayName || match.phoneE164 || 'Member';
+        if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
+        await Promise.all([vrLoadVouchers(match.id), vrLoadRewards(match.id)]);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrLoadRewards(customerId) {
+      var body = document.getElementById('vrRewardsBody');
+      var balEl = document.getElementById('vrPointsBalance');
+      var out = document.getElementById('vrRewardsResult');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="3" class="muted-hint">Loading…</td></tr>';
+      try {
+        var walletRes = await api('/admin/rewards-workflow/user-wallet/' + encodeURIComponent(customerId));
+        var pointsBalance = (walletRes && walletRes.wallet && walletRes.wallet.pointsBalance) || 0;
+        if (balEl) balEl.textContent = pointsBalance + ' pts';
+        var catalog = await api('/admin/rewards-workflow/reward-catalog');
+        var now = Date.now();
+        var claimable = (catalog || []).filter(function (r) {
+          if (!r.isActive) return false;
+          if (r.startsAt && new Date(r.startsAt).getTime() > now) return false;
+          if (r.endsAt && new Date(r.endsAt).getTime() <= now) return false;
+          return true;
+        });
+        if (!claimable.length) {
+          body.innerHTML = '<tr><td colspan="3" class="muted-hint">No rewards available to claim.</td></tr>';
+          if (out) out.textContent = '';
+          return;
+        }
+        body.innerHTML = claimable.map(function (r) {
+          var afford = pointsBalance >= r.pointsCost;
+          var action = afford
+            ? '<button type="button" class="btn-primary vr-claim-btn" data-id="' + vcEsc(r.id) + '" data-name="' + vcEsc(r.name) + '" data-cost="' + vcEsc(String(r.pointsCost)) + '" style="padding:3px 8px;font-size:12px">Claim</button>'
+            : '<span class="muted-hint">Not enough points</span>';
+          return '<tr>' +
+            '<td>' + vcEsc(r.name) + '</td>' +
+            '<td>' + vcEsc(String(r.pointsCost)) + '</td>' +
+            '<td style="text-align:center">' + action + '</td>' +
+            '</tr>';
+        }).join('');
+        if (out) out.textContent = '';
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="3" class="muted-hint">Error loading rewards.</td></tr>';
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrClaimReward(rewardCatalogId, name, pointsCost) {
+      var panel = document.getElementById('vrMemberPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      if (!window.confirm('Claim "' + name + '" for ' + pointsCost + ' points now? This cannot be undone.')) return;
+      var out = document.getElementById('vrRewardsResult');
+      if (out) out.textContent = 'Claiming…';
+      try {
+        var res = await apiPost('/admin/rewards-workflow/customers/' + encodeURIComponent(customerId) + '/redeem-reward/' + encodeURIComponent(rewardCatalogId), {});
+        if (out) out.textContent = res && res.idempotent ? ('Already claimed earlier — ' + name + '.') : ('Claimed ' + name + '.');
+        await Promise.all([vrLoadRewards(customerId), vrLoadVouchers(customerId)]);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrLoadVouchers(customerId) {
+      var body = document.getElementById('vrVouchersBody');
+      var out = document.getElementById('vrVouchersResult');
+      if (!body) return;
+      body.innerHTML = '<tr><td colspan="6" class="muted-hint">Loading…</td></tr>';
+      try {
+        var items = await api('/admin/customers/' + encodeURIComponent(customerId) + '/vouchers/redeemable');
+        if (!items || !items.length) {
+          body.innerHTML = '<tr><td colspan="6" class="muted-hint">No redeemable vouchers.</td></tr>';
+          if (out) out.textContent = '';
+          return;
+        }
+        body.innerHTML = items.map(function (v) {
+          var action = v.locked
+            ? '<span class="muted-hint">Locked (online checkout)</span>'
+            : '<button type="button" class="btn-primary vr-redeem-btn" data-id="' + vcEsc(v.id) + '" data-source="' + vcEsc(v.source) + '" data-code="' + vcEsc(v.code) + '" style="padding:3px 8px;font-size:12px">Redeem</button>';
+          return '<tr>' +
+            '<td><code style="font-size:11px">' + vcEsc(v.code) + '</code></td>' +
+            '<td>' + vcEsc(v.title || '') + '</td>' +
+            '<td>' + vcEsc(v.discountLabel || '') + '</td>' +
+            '<td>' + (v.source === 'CATALOG' ? 'Catalog' : 'Campaign') + '</td>' +
+            '<td style="font-size:12px">' + (v.expiresAt ? vcEsc(vcShortDate(v.expiresAt)) : '—') + '</td>' +
+            '<td style="text-align:center">' + action + '</td>' +
+            '</tr>';
+        }).join('');
+        if (out) out.textContent = '';
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="6" class="muted-hint">Error loading vouchers.</td></tr>';
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function vrRedeem(voucherId, source, code) {
+      var panel = document.getElementById('vrMemberPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      if (!window.confirm('Redeem voucher ' + code + ' now? This cannot be undone.')) return;
+      var out = document.getElementById('vrVouchersResult');
+      if (out) out.textContent = 'Redeeming…';
+      try {
+        await apiPost('/admin/customers/' + encodeURIComponent(customerId) + '/vouchers/' + encodeURIComponent(voucherId) + '/redeem', { source: source, reason: 'staff_instore_redeem' });
+        if (out) out.textContent = 'Redeemed ' + code + '.';
+        await vrLoadVouchers(customerId);
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function wmCreateMember() {
+      var phone = String((document.getElementById('wmPhone') || {}).value || '').trim();
+      var name = String((document.getElementById('wmName') || {}).value || '').trim();
+      var box = document.getElementById('wmCreateResultBox');
+      var out = document.getElementById('wmCreateResult');
+      if (!phone) { if (out) { out.textContent = 'Enter a phone number.'; box.style.display = ''; } return; }
+      if (box) box.style.display = '';
+      if (out) out.textContent = 'Creating…';
+      try {
+        var body = { phoneE164: phone };
+        if (name) body.displayName = name;
+        var res = await apiPost('/admin/customers/walk-in', body);
+        var who = (res.customer && (res.customer.displayName || res.customer.phoneE164)) || 'Member';
+        if (out) out.innerHTML = 'Created <strong>' + vcEsc(who) + '</strong>. Login code: <strong style="font-size:16px;letter-spacing:1px">' + vcEsc(res.loginPin) + '</strong><br />' +
+          'Give this to the member — they log in with their phone number, then this code. No OTP needed.';
+        var bfPhone = document.getElementById('wmBfPhone');
+        if (bfPhone) bfPhone.value = phone;
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function wmBfFindMember() {
+      var phone = String((document.getElementById('wmBfPhone') || {}).value || '').trim();
+      var out = document.getElementById('wmBfFindResult');
+      var panel = document.getElementById('wmBfPanel');
+      if (!phone) { if (out) out.textContent = 'Enter a member phone.'; return; }
+      if (out) out.textContent = 'Searching…';
+      if (panel) panel.style.display = 'none';
+      try {
+        var res = await api('/admin/customers?search=' + encodeURIComponent(phone) + '&pageSize=5');
+        var items = (res && res.items) || [];
+        if (!items.length) throw new Error('No member found for that phone.');
+        var match = items.find(function (m) { return (m.phoneE164 || '').replace(/\D/g, '').indexOf(phone.replace(/\D/g, '')) !== -1; }) || items[0];
+        if (out) out.textContent = '';
+        var nameEl = document.getElementById('wmBfMemberName');
+        if (nameEl) nameEl.textContent = match.displayName || match.phoneE164 || 'Member';
+        if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
+        var resultEl = document.getElementById('wmBfResult');
+        if (resultEl) resultEl.textContent = '';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function wmBfSubmit() {
+      var panel = document.getElementById('wmBfPanel');
+      var customerId = panel ? panel.dataset.customerId : '';
+      if (!customerId) return;
+      var out = document.getElementById('wmBfResult');
+      var pointsRaw = String((document.getElementById('wmBfPoints') || {}).value || '').trim();
+      var reason = String((document.getElementById('wmBfReason') || {}).value || '').trim();
+      var password = String((document.getElementById('wmBfPassword') || {}).value || '');
+      var points = parseInt(pointsRaw, 10);
+      if (!points || points < 1) { if (out) out.textContent = 'Enter a positive number of points.'; return; }
+      if (!reason) { if (out) out.textContent = 'Enter a reason.'; return; }
+      if (!password) { if (out) out.textContent = 'Enter your admin password.'; return; }
+      if (!window.confirm('Credit ' + points + ' points now? This cannot be undone.')) return;
+      if (out) out.textContent = 'Submitting…';
+      try {
+        var res = await apiPost('/admin/customers/' + encodeURIComponent(customerId) + '/loyalty/backfill', {
+          deltaPoints: points,
+          reason: reason,
+          adminPassword: password,
+        });
+        if (out) out.textContent = 'Credited ' + points + ' points. New balance: ' + res.pointsBalance + '.';
+        var pwEl = document.getElementById('wmBfPassword');
+        if (pwEl) pwEl.value = '';
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
     function grSyncType() {
       var typeSel = document.getElementById('grType');
       var wrap = document.getElementById('grCampaignWrap');
@@ -10057,6 +10385,32 @@ export class AdminDashboardController {
       var b = t.closest('.iv-withdraw-btn');
       if (b) ivWithdraw(b.getAttribute('data-id'), b.getAttribute('data-code'));
     });
+    var vrFindBtn = document.getElementById('vrFindBtn');
+    if (vrFindBtn) vrFindBtn.addEventListener('click', function () { vrFindMember(); });
+    var vrPhoneEl = document.getElementById('vrPhone');
+    if (vrPhoneEl) vrPhoneEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') vrFindMember();
+    });
+    var vrVouchersBodyEl = document.getElementById('vrVouchersBody');
+    if (vrVouchersBodyEl) vrVouchersBodyEl.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var b = t.closest('.vr-redeem-btn');
+      if (b) vrRedeem(b.getAttribute('data-id'), b.getAttribute('data-source'), b.getAttribute('data-code'));
+    });
+    var vrRewardsBodyEl = document.getElementById('vrRewardsBody');
+    if (vrRewardsBodyEl) vrRewardsBodyEl.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var b = t.closest('.vr-claim-btn');
+      if (b) vrClaimReward(b.getAttribute('data-id'), b.getAttribute('data-name'), b.getAttribute('data-cost'));
+    });
+    var wmCreateBtn = document.getElementById('wmCreateBtn');
+    if (wmCreateBtn) wmCreateBtn.addEventListener('click', function () { wmCreateMember(); });
+    var wmBfFindBtn = document.getElementById('wmBfFindBtn');
+    if (wmBfFindBtn) wmBfFindBtn.addEventListener('click', function () { wmBfFindMember(); });
+    var wmBfSubmitBtn = document.getElementById('wmBfSubmitBtn');
+    if (wmBfSubmitBtn) wmBfSubmitBtn.addEventListener('click', function () { wmBfSubmit(); });
     var giftRewardsBodyEl = document.getElementById('giftRewardsBody');
     if (giftRewardsBodyEl) {
       giftRewardsBodyEl.addEventListener('click', function (ev) {
