@@ -67,7 +67,7 @@ export class LoyaltyService {
       referenceId?: string | null;
     },
   ): Promise<{ balanceAfter: number }> {
-    await this.ensureWalletInTx(tx, params.customerId);
+    await this.lockWalletInTx(tx, params.customerId);
     const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
     });
@@ -96,6 +96,20 @@ export class LoyaltyService {
     });
 
     return { balanceAfter };
+  }
+
+  /**
+   * Ensure the loyalty wallet row exists and take a row lock so concurrent
+   * earn/spend paths cannot both read the same pointsCached and overwrite.
+   */
+  async lockWalletInTx(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await this.ensureWalletInTx(tx, customerId);
+    await tx.$queryRaw(
+      Prisma.sql`SELECT 1 FROM loyalty_wallets WHERE customer_id = ${customerId}::uuid FOR UPDATE`,
+    );
   }
 
   private async ensureWalletInTx(

@@ -10,6 +10,7 @@ import {
   WalletTxnFlowType,
 } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 type VoucherValidationInput = {
@@ -29,11 +30,15 @@ type VoucherDiscountInput = {
 
 @Injectable()
 export class RewardsWorkflowService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly loyalty: LoyaltyService,
+  ) {}
 
   async getMemberWalletAndRewards(customerId: string) {
-    const wallet = await this.ensureUserWalletBalance(customerId);
-    const [vouchers, rewards] = await this.prisma.$transaction([
+    const [cashWallet, loyaltySummary, vouchers, rewards] = await Promise.all([
+      this.ensureUserWalletBalance(customerId),
+      this.loyalty.getWalletSummary(customerId),
       this.prisma.voucher.findMany({
         where: { customerId },
         orderBy: [{ updatedAt: 'desc' }],
@@ -44,7 +49,16 @@ export class RewardsWorkflowService {
         orderBy: [{ createdAt: 'desc' }],
       }),
     ]);
-    return { wallet, vouchers, rewards };
+    // Earn/spend lives on LoyaltyWallet; expose that balance as pointsBalance
+    // so rewards-wallet clients see the same figure as /customers/me/rewards.
+    return {
+      wallet: {
+        ...cashWallet,
+        pointsBalance: loyaltySummary.pointsBalance,
+      },
+      vouchers,
+      rewards,
+    };
   }
 
   async redeemGiftVoucherCode(
@@ -143,29 +157,35 @@ export class RewardsWorkflowService {
         throw new BadRequestException('Reward has ended.');
       }
 
-      const wallet = await this.ensureUserWalletBalance(customerId, tx);
-      if (wallet.pointsBalance < reward.pointsCost) {
-        throw new BadRequestException('Insufficient points.');
+      // Points are earned on LoyaltyWallet (SalesPlay / shop / admin backfill).
+      // UserWalletBalance.pointsBalance is never credited by those paths, so
+      // spending it left in-store and /rewards-wallet redeem permanently broken.
+      await this.loyalty.lockWalletInTx(tx, customerId);
+
+      const alreadyRedeemed = await tx.userReward.findFirst({
+        where: {
+          customerId,
+          rewardCatalogId,
+          status: 'REDEEMED',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (alreadyRedeemed) {
+        return { idempotent: true as const, userReward: alreadyRedeemed };
       }
 
-      const pointsBefore = wallet.pointsBalance;
-      const pointsAfter = pointsBefore - reward.pointsCost;
-      await tx.rewardsPointsLedger.create({
-        data: {
-          customerId,
-          userWalletBalanceId: wallet.id,
-          pointsDelta: -reward.pointsCost,
-          pointsBefore,
-          pointsAfter,
-          referenceType: 'reward_redeem',
-          referenceId: reward.id,
-          reason: `redeem_${reward.code}`,
-        },
-      });
-      await tx.userWalletBalance.update({
-        where: { id: wallet.id },
-        data: { pointsBalance: pointsAfter },
-      });
+      if (reward.pointsCost > 0) {
+        await this.loyalty.appendLedgerEntry(
+          {
+            customerId,
+            deltaPoints: -reward.pointsCost,
+            reason: `redeem_${reward.code}`,
+            referenceType: 'reward_catalog',
+            referenceId: reward.id,
+          },
+          tx,
+        );
+      }
 
       let voucherId: string | null = null;
       if (reward.voucherCampaignId) {
@@ -203,14 +223,16 @@ export class RewardsWorkflowService {
         },
       });
 
+      // Idempotency / audit row on the cash-wallet side (points already ledgered).
+      const cashWallet = await this.ensureUserWalletBalance(customerId, tx);
       await tx.walletTransaction.create({
         data: {
           customerId,
-          userWalletBalanceId: wallet.id,
+          userWalletBalanceId: cashWallet.id,
           type: WalletTxnFlowType.MANUAL_ADJUSTMENT,
           amount: 0,
-          balanceBefore: wallet.walletBalance,
-          balanceAfter: wallet.walletBalance,
+          balanceBefore: cashWallet.walletBalance,
+          balanceAfter: cashWallet.walletBalance,
           referenceType: 'reward_redeem',
           referenceId: userReward.id,
           idempotencyKey,
