@@ -48,6 +48,10 @@ import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { stringify } from 'csv-stringify/sync';
+import {
+  isVoucherExpired,
+  isVoucherNotYetValid,
+} from './admin-instore-voucher.util';
 import { ReportingSettingsService } from './reporting-settings.service';
 import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
 import type { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
@@ -1551,6 +1555,7 @@ export class AdminService {
   async listRedeemableVouchers(customerId: string) {
     await this.getCustomer(customerId);
     const now = new Date();
+    const nowMs = now.getTime();
     const [customerVouchers, campaignVouchers] = await Promise.all([
       this.prisma.customerVoucher.findMany({
         where: { customerId, status: VoucherStatus.ISSUED },
@@ -1573,30 +1578,40 @@ export class AdminService {
       }),
     ]);
 
-    const catalogItems = customerVouchers.map((cv) => ({
-      id: cv.id,
-      source: 'CATALOG' as const,
-      code: cv.definition.code,
-      title: cv.definition.title,
-      discountLabel: cv.definition.description ?? '',
-      expiresAt: cv.expiresAt,
-      locked: false,
-    }));
+    // Mirror online checkout: hide expired / not-yet-valid vouchers so staff
+    // cannot apply a till discount the member app would reject.
+    const catalogItems = customerVouchers
+      .filter((cv) => !isVoucherExpired(cv.expiresAt, nowMs))
+      .map((cv) => ({
+        id: cv.id,
+        source: 'CATALOG' as const,
+        code: cv.definition.code,
+        title: cv.definition.title,
+        discountLabel: cv.definition.description ?? '',
+        expiresAt: cv.expiresAt,
+        locked: false,
+      }));
 
-    const campaignItems = campaignVouchers.map((v) => ({
-      id: v.id,
-      source: 'CAMPAIGN' as const,
-      code: v.code,
-      title: v.name,
-      discountLabel: v.voucherCampaign
-        ? this.formatCampaignVoucherDiscount(v.voucherCampaign)
-        : '',
-      expiresAt: v.expiresAt,
-      locked:
-        v.status === VoucherLifecycleStatus.LOCKED &&
-        !!v.lockExpiresAt &&
-        v.lockExpiresAt.getTime() > now.getTime(),
-    }));
+    const campaignItems = campaignVouchers
+      .filter(
+        (v) =>
+          !isVoucherExpired(v.expiresAt, nowMs) &&
+          !isVoucherNotYetValid(v.metadata, nowMs),
+      )
+      .map((v) => ({
+        id: v.id,
+        source: 'CAMPAIGN' as const,
+        code: v.code,
+        title: v.name,
+        discountLabel: v.voucherCampaign
+          ? this.formatCampaignVoucherDiscount(v.voucherCampaign)
+          : '',
+        expiresAt: v.expiresAt,
+        locked:
+          v.status === VoucherLifecycleStatus.LOCKED &&
+          !!v.lockExpiresAt &&
+          v.lockExpiresAt.getTime() > nowMs,
+      }));
 
     return [...catalogItems, ...campaignItems];
   }
@@ -1630,6 +1645,12 @@ export class AdminService {
         throw new BadRequestException({
           code: 'VOUCHER_NOT_REDEEMABLE',
           message: 'Only issued vouchers can be redeemed.',
+        });
+      }
+      if (isVoucherExpired(row.expiresAt)) {
+        throw new BadRequestException({
+          code: 'VOUCHER_EXPIRED',
+          message: 'This voucher has expired.',
         });
       }
       const updated = await this.prisma.customerVoucher.update({
@@ -1672,10 +1693,16 @@ export class AdminService {
         message: 'Only active vouchers can be redeemed.',
       });
     }
-    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+    if (isVoucherExpired(row.expiresAt)) {
       throw new BadRequestException({
         code: 'VOUCHER_EXPIRED',
         message: 'This voucher has expired.',
+      });
+    }
+    if (isVoucherNotYetValid(row.metadata)) {
+      throw new BadRequestException({
+        code: 'VOUCHER_NOT_YET_VALID',
+        message: 'This voucher cannot be redeemed yet.',
       });
     }
     const now = new Date();
