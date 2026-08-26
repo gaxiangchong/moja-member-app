@@ -660,6 +660,9 @@ export class BentoService implements OnModuleInit {
   }
 
   async checkout(customerId: string, dto: BentoCheckoutDto) {
+    if (this.payments.paymentsDisabledEnabled()) {
+      throw new BadRequestException('Payments are currently disabled.');
+    }
     const pkg = await this.resolvePackage(dto.packageCode);
     await this.validateCheckoutInput(customerId, pkg);
     const drinksAndSoupEnabled = this.bentoFeatures.drinksAndSoupEnabled();

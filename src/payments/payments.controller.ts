@@ -28,7 +28,10 @@ export class PaymentsController {
   @Get('config')
   @SkipThrottle()
   getConfig() {
-    return { paymentsDemoMode: this.payments.paymentsDemoModeEnabled() };
+    return {
+      paymentsDemoMode: this.payments.paymentsDemoModeEnabled(),
+      paymentsDisabled: this.payments.paymentsDisabledEnabled(),
+    };
   }
 
   /**

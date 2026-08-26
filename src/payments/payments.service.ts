@@ -81,6 +81,15 @@ export class PaymentsService {
     return v === 'true' || v === '1' || v === 'yes';
   }
 
+  /** When true, checkout is switched off entirely (e.g. maintenance). */
+  paymentsDisabledEnabled(): boolean {
+    const v = this.config
+      .get<string>('PAYMENTS_DISABLED')
+      ?.trim()
+      .toLowerCase();
+    return v === 'true' || v === '1' || v === 'yes';
+  }
+
   private isDemoMode(): boolean {
     return this.paymentsDemoModeEnabled();
   }

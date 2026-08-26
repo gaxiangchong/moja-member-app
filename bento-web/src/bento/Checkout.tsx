@@ -9,6 +9,7 @@ import {
 import type { OrderDraft } from './types';
 import { formatRm } from './types';
 import { PurchaseCapacityNotice } from './PurchaseCapacityNotice';
+import { PaymentsDisabledNotice } from './PaymentsDisabledNotice';
 import { useI18n } from '../lib/i18n/context';
 import { savePendingBentoPayment } from '../payments/pendingPayment';
 
@@ -24,6 +25,7 @@ export function Checkout({ draft, onSuccess }: Props) {
   const { t } = useI18n();
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof quoteBentoSubscription>> | null>(null);
   const [paymentsDemoMode, setPaymentsDemoMode] = useState(false);
+  const [paymentsDisabled, setPaymentsDisabled] = useState(false);
   const [channels, setChannels] = useState<Array<{ code: string; label: string }>>([]);
   const [channelCode, setChannelCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,8 +47,14 @@ export function Checkout({ draft, onSuccess }: Props) {
 
   useEffect(() => {
     void fetchPaymentsConfig()
-      .then((c) => setPaymentsDemoMode(c.paymentsDemoMode))
-      .catch(() => setPaymentsDemoMode(false));
+      .then((c) => {
+        setPaymentsDemoMode(c.paymentsDemoMode);
+        setPaymentsDisabled(c.paymentsDisabled);
+      })
+      .catch(() => {
+        setPaymentsDemoMode(false);
+        setPaymentsDisabled(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -345,22 +353,26 @@ export function Checkout({ draft, onSuccess }: Props) {
         <p className="demoBanner">{t('checkout.demoBanner')}</p>
       )}
 
+      {paymentsDisabled && <PaymentsDisabledNotice />}
+
       {error && <p className="err">{error}</p>}
 
       <button
         type="button"
         className={`btnPrimary${paymentsDemoMode ? ' btnDemo' : ''}`}
-        disabled={!canCheckout || loading}
+        disabled={!canCheckout || loading || paymentsDisabled}
         onClick={isSingleMeal ? () => void handlePay() : openTakeawayDisclaimer}
         style={{ marginTop: 14 }}
       >
-        {loading
-          ? t('checkout.processing', {
-              sets: sets > 1 ? t('checkout.processingSets', { count: sets }) : '',
-            })
-          : paymentsDemoMode
-            ? t('checkout.continueDemo')
-            : t('checkout.pay', { amount: formatRm(grandTotal) })}
+        {paymentsDisabled
+          ? t('checkout.paymentsDisabled')
+          : loading
+            ? t('checkout.processing', {
+                sets: sets > 1 ? t('checkout.processingSets', { count: sets }) : '',
+              })
+            : paymentsDemoMode
+              ? t('checkout.continueDemo')
+              : t('checkout.pay', { amount: formatRm(grandTotal) })}
       </button>
 
       {showTakeawayDisclaimer && (
@@ -392,10 +404,12 @@ export function Checkout({ draft, onSuccess }: Props) {
               <button
                 type="button"
                 className="btnPrimary"
-                disabled={!takeawayAgreed || loading}
+                disabled={!takeawayAgreed || loading || paymentsDisabled}
                 onClick={confirmTakeawayAndPay}
               >
-                {paymentsDemoMode
+                {paymentsDisabled
+                  ? t('checkout.paymentsDisabled')
+                  : paymentsDemoMode
                   ? t('checkout.continueDemo')
                   : t('checkout.takeawayConfirm')}
               </button>

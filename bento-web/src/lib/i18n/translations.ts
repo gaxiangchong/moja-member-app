@@ -207,6 +207,13 @@ export const translations: Record<Lang, Dict> = {
     'launch.gotIt': 'Got it',
     'launch.dontShowAgain': "Don't show this again",
 
+    'paymentsDisabled.badge': '🚧 Update',
+    'paymentsDisabled.title': "We're working on something new",
+    'paymentsDisabled.body':
+      "Checkout is briefly paused while we roll out an update. Please stay tuned — we'll be back shortly!",
+    'paymentsDisabled.gotIt': 'Got it',
+    'paymentsDisabled.dontShowAgain': "Don't show this again",
+
     'weeklyOptIn.title': "This week's menu",
     'weeklyOptIn.weekOf': 'Week of {start} — {end}',
     'weeklyOptIn.intro':
@@ -310,6 +317,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.howManySets': 'How many sets?',
     'checkout.paymentMethod': 'Payment method',
     'checkout.demoBanner': 'Demo mode — payment is bypassed for this preview.',
+    'checkout.paymentsDisabled': 'Payments unavailable',
     'checkout.processing': 'Processing{sets}…',
     'checkout.processingSets': ' ({count} sets)',
     'checkout.continueDemo': 'Continue without payment',
@@ -675,6 +683,12 @@ export const translations: Record<Lang, Dict> = {
     'launch.gotIt': '知道了',
     'launch.dontShowAgain': '不再显示',
 
+    'paymentsDisabled.badge': '🚧 更新中',
+    'paymentsDisabled.title': '我们正在进行新的升级',
+    'paymentsDisabled.body': '付款功能暂时关闭以进行更新，请稍候，我们很快就会回来！',
+    'paymentsDisabled.gotIt': '知道了',
+    'paymentsDisabled.dontShowAgain': '不再显示',
+
     'weeklyOptIn.title': '本周菜单',
     'weeklyOptIn.weekOf': '周期 {start} — {end}',
     'weeklyOptIn.intro': '感谢购买！请查看本周菜单，然后选择是否参加，再安排取餐日期。',
@@ -771,6 +785,7 @@ export const translations: Record<Lang, Dict> = {
     'checkout.howManySets': '多少套？',
     'checkout.paymentMethod': '付款方式',
     'checkout.demoBanner': '演示模式 — 预览时跳过付款。',
+    'checkout.paymentsDisabled': '付款暂不可用',
     'checkout.processing': '处理中{sets}…',
     'checkout.processingSets': '（{count} 套）',
     'checkout.continueDemo': '跳过付款继续',

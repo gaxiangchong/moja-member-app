@@ -487,11 +487,11 @@ export async function fetchMyBentoSubscriptions(): Promise<BentoSubscription[]> 
   return authFetch<BentoSubscription[]>('/bento/subscriptions/me');
 }
 
-export async function fetchPaymentsConfig(): Promise<{ paymentsDemoMode: boolean }> {
+export async function fetchPaymentsConfig(): Promise<{ paymentsDemoMode: boolean; paymentsDisabled: boolean }> {
   const res = await fetch(`${base}/payments/config`);
-  const data = await parseJson<{ paymentsDemoMode?: boolean; message?: string }>(res);
+  const data = await parseJson<{ paymentsDemoMode?: boolean; paymentsDisabled?: boolean; message?: string }>(res);
   if (!res.ok) throw new Error(errMsg(data));
-  return { paymentsDemoMode: Boolean(data.paymentsDemoMode) };
+  return { paymentsDemoMode: Boolean(data.paymentsDemoMode), paymentsDisabled: Boolean(data.paymentsDisabled) };
 }
 
 export async function fetchShopChannels(): Promise<Array<{ code: string; label: string }>> {
