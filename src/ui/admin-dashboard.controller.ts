@@ -10091,6 +10091,8 @@ export class AdminDashboardController {
       if (!body) return;
       body.innerHTML = '<tr><td colspan="3" class="muted-hint">Loading…</td></tr>';
       try {
+        // Prefer loyalty wallet (SalesPlay / shop / backfill). The rewards-workflow
+        // user-wallet endpoint now overlays that balance onto pointsBalance.
         var walletRes = await api('/admin/rewards-workflow/user-wallet/' + encodeURIComponent(customerId));
         var pointsBalance = (walletRes && walletRes.wallet && walletRes.wallet.pointsBalance) || 0;
         if (balEl) balEl.textContent = pointsBalance + ' pts';
