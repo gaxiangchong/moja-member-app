@@ -77,6 +77,7 @@ const SESSION_EXPIRED_MESSAGE =
  * server's error text as before.
  */
 function assertOk(res: Response, data: { message?: string | string[] }): void {
+  if (res.ok) return;
   if (res.status === 401) {
     try {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
@@ -85,7 +86,7 @@ function assertOk(res: Response, data: { message?: string | string[] }): void {
     }
     throw new Error(SESSION_EXPIRED_MESSAGE);
   }
-  assertOk(res, data);
+  throw new Error(formatHttpError(res.status, data));
 }
 
 export async function fetchQueueOrders(
