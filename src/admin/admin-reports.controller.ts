@@ -202,7 +202,7 @@ export class AdminReportsController {
   }
 
   @Post('bento-subscriptions/:id/refund')
-  @RequirePermissions(P.REPORT_VIEW)
+  @RequirePermissions(P.BENTO_SUBSCRIPTION_MANAGE)
   markBentoSubscriptionRefunded(
     @Param('id') id: string,
     @CurrentAdmin() auth: AdminAuthState,
@@ -225,7 +225,7 @@ export class AdminReportsController {
    * first, then force-activates with a reason) so the member can schedule.
    */
   @Post('bento-subscriptions/:id/activate')
-  @RequirePermissions(P.REPORT_VIEW)
+  @RequirePermissions(P.BENTO_SUBSCRIPTION_MANAGE)
   activateBentoSubscription(
     @Param('id') id: string,
     @Body() dto: ActivateBentoSubscriptionDto,
@@ -239,7 +239,7 @@ export class AdminReportsController {
    * duplicate checkout attempts that block scheduling.
    */
   @Post('bento-subscriptions/:id/cancel')
-  @RequirePermissions(P.REPORT_VIEW)
+  @RequirePermissions(P.BENTO_SUBSCRIPTION_MANAGE)
   cancelBentoSubscription(
     @Param('id') id: string,
     @CurrentAdmin() auth: AdminAuthState,
@@ -254,7 +254,7 @@ export class AdminReportsController {
    * lock (e.g. switch a locked lunch+dinner day to dinner only).
    */
   @Post('bento-subscriptions/:id/schedule')
-  @RequirePermissions(P.REPORT_VIEW)
+  @RequirePermissions(P.BENTO_SUBSCRIPTION_MANAGE)
   scheduleBentoSubscription(
     @Param('id') id: string,
     @Body() dto: BentoScheduleDto,
