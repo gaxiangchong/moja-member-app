@@ -85,7 +85,9 @@ function assertOk(res: Response, data: { message?: string | string[] }): void {
     }
     throw new Error(SESSION_EXPIRED_MESSAGE);
   }
-  assertOk(res, data);
+  if (!res.ok) {
+    throw new Error(formatHttpError(res.status, data));
+  }
 }
 
 export async function fetchQueueOrders(
