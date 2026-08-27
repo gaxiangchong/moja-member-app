@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WalletTxnType } from '@prisma/client';
+import { BentoSubscriptionStatus, WalletTxnType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { SubmitMemberOrderDto } from '../customers/dto/submit-member-order.dto';
 import { CustomersService } from '../customers/customers.service';
@@ -1031,9 +1031,45 @@ export class PaymentsService {
     }
 
     try {
+      const subscriptions = await this.prisma.bentoSubscription.findMany({
+        where: {
+          id: { in: subscriptionIds },
+          paymentIntentId: intent.id,
+        },
+        select: { id: true, status: true },
+      });
+      const subscriptionsById = new Map(
+        subscriptions.map((subscription) => [subscription.id, subscription]),
+      );
+      const missingIds = subscriptionIds.filter(
+        (subscriptionId) => !subscriptionsById.has(subscriptionId),
+      );
+      const finalizableStatuses = new Set<BentoSubscriptionStatus>([
+        BentoSubscriptionStatus.PENDING_PAYMENT,
+        BentoSubscriptionStatus.CANCELLED,
+        BentoSubscriptionStatus.ACTIVE,
+      ]);
+      const invalidStatuses = subscriptions.filter(
+        (subscription) => !finalizableStatuses.has(subscription.status),
+      );
+      if (missingIds.length > 0 || invalidStatuses.length > 0) {
+        throw new Error(
+          `Cannot finalize bento payment ${referenceId}: subscription state mismatch`,
+        );
+      }
+
       await this.prisma.bentoSubscription.updateMany({
-        where: { id: { in: subscriptionIds }, status: 'PENDING_PAYMENT' },
-        data: { status: 'ACTIVE' },
+        where: {
+          id: { in: subscriptionIds },
+          paymentIntentId: intent.id,
+          status: {
+            in: [
+              BentoSubscriptionStatus.PENDING_PAYMENT,
+              BentoSubscriptionStatus.CANCELLED,
+            ],
+          },
+        },
+        data: { status: BentoSubscriptionStatus.ACTIVE },
       });
       await this.prisma.paymentIntent.update({
         where: { id: intent.id },

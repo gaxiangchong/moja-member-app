@@ -744,13 +744,9 @@ export class BentoService implements OnModuleInit {
       status: BentoSubscriptionStatus.PENDING_PAYMENT,
     };
 
-    // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
-    // rows for this customer+package and clutter their list (and the "blocks
-    // scheduling" state). Before recording this new attempt, clear the earlier
-    // unpaid ones. Reconcile each with Xendit first so we never cancel an
-    // attempt that was actually paid but whose webhook is still in flight — a
-    // reconcile flips a paid one to ACTIVE, and the updateMany below only
-    // touches rows still PENDING_PAYMENT.
+    // Abandoned checkout rows that never received a payment intent can be
+    // cleared safely. Once a real payment request exists, keep the row pending:
+    // an e-wallet can still complete after the member retries checkout.
     const priorPending = await this.prisma.bentoSubscription.findMany({
       where: {
         customerId,
@@ -768,6 +764,7 @@ export class BentoService implements OnModuleInit {
           customerId,
           packageId: pkg.id,
           status: BentoSubscriptionStatus.PENDING_PAYMENT,
+          paymentIntentId: null,
         },
         data: { status: BentoSubscriptionStatus.CANCELLED },
       });
