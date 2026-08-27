@@ -301,30 +301,9 @@ export class PaymentsService {
 
     const requestAmount = amountCents / 100;
 
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount,
-      channelCode,
-      description: 'Moja member wallet top-up',
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: {
-        customerId: String(customerId),
-        purpose: 'wallet_topup',
-      },
-    });
-
-    const paymentRequestId =
-      typeof xenditResponse.payment_request_id === 'string'
-        ? xenditResponse.payment_request_id
-        : null;
-    const apiStatus =
-      typeof xenditResponse.status === 'string'
-        ? xenditResponse.status
-        : 'UNKNOWN';
-
+    // Persist the local intent before calling Xendit so a provider-side capture
+    // (especially card auto-capture) can still be finalized via webhook even if
+    // the process dies or the follow-up DB write fails after the PAY is created.
     await this.prisma.paymentIntent.create({
       data: {
         customerId,
@@ -335,6 +314,59 @@ export class PaymentsService {
         country,
         channelCode,
         status: 'PENDING',
+        xenditPaymentRequestId: null,
+        metadata: {
+          customerId: String(customerId),
+          purpose: 'wallet_topup',
+        },
+      },
+    });
+
+    let xenditResponse: XenditPaymentRequestResponse;
+    try {
+      xenditResponse = await this.xendit.createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount,
+        channelCode,
+        description: 'Moja member wallet top-up',
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: {
+          customerId: String(customerId),
+          purpose: 'wallet_topup',
+        },
+      });
+    } catch (err) {
+      await this.prisma.paymentIntent.update({
+        where: { referenceId },
+        data: {
+          status: 'FAILED',
+          metadata: mergeMetadata(
+            { customerId: String(customerId), purpose: 'wallet_topup' },
+            {
+              providerCreateError:
+                err instanceof Error ? err.message : String(err),
+            },
+          ) as object,
+        },
+      });
+      throw err;
+    }
+
+    const paymentRequestId =
+      typeof xenditResponse.payment_request_id === 'string'
+        ? xenditResponse.payment_request_id
+        : null;
+    const apiStatus =
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
+
+    await this.prisma.paymentIntent.update({
+      where: { referenceId },
+      data: {
         xenditPaymentRequestId: paymentRequestId,
         metadata: xenditResponse as object,
       },
@@ -529,27 +561,18 @@ export class PaymentsService {
       }
     }
 
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount,
-      ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
-      description: `Moja shop order #${order.orderNumber}`,
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: paymentMetadata,
-    });
+    const intentMetadata = {
+      orderId: order.id,
+      voucherLockToken: voucherLockToken ?? null,
+      voucherId: voucherId ?? null,
+      customerVoucherId: customerVoucherId ?? null,
+      rewardDefinitionId: rewardDefinitionId ?? null,
+      rewardPointsCost: rewardPointsCost ?? null,
+      idempotencyKey,
+    };
 
-    const paymentRequestId =
-      typeof xenditResponse.payment_request_id === 'string'
-        ? xenditResponse.payment_request_id
-        : null;
-    const apiStatus =
-      typeof xenditResponse.status === 'string'
-        ? xenditResponse.status
-        : 'UNKNOWN';
-
+    // Create the local intent before the provider PAY so webhook finalize can
+    // attach by reference_id even when the post-PAY DB write never lands.
     await this.prisma.paymentIntent.create({
       data: {
         customerId,
@@ -560,16 +583,55 @@ export class PaymentsService {
         country,
         channelCode,
         status: 'PENDING',
+        xenditPaymentRequestId: null,
+        metadata: intentMetadata as object,
+      },
+    });
+
+    let xenditResponse: XenditPaymentRequestResponse;
+    try {
+      xenditResponse = await this.xendit.createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount,
+        ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
+        description: `Moja shop order #${order.orderNumber}`,
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: paymentMetadata,
+      });
+    } catch (err) {
+      await this.prisma.paymentIntent.update({
+        where: { referenceId },
+        data: {
+          status: 'FAILED',
+          metadata: mergeMetadata(intentMetadata, {
+            providerCreateError:
+              err instanceof Error ? err.message : String(err),
+          }) as object,
+        },
+      });
+      if (voucherLockToken) {
+        await this.rewardsWorkflow.releaseVoucherLock(voucherLockToken);
+      }
+      throw err;
+    }
+
+    const paymentRequestId =
+      typeof xenditResponse.payment_request_id === 'string'
+        ? xenditResponse.payment_request_id
+        : null;
+    const apiStatus =
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
+
+    await this.prisma.paymentIntent.update({
+      where: { referenceId },
+      data: {
         xenditPaymentRequestId: paymentRequestId,
-        metadata: {
-          orderId: order.id,
-          voucherLockToken: voucherLockToken ?? null,
-          voucherId: voucherId ?? null,
-          customerVoucherId: customerVoucherId ?? null,
-          rewardDefinitionId: rewardDefinitionId ?? null,
-          rewardPointsCost: rewardPointsCost ?? null,
-          idempotencyKey,
-        } as object,
+        metadata: mergeMetadata(intentMetadata, { xendit: xenditResponse }) as object,
       },
     });
 
@@ -677,32 +739,13 @@ export class PaymentsService {
 
     const setsLabel =
       subscriptions.length > 1 ? ` (${subscriptions.length} sets)` : '';
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount: amountCents / 100,
-      channelCode,
-      description: `Moja Bento ${subscription.package.label}${setsLabel}`,
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: {
-        customerId: String(customerId),
-        purpose: 'bento_subscription',
-        subscriptionId: String(subscription.id),
-        subscriptionIds: subscriptions.map((s) => s.id).join(','),
-      },
-    });
+    const intentMetadata = {
+      subscriptionId: subscription.id,
+      subscriptionIds: subscriptions.map((s) => s.id),
+    };
 
-    const paymentRequestId =
-      typeof xenditResponse.payment_request_id === 'string'
-        ? xenditResponse.payment_request_id
-        : null;
-    const apiStatus =
-      typeof xenditResponse.status === 'string'
-        ? xenditResponse.status
-        : 'UNKNOWN';
-
+    // Persist + link the local intent before Xendit so a later capture webhook
+    // can finalize even if attaching the provider id fails after PAY creation.
     const intent = await this.prisma.paymentIntent.create({
       data: {
         customerId,
@@ -713,11 +756,8 @@ export class PaymentsService {
         country,
         channelCode,
         status: 'PENDING',
-        xenditPaymentRequestId: paymentRequestId,
-        metadata: {
-          subscriptionId: subscription.id,
-          subscriptionIds: subscriptions.map((s) => s.id),
-        } as object,
+        xenditPaymentRequestId: null,
+        metadata: intentMetadata as object,
       },
     });
 
@@ -734,6 +774,58 @@ export class PaymentsService {
         intent.id,
       );
     }
+
+    let xenditResponse: XenditPaymentRequestResponse;
+    try {
+      xenditResponse = await this.xendit.createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount: amountCents / 100,
+        channelCode,
+        description: `Moja Bento ${subscription.package.label}${setsLabel}`,
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: {
+          customerId: String(customerId),
+          purpose: 'bento_subscription',
+          subscriptionId: String(subscription.id),
+          subscriptionIds: subscriptions.map((s) => s.id).join(','),
+        },
+      });
+    } catch (err) {
+      await this.prisma.paymentIntent.update({
+        where: { id: intent.id },
+        data: {
+          status: 'FAILED',
+          metadata: mergeMetadata(intentMetadata, {
+            providerCreateError:
+              err instanceof Error ? err.message : String(err),
+          }) as object,
+        },
+      });
+      if (bentoVoucherRedemptionId) {
+        await this.bentoVoucher.releaseByPaymentIntent(intent.id);
+      }
+      throw err;
+    }
+
+    const paymentRequestId =
+      typeof xenditResponse.payment_request_id === 'string'
+        ? xenditResponse.payment_request_id
+        : null;
+    const apiStatus =
+      typeof xenditResponse.status === 'string'
+        ? xenditResponse.status
+        : 'UNKNOWN';
+
+    await this.prisma.paymentIntent.update({
+      where: { id: intent.id },
+      data: {
+        xenditPaymentRequestId: paymentRequestId,
+        metadata: mergeMetadata(intentMetadata, { xendit: xenditResponse }) as object,
+      },
+    });
 
     if (apiStatus === 'SUCCEEDED') {
       await this.applyBentoSubscriptionFromXendit(
