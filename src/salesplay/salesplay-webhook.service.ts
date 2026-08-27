@@ -90,7 +90,9 @@ export class SalesplayWebhookService {
 
     if (type.startsWith('credit_note')) {
       await this.touchSyncState('credit_notes');
-      await this.processCreditNoteBatch(body.credit_notes);
+      // Live SalesPlay credit_note payloads use the same `receipts` array key
+      // as GET /credit_note_and_refund; accept either envelope.
+      await this.processCreditNoteBatch(body.credit_notes ?? body.receipts);
       return;
     }
 
@@ -138,7 +140,9 @@ export class SalesplayWebhookService {
   private async processCreditNoteBatch(notes: unknown): Promise<void> {
     const list = Array.isArray(notes) ? notes : [];
     if (list.length === 0) {
-      this.logger.warn('credit_notes event with no credit_notes array.');
+      this.logger.warn(
+        'credit_note event with no receipts/credit_notes array.',
+      );
       return;
     }
     for (const raw of list) {
