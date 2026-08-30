@@ -5,6 +5,12 @@ import { ShopCartHandoffService } from './shop-cart-handoff.service';
 import { ShopCatalogService } from './shop-catalog.service';
 
 @Controller('shop')
+// Guest browsing in the member app now hits these read endpoints on every
+// visit (previously only reached after login, or from the separate public
+// shop site), so give them the same throttle floor as the neighboring
+// cart-handoff endpoints instead of leaving them completely unguarded.
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 120, ttl: 60_000 } })
 export class ShopCatalogController {
   constructor(
     private readonly shopCatalog: ShopCatalogService,

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 import { cartSubtotalCents, computeDiscountCents } from '../lib/pricing';
 import type { CartLine, FulfillmentMethod, MockReward, MockVoucher } from '../types';
@@ -54,7 +55,12 @@ type ShopState = {
   getCartItemCount: () => number;
 };
 
-export const useShopStore = create<ShopState>((set, get) => ({
+// Persisted so a guest's cart survives a refresh or an in-app detour to
+// sign in at checkout — sign-in never navigates away from the page, but this
+// is cheap insurance against an accidental reload losing their cart.
+export const useShopStore = create<ShopState>()(
+  persist(
+    (set, get) => ({
   cart: [],
   fulfillmentMethod: null,
   pickupDate: null,
@@ -178,4 +184,17 @@ export const useShopStore = create<ShopState>((set, get) => ({
     return Math.max(0, sub - disc);
   },
   getCartItemCount: () => get().cart.reduce((n, l) => n + l.qty, 0),
-}));
+    }),
+    {
+      name: 'moja_shop_cart',
+      // Skip appliedVoucher/appliedReward — they reference member-specific
+      // promo data that can go stale across sessions; re-apply after reload.
+      partialize: (state) => ({
+        cart: state.cart,
+        fulfillmentMethod: state.fulfillmentMethod,
+        pickupDate: state.pickupDate,
+        pickupTime: state.pickupTime,
+      }),
+    },
+  ),
+);

@@ -129,11 +129,25 @@ export function ShopFlow({
   memberRewards,
   initialScreen,
   onInitialScreenApplied,
+  initialQuery,
+  onInitialQueryApplied,
+  isAuthenticated,
+  onRequireAuth,
+  authResumeSignal,
 }: {
   pointsBalance: number;
   memberRewards?: MemberRewardsPayload | null;
   initialScreen?: Screen | null;
   onInitialScreenApplied?: () => void;
+  /** Pre-fills the catalog search box — set by the Home tab's search bar. */
+  initialQuery?: string | null;
+  onInitialQueryApplied?: () => void;
+  /** Browsing and cart-building never require login — only reaching checkout does. */
+  isAuthenticated: boolean;
+  /** Opens the app's sign-in overlay; called instead of entering checkout when signed out. */
+  onRequireAuth: () => void;
+  /** Bumped by the app after a checkout-triggered sign-in succeeds, so we can resume straight into checkout. */
+  authResumeSignal?: number;
 }) {
   const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
@@ -215,9 +229,34 @@ export function ShopFlow({
 
   useEffect(() => {
     if (!initialScreen) return;
+    // A deep link (e.g. cart handoff) can ask to land straight on checkout —
+    // still gate that behind sign-in like the normal Cart -> Checkout tap.
+    if (initialScreen === 'checkout' && !isAuthenticated) {
+      setScreen('cart');
+      onInitialScreenApplied?.();
+      onRequireAuth();
+      return;
+    }
     setScreen(initialScreen);
     onInitialScreenApplied?.();
-  }, [initialScreen, onInitialScreenApplied]);
+  }, [initialScreen, isAuthenticated, onInitialScreenApplied, onRequireAuth]);
+
+  useEffect(() => {
+    if (!initialQuery) return;
+    setQuery(initialQuery);
+    onInitialQueryApplied?.();
+  }, [initialQuery, onInitialQueryApplied]);
+
+  // After a checkout-triggered sign-in succeeds, move the now-authenticated
+  // guest straight into checkout instead of leaving them back on Cart.
+  useEffect(() => {
+    if (!authResumeSignal) return;
+    if (!isAuthenticated) return;
+    if (cart.length === 0) return;
+    setScreen('checkout');
+    setCheckoutErrors(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire only when the resume token changes
+  }, [authResumeSignal]);
 
   useEffect(() => {
     let alive = true;
@@ -296,6 +335,13 @@ export function ShopFlow({
 
   const openCheckout = () => {
     if (cart.length === 0) return;
+    // This is the one moment browsing turns into "I want to pay" — ask a
+    // guest to sign in here rather than earlier, so browsing and building a
+    // cart stay completely login-free.
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
     setScreen('checkout');
     setCheckoutErrors(null);
   };
@@ -523,6 +569,13 @@ export function ShopFlow({
   };
 
   const handlePlaceOrder = async () => {
+    // Safety net: covers a session expiring while already on the checkout
+    // screen. The normal path never reaches here signed out, since
+    // openCheckout already gates entry to this screen.
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
     const draft = {
       cart,
       fulfillmentMethod,

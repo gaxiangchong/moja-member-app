@@ -2,29 +2,34 @@
   min-height: 100vh;
   max-width: 100%;
   overflow-x: clip;
+  /* Same soft blue/gold glow the premium cards use (pointsCard, guestHero),
+     so the page background reads as one theme instead of a separate warm
+     tint behind cool-toned cards. */
   background:
-    radial-gradient(circle at 15% -10%, rgba(205, 164, 126, 0.18), transparent 40%),
-    radial-gradient(circle at 85% -20%, rgba(107, 73, 49, 0.14), transparent 42%),
+    radial-gradient(circle at 15% -10%, rgba(77, 141, 255, 0.1), transparent 42%),
+    radial-gradient(circle at 88% 4%, rgba(245, 210, 138, 0.12), transparent 40%),
     #f4f8ff;
   color: #2b2b2b;
   font-family: Inter, 'Segoe UI', Arial, sans-serif;
 }
 
-/* Login / PIN / OTP: full-bleed hero + glass panel (place image at public/images/login-hero-bg.png) */
-.app--auth {
-  background: #f2efe8;
-}
-
+/* Login / PIN / OTP: dismissible overlay (full-bleed hero + glass panel) that
+   sits on top of the app shell, which now stays mounted underneath at all
+   times — guests can browse/shop without it, and closing it (or completing
+   sign-in) just reveals the shell again. Place image at
+   public/images/login-hero-bg.png */
 .authMain {
-  position: relative;
+  position: fixed;
+  inset: 0;
   isolation: isolate;
+  z-index: 60;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
     max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .authMain::before {
@@ -70,6 +75,25 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+/* Lets a guest dismiss the sign-in overlay and keep browsing/shopping. */
+.authOverlayClose {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.75);
+  color: #2b2b2b;
+  font-size: 20px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
 }
 
 /* --- Brand lockup ------------------------------------------------------ */
@@ -631,109 +655,157 @@
   overflow-wrap: break-word;
 }
 
-/* --- Points / membership card (light) --------------------------------- */
-
-.pointsCard {
-  position: relative;
-  padding: 18px 20px 20px;
-  background:
-    radial-gradient(circle at 92% -20%, rgba(245, 210, 138, 0.18), transparent 55%),
-    radial-gradient(circle at -10% 120%, rgba(77, 141, 255, 0.12), transparent 60%),
-    #ffffff;
-  color: #1a1a1a;
-  border: 1px solid #e6eefb;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 14px 28px -18px rgba(0, 52, 141, 0.22),
-    0 4px 10px -8px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.pointsCardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.pointsCardEyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #6b7a90;
-}
-
-.pointsCardBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+/* Compact "Sign in" affordance shown in tab headers while browsing as a
+   guest. Deliberately quiet (outline, not filled) so it doesn't compete with
+   the bold guestHero CTA below it — one clear primary action per screen. */
+.pmSignInPill {
+  flex-shrink: 0;
+  padding: 8px 15px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #0a49a8 0%, #00348d 100%);
-  border: 1px solid rgba(0, 30, 77, 0.35);
-  color: #f5d28a;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 4px 10px -6px rgba(0, 30, 77, 0.45);
-}
-
-.pointsCardBadge svg {
-  width: 12px;
-  height: 12px;
-}
-
-.pointsCardValue {
-  margin: 10px 0 16px;
-  font-size: clamp(34px, 12vw, 46px);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.025em;
+  background: #fff;
   color: #00348d;
+  border: 1px solid #cfe0ff;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* --- Home tab: search bar, quick actions, membership banner ------------ */
+
+.homeSearchBar {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  overflow-wrap: break-word;
+  align-items: center;
 }
 
-.pointsCardUnit {
-  font-size: 0.42em;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #6b7a90;
+.homeSearchIcon {
+  position: absolute;
+  left: 15px;
+  width: 18px;
+  height: 18px;
+  color: #94a3b8;
+  pointer-events: none;
 }
 
-.pointsCardProgress {
+.homeSearchInput {
+  width: 100%;
+  border: 1px solid #d7e3fb;
+  border-radius: 14px;
+  padding: 13px 14px 13px 42px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.quickActionsRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.quickActionItem {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  color: inherit;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  font-weight: 400;
 }
 
-.pointsCardProgressTrack {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: #e6eefb;
-  overflow: hidden;
+.quickActionIcon {
+  width: 54px;
+  height: 54px;
+  border-radius: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00348d;
 }
 
-.pointsCardProgressFill {
-  height: 100%;
-  background: linear-gradient(90deg, #4d8dff, #00348d);
-  transition: width 0.35s ease;
+.quickActionIcon svg {
+  width: 23px;
+  height: 23px;
 }
 
-.pointsCardProgressHint {
+.quickActionIcon--a {
+  background: rgba(0, 52, 141, 0.07);
+}
+
+.quickActionIcon--b {
+  background: rgba(245, 210, 138, 0.4);
+}
+
+.quickActionLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* Low-profile sign-up strip — replaces a full promo card since points/reward
+   detail already lives on the Account tab; present, not dominant. */
+.homeMembershipBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 52, 141, 0.05);
+  border: 1px solid rgba(0, 52, 141, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #00348d;
+  text-align: left;
+}
+
+.homeMembershipBanner svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.homeMembershipBannerText {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 400;
+  color: #1a1a1a;
+  line-height: 1.3;
+}
+
+.homeMembershipBannerLink {
+  font-size: 13px;
+  font-weight: 700;
+  color: #00348d;
+  white-space: nowrap;
+}
+
+/* Member-only-content placeholder (Perks/Orders, guest Home points card). */
+.signInPromptCard {
+  text-align: center;
+  padding: 22px 16px;
+}
+
+.signInPromptTitle {
   margin: 0;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #6b7a90;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.accountGuestCard {
+  padding: 20px 16px;
+}
+
+.accountGuestBenefits {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #2b2b2b;
+  font-size: 14px;
 }
 
 /* Plain progress (used outside the points card) */
@@ -1051,14 +1123,6 @@
   overflow-wrap: break-word;
 }
 
-.popularSection {
-  background: #ffffff;
-  border-radius: 20px;
-  padding: 16px 16px 14px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-}
-
 .popularHeader {
   display: flex;
   align-items: center;
@@ -1088,82 +1152,50 @@
   background: rgba(0, 52, 141, 0.08);
 }
 
-.popularList {
-  list-style: none;
-  margin: 0;
+.popularGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.popularGridCard {
+  background: #fff;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 20px -16px rgba(15, 23, 42, 0.3);
   padding: 0;
+  text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
-.popularItem {
-  display: block;
-}
-
-.popularCard {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 14px;
-  background: #f8fafc;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  cursor: pointer;
-  text-align: left;
-  transition: background 160ms ease, transform 160ms ease;
-}
-
-.popularCard:hover {
-  background: #eef2ff;
-}
-
-.popularCard:active {
-  transform: scale(0.99);
-}
-
-.popularThumb {
-  flex: 0 0 auto;
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
+.popularGridImage {
+  height: 118px;
   background-color: #e2e8f0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-.popularMeta {
+.popularGridBody {
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: 3px;
 }
 
-.popularName {
-  font-weight: 500;
+.popularGridName {
+  font-size: 13.5px;
+  font-weight: 600;
   color: #0f172a;
-  font-size: 14px;
   line-height: 1.3;
 }
 
-.popularDesc {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.popularPrice {
-  color: #00348d;
-  font-weight: 700;
+.popularGridPrice {
   font-size: 13px;
-  margin-top: 2px;
+  font-weight: 700;
+  color: #00348d;
 }
 
 .adCarousel {

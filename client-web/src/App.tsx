@@ -52,8 +52,12 @@ const PENDING_REFERRAL_KEY = 'moja_pending_referral';
 const PENDING_CART_HANDOFF_KEY = 'moja_pending_cart_handoff';
 const PENDING_SHOP_SCREEN_KEY = 'moja_pending_shop_screen';
 
-type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin' | 'member';
+type Step = 'phone' | 'pin' | 'email' | 'code' | 'setPin';
 type OtpFlowPurpose = 'register' | 'recovery';
+// Why the sign-in overlay was opened — lets us route the user back to what
+// they were doing (e.g. resume checkout) once they finish, or just close it
+// if they were signing in proactively from the Account tab.
+type AuthIntent = 'manual' | 'checkout';
 type MemberTab = 'home' | 'perks' | 'shop' | 'orders' | 'account';
 type PerksSub = 'vouchers' | 'rewards';
 type VoucherTab = 'ACTIVE' | 'USED' | 'EXPIRED';
@@ -262,6 +266,86 @@ function AdCarousel({ slides }: { slides: HomeAdSlide[] }) {
         </>
       ) : null}
     </section>
+  );
+}
+
+// Shown in place of member-only content (Perks, Orders, Account, points
+// card) when browsing as a guest. Keeps the sign-in ask local to the section
+// the visitor actually tried to use, instead of a blocking full-app gate.
+function SignInPrompt({
+  title,
+  body,
+  onSignIn,
+}: {
+  title: string;
+  body: string;
+  onSignIn: () => void;
+}) {
+  return (
+    <Card className="signInPromptCard">
+      <h3 className="signInPromptTitle">{title}</h3>
+      <p className="caption" style={{ margin: '4px 0 14px' }}>
+        {body}
+      </p>
+      <button type="button" className="rowAction primary" onClick={onSignIn}>
+        Sign in
+      </button>
+    </Card>
+  );
+}
+
+// Home tab search bar — jumps straight into the Shop tab's catalog with the
+// typed query pre-filled, so browsing doesn't require detouring through the
+// bottom nav first.
+function HomeSearchBar({ onSearch }: { onSearch: (query: string) => void }) {
+  const [value, setValue] = useState('');
+  return (
+    <form
+      className="homeSearchBar"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const q = value.trim();
+        if (q) onSearch(q);
+      }}
+    >
+      <svg className="homeSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-4.3-4.3" />
+      </svg>
+      <input
+        type="text"
+        inputMode="search"
+        placeholder="Search cakes & drinks"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="homeSearchInput"
+        aria-label="Search products"
+      />
+    </form>
+  );
+}
+
+// One of the Home tab's quick-action shortcuts (Shop/Rewards/Vouchers/Orders)
+// — big icon tap targets so browsing/navigating doesn't require the bottom
+// nav. `tone` alternates the icon's tint so the row has some visual rhythm.
+function QuickAction({
+  icon,
+  label,
+  tone,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  tone: 'a' | 'b';
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="quickActionItem" onClick={onClick}>
+      <span className={`quickActionIcon quickActionIcon--${tone}`} aria-hidden>
+        {icon}
+      </span>
+      <span className="quickActionLabel">{label}</span>
+    </button>
   );
 }
 
@@ -556,6 +640,16 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Whether the sign-in overlay is showing. The app shell (Home/Shop/etc.)
+  // renders underneath it at all times — guests can browse and build a cart
+  // freely; this only opens when they ask to sign in, or when they try to
+  // check out while unauthenticated.
+  const [authOverlayOpen, setAuthOverlayOpen] = useState(false);
+  const authIntentRef = useRef<AuthIntent>('manual');
+  // Bumped after a checkout-triggered login succeeds so ShopFlow can move
+  // the guest straight into the checkout screen instead of leaving them on
+  // Cart after they just signed in to pay.
+  const [authResumeSignal, setAuthResumeSignal] = useState(0);
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [rewardsData, setRewardsData] = useState<MemberRewardsPayload | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -574,6 +668,7 @@ function App() {
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
+  const [shopInitialQuery, setShopInitialQuery] = useState<string | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
 
   useEffect(() => {
@@ -607,8 +702,39 @@ function App() {
     setRewardsData(rewards);
     syncFormFromProfile(me);
     setSessionExpired(false);
-    setStep('member');
+    setAuthOverlayOpen(false);
+    if (authIntentRef.current === 'checkout') {
+      setAuthResumeSignal((n) => n + 1);
+    }
+    authIntentRef.current = 'manual';
   }, [syncFormFromProfile]);
+
+  // Opens the sign-in overlay on top of the (always-visible) app shell.
+  // `intent` records why, so we know whether to resume checkout afterwards.
+  const openAuthOverlay = useCallback((intent: AuthIntent = 'manual') => {
+    authIntentRef.current = intent;
+    setStep('phone');
+    setError(null);
+    setHint(intent === 'checkout' ? 'Sign in to complete your purchase.' : null);
+    setAuthOverlayOpen(true);
+  }, []);
+
+  // Dismisses the overlay and returns the guest to whatever they were doing
+  // — cart and browsing state are untouched since the shell never unmounts.
+  const closeAuthOverlay = useCallback(() => {
+    setAuthOverlayOpen(false);
+    setStep('phone');
+    setLoginPin('');
+    setCode('');
+    setEmail('');
+    setNewPin('');
+    setNewPinConfirm('');
+    setSetPinPhase('first');
+    setSetupToken('');
+    setError(null);
+    setHint(null);
+    authIntentRef.current = 'manual';
+  }, []);
 
   useEffect(() => {
     if (step !== 'code' || !otpExpiresAt) return;
@@ -645,8 +771,12 @@ function App() {
     const onSessionExpired = () => {
       clearToken();
       setProfile(null);
+      setRewardsData(null);
+      setAuthOverlayOpen(false);
       setStep('phone');
-      setTab('home');
+      // Drop back to guest browsing rather than kicking them out of the app —
+      // only leave member-only tabs, since those no longer have data to show.
+      setTab((t) => (t === 'perks' || t === 'orders' || t === 'account' ? 'home' : t));
       setSessionExpired(true);
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
@@ -664,7 +794,6 @@ function App() {
       }
       if (handoff) {
         setTab('shop');
-        setHint('Sign in to complete payment for your shop cart.');
       }
       if (handoff || shopScreen) {
         u.searchParams.delete('cartHandoff');
@@ -678,7 +807,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (step !== 'member') return;
+    // Runs once on mount regardless of auth — cart-handoff consumption is a
+    // public endpoint, so guests can preview an imported cart immediately
+    // and only need to sign in once they actually reach checkout.
     const token = sessionStorage.getItem(PENDING_CART_HANDOFF_KEY);
     if (!token) return;
 
@@ -719,10 +850,10 @@ function App() {
           err instanceof Error ? err.message : 'Could not import shop cart',
         );
       });
-  }, [step]);
+  }, []);
 
   useEffect(() => {
-    if (step !== 'member') return;
+    if (!profile) return;
     try {
       const u = new URL(window.location.href);
       const shopPay = u.searchParams.get('shopPayment');
@@ -749,13 +880,13 @@ function App() {
     } catch {
       /* ignore */
     }
-  }, [step, loadMemberData]);
+  }, [profile, loadMemberData]);
 
   // Poll the server for a pending payment whenever the app is open and
   // visible. E-wallets like Touch 'n Go often don't redirect back to the
   // merchant in live mode, so we can't rely solely on the success URL.
   useEffect(() => {
-    if (step !== 'member') return;
+    if (!profile) return;
     if (!getToken()) return;
 
     let cancelled = false;
@@ -828,7 +959,7 @@ function App() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onFocus);
     };
-  }, [step, loadMemberData]);
+  }, [profile, loadMemberData]);
 
   useEffect(() => {
     try {
@@ -1214,8 +1345,6 @@ function App() {
     [voucherItems],
   );
 
-  const featuredRewardsCount = normalizedRewards.length;
-
   useEffect(() => {
     let alive = true;
     // SalesPlay member IDs have no leading "+", so strip it from the phone number
@@ -1236,18 +1365,19 @@ function App() {
     };
   }, [profile?.phoneE164]);
 
-  const authMode =
-    step === 'phone' ||
-    step === 'pin' ||
-    step === 'email' ||
-    step === 'code' ||
-    step === 'setPin';
-
   return (
-    <div className={`app${authMode ? ' app--auth' : ''}`}>
-      {authMode && (
-        <main className="authMain">
+    <div className="app">
+      {authOverlayOpen && (
+        <main className="authMain" role="dialog" aria-modal="true" aria-label="Sign in">
           <div className="authGlass">
+            <button
+              type="button"
+              className="authOverlayClose"
+              aria-label="Close and continue browsing"
+              onClick={closeAuthOverlay}
+            >
+              ×
+            </button>
             <AuthBrand />
 
             {step === 'phone' && (
@@ -1571,175 +1701,192 @@ function App() {
         </main>
       )}
 
-      {step === 'member' && profile && (
-        <div className="pmShell">
-          <main className="pmContent">
+      <div className="pmShell">
+        <main className="pmContent">
             {tab === 'home' && (
               <>
                 <header className="pmTopBar">
-                  <h2>Hi {memberName}</h2>
-                  <button type="button" className="iconBtn" onClick={() => setMemberQrOpen(true)} aria-label="Show my member QR">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="7" height="7" rx="1" />
-                      <rect x="14" y="3" width="7" height="7" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" rx="1" />
-                      <path d="M14 14h3v3" />
-                      <path d="M21 14v7h-7" />
-                      <path d="M18 18h.01" />
-                    </svg>
-                  </button>
-                  <button type="button" className="iconBtn" onClick={() => setShareOpen(true)} aria-label="Invite friends and earn an RM5 voucher">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="8" width="18" height="4" rx="1" />
-                      <path d="M12 8v13" />
-                      <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
-                      <path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8" />
-                      <path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8" />
-                    </svg>
-                  </button>
-                </header>
-                <Card className="pointsCard">
-                  <div className="pointsCardHead">
-                    <span className="pointsCardEyebrow">Available Points</span>
-                    <span className="pointsCardBadge" aria-hidden>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="8" r="6" />
-                        <path d="M8 13l-2 8 6-3 6 3-2-8" />
-                      </svg>
-                      Member
-                    </span>
-                  </div>
-                  <h1 className="pointsCardValue">
-                    {pointsBalance.toLocaleString()}
-                    <span className="pointsCardUnit">pts</span>
-                  </h1>
-                  <div className="pointsCardProgress">
-                    <div className="pointsCardProgressTrack">
-                      <div
-                        className="pointsCardProgressFill"
-                        style={{ width: `${progressPct}%` }}
-                      />
-                    </div>
-                    <p className="pointsCardProgressHint">
-                      {pointsToNext > 0 && tierProgress.nextTierLabel
-                        ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
-                        : 'Top tier reached'}
-                    </p>
-                  </div>
-                </Card>
-
-                <AdCarousel slides={adSlides} />
-
-                <div className="homeSummaryRow">
-                  {SHOW_VOUCHERS && (
-                    <button
-                      type="button"
-                      className="pmCard homeSummaryCard"
-                      onClick={() => {
-                        setPerksSub('vouchers');
-                        setTab('perks');
-                      }}
-                      aria-label={`My Voucher, ${activeVouchersCount} active vouchers`}
-                    >
-                      <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                  <h2>{profile ? `Hi ${memberName}` : 'Welcome to Moja'}</h2>
+                  {profile ? (
+                    <>
+                      <button type="button" className="iconBtn" onClick={() => setMemberQrOpen(true)} aria-label="Show my member QR">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="7" width="18" height="13" rx="2" />
-                          <path d="M3 11h18" />
-                          <path d="M9 15l2 2 4-4" />
+                          <rect x="3" y="3" width="7" height="7" rx="1" />
+                          <rect x="14" y="3" width="7" height="7" rx="1" />
+                          <rect x="3" y="14" width="7" height="7" rx="1" />
+                          <path d="M14 14h3v3" />
+                          <path d="M21 14v7h-7" />
+                          <path d="M18 18h.01" />
                         </svg>
-                      </span>
-                      <span className="homeSummaryText">
-                        <span className="homeSummaryLabel">My Voucher</span>
-                        <span className="homeSummaryValue">
-                          {activeVouchersCount} {activeVouchersCount === 1 ? 'Voucher' : 'Vouchers'}
-                        </span>
-                      </span>
+                      </button>
+                      <button type="button" className="iconBtn" onClick={() => setShareOpen(true)} aria-label="Invite friends and earn an RM5 voucher">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="8" width="18" height="4" rx="1" />
+                          <path d="M12 8v13" />
+                          <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
+                          <path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8" />
+                          <path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8" />
+                        </svg>
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="pmSignInPill" onClick={() => openAuthOverlay('manual')}>
+                      Sign in
                     </button>
                   )}
+                </header>
 
-                  <button
-                    type="button"
-                    className="pmCard homeSummaryCard"
+                <HomeSearchBar
+                  onSearch={(q) => {
+                    setShopInitialQuery(q);
+                    setShopInitialScreen('browse');
+                    setTab('shop');
+                  }}
+                />
+
+                <div className="quickActionsRow">
+                  <QuickAction
+                    tone="a"
+                    label="Shop"
+                    onClick={() => setTab('shop')}
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M6 2h12l1.5 4H4.5z" />
+                        <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                        <path d="M9 11h6" />
+                      </svg>
+                    }
+                  />
+                  <QuickAction
+                    tone="b"
+                    label="Rewards"
                     onClick={() => {
                       setPerksSub('rewards');
                       setTab('perks');
                     }}
-                    aria-label={`Rewards catalog, ${featuredRewardsCount} available`}
-                  >
-                    <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
+                    icon={
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="3" y="8" width="18" height="13" rx="1" />
                         <path d="M12 8v13" />
                         <path d="M3 12h18" />
                         <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
                       </svg>
-                    </span>
-                    <span className="homeSummaryText">
-                      <span className="homeSummaryLabel">Rewards</span>
-                      <span className="homeSummaryValue">
-                        {featuredRewardsCount > 0
-                          ? `${featuredRewardsCount} ${featuredRewardsCount === 1 ? 'Reward' : 'Rewards'}`
-                          : 'Browse'}
-                      </span>
-                    </span>
-                  </button>
+                    }
+                  />
+                  {SHOW_VOUCHERS && (
+                    <QuickAction
+                      tone="a"
+                      label="Vouchers"
+                      onClick={() => {
+                        setPerksSub('vouchers');
+                        setTab('perks');
+                      }}
+                      icon={
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="7" width="18" height="13" rx="2" />
+                          <path d="M3 11h18" />
+                          <path d="M9 15l2 2 4-4" />
+                        </svg>
+                      }
+                    />
+                  )}
+                  <QuickAction
+                    tone="b"
+                    label="Orders"
+                    onClick={() => setTab('orders')}
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                        <rect x="9" y="3" width="6" height="4" rx="1" />
+                        <path d="M9 12h6M9 16h6" />
+                      </svg>
+                    }
+                  />
                 </div>
 
+                <AdCarousel slides={adSlides} />
+
+                {!profile && (
+                  <button
+                    type="button"
+                    className="homeMembershipBanner"
+                    onClick={() => openAuthOverlay('manual')}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="12" cy="8" r="6" />
+                      <path d="M8 13l-2 8 6-3 6 3-2-8" />
+                    </svg>
+                    <span className="homeMembershipBannerText">
+                      Sign in to start earning points on every order
+                    </span>
+                    <span className="homeMembershipBannerLink">Join free →</span>
+                  </button>
+                )}
+
                 {popularItems.length > 0 && (
-                  <section className="popularSection">
+                  <section>
                     <div className="popularHeader">
-                      <h3>Popular items</h3>
+                      <h3>Popular this week</h3>
                       <button
                         type="button"
                         className="popularMore"
                         onClick={() => setTab('shop')}
                       >
-                        Shop now
+                        See all
                       </button>
                     </div>
-                    <ul className="popularList">
+                    <div className="popularGrid">
                       {popularItems.map((item) => {
                         const img = item.imageUrl || '';
                         const price = Number.isFinite(item.basePriceCents)
                           ? `RM ${(item.basePriceCents / 100).toFixed(2)}`
                           : '';
                         return (
-                          <li key={item.id} className="popularItem">
-                            <button
-                              type="button"
-                              className="popularCard"
-                              onClick={() => setTab('shop')}
-                            >
-                              <span
-                                className="popularThumb"
-                                style={
-                                  img
-                                    ? {
-                                        backgroundImage: `url(${img})`,
-                                        backgroundPosition: `${item.imageOffsetX ?? 50}% ${item.imageOffsetY ?? 50}%`,
-                                      }
-                                    : undefined
-                                }
-                                aria-hidden
-                              />
-                              <span className="popularMeta">
-                                <span className="popularName">{item.name}</span>
-                                {item.shortDescription ? (
-                                  <span className="popularDesc">{item.shortDescription}</span>
-                                ) : null}
-                                {price ? <span className="popularPrice">{price}</span> : null}
-                              </span>
-                            </button>
-                          </li>
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="popularGridCard"
+                            onClick={() => setTab('shop')}
+                          >
+                            <span
+                              className="popularGridImage"
+                              style={
+                                img
+                                  ? {
+                                      backgroundImage: `url(${img})`,
+                                      backgroundPosition: `${item.imageOffsetX ?? 50}% ${item.imageOffsetY ?? 50}%`,
+                                    }
+                                  : undefined
+                              }
+                              aria-hidden
+                            />
+                            <span className="popularGridBody">
+                              <span className="popularGridName">{item.name}</span>
+                              {price ? <span className="popularGridPrice">{price}</span> : null}
+                            </span>
+                          </button>
                         );
                       })}
-                    </ul>
+                    </div>
                   </section>
                 )}
               </>
             )}
 
-            {tab === 'perks' && (
+            {tab === 'perks' && !profile && (
+              <>
+                <header className="pmTopBar">
+                  <h2>Rewards</h2>
+                </header>
+                <SignInPrompt
+                  title="Sign in to see your vouchers & rewards"
+                  body="Members earn points on every order and unlock exclusive vouchers."
+                  onSignIn={() => openAuthOverlay('manual')}
+                />
+              </>
+            )}
+
+            {tab === 'perks' && profile && (
               <>
                 <header className="pmTopBar">
                   <h2>Rewards</h2>
@@ -1848,14 +1995,54 @@ function App() {
                 memberRewards={rewardsData}
                 initialScreen={shopInitialScreen}
                 onInitialScreenApplied={() => setShopInitialScreen(null)}
+                initialQuery={shopInitialQuery}
+                onInitialQueryApplied={() => setShopInitialQuery(null)}
+                isAuthenticated={Boolean(profile)}
+                onRequireAuth={() => openAuthOverlay('checkout')}
+                authResumeSignal={authResumeSignal}
               />
             )}
 
-            {tab === 'orders' && (
+            {tab === 'orders' && !profile && (
+              <>
+                <header className="pmTopBar">
+                  <h2>Orders</h2>
+                </header>
+                <SignInPrompt
+                  title="Sign in to view your orders"
+                  body="Your order history and pickup codes appear here once you're signed in."
+                  onSignIn={() => openAuthOverlay('manual')}
+                />
+              </>
+            )}
+
+            {tab === 'orders' && profile && (
               <OrdersTab active={tab === 'orders'} onGoToShop={() => setTab('shop')} />
             )}
 
-            {tab === 'account' && (
+            {tab === 'account' && !profile && (
+              <>
+                <header className="pmTopBar">
+                  <h2>Account</h2>
+                </header>
+                <Card className="accountGuestCard">
+                  <h3 className="signInPromptTitle">You're browsing as a guest</h3>
+                  <p className="caption" style={{ margin: '4px 0 14px' }}>
+                    Sign in to save your cart across visits, earn points, collect vouchers, and track your orders.
+                  </p>
+                  <ul className="accountGuestBenefits">
+                    <li>Earn points on every purchase</li>
+                    <li>Get member-only vouchers &amp; rewards</li>
+                    <li>Track your order history</li>
+                  </ul>
+                  <button type="button" className="rowAction primary" onClick={() => openAuthOverlay('manual')}>
+                    Sign in / Create account
+                  </button>
+                </Card>
+              </>
+            )}
+
+            {tab === 'account' && profile && (
               <>
                 <header className="pmTopBar">
                   <h2>Account</h2>
@@ -2331,7 +2518,7 @@ function App() {
             </div>
           )}
 
-          {memberQrOpen && (
+          {memberQrOpen && profile && (
             <div
               className="memberQrOverlay"
               role="dialog"
@@ -2369,7 +2556,7 @@ function App() {
             </div>
           )}
 
-          {shareOpen && (
+          {shareOpen && profile && (
             <div className="shareOverlay" role="dialog" aria-modal="true">
               <div className="shareSheet">
                 <SectionHeader title="Invite Friends" />
@@ -2416,7 +2603,6 @@ function App() {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }
