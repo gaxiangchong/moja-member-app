@@ -308,6 +308,22 @@ export class ImportExportService implements OnModuleInit {
     const rows = await this.parseUpload(buf, batch.fileName);
     const { errors } = this.validateImport(batch.kind, rows);
 
+    const claim = await this.prisma.importBatch.updateMany({
+      where: { id: batchId, status: ImportBatchStatus.PREVIEW },
+      data: {
+        status: ImportBatchStatus.COMMITTED,
+        summary: {
+          committingAt: new Date().toISOString(),
+        },
+      },
+    });
+    if (claim.count !== 1) {
+      throw new BadRequestException({
+        code: 'IMPORT_ALREADY_COMMITTED',
+        message: 'Batch not in preview state',
+      });
+    }
+
     let success = 0;
     const rowErrors = [...errors];
     const invalidRowNums = new Set(errors.map((e) => e.row));
