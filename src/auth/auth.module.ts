@@ -8,9 +8,10 @@ import { SmsOtpService } from './sms-otp.service';
 import { TwilioVerifyService } from './twilio-verify.service';
 import { EmailOtpService } from './email-otp.service';
 import { CustomersModule } from '../customers/customers.module';
+import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
 
 @Module({
-  imports: [ConfigModule, JwtAccessModule, CustomersModule],
+  imports: [ConfigModule, JwtAccessModule, CustomersModule, RewardsWorkflowModule],
   controllers: [AuthController],
   providers: [
     AuthService,

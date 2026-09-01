@@ -19,6 +19,7 @@ import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discoun
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
+import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 
 /**
@@ -127,6 +128,7 @@ export class CustomersService {
     private readonly salesplay: SalesplayService,
     private readonly shopCatalog: ShopCatalogService,
     private readonly config: ConfigService,
+    private readonly campaignAutomation: CampaignAutomationService,
   ) {}
 
   /**
@@ -854,6 +856,9 @@ export class CustomersService {
   async finalizeShopOrderAfterPayment(orderId: string): Promise<void> {
     const pointsPerRm = this.loyaltyPointsPerCurrencyUnit();
     let finalized = false;
+    let finalizedCustomerId: string | undefined;
+    let finalizedTotalCents = 0;
+    let referrerRewardedId: string | undefined;
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
@@ -868,6 +873,8 @@ export class CustomersService {
         return;
       }
       finalized = true;
+      finalizedCustomerId = order.customerId;
+      finalizedTotalCents = order.totalCents;
       await tx.customerOrder.update({
         where: { id: orderId },
         data: { status: 'placed' },
@@ -905,10 +912,32 @@ export class CustomersService {
         );
       }
 
-      await this.maybeRewardReferrerOnFirstOrder(tx, order.customerId, order.id);
+      referrerRewardedId = await this.maybeRewardReferrerOnFirstOrder(
+        tx,
+        order.customerId,
+        order.id,
+      );
     });
     if (finalized) {
       this.pushShopOrderToSalesplay(orderId);
+      if (finalizedCustomerId) {
+        void this.campaignAutomation
+          .runMinPurchaseTrigger(finalizedCustomerId, finalizedTotalCents)
+          .catch((err) =>
+            this.logger.error(
+              `Min-purchase campaign trigger failed for order ${orderId}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+      }
+      if (referrerRewardedId) {
+        void this.campaignAutomation
+          .runReferralCountTrigger(referrerRewardedId)
+          .catch((err) =>
+            this.logger.error(
+              `Referral-count campaign trigger failed for referrer ${referrerRewardedId}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+      }
     }
   }
 
@@ -979,21 +1008,25 @@ export class CustomersService {
    * completes a paid order. Runs inside the order-finalization transaction so
    * it is atomic with the purchase. Idempotent: a referrer is rewarded at most
    * once per referred member (guarded by a unique ledger reference).
+   *
+   * Returns the referrer's customer id when a reward was actually granted (so
+   * the caller can fire a REFERRAL_COUNT campaign trigger after the
+   * transaction commits), or undefined otherwise.
    */
   private async maybeRewardReferrerOnFirstOrder(
     tx: Prisma.TransactionClient,
     buyerCustomerId: string,
     orderId: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const rewardPoints = this.referralRewardPoints();
-    if (rewardPoints <= 0) return;
+    if (rewardPoints <= 0) return undefined;
 
     const buyer = await tx.customer.findUnique({
       where: { id: buyerCustomerId },
       select: { id: true, referredByCustomerId: true },
     });
     const referrerId = buyer?.referredByCustomerId;
-    if (!referrerId) return;
+    if (!referrerId) return undefined;
 
     // Only on the buyer's FIRST paid order. The current order was just moved to
     // 'placed' in this transaction, so a count of 1 paid order means first.
@@ -1003,7 +1036,7 @@ export class CustomersService {
         status: { notIn: ['pending_payment', 'cancelled'] },
       },
     });
-    if (paidOrderCount !== 1) return;
+    if (paidOrderCount !== 1) return undefined;
 
     // Idempotency: never reward the same referrer twice for the same referee.
     const existing = await tx.loyaltyLedgerEntry.findFirst({
@@ -1015,7 +1048,7 @@ export class CustomersService {
       },
       select: { id: true },
     });
-    if (existing) return;
+    if (existing) return undefined;
 
     const result = await this.loyalty.appendLedgerEntry(
       {
@@ -1032,6 +1065,7 @@ export class CustomersService {
         `for referee ${buyerCustomerId}'s first paid order ${orderId} ` +
         `(balanceAfter=${result.balanceAfter}).`,
     );
+    return referrerId;
   }
 
   async topUpMyWallet(

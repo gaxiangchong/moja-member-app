@@ -332,6 +332,10 @@ model VoucherCampaign {
   applicableOutlets      String[]           @default([]) @map("applicable_outlets")
   applicableOrderTypes   VoucherOrderType[] @default([]) @map("applicable_order_types")
   autoCreditTrigger      String?            @map("auto_credit_trigger")
+  // Threshold the trigger fires at; meaning depends on autoCreditTrigger:
+  // REFERRAL_COUNT = referral count, INACTIVE_DAYS = days since last login,
+  // MIN_PURCHASE = order total in sen. Unused for NEW_MEMBER/BIRTHDAY.
+  autoCreditThreshold    Int?               @map("auto_credit_threshold")
   visibleInWallet        Boolean            @default(true) @map("visible_in_wallet")
   tncText                String?            @map("tnc_text")
   isActive               Boolean            @default(true) @map("is_active")

@@ -9,8 +9,10 @@ import {
   VoucherRedemptionStatus,
   WalletTxnFlowType,
 } from '@prisma/client';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { CampaignBuilderService } from './campaign-builder.service';
 
 type VoucherValidationInput = {
   customerId: string;
@@ -29,7 +31,11 @@ type VoucherDiscountInput = {
 
 @Injectable()
 export class RewardsWorkflowService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly loyalty: LoyaltyService,
+    private readonly campaignBuilder: CampaignBuilderService,
+  ) {}
 
   async getMemberWalletAndRewards(customerId: string) {
     const wallet = await this.ensureUserWalletBalance(customerId);
@@ -113,20 +119,37 @@ export class RewardsWorkflowService {
     });
   }
 
+  /**
+   * Spends real loyalty points (the same `LoyaltyWallet`/`LoyaltyLedgerEntry`
+   * every other points flow uses — admin adjustments, order-earn, referral
+   * rewards) to redeem a RewardCatalog entry immediately: deduct points,
+   * issue its linked campaign voucher if any, record a UserReward. Rewards
+   * are repeatable — redeeming "Free Drink" once doesn't block redeeming it
+   * again later once the member has re-earned the points.
+   *
+   * `idempotencyKey` only guards against a retried request double-charging
+   * (a short window, not a lifetime one) — there's no dedicated idempotency
+   * store for points the way `WalletTransaction.idempotencyKey` covers the
+   * stored-money wallet, so this is a pragmatic time-boxed check rather than
+   * an exact-key lookup.
+   */
   async redeemRewardByPoints(
     customerId: string,
     rewardCatalogId: string,
-    idempotencyKey: string,
+    _idempotencyKey: string,
   ) {
-    const existing = await this.prisma.userReward.findFirst({
+    const recentDuplicate = await this.prisma.userReward.findFirst({
       where: {
         customerId,
         rewardCatalogId,
         status: 'REDEEMED',
+        createdAt: { gte: new Date(Date.now() - 30_000) },
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (existing) return { idempotent: true as const, userReward: existing };
+    if (recentDuplicate) {
+      return { idempotent: true as const, userReward: recentDuplicate };
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const reward = await tx.rewardCatalog.findUnique({
@@ -143,53 +166,31 @@ export class RewardsWorkflowService {
         throw new BadRequestException('Reward has ended.');
       }
 
-      const wallet = await this.ensureUserWalletBalance(customerId, tx);
-      if (wallet.pointsBalance < reward.pointsCost) {
-        throw new BadRequestException('Insufficient points.');
+      const summary = await this.loyalty.getWalletSummary(customerId);
+      if (summary.pointsBalance < reward.pointsCost) {
+        throw new BadRequestException('Not enough points to redeem this reward.');
       }
 
-      const pointsBefore = wallet.pointsBalance;
-      const pointsAfter = pointsBefore - reward.pointsCost;
-      await tx.rewardsPointsLedger.create({
-        data: {
+      await this.loyalty.appendLedgerEntry(
+        {
           customerId,
-          userWalletBalanceId: wallet.id,
-          pointsDelta: -reward.pointsCost,
-          pointsBefore,
-          pointsAfter,
+          deltaPoints: -reward.pointsCost,
+          reason: `redeem_${reward.code}`,
           referenceType: 'reward_redeem',
           referenceId: reward.id,
-          reason: `redeem_${reward.code}`,
         },
-      });
-      await tx.userWalletBalance.update({
-        where: { id: wallet.id },
-        data: { pointsBalance: pointsAfter },
-      });
+        tx,
+      );
 
       let voucherId: string | null = null;
       if (reward.voucherCampaignId) {
-        const campaign = await tx.voucherCampaign.findUnique({
-          where: { id: reward.voucherCampaignId },
-        });
-        const prefix = campaign?.codePrefix ?? 'RV';
-        const shortId = randomBytes(3).toString('hex').toUpperCase().slice(0, 5);
-        const generatedCode = `${prefix}-${shortId}`;
-        const expiresAt = campaign?.voucherValidDays
-          ? new Date(Date.now() + campaign.voucherValidDays * 86_400_000)
-          : null;
-        const voucher = await tx.voucher.create({
-          data: {
-            customerId,
-            voucherCampaignId: reward.voucherCampaignId,
-            code: generatedCode,
-            name: reward.name,
-            status: VoucherLifecycleStatus.ACTIVE,
-            expiresAt,
-            usageLimitPerUser: campaign?.usageLimitPerUser ?? null,
-            visibleInWallet: true,
-          },
-        });
+        const voucher = await this.campaignBuilder.issueVoucherToCustomer(
+          customerId,
+          reward.voucherCampaignId,
+          null,
+          `reward_redeem:${reward.code}`,
+          tx,
+        );
         voucherId = voucher.id;
       }
 
@@ -203,20 +204,6 @@ export class RewardsWorkflowService {
         },
       });
 
-      await tx.walletTransaction.create({
-        data: {
-          customerId,
-          userWalletBalanceId: wallet.id,
-          type: WalletTxnFlowType.MANUAL_ADJUSTMENT,
-          amount: 0,
-          balanceBefore: wallet.walletBalance,
-          balanceAfter: wallet.walletBalance,
-          referenceType: 'reward_redeem',
-          referenceId: userReward.id,
-          idempotencyKey,
-          metadata: { pointsSpent: reward.pointsCost, rewardCode: reward.code },
-        },
-      });
       return { idempotent: false as const, userReward };
     });
   }

@@ -1744,65 +1744,149 @@ function App() {
                   }}
                 />
 
-                <div className="quickActionsRow">
-                  <QuickAction
-                    tone="a"
-                    label="Shop"
-                    onClick={() => setTab('shop')}
-                    icon={
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M6 2h12l1.5 4H4.5z" />
-                        <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-                        <path d="M9 11h6" />
-                      </svg>
-                    }
-                  />
-                  <QuickAction
-                    tone="b"
-                    label="Rewards"
-                    onClick={() => {
-                      setPerksSub('rewards');
-                      setTab('perks');
-                    }}
-                    icon={
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="8" width="18" height="13" rx="1" />
-                        <path d="M12 8v13" />
-                        <path d="M3 12h18" />
-                        <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
-                      </svg>
-                    }
-                  />
-                  {SHOW_VOUCHERS && (
+                {profile ? (
+                  <div className="homeSummaryRow homeStatRow">
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => setMemberQrOpen(true)}
+                      aria-label={`Points balance, ${pointsBalance.toLocaleString()}. Show my member QR`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="8" width="18" height="13" rx="1" />
+                          <path d="M12 8v13" />
+                          <path d="M3 12h18" />
+                          <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
+                        </svg>
+                      </span>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">Points</span>
+                        <span className="homeSummaryValue">{pointsBalance.toLocaleString()}</span>
+                      </span>
+                    </button>
+                    {SHOW_VOUCHERS && (
+                      <button
+                        type="button"
+                        className="pmCard homeSummaryCard"
+                        onClick={() => {
+                          setPerksSub('vouchers');
+                          setTab('perks');
+                        }}
+                        aria-label={`My vouchers, ${activeVouchersCount} active`}
+                      >
+                        <span className="homeSummaryIcon homeSummaryIcon--voucher" aria-hidden>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="7" width="18" height="13" rx="2" />
+                            <path d="M3 11h18" />
+                            <path d="M9 15l2 2 4-4" />
+                          </svg>
+                        </span>
+                        <span className="homeSummaryText">
+                          <span className="homeSummaryLabel">Vouchers</span>
+                          <span className="homeSummaryValue">{activeVouchersCount}</span>
+                        </span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => setShareOpen(true)}
+                      aria-label={`My referrals, ${referralCount} joined. Invite friends`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--referral" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="9" cy="8" r="3" />
+                          <path d="M3 20a6 6 0 0 1 12 0" />
+                          <path d="M16 11a3 3 0 1 0-1-5.8" />
+                          <path d="M21 20a6 6 0 0 0-5-5.9" />
+                        </svg>
+                      </span>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">Referrals</span>
+                        <span className="homeSummaryValue">{referralCount}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pmCard homeSummaryCard"
+                      onClick={() => setTab('account')}
+                      aria-label={`Credits ${walletCreditsLabel}`}
+                    >
+                      <span className="homeSummaryIcon homeSummaryIcon--credit" aria-hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="6" width="20" height="13" rx="2" />
+                          <path d="M2 10h20" />
+                          <path d="M6 15h4" />
+                        </svg>
+                      </span>
+                      <span className="homeSummaryText">
+                        <span className="homeSummaryLabel">Credits</span>
+                        <span className="homeSummaryValue">{walletCreditsLabel}</span>
+                      </span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="quickActionsRow">
                     <QuickAction
                       tone="a"
-                      label="Vouchers"
+                      label="Shop"
+                      onClick={() => setTab('shop')}
+                      icon={
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M6 2h12l1.5 4H4.5z" />
+                          <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                          <path d="M9 11h6" />
+                        </svg>
+                      }
+                    />
+                    <QuickAction
+                      tone="b"
+                      label="Rewards"
                       onClick={() => {
-                        setPerksSub('vouchers');
+                        setPerksSub('rewards');
                         setTab('perks');
                       }}
                       icon={
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="7" width="18" height="13" rx="2" />
-                          <path d="M3 11h18" />
-                          <path d="M9 15l2 2 4-4" />
+                          <rect x="3" y="8" width="18" height="13" rx="1" />
+                          <path d="M12 8v13" />
+                          <path d="M3 12h18" />
+                          <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5z" />
                         </svg>
                       }
                     />
-                  )}
-                  <QuickAction
-                    tone="b"
-                    label="Orders"
-                    onClick={() => setTab('orders')}
-                    icon={
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                        <rect x="9" y="3" width="6" height="4" rx="1" />
-                        <path d="M9 12h6M9 16h6" />
-                      </svg>
-                    }
-                  />
-                </div>
+                    {SHOW_VOUCHERS && (
+                      <QuickAction
+                        tone="a"
+                        label="Vouchers"
+                        onClick={() => {
+                          setPerksSub('vouchers');
+                          setTab('perks');
+                        }}
+                        icon={
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="7" width="18" height="13" rx="2" />
+                            <path d="M3 11h18" />
+                            <path d="M9 15l2 2 4-4" />
+                          </svg>
+                        }
+                      />
+                    )}
+                    <QuickAction
+                      tone="b"
+                      label="Orders"
+                      onClick={() => setTab('orders')}
+                      icon={
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                          <rect x="9" y="3" width="6" height="4" rx="1" />
+                          <path d="M9 12h6M9 16h6" />
+                        </svg>
+                      }
+                    />
+                  </div>
+                )}
 
                 <AdCarousel slides={adSlides} />
 

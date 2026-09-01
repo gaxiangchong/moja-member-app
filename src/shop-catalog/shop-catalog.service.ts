@@ -129,7 +129,8 @@ const DEFAULT_LAYOUT: ShopCatalogLayout = {
   shopSections: [],
 };
 
-const POPULAR_HARD_MAX = 5;
+/** Safety ceiling, not a product decision — admin picks the actual max shown (see `maxLimit`). */
+const POPULAR_HARD_MAX = 100;
 
 const PRODUCT_IMAGE_PUBLIC_PREFIX = '/uploads/products/';
 const PRODUCT_IMAGE_ALLOWED_MIME: Record<string, string> = {

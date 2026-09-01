@@ -132,6 +132,16 @@ export class CampaignBuilderService {
 
     const triggerValue =
       dto.trigger.type === 'AUTO' ? (dto.trigger.criteria ?? null) : null;
+    // MIN_PURCHASE is entered in RM but compared against order totals in
+    // sen; REFERRAL_COUNT/INACTIVE_DAYS are plain counts, stored as-is.
+    const triggerThreshold =
+      dto.trigger.type === 'AUTO' && dto.trigger.thresholdValue != null
+        ? Math.round(
+            dto.trigger.criteria === 'MIN_PURCHASE'
+              ? dto.trigger.thresholdValue * 100
+              : dto.trigger.thresholdValue,
+          )
+        : null;
 
     const campaign = await this.prisma.voucherCampaign.create({
       data: {
@@ -153,6 +163,7 @@ export class CampaignBuilderService {
         applicableOrderTypes: dto.applicableOrderTypes ?? [],
         applicableCategories: dto.applicableCategories ?? [],
         autoCreditTrigger: triggerValue ?? preset.autoCreditTrigger,
+        autoCreditThreshold: triggerThreshold,
         allowStacking: dto.allowStacking ?? false,
         visibleInWallet: true,
         tncText: dto.tncText?.trim() || preset.tncText,
@@ -194,9 +205,33 @@ export class CampaignBuilderService {
     });
     if (!existing) throw new NotFoundException('Campaign not found.');
 
+    // Threshold unit depends on the (possibly just-changed) criteria, so
+    // resolve which criteria is in effect before converting MIN_PURCHASE's
+    // RM input to the sen the automation sweep compares against.
+    const effectiveTrigger =
+      dto.autoCreditTrigger !== undefined
+        ? dto.autoCreditTrigger || null
+        : existing.autoCreditTrigger;
+    const nextThreshold =
+      dto.autoCreditThresholdValue !== undefined
+        ? Math.round(
+            effectiveTrigger === 'MIN_PURCHASE'
+              ? dto.autoCreditThresholdValue * 100
+              : dto.autoCreditThresholdValue,
+          )
+        : dto.autoCreditTrigger !== undefined
+          ? null // trigger changed with no fresh threshold — drop the stale one
+          : undefined;
+
     return this.prisma.voucherCampaign.update({
       where: { id: campaignId },
       data: {
+        ...(dto.autoCreditTrigger !== undefined
+          ? { autoCreditTrigger: effectiveTrigger }
+          : {}),
+        ...(nextThreshold !== undefined
+          ? { autoCreditThreshold: nextThreshold }
+          : {}),
         ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
         ...(dto.description !== undefined
           ? { description: dto.description.trim() || null }
@@ -248,13 +283,20 @@ export class CampaignBuilderService {
     });
   }
 
+  /**
+   * Pass `tx` when issuing as part of a caller's own transaction (e.g. reward
+   * redemption debits points and issues a voucher atomically) — otherwise
+   * runs directly against the shared PrismaService connection.
+   */
   async issueVoucherToCustomer(
     customerId: string,
     campaignId: string,
     expiresAt?: string | null,
     reason?: string | null,
+    tx?: Prisma.TransactionClient,
   ) {
-    const campaign = await this.prisma.voucherCampaign.findUnique({
+    const db = tx ?? this.prisma;
+    const campaign = await db.voucherCampaign.findUnique({
       where: { id: campaignId },
     });
     if (!campaign) throw new NotFoundException('Campaign not found.');
@@ -262,13 +304,13 @@ export class CampaignBuilderService {
       throw new BadRequestException('Campaign is not active.');
     }
 
-    const customer = await this.prisma.customer.findUnique({
+    const customer = await db.customer.findUnique({
       where: { id: customerId },
     });
     if (!customer) throw new NotFoundException('Customer not found.');
 
     if (campaign.totalRedemptionCap) {
-      const issuedCount = await this.prisma.voucher.count({
+      const issuedCount = await db.voucher.count({
         where: { voucherCampaignId: campaignId },
       });
       if (issuedCount >= campaign.totalRedemptionCap) {
@@ -312,7 +354,7 @@ export class CampaignBuilderService {
       metadata.validFrom = validFrom.toISOString();
     }
 
-    const voucher = await this.prisma.voucher.create({
+    const voucher = await db.voucher.create({
       data: {
         customerId,
         voucherCampaignId: campaignId,
@@ -389,6 +431,7 @@ export class CampaignBuilderService {
         endsAt: c.endsAt,
         createdAt: c.createdAt,
         linkedRewards: c.rewards.length,
+        autoCreditTrigger: c.autoCreditTrigger,
       };
     });
   }

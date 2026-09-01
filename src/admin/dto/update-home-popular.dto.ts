@@ -13,15 +13,16 @@ import {
 export class UpdateHomePopularDto {
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(5)
+  @ArrayMaxSize(100)
   @IsString({ each: true })
   @MaxLength(128, { each: true })
   productIds?: string[];
 
+  /** Admin-chosen cap on how many popular items show; 100 is a safety ceiling, not a suggested value. */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(5)
+  @Max(100)
   maxLimit?: number;
 }

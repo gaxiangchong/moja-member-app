@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { AccessTokenJwtPayload } from './types/jwt-payload.type';
 import type { ShopHandoffJwtPayload } from './types/shop-handoff-jwt-payload.type';
 import { WhatsappOtpService } from './whatsapp-otp.service';
@@ -39,6 +41,7 @@ export class AuthService {
     private readonly twilioVerify: TwilioVerifyService,
     private readonly emailOtp: EmailOtpService,
     private readonly metrics: MetricsService,
+    private readonly campaignAutomation: CampaignAutomationService,
   ) {}
 
   async loginLookup(phoneRaw: string) {
@@ -376,12 +379,30 @@ export class AuthService {
       });
     }
     const { customerId } = await this.verifyPinSetupToken(setupToken);
+    const before = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { loginPinHash: true },
+    });
+    const isFirstTimeSetup = !before?.loginPinHash;
     const hash = await bcrypt.hash(pin, 12);
     const customer = await this.prisma.customer.update({
       where: { id: customerId },
       data: { loginPinHash: hash },
     });
     await this.customers.touchLastLogin(customer.id);
+    // Signup is "complete" once the member can actually log in — fire WELCOME-
+    // template campaigns here rather than at OTP verification, so an
+    // abandoned signup (OTP verified, PIN never set) never gets one.
+    if (isFirstTimeSetup) {
+      void this.campaignAutomation
+        .runNewMemberTrigger(customer.id)
+        .catch((err) =>
+          Logger.error(
+            `New-member campaign trigger failed for ${customer.id}: ${err instanceof Error ? err.message : String(err)}`,
+            AuthService.name,
+          ),
+        );
+    }
     await this.audit.log({
       actorType: 'customer',
       actorId: customer.id,

@@ -1,8 +1,10 @@
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,6 +13,14 @@ import {
   Min,
 } from 'class-validator';
 import { VoucherOrderType } from '@prisma/client';
+
+const AUTO_CREDIT_TRIGGERS = [
+  'NEW_MEMBER',
+  'BIRTHDAY',
+  'REFERRAL_COUNT',
+  'INACTIVE_DAYS',
+  'MIN_PURCHASE',
+] as const;
 
 export class UpdateCampaignDto {
   @IsOptional()
@@ -90,4 +100,17 @@ export class UpdateCampaignDto {
   @IsOptional()
   @IsBoolean()
   visibleInWallet?: boolean;
+
+  /** Empty string clears the automatic trigger (manual issue only). */
+  @IsOptional()
+  @IsIn([...AUTO_CREDIT_TRIGGERS, ''])
+  autoCreditTrigger?: string;
+
+  /** Meaning depends on autoCreditTrigger: referral count, days inactive, or
+   *  RM spend threshold (converted to sen server-side) for MIN_PURCHASE. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  autoCreditThresholdValue?: number;
 }

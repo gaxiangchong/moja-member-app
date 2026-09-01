@@ -7,6 +7,7 @@
     "client-web",
     "ops-queue-web",
     "bento-web",
+    "admin-web",
     "mobile",
     "scripts",
     "**/*spec.ts"

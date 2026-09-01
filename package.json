@@ -26,6 +26,8 @@
     "client:build": "npm run build --prefix client-web",
     "bento:dev": "npm run dev --prefix bento-web",
     "bento:build": "npm run build --prefix bento-web",
+    "admin:dev": "npm run dev --prefix admin-web",
+    "admin:build": "npm run build --prefix admin-web",
     "perf:baseline": "node scripts/performance-baseline.mjs",
     "mobile:start": "npm run start --prefix mobile",
     "catalog:import-from-sites": "ts-node scripts/import-shop-catalog-from-sites.ts"
@@ -37,6 +39,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
