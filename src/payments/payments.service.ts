@@ -36,6 +36,12 @@ export class PaymentsService {
     SHOPEEPAY_MY: 'SHOPEEPAY',
     FPX_MY: 'FPX',
   };
+  /**
+   * Statuses that can still be finalized when Xendit confirms success.
+   * `payment.failure` is attempt-level and can precede `payment.capture`
+   * on the same request (out-of-order webhooks / e-wallet retries).
+   */
+  private static readonly FINALIZABLE_STATUSES = ['PENDING', 'FAILED'] as const;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -888,11 +894,14 @@ export class PaymentsService {
       });
     }
 
-    // Active reconciliation: if the intent is still pending, pull the latest
-    // status straight from Xendit and finalize it. This makes e-wallet
-    // payments (TnG, ShopeePay) succeed even when the webhook can't reach us
-    // (common in test/local), instead of getting stuck on PENDING_PAYMENT.
-    if (intent.status === 'PENDING' && intent.xenditPaymentRequestId) {
+    // Active reconciliation: if the intent can still be finalized, pull the
+    // latest status straight from Xendit. This makes e-wallet payments
+    // (TnG, ShopeePay) succeed even when the webhook can't reach us, and
+    // recovers a later success after an earlier payment.failure webhook.
+    if (
+      this.isFinalizableStatus(intent.status) &&
+      intent.xenditPaymentRequestId
+    ) {
       try {
         const data = await this.xendit.getPaymentRequest(
           intent.xenditPaymentRequestId,
@@ -963,7 +972,7 @@ export class PaymentsService {
     });
     if (
       !intent ||
-      intent.status !== 'PENDING' ||
+      !this.isFinalizableStatus(intent.status) ||
       intent.purpose !== 'bento_subscription' ||
       !intent.xenditPaymentRequestId
     ) {
@@ -1006,10 +1015,7 @@ export class PaymentsService {
     if (!intent || intent.purpose !== 'bento_subscription') return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
+    const lock = await this.claimIntentForFinalize(intent.id);
     if (lock.count === 0) return;
 
     const meta = intent.metadata as {
@@ -1083,10 +1089,7 @@ export class PaymentsService {
     if (!intent || intent.purpose !== 'shop_order') return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
+    const lock = await this.claimIntentForFinalize(intent.id);
     if (lock.count === 0) return;
 
     const meta = intent.metadata as {
@@ -1269,10 +1272,7 @@ export class PaymentsService {
     if (!intent || intent.referenceId !== referenceId) return;
     if (intent.status === 'SUCCEEDED') return;
 
-    const lock = await this.prisma.paymentIntent.updateMany({
-      where: { id: intent.id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
-    });
+    const lock = await this.claimIntentForFinalize(intent.id);
     if (lock.count === 0) return;
 
     const paymentId =
@@ -1314,6 +1314,22 @@ export class PaymentsService {
       });
       throw err;
     }
+  }
+
+  private isFinalizableStatus(status: string): boolean {
+    return (PaymentsService.FINALIZABLE_STATUSES as readonly string[]).includes(
+      status,
+    );
+  }
+
+  private async claimIntentForFinalize(intentId: string) {
+    return this.prisma.paymentIntent.updateMany({
+      where: {
+        id: intentId,
+        status: { in: [...PaymentsService.FINALIZABLE_STATUSES] },
+      },
+      data: { status: 'PROCESSING' },
+    });
   }
 
   private resolveOrderTypeFromSummary(
