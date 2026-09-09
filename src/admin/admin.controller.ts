@@ -34,6 +34,7 @@ import { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import { AdminWalletReversalDto } from './dto/admin-wallet-reversal.dto';
 import { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
+import { CloseBentoOperationsDto } from './dto/close-bento-operations.dto';
 import { CreateVoucherDefinitionDto } from './dto/create-voucher-definition.dto';
 import { CreateWalkInCustomerDto } from './dto/create-walk-in-customer.dto';
 import { GoodwillVoucherDto } from './dto/goodwill-voucher.dto';
@@ -628,6 +629,20 @@ export class AdminController {
       effectiveDailyCapacityPacks: effective,
       envOverride: effective !== saved.dailyCapacityPacks,
     };
+  }
+
+  /**
+   * Close bento operations as of a cutoff date: blocks new pickups after it
+   * and cancels any pickup already scheduled past it, freeing that member's
+   * meal credit to be rebooked on an earlier date.
+   */
+  @Post('bento-settings/close-operations')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  closeBentoOperations(
+    @Body() dto: CloseBentoOperationsDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.closeBentoOperations(dto.date, auth);
   }
 
   @Get('bento-packages')

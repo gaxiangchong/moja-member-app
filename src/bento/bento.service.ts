@@ -1145,6 +1145,12 @@ export class BentoService implements OnModuleInit {
             message: `Pickup must be on or after ${formatDateOnly(earliest)}.`,
           });
         }
+        if (blockReason === 'operations_closed') {
+          throw new BadRequestException({
+            code: 'BENTO_OPERATIONS_CLOSED',
+            message: `${slot.date} is past our last pickup date and is no longer bookable.`,
+          });
+        }
       }
 
       const prev = byDate.get(slot.date) ?? { lunchQty: 0, dinnerQty: 0 };

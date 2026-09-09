@@ -29,12 +29,16 @@ export type BentoScheduleRulesPayload = {
   closedWeekdays: number[];
   /** One-off closed calendar dates (YYYY-MM-DD). */
   closedDates: string[];
+  /** Last bookable pickup date (YYYY-MM-DD), or null if operations are open-ended. */
+  operationsEndDate: string | null;
 };
 
 export type BentoScheduleRulesInput = {
   minSchedulableDate: Date;
   closedWeekdayUtc: ReadonlySet<number>;
   closedDates: ReadonlySet<string>;
+  /** Last bookable pickup date, inclusive; null if operations are open-ended. */
+  maxSchedulableDate: Date | null;
 };
 
 export function normalizeIsoDateOnly(
@@ -142,10 +146,14 @@ export function buildScheduleRulesInput(
   menu: BentoMenuConfig,
   ref = new Date(),
 ): BentoScheduleRulesInput {
+  const operationsEndIso = normalizeIsoDateOnly(
+    settings.operationsEndDate ?? null,
+  );
   return {
     minSchedulableDate: resolveMinSchedulableDate(settings, ref),
     closedWeekdayUtc: new Set(closedWeekdaysFromMenu(menu)),
     closedDates: new Set(normalizeClosedDates(settings.closedDates)),
+    maxSchedulableDate: operationsEndIso ? parseDateOnly(operationsEndIso) : null,
   };
 }
 
@@ -162,6 +170,9 @@ export function buildScheduleRulesPayload(
     earliestSchedulableDate: formatDateOnly(input.minSchedulableDate),
     closedWeekdays: [...input.closedWeekdayUtc].sort((a, b) => a - b),
     closedDates: [...input.closedDates].sort(),
+    operationsEndDate: input.maxSchedulableDate
+      ? formatDateOnly(input.maxSchedulableDate)
+      : null,
   };
 }
 
@@ -170,6 +181,7 @@ export function isSchedulablePickupDate(
   rules: BentoScheduleRulesInput,
 ): boolean {
   if (date < rules.minSchedulableDate) return false;
+  if (rules.maxSchedulableDate && date > rules.maxSchedulableDate) return false;
   const iso = formatDateOnly(date);
   if (rules.closedDates.has(iso)) return false;
   if (rules.closedWeekdayUtc.has(date.getUTCDay())) return false;
@@ -179,8 +191,11 @@ export function isSchedulablePickupDate(
 export function schedulablePickupReason(
   date: Date,
   rules: BentoScheduleRulesInput,
-): 'too_soon' | 'weekday_closed' | 'date_closed' | null {
+): 'too_soon' | 'weekday_closed' | 'date_closed' | 'operations_closed' | null {
   if (date < rules.minSchedulableDate) return 'too_soon';
+  if (rules.maxSchedulableDate && date > rules.maxSchedulableDate) {
+    return 'operations_closed';
+  }
   const iso = formatDateOnly(date);
   if (rules.closedDates.has(iso)) return 'date_closed';
   if (rules.closedWeekdayUtc.has(date.getUTCDay())) return 'weekday_closed';

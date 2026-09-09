@@ -26,6 +26,12 @@ export type BentoSettings = {
   scheduleCutoffHour?: number;
   /** Extra closed dates (public holidays, etc.) — YYYY-MM-DD. */
   closedDates?: string[];
+  /**
+   * Last calendar date bento operations run (YYYY-MM-DD). No pickups may be
+   * scheduled after this date. Set via the "close operations" admin action,
+   * which also cancels and frees up any bookings already scheduled past it.
+   */
+  operationsEndDate?: string | null;
 };
 
 export const DEFAULT_BENTO_DAILY_CAPACITY_PACKS = 50;
@@ -37,6 +43,7 @@ const DEFAULT_SETTINGS: BentoSettings = {
   minScheduleLeadDays: 1,
   scheduleCutoffHour: 18,
   closedDates: [],
+  operationsEndDate: null,
 };
 
 /** Row key in the `app_settings` table. */
@@ -89,6 +96,7 @@ export class BentoSettingsService implements OnModuleInit {
         ? Math.floor(cutoffRaw)
         : (DEFAULT_SETTINGS.scheduleCutoffHour ?? 18);
     const closedDates = normalizeClosedDates(raw.closedDates);
+    const operationsEndDate = normalizeIsoDateOnly(raw.operationsEndDate);
     return {
       dailyCapacityPacks,
       blockNewOrders,
@@ -96,6 +104,7 @@ export class BentoSettingsService implements OnModuleInit {
       minScheduleLeadDays,
       scheduleCutoffHour,
       closedDates,
+      operationsEndDate,
     };
   }
 

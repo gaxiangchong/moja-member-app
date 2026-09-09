@@ -435,6 +435,7 @@ export type ScheduleRules = {
   earliestSchedulableDate: string;
   closedWeekdays: number[];
   closedDates: string[];
+  operationsEndDate: string | null;
 };
 
 export async function fetchScheduleRules(): Promise<ScheduleRules> {

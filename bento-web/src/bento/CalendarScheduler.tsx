@@ -111,6 +111,10 @@ function mergeDeliveries(subs: BentoSubscription[]): DaySelection[] {
   const map = new Map<string, DaySelection>();
   for (const sub of subs) {
     for (const d of sub.deliveries) {
+      // A skipped day never happened — leave it out of the working selection
+      // so its credit shows up as free to rebook on another date, instead of
+      // looking like it's still occupying this one.
+      if (d.status === 'SKIPPED') continue;
       const ex = map.get(d.deliveryDate) ?? { date: d.deliveryDate, lunchQty: 0, dinnerQty: 0 };
       ex.lunchQty  += d.lunchQty  ?? (d.includesLunch  ? 1 : 0);
       ex.dinnerQty += d.dinnerQty ?? (d.includesDinner ? 1 : 0);

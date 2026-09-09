@@ -47,6 +47,9 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
+import { BentoSettingsService } from '../bento/bento-settings.service';
+import { normalizeIsoDateOnly } from '../bento/bento-schedule-rules.util';
+import { formatDateOnly, parseDateOnly } from '../bento/bento-weekly.util';
 import { stringify } from 'csv-stringify/sync';
 import { ReportingSettingsService } from './reporting-settings.service';
 import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscription.dto';
@@ -250,6 +253,7 @@ export class AdminService {
     private readonly payments: PaymentsService,
     private readonly customers: CustomersService,
     private readonly adminAuth: AdminAuthService,
+    private readonly bentoSettings: BentoSettingsService,
   ) {}
 
   /** Configured sales reporting cutoff (UTC midnight) or null when unset. */
@@ -3208,6 +3212,73 @@ export class AdminService {
       metadata: { previousStatus: sub.status } as object,
     });
     return { id: updated.id, status: updated.status, alreadyRefunded: false as const };
+  }
+
+  /**
+   * Close bento operations as of a cutoff date: no further pickups may be
+   * scheduled after it, and any pickup already scheduled past it is cancelled
+   * so its meal credit becomes free again for the member to use on an earlier
+   * date (a straight cash refund isn't needed — meal credits are a shared pool
+   * validated against the plan's total, not a decrementing balance, so freeing
+   * the slot is the "refund").
+   */
+  async closeBentoOperations(dateInput: string, auth: AdminAuthState) {
+    const dateIso = normalizeIsoDateOnly(dateInput);
+    if (!dateIso) {
+      throw new BadRequestException({
+        code: 'BENTO_INVALID_CLOSE_DATE',
+        message: 'date must be a valid YYYY-MM-DD calendar date',
+      });
+    }
+    const cutoff = parseDateOnly(dateIso);
+
+    const affected = await this.prisma.bentoDeliveryDay.findMany({
+      where: {
+        status: BentoDeliveryStatus.SCHEDULED,
+        deliveryDate: { gt: cutoff },
+      },
+      select: {
+        id: true,
+        deliveryDate: true,
+        subscription: { select: { id: true, customerId: true } },
+      },
+    });
+
+    await this.bentoSettings.setSettings({
+      ...this.bentoSettings.getSettings(),
+      operationsEndDate: dateIso,
+    });
+    if (affected.length > 0) {
+      await this.prisma.bentoDeliveryDay.updateMany({
+        where: { id: { in: affected.map((d) => d.id) } },
+        data: { status: BentoDeliveryStatus.SKIPPED },
+      });
+    }
+
+    const affectedCustomerIds = [
+      ...new Set(affected.map((d) => d.subscription.customerId)),
+    ];
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'bento.operations_closed',
+      entityType: 'bento_settings',
+      entityId: null,
+      metadata: {
+        operationsEndDate: dateIso,
+        cancelledDeliveryDays: affected.map((d) => ({
+          deliveryDayId: d.id,
+          subscriptionId: d.subscription.id,
+          customerId: d.subscription.customerId,
+          deliveryDate: formatDateOnly(d.deliveryDate),
+        })),
+      } as object,
+    });
+
+    return {
+      operationsEndDate: dateIso,
+      cancelledDeliveryDayCount: affected.length,
+      affectedCustomerCount: affectedCustomerIds.length,
+    };
   }
 
   /**

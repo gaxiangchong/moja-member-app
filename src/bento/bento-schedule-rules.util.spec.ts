@@ -4,6 +4,7 @@ import {
   buildScheduleRulesInput,
   isSchedulablePickupDate,
   resolveMinSchedulableDate,
+  schedulablePickupReason,
 } from './bento-schedule-rules.util';
 import { formatDateOnly, parseDateOnly } from './bento-weekly.util';
 
@@ -109,6 +110,40 @@ describe('bento-schedule-rules.util', () => {
     );
     expect(isSchedulablePickupDate(parseDateOnly('2026-06-10'), rules)).toBe(
       false,
+    );
+  });
+
+  it('blocks dates after operationsEndDate and allows dates on/before it', () => {
+    const settings: BentoSettings = {
+      dailyCapacityPacks: 50,
+      operationsEndDate: '2026-09-15',
+    };
+    const rules = buildScheduleRulesInput(
+      settings,
+      MENU_ALL_OPEN,
+      parseDateOnly('2026-09-01'),
+    );
+    expect(isSchedulablePickupDate(parseDateOnly('2026-09-15'), rules)).toBe(
+      true,
+    );
+    expect(isSchedulablePickupDate(parseDateOnly('2026-09-16'), rules)).toBe(
+      false,
+    );
+    expect(
+      schedulablePickupReason(parseDateOnly('2026-09-17'), rules),
+    ).toBe('operations_closed');
+  });
+
+  it('leaves scheduling open-ended when operationsEndDate is unset', () => {
+    const settings: BentoSettings = { dailyCapacityPacks: 50 };
+    const rules = buildScheduleRulesInput(
+      settings,
+      MENU_ALL_OPEN,
+      parseDateOnly('2026-06-01'),
+    );
+    expect(rules.maxSchedulableDate).toBeNull();
+    expect(isSchedulablePickupDate(parseDateOnly('2099-01-01'), rules)).toBe(
+      true,
     );
   });
 });

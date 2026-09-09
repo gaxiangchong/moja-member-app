@@ -5,6 +5,10 @@ export function countScheduledMeals(subscriptions: BentoSubscription[]) {
   let dinner = 0;
   for (const sub of subscriptions) {
     for (const d of sub.deliveries) {
+      // A skipped day never happened — its credit is free to rebook, so it
+      // must not count as "used" (e.g. after an admin closes operations and
+      // cancels pickups past the cutoff).
+      if (d.status === 'SKIPPED') continue;
       lunch += d.lunchQty ?? (d.includesLunch ? 1 : 0);
       dinner += d.dinnerQty ?? (d.includesDinner ? 1 : 0);
     }

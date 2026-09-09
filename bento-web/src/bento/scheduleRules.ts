@@ -9,6 +9,7 @@ export const DEFAULT_SCHEDULE_RULES: ScheduleRules = {
   earliestSchedulableDate: '',
   closedWeekdays: [0],
   closedDates: [],
+  operationsEndDate: null,
 };
 
 export function makeScheduleHelpers(rules: ScheduleRules) {
@@ -16,12 +17,17 @@ export function makeScheduleHelpers(rules: ScheduleRules) {
   const closedDates = new Set(rules.closedDates);
   const earliestIso = rules.earliestSchedulableDate;
   const earliest = earliestIso ? parseDateOnly(earliestIso) : null;
+  const operationsEnd = rules.operationsEndDate
+    ? parseDateOnly(rules.operationsEndDate)
+    : null;
 
   const isWeekdayClosed = (iso: string): boolean =>
     closedWeekdays.has(parseDateOnly(iso).getUTCDay());
 
   const isDateClosed = (iso: string): boolean =>
-    isWeekdayClosed(iso) || closedDates.has(iso);
+    isWeekdayClosed(iso) ||
+    closedDates.has(iso) ||
+    (operationsEnd !== null && parseDateOnly(iso) > operationsEnd);
 
   const isDateSchedulable = (iso: string): boolean => {
     if (isDateClosed(iso)) return false;

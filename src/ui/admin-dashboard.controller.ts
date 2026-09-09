@@ -3485,6 +3485,23 @@ export class AdminDashboardController {
 
           <div class="sheet" style="margin-top:16px">
             <div class="sheet-head">
+              <h2>Close operations</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-primary" id="bentoCloseOperationsBtn" style="background:#b91c1c">Close operations &amp; cancel bookings after this date</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px;max-width:520px">
+              <p class="field-hint" style="margin-top:0">
+                Use this when shutting down bento for good. Everything after the date below is blocked from new bookings, and any pickup a member already scheduled past it is <strong>cancelled immediately</strong> — freeing that meal credit so they can rebook it on an earlier date instead. This does not affect pickups on or before the date.
+              </p>
+              <label for="bentoOperationsEndDate">Last pickup date</label>
+              <input type="date" id="bentoOperationsEndDate" style="max-width:200px" />
+              <p class="field-hint" id="bentoCloseOperationsResult" style="margin-top:10px"></p>
+            </div>
+          </div>
+
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
               <h2>Member booking fix</h2>
             </div>
             <div style="padding:12px 20px;max-width:820px">
@@ -6244,6 +6261,7 @@ export class AdminDashboardController {
       var cutoffEl = document.getElementById('bentoScheduleCutoffHour');
       var closedEl = document.getElementById('bentoClosedDates');
       var envHint = document.getElementById('bentoSettingsEnvHint');
+      var closeDateEl = document.getElementById('bentoOperationsEndDate');
       if (!capEl) return;
       try {
         var cfg = await api('/admin/bento-settings');
@@ -6264,6 +6282,9 @@ export class AdminDashboardController {
         }
         if (closedEl && cfg && Array.isArray(cfg.closedDates)) {
           closedEl.value = cfg.closedDates.join('\\n');
+        }
+        if (closeDateEl) {
+          closeDateEl.value = (cfg && cfg.operationsEndDate) ? String(cfg.operationsEndDate) : '';
         }
         if (envHint) {
           if (cfg && cfg.envOverride) {
@@ -6312,6 +6333,27 @@ export class AdminDashboardController {
         if (out) out.textContent = 'Saved. Daily limit is ' + (saved.effectiveDailyCapacityPacks || n) + ' packs.' +
           (saved.blockNewOrders ? ' New orders are paused.' : '') +
           (saved.earliestPickupDate ? ' Earliest pickup: ' + saved.earliestPickupDate + '.' : '');
+        await loadBentoSettings();
+      } catch (e) {
+        if (out) out.textContent = e.message || String(e);
+      }
+    }
+    async function closeBentoOperations() {
+      var out = document.getElementById('bentoCloseOperationsResult');
+      var closeDateEl = document.getElementById('bentoOperationsEndDate');
+      var date = closeDateEl && closeDateEl.value ? closeDateEl.value.trim() : '';
+      if (!date) {
+        if (out) out.textContent = 'Pick a last pickup date first.';
+        return;
+      }
+      if (!confirm('Block all bookings after ' + date + ' and cancel any pickups already scheduled past it? Affected members will have that meal credit freed up to rebook on or before ' + date + '. This cannot be undone automatically.')) {
+        return;
+      }
+      if (out) out.textContent = 'Closing operations…';
+      try {
+        var result = await apiPost('/admin/bento-settings/close-operations', { date: date });
+        if (out) out.textContent = 'Done. Last pickup date is now ' + result.operationsEndDate + '. Cancelled ' +
+          result.cancelledDeliveryDayCount + ' scheduled pickup(s) across ' + result.affectedCustomerCount + ' member(s) — they can now rebook that meal credit on or before ' + result.operationsEndDate + '.';
         await loadBentoSettings();
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
@@ -9508,6 +9550,12 @@ export class AdminDashboardController {
     if (bentoSettingsSaveBtn) {
       bentoSettingsSaveBtn.addEventListener('click', function () {
         saveBentoSettings();
+      });
+    }
+    var bentoCloseOperationsBtn = document.getElementById('bentoCloseOperationsBtn');
+    if (bentoCloseOperationsBtn) {
+      bentoCloseOperationsBtn.addEventListener('click', function () {
+        closeBentoOperations();
       });
     }
     var bentoFixSearchBtn = document.getElementById('bentoFixSearchBtn');

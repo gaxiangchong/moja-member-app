@@ -44,4 +44,12 @@ export class UpdateBentoSettingsDto {
   @IsArray()
   @IsString({ each: true })
   closedDates?: string[];
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && v !== '')
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'operationsEndDate must be YYYY-MM-DD',
+  })
+  operationsEndDate?: string | null;
 }
