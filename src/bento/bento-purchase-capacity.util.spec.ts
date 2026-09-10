@@ -84,4 +84,41 @@ describe('bento-purchase-capacity.util', () => {
     expect(result.canPurchase).toBe(true);
     expect(result.daysUntilAvailable).toBe(0);
   });
+
+  it('does not count packs after operationsEndDate toward purchase capacity', () => {
+    const rules = buildScheduleRulesInput(
+      {
+        dailyCapacityPacks: 50,
+        minScheduleLeadDays: 0,
+        scheduleCutoffHour: 23,
+        operationsEndDate: '2026-09-12',
+      },
+      MENU_SUN_CLOSED,
+      parseDateOnly('2026-09-10'),
+    );
+    const remaining = buildRemainingByDate(
+      rules.minSchedulableDate,
+      addDaysUtc(rules.minSchedulableDate, 40),
+      50,
+      new Map(),
+    );
+    const result = evaluatePurchaseCapacity({
+      durationDays: 30,
+      requiredPacks: 10,
+      dailyCapacityPacks: 50,
+      remainingByDate: remaining,
+      scheduleRules: rules,
+      ref: parseDateOnly('2026-09-10'),
+    });
+    // Thu 10 + Fri 11 + Sat 12 = 3 × 50. Later days in remainingByDate
+    // must not count once operations have ended.
+    expect(result.availablePacksInWindow).toBe(150);
+    expect(result.canPurchase).toBe(true);
+    expect(sumRemainingInWindow(
+      parseDateOnly('2026-09-13'),
+      20,
+      remaining,
+      rules,
+    )).toBe(0);
+  });
 });

@@ -3232,6 +3232,13 @@ export class AdminService {
     }
     const cutoff = parseDateOnly(dateIso);
 
+    // Persist the cutoff first so this instance rejects new post-cutoff
+    // bookings before we cancel existing ones.
+    await this.bentoSettings.setSettings({
+      ...this.bentoSettings.getSettings(),
+      operationsEndDate: dateIso,
+    });
+
     const affected = await this.prisma.bentoDeliveryDay.findMany({
       where: {
         status: BentoDeliveryStatus.SCHEDULED,
@@ -3244,16 +3251,16 @@ export class AdminService {
       },
     });
 
-    await this.bentoSettings.setSettings({
-      ...this.bentoSettings.getSettings(),
-      operationsEndDate: dateIso,
+    // Re-check SCHEDULED + date in the write so a concurrent kitchen collect
+    // (SCHEDULED → DELIVERED) cannot be flipped to SKIPPED and free the credit
+    // for a meal that was already handed out.
+    const skipped = await this.prisma.bentoDeliveryDay.updateMany({
+      where: {
+        status: BentoDeliveryStatus.SCHEDULED,
+        deliveryDate: { gt: cutoff },
+      },
+      data: { status: BentoDeliveryStatus.SKIPPED },
     });
-    if (affected.length > 0) {
-      await this.prisma.bentoDeliveryDay.updateMany({
-        where: { id: { in: affected.map((d) => d.id) } },
-        data: { status: BentoDeliveryStatus.SKIPPED },
-      });
-    }
 
     const affectedCustomerIds = [
       ...new Set(affected.map((d) => d.subscription.customerId)),
@@ -3276,7 +3283,7 @@ export class AdminService {
 
     return {
       operationsEndDate: dateIso,
-      cancelledDeliveryDayCount: affected.length,
+      cancelledDeliveryDayCount: skipped.count,
       affectedCustomerCount: affectedCustomerIds.length,
     };
   }

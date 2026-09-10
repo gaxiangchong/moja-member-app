@@ -6322,14 +6322,22 @@ export class AdminDashboardController {
             return line.trim();
           }).filter(Boolean);
         }
-        var saved = await apiPut('/admin/bento-settings', {
+        var closeDateEl = document.getElementById('bentoOperationsEndDate');
+        var payload = {
           dailyCapacityPacks: n,
           blockNewOrders: blockEl ? blockEl.checked : false,
           earliestPickupDate: launchEl && launchEl.value.trim() ? launchEl.value.trim() : null,
           minScheduleLeadDays: leadDays,
           scheduleCutoffHour: cutoffHour,
           closedDates: closedDates,
-        });
+        };
+        // Omit operationsEndDate when the close-date field is empty so a
+        // capacity/holiday save cannot silently reopen a shutdown. The API
+        // keeps the stored cutoff when the field is absent.
+        if (closeDateEl && closeDateEl.value.trim()) {
+          payload.operationsEndDate = closeDateEl.value.trim();
+        }
+        var saved = await apiPut('/admin/bento-settings', payload);
         if (out) out.textContent = 'Saved. Daily limit is ' + (saved.effectiveDailyCapacityPacks || n) + ' packs.' +
           (saved.blockNewOrders ? ' New orders are paused.' : '') +
           (saved.earliestPickupDate ? ' Earliest pickup: ' + saved.earliestPickupDate + '.' : '');

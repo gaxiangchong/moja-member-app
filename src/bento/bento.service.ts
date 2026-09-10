@@ -44,6 +44,11 @@ import {
   pickupLockMessage,
 } from './bento-pickup-lock.util';
 import {
+  isImmutableScheduleDelivery,
+  scheduleGateExemptDates,
+  skippedDeliveryIdsToReclaim,
+} from './bento-schedule-replace.util';
+import {
   addDaysUtc,
   buildWeeklyMenu,
   BENTO_DISPLAY_WEEKS,
@@ -869,13 +874,13 @@ export class BentoService implements OnModuleInit {
       });
     }
 
-    // Dates the plan already has a pickup on. Re-submitting one of these must
-    // not be rejected by the date gates (too-soon / window / closed) — you
-    // can't be "too late" to book a day you already booked, and locked past
-    // days are preserved as-is below. Only genuinely new dates are gated.
-    const existingDeliveryDates = new Set(
-      sub.deliveries.map((d) => formatDateOnly(d.deliveryDate)),
-    );
+    // Dates the plan already has a live pickup on. Re-submitting one of these
+    // must not be rejected by the date gates (too-soon / window / closed) —
+    // you can't be "too late" to book a day you already booked, and locked
+    // past days are preserved as-is below. SKIPPED (cancelled) days are not
+    // exempt: they were freed and must pass the live operations-end / closed
+    // rules if the member tries to put a meal back on that date.
+    const existingDeliveryDates = scheduleGateExemptDates(sub.deliveries);
 
     const rows = this.validateScheduleSlots(
       sub.package,
@@ -890,8 +895,9 @@ export class BentoService implements OnModuleInit {
     }
 
     // Admins can unfreeze days past the 5 PM day-before lock (e.g. switch a
-    // locked lunch+dinner day to dinner only); delivered/skipped days remain
-    // immutable for everyone.
+    // locked lunch+dinner day to dinner only); delivered days remain
+    // immutable for everyone. SKIPPED days are reclaimable so a cancelled
+    // post-cutoff pickup can be put back if operations are extended.
     const unlockForAdmin =
       options.adminOverride === true && options.overrideLocked === true;
 
@@ -903,18 +909,24 @@ export class BentoService implements OnModuleInit {
       .filter(
         (d) =>
           d.status === BentoDeliveryStatus.SCHEDULED &&
-          !unlockForAdmin &&
-          isPickupDateLocked(formatDateOnly(d.deliveryDate)),
+          isImmutableScheduleDelivery(d, unlockForAdmin),
       )
       .map((d) => d.id);
 
-    const immutableDeliveries = sub.deliveries.filter(
-      (d) =>
-        d.status !== BentoDeliveryStatus.SCHEDULED ||
-        (!unlockForAdmin && isPickupDateLocked(formatDateOnly(d.deliveryDate))),
+    const immutableDeliveries = sub.deliveries.filter((d) =>
+      isImmutableScheduleDelivery(d, unlockForAdmin),
+    );
+    const reclaimSkippedIds = skippedDeliveryIdsToReclaim(
+      sub.deliveries,
+      new Set(rows.map((r) => formatDateOnly(r.deliveryDate))),
     );
 
     await this.prisma.$transaction(async (tx) => {
+      if (reclaimSkippedIds.length > 0) {
+        await tx.bentoDeliveryDay.deleteMany({
+          where: { id: { in: reclaimSkippedIds } },
+        });
+      }
       await tx.bentoDeliveryDay.deleteMany({
         where: {
           subscriptionId,
