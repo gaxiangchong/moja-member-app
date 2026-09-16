@@ -754,7 +754,14 @@ export type ShopCatalogProduct = {
     priceDisplay?: string | null;
   }>;
   soldOut?: boolean;
+  /** Kitchen-tracked count of this cake currently ready. `undefined` = not stock-tracked. */
+  availableQty?: number;
 };
+
+/** Effective sold-out state: the manual toggle OR a kitchen-tracked count at zero. */
+export function isShopProductSoldOut(p: ShopCatalogProduct): boolean {
+  return p.soldOut === true || (p.availableQty != null && p.availableQty <= 0);
+}
 
 export function resolveShopAssetUrl(url: string | null | undefined): string {
   if (!url) return '';

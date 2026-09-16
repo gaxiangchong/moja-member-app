@@ -61,6 +61,13 @@ export type ShopCatalogProduct = {
   variants?: ShopCatalogProductVariant[];
   badge?: string;
   soldOut?: boolean;
+  /**
+   * Kitchen-tracked count of this cake currently ready for sale. `undefined`
+   * means this product isn't stock-tracked (unaffected by kitchen updates).
+   * Set via the kitchen staff screen (ops/kitchen), decremented automatically
+   * as orders are paid. See `isProductSoldOut`.
+   */
+  availableQty?: number;
   isActive: boolean;
   sortOrder: number;
   /**
@@ -218,6 +225,18 @@ function clampScale(v: unknown): number | undefined {
   const n = Number(v);
   if (!Number.isFinite(n)) return undefined;
   return Math.max(0.5, Math.min(3, Math.round(n * 100) / 100));
+}
+
+function clampQty(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0, Math.round(n));
+}
+
+/** Effective sold-out state: the manual admin toggle OR a kitchen-tracked count at zero. */
+export function isProductSoldOut(p: ShopCatalogProduct): boolean {
+  return p.soldOut === true || (p.availableQty != null && p.availableQty <= 0);
 }
 
 function normalizeSalesplayCode(v: unknown): string | undefined {
@@ -587,6 +606,10 @@ export class ShopCatalogService {
       variants,
       badge: raw.badge != null ? String(raw.badge).trim() : base.badge,
       soldOut: raw.soldOut != null ? Boolean(raw.soldOut) : base.soldOut,
+      availableQty:
+        raw.availableQty !== undefined
+          ? clampQty(raw.availableQty)
+          : base.availableQty,
       isActive:
         raw.isActive != null ? Boolean(raw.isActive) : base.isActive !== false,
       sortOrder:
@@ -643,6 +666,71 @@ export class ShopCatalogService {
     all[idx] = next;
     this.writeAll(all);
     return next;
+  }
+
+  // ---------------------------------------------------------------------
+  // Kitchen stock tracking (cakes only)
+  // ---------------------------------------------------------------------
+
+  /** Cake products for the kitchen staff stock screen (ops/kitchen). */
+  listKitchenStock(): {
+    id: string;
+    name: string;
+    category: ShopCatalogProduct['category'];
+    availableQty: number | null;
+    soldOut: boolean;
+  }[] {
+    return this.readAll()
+      .filter(
+        (p) => p.category === 'whole_cakes' || p.category === 'cake_slices',
+      )
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        availableQty: p.availableQty ?? null,
+        soldOut: isProductSoldOut(p),
+      }));
+  }
+
+  /** Kitchen staff set today's ready count for one cake. */
+  setAvailableQty(id: string, qty: number): ShopCatalogProduct {
+    const all = this.readAll();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
+    all[idx] = { ...all[idx], availableQty: clampQty(qty) ?? 0 };
+    this.writeAll(all);
+    return all[idx];
+  }
+
+  /** Currently available quantity for a stock-tracked product, or null if untracked/missing. */
+  getAvailableQty(id: string): number | null {
+    const p = this.readAll().find((x) => x.id === id);
+    return p?.availableQty ?? null;
+  }
+
+  /**
+   * Decrements kitchen-tracked stock for a paid order's lines, clamped at 0.
+   * Products that aren't stock-tracked (`availableQty` unset) are untouched.
+   * One read/write pass for the whole batch to keep it a single synchronous
+   * critical section (see readAll/writeAll — no `await` in between).
+   */
+  decrementStockForOrderLines(
+    lines: { productId: string; qty: number }[],
+  ): void {
+    const all = this.readAll();
+    let changed = false;
+    for (const line of lines) {
+      const idx = all.findIndex((p) => p.id === line.productId);
+      if (idx < 0 || all[idx].availableQty == null) continue;
+      all[idx] = {
+        ...all[idx],
+        availableQty: Math.max(0, all[idx].availableQty! - line.qty),
+      };
+      changed = true;
+    }
+    if (changed) this.writeAll(all);
   }
 
   /**

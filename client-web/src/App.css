@@ -2612,6 +2612,31 @@ code {
   letter-spacing: 0.04em;
 }
 
+.shopProductHit--soldOut {
+  opacity: 0.6;
+}
+
+.shopSoldOutBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(20, 16, 14, 0.78);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shopSoldOutNotice {
+  margin: 0 0 10px;
+  color: #b3261e;
+  font-weight: 600;
+}
+
 .shopSectionTitle {
   margin: 0 0 10px;
   font-size: 16px;

@@ -25,6 +25,7 @@ import {
   fetchShopCatalogProducts,
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
+  isShopProductSoldOut,
 } from '../api';
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
@@ -797,37 +798,41 @@ export function ShopFlow({
                 <p className="caption">{catalogError}</p>
               </section>
             ) : null}
-            {filteredProducts.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="productCard shopProductHit"
-                onClick={() => openProduct(p.id)}
-              >
-                <div className="productImage">
-                  {p.imageUrl ? (
-                    <img
-                      src={p.imageUrl}
-                      alt=""
-                      className="productImageInner"
-                      style={{
-                        objectPosition: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
-                        transform: `scale(${p.imageScale ?? 1})`,
-                        transformOrigin: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
-                      }}
-                    />
-                  ) : null}
-                </div>
-                <div className="productBody">
-                  <strong>{p.name}</strong>
-                  <p>{p.shortDescription}</p>
-                  <div className="productFoot">
-                    <span className="shopFromLabel">from</span>
-                    <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
+            {filteredProducts.map((p) => {
+              const soldOut = isShopProductSoldOut(p);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`productCard shopProductHit${soldOut ? ' shopProductHit--soldOut' : ''}`}
+                  onClick={() => openProduct(p.id)}
+                >
+                  <div className="productImage">
+                    {p.imageUrl ? (
+                      <img
+                        src={p.imageUrl}
+                        alt=""
+                        className="productImageInner"
+                        style={{
+                          objectPosition: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                          transform: `scale(${p.imageScale ?? 1})`,
+                          transformOrigin: `${p.imageOffsetX ?? 50}% ${p.imageOffsetY ?? 50}%`,
+                        }}
+                      />
+                    ) : null}
+                    {soldOut ? <span className="shopSoldOutBadge">Sold out</span> : null}
                   </div>
-                </div>
-              </button>
-            ))}
+                  <div className="productBody">
+                    <strong>{p.name}</strong>
+                    <p>{p.shortDescription}</p>
+                    <div className="productFoot">
+                      <span className="shopFromLabel">from</span>
+                      <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
             {!filteredProducts.length ? (
               <section className="pmCard">
                 <p className="caption">No products match your filters.</p>
@@ -1263,6 +1268,8 @@ function ProductDetailScreen({
   const selectedVariant = variants?.find((v) => v.id === variantId);
   const unitCents = selectedVariant?.priceCents ?? product.basePriceCents;
   const variantLabel = selectedVariant?.label;
+  const soldOut = isShopProductSoldOut(product);
+  const maxQty = product.availableQty != null ? Math.max(1, product.availableQty) : 99;
 
   return (
     <>
@@ -1302,6 +1309,7 @@ function ProductDetailScreen({
           <p className="caption" style={{ marginTop: 0 }}>
             {product.description}
           </p>
+          {soldOut ? <p className="shopSoldOutNotice">Sold out for now</p> : null}
           {variants?.length ? (
             <div className="shopFieldGrid">
               <span className="caption">Size / option</span>
@@ -1322,17 +1330,28 @@ function ProductDetailScreen({
           <div className="shopQtyRow">
             <span className="caption">Quantity</span>
             <div className="shopStepper">
-              <button type="button" className="ghost" onClick={() => setQty((q) => Math.max(1, q - 1))}>
+              <button
+                type="button"
+                className="ghost"
+                disabled={soldOut}
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+              >
                 −
               </button>
               <span>{qty}</span>
-              <button type="button" className="ghost" onClick={() => setQty((q) => Math.min(99, q + 1))}>
+              <button
+                type="button"
+                className="ghost"
+                disabled={soldOut}
+                onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+              >
                 +
               </button>
             </div>
           </div>
           <button
             type="button"
+            disabled={soldOut}
             onClick={() => {
               addToCart({
                 productId: product.id,
@@ -1345,7 +1364,7 @@ function ProductDetailScreen({
               onOpenCart();
             }}
           >
-            Add to cart · {formatRm(unitCents * qty)}
+            {soldOut ? 'Sold out' : `Add to cart · ${formatRm(unitCents * qty)}`}
           </button>
         </div>
       </article>

@@ -18,6 +18,9 @@ export type Product = {
   imageScale?: number;
   basePriceCents: number;
   variants?: ProductVariant[];
+  soldOut?: boolean;
+  /** Kitchen-tracked count of this cake currently ready. `undefined` = not stock-tracked. */
+  availableQty?: number;
 };
 
 export type CartLine = {

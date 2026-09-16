@@ -819,6 +819,15 @@ export class CustomersService {
     dto: SubmitMemberOrderDto,
   ) {
     this.validateMemberOrderTotals(dto);
+    for (const line of dto.lines) {
+      const available = this.shopCatalog.getAvailableQty(line.productId);
+      if (available != null && line.qty > available) {
+        throw new BadRequestException({
+          code: 'CAKE_OUT_OF_STOCK',
+          message: `${line.name} only has ${available} left.`,
+        });
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.customerOrder.create({
         data: {
@@ -859,9 +868,11 @@ export class CustomersService {
     let finalizedCustomerId: string | undefined;
     let finalizedTotalCents = 0;
     let referrerRewardedId: string | undefined;
+    let finalizedLines: { productId: string; qty: number }[] = [];
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
+        include: { lines: true },
       });
       if (!order) {
         throw new NotFoundException({
@@ -875,6 +886,10 @@ export class CustomersService {
       finalized = true;
       finalizedCustomerId = order.customerId;
       finalizedTotalCents = order.totalCents;
+      finalizedLines = order.lines.map((l) => ({
+        productId: l.productId,
+        qty: l.qty,
+      }));
       await tx.customerOrder.update({
         where: { id: orderId },
         data: { status: 'placed' },
@@ -919,6 +934,7 @@ export class CustomersService {
       );
     });
     if (finalized) {
+      this.shopCatalog.decrementStockForOrderLines(finalizedLines);
       this.pushShopOrderToSalesplay(orderId);
       if (finalizedCustomerId) {
         void this.campaignAutomation

@@ -223,6 +223,47 @@ export async function fetchBentoPickupLookup(
   return data as BentoPickupLookup;
 }
 
+export type KitchenStockItem = {
+  id: string;
+  name: string;
+  category: string;
+  availableQty: number | null;
+  soldOut: boolean;
+};
+
+export async function fetchKitchenStock(
+  apiKey: string,
+  baseUrl: string = defaultBase,
+): Promise<KitchenStockItem[]> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock`, {
+    headers: { 'x-ops-api-key': apiKey },
+  });
+  const data = await parseJson<KitchenStockItem[] & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as KitchenStockItem[];
+}
+
+export async function setKitchenStockQty(
+  apiKey: string,
+  productId: string,
+  qty: number,
+  baseUrl: string = defaultBase,
+): Promise<void> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/${encodeURIComponent(productId)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'x-ops-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ qty }),
+    },
+  );
+  const data = await parseJson<{ message?: string | string[] }>(res);
+  assertOk(res, data);
+}
+
 export async function collectBentoPickup(
   apiKey: string,
   pickupCode: string,

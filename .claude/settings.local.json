@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\GitHub\\\\moja-member-app\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(npx prisma *)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "Bash(npx tsc *)",
+      "mcp__visualize__show_widget",
+      "PowerShell(& \"C:\\\\Users\\\\JAXCHO~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--GitHub-moja-member-app\\\\fe40170b-0ccf-4185-90e0-9bbd15c3b410\\\\scratchpad\\\\recrop.ps1\")",
+      "PowerShell(& \"C:\\\\Users\\\\JAXCHO~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--GitHub-moja-member-app\\\\fe40170b-0ccf-4185-90e0-9bbd15c3b410\\\\scratchpad\\\\ogimg.ps1\")",
+      "PowerShell(Set-Location D:\\\\GitHub\\\\moja-member-app\\\\bento-web; npx tsc -b --noEmit; Write-Output \"tsc exit: $LASTEXITCODE\")"
+    ]
+  }
+}

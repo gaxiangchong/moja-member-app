@@ -363,6 +363,16 @@ function openTimesheetPopup(): void {
   );
 }
 
+function openKitchenPopup(): void {
+  const u = new URL(window.location.href);
+  u.hash = '#/kitchen';
+  window.open(
+    u.toString(),
+    'mojaOpsKitchen',
+    'width=560,height=780,scrollbars=yes,resizable=yes',
+  );
+}
+
 function OrderCard({
   order,
   pulse,
@@ -594,6 +604,9 @@ export function App() {
               </button>
               <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
                 Timesheet
+              </button>
+              <button type="button" className="btnGhost" onClick={() => openKitchenPopup()}>
+                Kitchen stock
               </button>
               <button type="button" className="btnGhost" onClick={() => void poll()}>
                 Refresh now
