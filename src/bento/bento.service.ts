@@ -38,6 +38,7 @@ import {
   computePackageListSavings,
   type BentoQuoteResult,
 } from './bento-pricing.service';
+import { safePendingBentoCheckoutIdsToCancel } from './bento-checkout-cleanup.util';
 import { BENTO_MENU } from './bento-menu.constants';
 import {
   isPickupDateLocked,
@@ -745,28 +746,46 @@ export class BentoService implements OnModuleInit {
     };
 
     // Abandoned/failed checkout attempts otherwise pile up as PENDING_PAYMENT
-    // rows for this customer+package and clutter their list (and the "blocks
-    // scheduling" state). Before recording this new attempt, clear the earlier
-    // unpaid ones. Reconcile each with Xendit first so we never cancel an
-    // attempt that was actually paid but whose webhook is still in flight — a
-    // reconcile flips a paid one to ACTIVE, and the updateMany below only
-    // touches rows still PENDING_PAYMENT.
+    // rows for this customer+package and clutter their list. Reconcile each
+    // with Xendit first, then only cancel rows that cannot still be paid by a
+    // provider callback.
     const priorPending = await this.prisma.bentoSubscription.findMany({
       where: {
         customerId,
         packageId: pkg.id,
         status: BentoSubscriptionStatus.PENDING_PAYMENT,
       },
-      select: { id: true },
+      select: { id: true, paymentIntentId: true },
     });
     for (const prior of priorPending) {
       await this.payments.reconcileBentoSubscriptionPayment(prior.id);
     }
-    if (priorPending.length > 0) {
+    const intentIds = priorPending
+      .map((prior) => prior.paymentIntentId)
+      .filter((id): id is string => typeof id === 'string');
+    const paymentStatuses = new Map<string, string | null>();
+    if (intentIds.length > 0) {
+      const intents = await this.prisma.paymentIntent.findMany({
+        where: { id: { in: intentIds } },
+        select: { id: true, status: true },
+      });
+      for (const intent of intents) {
+        paymentStatuses.set(intent.id, intent.status);
+      }
+    }
+    const safeToCancelIds = safePendingBentoCheckoutIdsToCancel(
+      priorPending.map((prior) => ({
+        id: prior.id,
+        paymentIntentId: prior.paymentIntentId,
+        paymentIntentStatus: prior.paymentIntentId
+          ? paymentStatuses.get(prior.paymentIntentId) ?? null
+          : null,
+      })),
+    );
+    if (safeToCancelIds.length > 0) {
       await this.prisma.bentoSubscription.updateMany({
         where: {
-          customerId,
-          packageId: pkg.id,
+          id: { in: safeToCancelIds },
           status: BentoSubscriptionStatus.PENDING_PAYMENT,
         },
         data: { status: BentoSubscriptionStatus.CANCELLED },
