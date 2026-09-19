@@ -16,6 +16,7 @@ import {
   formatDateOnly,
   parseDateOnly,
 } from './bento-weekly.util';
+import { dataDir } from '../config/data-dir';
 
 /** Mon–Sun weekday codes used as stable keys for the weekly menu. */
 export const BENTO_WEEKDAY_CODES = [
@@ -203,7 +204,7 @@ export type BentoMenuImportWeek = {
 @Injectable()
 export class BentoMenuService {
   private filePath(): string {
-    return resolve(process.cwd(), 'data', 'bento-menu.json');
+    return dataDir('bento-menu.json');
   }
 
   private cloneDefault(): BentoMenuConfig {
@@ -300,7 +301,7 @@ export class BentoMenuService {
   }
 
   private writeStore(store: BentoMenuStore): void {
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    mkdirSync(dataDir(), { recursive: true });
     const weekEntries = Object.entries(store.weeks);
     const out: { weekdays: BentoWeekdayMenu[]; weeks?: Record<string, BentoMenuConfig> } = {
       weekdays: store.template.weekdays,
@@ -417,7 +418,7 @@ export class BentoMenuService {
       });
     }
 
-    const dir = resolve(process.cwd(), 'data', 'uploads', 'bento-menu');
+    const dir = dataDir('uploads', 'bento-menu');
     mkdirSync(dir, { recursive: true });
     const filename = `${Date.now()}-${randomBytes(4).toString('hex')}${ext}`;
     writeFileSync(resolve(dir, filename), file.buffer);

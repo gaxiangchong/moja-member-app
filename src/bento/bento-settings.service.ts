@@ -2,13 +2,13 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 import { PrismaService } from '../prisma/prisma.service';
 import {
   normalizeClosedDates,
   normalizeIsoDateOnly,
 } from './bento-schedule-rules.util';
+import { dataDir } from '../config/data-dir';
 
 export type BentoSettings = {
   /** Max lunch + dinner packs that can be scheduled per calendar day (all customers). */
@@ -101,7 +101,7 @@ export class BentoSettingsService implements OnModuleInit {
 
   /** Legacy `data/bento-settings.json`, read once to seed the DB on migration. */
   private readLegacyFile(): BentoSettings | null {
-    const p = resolve(process.cwd(), 'data', 'bento-settings.json');
+    const p = dataDir('bento-settings.json');
     if (!existsSync(p)) return null;
     try {
       return this.normalize(JSON.parse(readFileSync(p, 'utf-8')));

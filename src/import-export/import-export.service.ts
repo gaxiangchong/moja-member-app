@@ -30,6 +30,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { SegmentationService } from '../segmentation/segmentation.service';
 import type { ExportRequestDto } from './dto/export-request.dto';
 import type { SegmentFiltersDto } from '../segmentation/dto/segment-filters.dto';
+import { dataDir } from '../config/data-dir';
 
 function ensureDir(p: string) {
   return fs.mkdir(p, { recursive: true });
@@ -80,7 +81,7 @@ function maskEmail(e: string): string {
 
 @Injectable()
 export class ImportExportService implements OnModuleInit {
-  private readonly dataRoot = path.join(process.cwd(), 'data');
+  private readonly dataRoot = dataDir();
   private readonly importDir = path.join(this.dataRoot, 'imports');
   private readonly exportDir = path.join(this.dataRoot, 'exports');
 

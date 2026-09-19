@@ -5,7 +5,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { dataDir } from '../config/data-dir';
 
 export type ReportingSettings = {
   /**
@@ -39,7 +39,7 @@ function parseIsoDateUtc(raw: unknown): Date | null {
 @Injectable()
 export class ReportingSettingsService {
   private filePath(): string {
-    return resolve(process.cwd(), 'data', 'reporting-settings.json');
+    return dataDir('reporting-settings.json');
   }
 
   private normalize(input: unknown): ReportingSettings {
@@ -62,7 +62,7 @@ export class ReportingSettingsService {
 
   setSettings(input: unknown): ReportingSettings {
     const next = this.normalize(input);
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    mkdirSync(dataDir(), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
     return next;
   }

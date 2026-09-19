@@ -8,11 +8,12 @@ import {
   resolveProductImageFile,
   resolvePublicImagesRoot,
 } from './public-images';
+import { dataDir } from './config/data-dir';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  const uploadsRoot = resolve(process.cwd(), 'data', 'uploads');
+  const uploadsRoot = dataDir('uploads');
   mkdirSync(uploadsRoot, { recursive: true });
   app.useStaticAssets(uploadsRoot, {
     prefix: '/uploads/',

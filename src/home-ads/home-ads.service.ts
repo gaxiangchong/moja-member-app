@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { dataDir } from '../config/data-dir';
 
 export type HomeAdSlide = {
   id: string;
@@ -62,13 +63,13 @@ const DEFAULT_SLIDES: HomeAdSlide[] = [
 @Injectable()
 export class HomeAdsService {
   private filePath(): string {
-    return resolve(process.cwd(), 'data', 'home-ads.slides.json');
+    return dataDir('home-ads.slides.json');
   }
 
   private ensureFile(): void {
     const p = this.filePath();
     if (existsSync(p)) return;
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    mkdirSync(dataDir(), { recursive: true });
     writeFileSync(p, JSON.stringify(DEFAULT_SLIDES, null, 2), 'utf-8');
   }
 
@@ -85,7 +86,7 @@ export class HomeAdsService {
   }
 
   private writeAll(items: HomeAdSlide[]): void {
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    mkdirSync(dataDir(), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(items, null, 2), 'utf-8');
   }
 
@@ -165,7 +166,7 @@ export class HomeAdsService {
   }
 
   private uploadsDir(): string {
-    return resolve(process.cwd(), 'data', 'uploads', 'home-ads');
+    return dataDir('uploads', 'home-ads');
   }
 
   private tryRemoveImageByUrl(url: string): void {

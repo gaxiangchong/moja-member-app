@@ -5,7 +5,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { dataDir } from '../config/data-dir';
 
 export type PaymentsSettings = {
   /**
@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: PaymentsSettings = {
 @Injectable()
 export class PaymentsSettingsService {
   private filePath(): string {
-    return resolve(process.cwd(), 'data', 'payments-settings.json');
+    return dataDir('payments-settings.json');
   }
 
   private normalize(input: unknown): PaymentsSettings {
@@ -52,7 +52,7 @@ export class PaymentsSettingsService {
 
   setSettings(input: unknown): PaymentsSettings {
     const next = this.normalize(input);
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
+    mkdirSync(dataDir(), { recursive: true });
     writeFileSync(this.filePath(), JSON.stringify(next, null, 2), 'utf-8');
     return next;
   }

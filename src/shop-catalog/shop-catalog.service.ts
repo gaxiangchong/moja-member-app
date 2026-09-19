@@ -26,6 +26,7 @@ import type {
   ShopCatalogSyncPreview,
   SitesCatalog,
 } from './sites-catalog.types';
+import { dataDir } from '../config/data-dir';
 
 export type ShopCatalogProductImage = {
   src: string;
@@ -352,7 +353,7 @@ export class ShopCatalogService implements OnModuleInit {
 
   private legacyFileCandidates(name: string): string[] {
     return [
-      resolve(process.cwd(), 'data', name),
+      dataDir(name),
       resolve(process.cwd(), 'config', name),
     ];
   }
@@ -983,7 +984,7 @@ export class ShopCatalogService implements OnModuleInit {
     const candidates: string[] = [];
     const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
     if (envPath) candidates.push(resolve(envPath));
-    candidates.push(resolve(process.cwd(), 'data', 'products.catalog.json'));
+    candidates.push(dataDir('products.catalog.json'));
     candidates.push(resolve(process.cwd(), 'config', 'products.catalog.json'));
     candidates.push(
       resolve(
@@ -1354,7 +1355,7 @@ export class ShopCatalogService implements OnModuleInit {
   // ---------------------------------------------------------------------
 
   private productImagesDir(): string {
-    return resolve(process.cwd(), 'data', 'uploads', 'products');
+    return dataDir('uploads', 'products');
   }
 
   private tryRemoveLocalProductImage(url: string | null | undefined): void {

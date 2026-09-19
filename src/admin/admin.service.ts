@@ -71,6 +71,7 @@ import type { UpdateVoucherDefinitionDto } from './dto/update-voucher-definition
 import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dto';
 import type { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
 import type { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
+import { dataDir } from '../config/data-dir';
 
 function dtoHas<T extends object>(dto: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(dto, key);
@@ -1299,7 +1300,7 @@ export class AdminService {
   // Mirrors the home-ad slide upload pattern in src/home-ads/home-ads.service.
 
   private voucherImagesDir(): string {
-    return resolve(process.cwd(), 'data', 'uploads', 'voucher-defs');
+    return dataDir('uploads', 'voucher-defs');
   }
 
   /**

@@ -80,6 +80,10 @@ Copy **`.env.example`** to **`.env`** on the server (or inject equivalent keys f
 | `JWT_SECRET` | Signs member access tokens. Use a long random string; rotating it logs everyone out. |
 | `JWT_EXPIRES_IN_SEC` | Member session length (default in example: 604800). |
 | `PORT` | API listen port (default **3153**). Your reverse proxy forwards to this. |
+| `NODE_ENV` | Set to **`production`** on the server. Enables the boot-time readiness gate (§12 step 1b). |
+| `DATA_DIR` | Absolute path of the writable data directory (uploads, JSON settings, import/export files). Point it at the **persistent volume mount** (see §6.1); defaults to `<cwd>/data`. |
+| `PAYMENTS_DEMO_MODE` | Must be **unset/false** in production — when true, checkout completes without charging. |
+| `XENDIT_SECRET_KEY`, `XENDIT_WEBHOOK_TOKEN` | Live (`xnd_production_…`) secret key and the callback-verification token; set the same token in the Xendit dashboard webhook settings. |
 | `CLIENT_WEB_ORIGIN` | **Comma-separated** browser origins allowed for CORS (member app + ops app + any other frontends). Example: `https://app.example.com,https://ops.example.com`. |
 | `ADMIN_API_KEYS` | Comma-separated keys for legacy `x-admin-api-key` admin routes (if still used). |
 | `ADMIN_JWT_SECRET` | Optional; defaults to `JWT_SECRET` if unset. Used for admin Bearer JWT. |
@@ -178,14 +182,14 @@ The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem
 
 `data/` is in `.gitignore`, so on hosts where each deploy spins up a **fresh container** (Render, Railway, Fly, Heroku, Cloud Run, etc.) this folder is empty after every redeploy and the carousel resets to the three hardcoded `DEFAULT_SLIDES` in `src/home-ads/home-ads.service.ts`. Any uploaded images become broken links.
 
-**Fix:** mount a persistent volume at `<cwd>/data` so writes survive redeploys.
+**Fix:** mount a persistent volume and point **`DATA_DIR`** at it (any absolute path — it no longer has to be inside the repo checkout). Without `DATA_DIR` the API uses `<cwd>/data`.
 
 | Host | How |
 |------|-----|
-| **Render** | Service → **Disks** → Add Disk. Mount Path: **`/opt/render/project/src/data`**. Size: 1 GB is enough. Requires Starter plan or above. Disks attach to a single instance — do not scale beyond 1 instance. |
-| **Railway** | Service → Volumes → New Volume → mount at the working directory's `data` (typically `/app/data`). |
-| **Fly.io** | `fly volumes create moja_data --size 1` then add `[mounts]` in `fly.toml` with `destination = "/app/data"`. |
-| **VPS / Docker** | Bind-mount the host directory: `-v /var/lib/moja/data:/app/data` (or wherever your repo lives in the container). |
+| **Render** | Service → **Disks** → Add Disk. Mount Path: **`/var/data`**, then set `DATA_DIR=/var/data`. Size: 1 GB is enough. Requires Starter plan or above. Disks attach to a single instance — do not scale beyond 1 instance. |
+| **Railway** | Service → Volumes → New Volume → mount at e.g. `/data`, then set `DATA_DIR=/data`. |
+| **Fly.io** | `fly volumes create moja_data --size 1` then add `[mounts]` in `fly.toml` with `destination = "/data"` and set `DATA_DIR=/data`. |
+| **VPS / Docker** | Bind-mount the host directory: `-v /var/lib/moja/data:/data` and set `DATA_DIR=/data`. |
 | **Heroku / pure-serverless** | No persistent FS available — switch to object storage (S3 / Cloudflare R2 / Supabase Storage) and store slide metadata in Postgres. Not currently implemented in this repo. |
 
 After mounting, re-upload your carousel slides once via `/admin-dashboard → Settings → Home ad carousel`, then trigger a second redeploy to confirm they survive.
@@ -274,6 +278,7 @@ Run through these on **production URLs**:
 | Step | Action |
 |------|--------|
 | 1 | `GET https://api.example.com/health` returns `ok`. |
+| 1b | `GET https://api.example.com/health/readiness` with an admin API key (`x-admin-api-key`) or admin Bearer token returns `"ready": true` and every check `ok`. The same checks run at boot: with `NODE_ENV=production` the API **refuses to start** while a `critical` check fails (demo payments on, mock OTP, weak secrets, localhost CORS origin, unwritable data dir, DB down). `READINESS_ALLOW_UNSAFE=true` overrides this for a staged cut-over only. |
 | 2 | Member web loads with no console errors; OTP request/verify works (or expected error if WhatsApp misconfigured). |
 | 3 | Sign in, open profile and perks; vouchers vs rewards match admin flags (`showInRewardsCatalog` and issued vouchers). |
 | 4 | Ops UI: enter `x-ops-api-key` (or configured flow); queue endpoints respond. |

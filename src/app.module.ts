@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { ReadinessModule } from './config/readiness.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -58,6 +59,7 @@ import { MailerModule } from './mailer/mailer.module';
     BentoModule,
     BentoVoucherModule,
     MailerModule,
+    ReadinessModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })
