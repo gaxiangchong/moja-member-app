@@ -1,13 +1,15 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
+import { Prisma, ShopProduct as ShopProductRow } from '@prisma/client';
 import {
   existsSync,
   mkdirSync,
   readFileSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -65,7 +67,9 @@ export type ShopCatalogProduct = {
    * Kitchen-tracked count of this cake currently ready for sale. `undefined`
    * means this product isn't stock-tracked (unaffected by kitchen updates).
    * Set via the kitchen staff screen (ops/kitchen), decremented automatically
-   * as orders are paid. See `isProductSoldOut`.
+   * as orders are paid. Stored in the `shop_products.available_qty` column
+   * (never inside `document`) so it can only change through atomic updates.
+   * See `isProductSoldOut`.
    */
   availableQty?: number;
   isActive: boolean;
@@ -119,8 +123,6 @@ export type ShopCatalogProductInput = Omit<
   variants?: Partial<ShopCatalogProductVariant>[];
 };
 
-const DEFAULT_PRODUCTS: ShopCatalogProduct[] = [];
-
 export type HomePopularConfig = {
   productIds: string[];
   maxLimit: number;
@@ -135,6 +137,12 @@ const DEFAULT_LAYOUT: ShopCatalogLayout = {
   homeFeaturedProductIds: [],
   shopSections: [],
 };
+
+/** app_settings keys for the non-product catalog config. */
+const SETTING_LAYOUT = 'shop_catalog.layout';
+const SETTING_POPULAR = 'shop_catalog.popular';
+/** Uploaded moja-sites `products.catalog.json` (sync source), with an `uploadedAt`. */
+const SETTING_SITES_SOURCE = 'shop_catalog.sites_source';
 
 /** Safety ceiling, not a product decision — admin picks the actual max shown (see `maxLimit`). */
 const POPULAR_HARD_MAX = 100;
@@ -265,72 +273,156 @@ function detectChangedFields(
   if (!before) return [];
   const changed: string[] = [];
   for (const field of COMPARABLE_FIELDS) {
-    const a = JSON.stringify((before as Record<string, unknown>)[field] ?? null);
+    const a = JSON.stringify(
+      (before as Record<string, unknown>)[field] ?? null,
+    );
     const b = JSON.stringify((after as Record<string, unknown>)[field] ?? null);
     if (a !== b) changed.push(field);
   }
   return changed;
 }
 
+/** Drops `undefined` members so the stored JSON document stays compact. */
+function toJsonDocument(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+/** DB row → the product shape the storefront/admin consume. */
+function rowToProduct(row: ShopProductRow): ShopCatalogProduct {
+  const doc = (row.document ?? {}) as Partial<ShopCatalogProduct>;
+  return {
+    ...(doc as ShopCatalogProduct),
+    id: row.id,
+    category: row.category as ShopCatalogProduct['category'],
+    name: row.name,
+    isActive: row.isActive,
+    sortOrder: row.sortOrder,
+    soldOut: row.soldOut ? true : doc.soldOut,
+    salesplayProductCode: row.salesplayProductCode ?? undefined,
+    availableQty: row.availableQty ?? undefined,
+  };
+}
+
+/**
+ * Product → row columns. `availableQty` is deliberately NOT part of the
+ * document and is only written when `includeStock` is set (admin explicitly
+ * provided it, seed import) so a concurrent kitchen update is never clobbered
+ * by an unrelated product edit.
+ */
+function productToRow(
+  p: ShopCatalogProduct,
+  opts: { includeStock: boolean },
+): Prisma.ShopProductUncheckedCreateInput {
+  const { availableQty, ...document } = p;
+  const row: Prisma.ShopProductUncheckedCreateInput = {
+    id: p.id,
+    category: p.category,
+    name: p.name,
+    isActive: p.isActive !== false,
+    sortOrder: Number.isFinite(p.sortOrder) ? p.sortOrder : 0,
+    soldOut: p.soldOut === true,
+    salesplayProductCode: p.salesplayProductCode?.trim() || null,
+    document: toJsonDocument(document),
+  };
+  if (opts.includeStock) row.availableQty = availableQty ?? null;
+  return row;
+}
+
 @Injectable()
-export class ShopCatalogService {
+export class ShopCatalogService implements OnModuleInit {
+  private readonly logger = new Logger(ShopCatalogService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
-  private filePath(): string {
-    return resolve(process.cwd(), 'data', 'shop-catalog.products.json');
-  }
-
-  private layoutFilePath(): string {
-    return resolve(process.cwd(), 'data', 'shop-catalog.layout.json');
-  }
-
-  private popularFilePath(): string {
-    return resolve(process.cwd(), 'data', 'home-popular.json');
-  }
-
-  private seedFilePath(): string {
-    return resolve(process.cwd(), 'config', 'shop-catalog.products.json');
-  }
-
-  private layoutSeedFilePath(): string {
-    return resolve(process.cwd(), 'config', 'shop-catalog.layout.json');
-  }
-
-  private popularSeedFilePath(): string {
-    return resolve(process.cwd(), 'config', 'home-popular.json');
-  }
-
-  private ensureFile(): void {
-    const p = this.filePath();
-    if (existsSync(p)) return;
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    if (existsSync(this.seedFilePath())) {
-      writeFileSync(p, readFileSync(this.seedFilePath(), 'utf-8'), 'utf-8');
-      return;
-    }
-    writeFileSync(p, JSON.stringify(DEFAULT_PRODUCTS, null, 2), 'utf-8');
-  }
-
-  private ensurePopularFile(): void {
-    const p = this.popularFilePath();
-    if (existsSync(p)) return;
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    if (existsSync(this.popularSeedFilePath())) {
-      writeFileSync(
-        p,
-        readFileSync(this.popularSeedFilePath(), 'utf-8'),
-        'utf-8',
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.seedFromFilesIfEmpty();
+    } catch (err) {
+      // A seed failure must not stop the API from booting — the catalog can be
+      // re-imported from the admin (sync from moja-sites) at any time.
+      this.logger.error(
+        `Shop catalog seed failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return;
     }
-    writeFileSync(p, JSON.stringify(DEFAULT_POPULAR, null, 2), 'utf-8');
   }
+
+  // ---------------------------------------------------------------------
+  // One-time import of the legacy JSON files (data/ then config/) into Postgres
+  // ---------------------------------------------------------------------
+
+  private legacyFileCandidates(name: string): string[] {
+    return [
+      resolve(process.cwd(), 'data', name),
+      resolve(process.cwd(), 'config', name),
+    ];
+  }
+
+  private readLegacyJson(
+    name: string,
+  ): { path: string; value: unknown } | null {
+    for (const p of this.legacyFileCandidates(name)) {
+      if (!existsSync(p)) continue;
+      try {
+        return { path: p, value: JSON.parse(readFileSync(p, 'utf-8')) };
+      } catch (err) {
+        this.logger.warn(
+          `Ignoring unreadable ${p}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return null;
+  }
+
+  private async seedFromFilesIfEmpty(): Promise<void> {
+    const count = await this.prisma.shopProduct.count();
+    if (count === 0) {
+      const legacy = this.readLegacyJson('shop-catalog.products.json');
+      if (legacy && Array.isArray(legacy.value) && legacy.value.length > 0) {
+        const products = (legacy.value as ShopCatalogProductInput[]).map(
+          (raw) => this.normalizeProduct(raw),
+        );
+        await this.prisma.shopProduct.createMany({
+          data: products.map((p) => productToRow(p, { includeStock: true })),
+          skipDuplicates: true,
+        });
+        this.logger.log(
+          `Seeded ${products.length} shop products from ${legacy.path}`,
+        );
+      }
+    }
+
+    const layoutRow = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_LAYOUT },
+    });
+    if (!layoutRow) {
+      const legacy = this.readLegacyJson('shop-catalog.layout.json');
+      if (legacy && legacy.value && typeof legacy.value === 'object') {
+        await this.setLayout(legacy.value as Partial<ShopCatalogLayout>);
+        this.logger.log(`Seeded shop layout from ${legacy.path}`);
+      }
+    }
+
+    const popularRow = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_POPULAR },
+    });
+    if (!popularRow) {
+      const legacy = this.readLegacyJson('home-popular.json');
+      if (legacy && legacy.value && typeof legacy.value === 'object') {
+        await this.setPopularConfig(legacy.value as Partial<HomePopularConfig>);
+        this.logger.log(`Seeded home popular config from ${legacy.path}`);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Product storage
+  // ---------------------------------------------------------------------
 
   /** Fix imageUrl drift from moja-sites sync (spaces, wrong case, old filenames). */
-  private repairCanonicalProductImages(
+  private async repairCanonicalProductImages(
     items: ShopCatalogProduct[],
-  ): ShopCatalogProduct[] {
-    let changed = false;
+  ): Promise<ShopCatalogProduct[]> {
+    const repaired: ShopCatalogProduct[] = [];
     const out = items.map((p) => {
       const canonical = CANONICAL_PRODUCT_IMAGE_URL[p.id];
       if (!canonical) return p;
@@ -342,87 +434,113 @@ export class ShopCatalogService {
         /Jasmine_blanc/i.test(cur) ||
         /jasmine blanc/i.test(cur);
       if (!needsFix) return p;
-      changed = true;
       const images =
         Array.isArray(p.images) && p.images.length > 0
           ? p.images.map((img, i) =>
               i === 0 ? { ...img, src: canonical } : img,
             )
           : [{ src: canonical, alt: p.name }];
-      return { ...p, imageUrl: canonical, images };
+      const next = { ...p, imageUrl: canonical, images };
+      repaired.push(next);
+      return next;
     });
-    if (changed) this.writeAll(out);
+    for (const p of repaired) await this.saveProduct(p);
     return out;
   }
 
-  private readAll(): ShopCatalogProduct[] {
-    this.ensureFile();
-    try {
-      const raw = readFileSync(this.filePath(), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [...DEFAULT_PRODUCTS];
-      return this.repairCanonicalProductImages(parsed as ShopCatalogProduct[]);
-    } catch {
-      return [...DEFAULT_PRODUCTS];
-    }
+  private async loadAll(): Promise<ShopCatalogProduct[]> {
+    const rows = await this.prisma.shopProduct.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    return this.repairCanonicalProductImages(rows.map(rowToProduct));
   }
 
-  private writeAll(items: ShopCatalogProduct[]): void {
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(this.filePath(), JSON.stringify(items, null, 2), 'utf-8');
+  private async loadOne(id: string): Promise<ShopCatalogProduct | null> {
+    const row = await this.prisma.shopProduct.findUnique({ where: { id } });
+    return row ? rowToProduct(row) : null;
   }
 
-  private ensureLayoutFile(): void {
-    const p = this.layoutFilePath();
-    if (existsSync(p)) return;
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    if (existsSync(this.layoutSeedFilePath())) {
-      writeFileSync(
-        p,
-        readFileSync(this.layoutSeedFilePath(), 'utf-8'),
-        'utf-8',
-      );
-      return;
-    }
-    writeFileSync(p, JSON.stringify(DEFAULT_LAYOUT, null, 2), 'utf-8');
+  private async requireOne(id: string): Promise<ShopCatalogProduct> {
+    const p = await this.loadOne(id);
+    if (!p) throw new NotFoundException('Shop catalog product not found');
+    return p;
   }
 
-  private readLayout(): ShopCatalogLayout {
-    this.ensureLayoutFile();
-    try {
-      const raw = readFileSync(this.layoutFilePath(), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_LAYOUT };
-      const homeFeaturedProductIds = Array.isArray(
-        parsed.homeFeaturedProductIds,
-      )
-        ? parsed.homeFeaturedProductIds
-            .map((x: unknown) => String(x ?? '').trim())
-            .filter(Boolean)
-        : [];
-      const shopSections = Array.isArray(parsed.shopSections)
-        ? parsed.shopSections
-            .map((s: ShopCatalogSection) => ({
-              id: String(s.id ?? '').trim(),
-              title: String(s.title ?? '').trim(),
-              description: String(s.description ?? '').trim(),
-              productIds: Array.isArray(s.productIds)
-                ? s.productIds
-                    .map((x: unknown) => String(x ?? '').trim())
-                    .filter(Boolean)
-                : [],
-            }))
-            .filter((s: ShopCatalogSection) => s.id && s.title)
-        : [];
-      return { homeFeaturedProductIds, shopSections };
-    } catch {
-      return { ...DEFAULT_LAYOUT };
-    }
+  /** Upsert one product's document/columns. Stock is left untouched unless `includeStock`. */
+  private async saveProduct(
+    p: ShopCatalogProduct,
+    opts: { includeStock?: boolean } = {},
+  ): Promise<ShopCatalogProduct> {
+    const includeStock = Boolean(opts.includeStock);
+    const data = productToRow(p, { includeStock });
+    const { id, ...rest } = data;
+    const row = await this.prisma.shopProduct.upsert({
+      where: { id },
+      create: data,
+      update: rest,
+    });
+    return rowToProduct(row);
   }
 
-  getPublicLayout(): ShopCatalogLayout {
-    const layout = this.readLayout();
-    const activeIds = new Set(this.listPublicProducts().map((p) => p.id));
+  /**
+   * Replace the whole catalog with `items` (used by sync from moja-sites):
+   * upserts every product and deletes the ones no longer present, in one
+   * transaction. Stock columns are preserved for existing rows.
+   */
+  private async saveAll(items: ShopCatalogProduct[]): Promise<void> {
+    const keepIds = items.map((p) => p.id);
+    await this.prisma.$transaction(async (tx) => {
+      for (const p of items) {
+        const data = productToRow(p, { includeStock: false });
+        const { id, ...rest } = data;
+        await tx.shopProduct.upsert({
+          where: { id },
+          create: data,
+          update: rest,
+        });
+      }
+      await tx.shopProduct.deleteMany({ where: { id: { notIn: keepIds } } });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Layout (home featured + shop sections) — app_settings
+  // ---------------------------------------------------------------------
+
+  private async readLayout(): Promise<ShopCatalogLayout> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_LAYOUT },
+    });
+    const parsed = row?.value as Partial<ShopCatalogLayout> | null | undefined;
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_LAYOUT };
+    const homeFeaturedProductIds = Array.isArray(parsed.homeFeaturedProductIds)
+      ? parsed.homeFeaturedProductIds
+          .map((x: unknown) => String(x ?? '').trim())
+          .filter(Boolean)
+      : [];
+    const shopSections = Array.isArray(parsed.shopSections)
+      ? parsed.shopSections
+          .map((s: ShopCatalogSection) => ({
+            id: String(s.id ?? '').trim(),
+            title: String(s.title ?? '').trim(),
+            description: String(s.description ?? '').trim(),
+            productIds: Array.isArray(s.productIds)
+              ? s.productIds
+                  .map((x: unknown) => String(x ?? '').trim())
+                  .filter(Boolean)
+              : [],
+          }))
+          .filter((s: ShopCatalogSection) => s.id && s.title)
+      : [];
+    return { homeFeaturedProductIds, shopSections };
+  }
+
+  async getPublicLayout(): Promise<ShopCatalogLayout> {
+    const [layout, products] = await Promise.all([
+      this.readLayout(),
+      this.listPublicProducts(),
+    ]);
+    const activeIds = new Set(products.map((p) => p.id));
     return {
       homeFeaturedProductIds: layout.homeFeaturedProductIds.filter((id) =>
         activeIds.has(id),
@@ -434,10 +552,10 @@ export class ShopCatalogService {
     };
   }
 
-  listHomeFeaturedProducts(): ShopCatalogProduct[] {
-    const ids = this.readLayout().homeFeaturedProductIds;
+  async listHomeFeaturedProducts(): Promise<ShopCatalogProduct[]> {
+    const ids = (await this.readLayout()).homeFeaturedProductIds;
     if (ids.length === 0) return this.listPopularProducts();
-    const byId = new Map(this.readAll().map((p) => [p.id, p]));
+    const byId = new Map((await this.loadAll()).map((p) => [p.id, p]));
     const out: ShopCatalogProduct[] = [];
     for (const id of ids) {
       const p = byId.get(id);
@@ -446,13 +564,15 @@ export class ShopCatalogService {
     return out;
   }
 
-  getAdminLayout(): ShopCatalogLayout {
+  getAdminLayout(): Promise<ShopCatalogLayout> {
     return this.readLayout();
   }
 
-  setLayout(input: Partial<ShopCatalogLayout>): ShopCatalogLayout {
-    const cur = this.readLayout();
-    const validIds = new Set(this.readAll().map((p) => p.id));
+  async setLayout(
+    input: Partial<ShopCatalogLayout>,
+  ): Promise<ShopCatalogLayout> {
+    const cur = await this.readLayout();
+    const validIds = new Set((await this.loadAll()).map((p) => p.id));
 
     const dedupe = (ids: string[]) => {
       const out: string[] = [];
@@ -491,14 +611,17 @@ export class ShopCatalogService {
     }
 
     const next: ShopCatalogLayout = { homeFeaturedProductIds, shopSections };
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(
-      this.layoutFilePath(),
-      JSON.stringify(next, null, 2),
-      'utf-8',
-    );
+    await this.prisma.appSetting.upsert({
+      where: { key: SETTING_LAYOUT },
+      create: { key: SETTING_LAYOUT, value: toJsonDocument(next) },
+      update: { value: toJsonDocument(next) },
+    });
     return next;
   }
+
+  // ---------------------------------------------------------------------
+  // Product normalisation + CRUD
+  // ---------------------------------------------------------------------
 
   private slugifyVariantLabel(label: string): string {
     return label
@@ -630,42 +753,45 @@ export class ShopCatalogService {
     };
   }
 
-  listPublicProducts(): ShopCatalogProduct[] {
-    return this.readAll()
+  async listPublicProducts(): Promise<ShopCatalogProduct[]> {
+    return (await this.loadAll())
       .filter((p) => p.isActive !== false)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }
 
-  listAdminProducts(): ShopCatalogProduct[] {
-    return this.readAll().sort(
+  async listAdminProducts(): Promise<ShopCatalogProduct[]> {
+    return (await this.loadAll()).sort(
       (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
     );
   }
 
-  createProduct(input: ShopCatalogProductInput): ShopCatalogProduct {
-    const all = this.readAll();
+  async createProduct(
+    input: ShopCatalogProductInput,
+  ): Promise<ShopCatalogProduct> {
     const next = this.normalizeProduct(input);
-    all.push(next);
-    this.writeAll(all);
-    return next;
+    if (await this.loadOne(next.id)) {
+      throw new BadRequestException(
+        `A product with id "${next.id}" already exists.`,
+      );
+    }
+    return this.saveProduct(next, { includeStock: true });
   }
 
-  updateProduct(
+  async updateProduct(
     id: string,
     input: ShopCatalogProductInput,
-  ): ShopCatalogProduct {
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    const before = all[idx];
+  ): Promise<ShopCatalogProduct> {
+    const before = await this.requireOne(id);
     const next = this.normalizeProduct(input, before);
     const changed = detectChangedFields(before, next);
     if (changed.length > 0) {
       next.syncOverrides = mergeSyncOverrides(before.syncOverrides, changed);
     }
-    all[idx] = next;
-    this.writeAll(all);
-    return next;
+    // Only touch the stock column when the admin explicitly sent a value —
+    // otherwise a product edit would overwrite a concurrent kitchen update.
+    return this.saveProduct(next, {
+      includeStock: input.availableQty !== undefined,
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -673,64 +799,70 @@ export class ShopCatalogService {
   // ---------------------------------------------------------------------
 
   /** Cake products for the kitchen staff stock screen (ops/kitchen). */
-  listKitchenStock(): {
-    id: string;
-    name: string;
-    category: ShopCatalogProduct['category'];
-    availableQty: number | null;
-    soldOut: boolean;
-  }[] {
-    return this.readAll()
-      .filter(
-        (p) => p.category === 'whole_cakes' || p.category === 'cake_slices',
-      )
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        availableQty: p.availableQty ?? null,
-        soldOut: isProductSoldOut(p),
-      }));
+  async listKitchenStock(): Promise<
+    {
+      id: string;
+      name: string;
+      category: ShopCatalogProduct['category'];
+      availableQty: number | null;
+      soldOut: boolean;
+    }[]
+  > {
+    const rows = await this.prisma.shopProduct.findMany({
+      where: { category: { in: ['whole_cakes', 'cake_slices'] } },
+      orderBy: { name: 'asc' },
+    });
+    return rows.map(rowToProduct).map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      availableQty: p.availableQty ?? null,
+      soldOut: isProductSoldOut(p),
+    }));
   }
 
   /** Kitchen staff set today's ready count for one cake. */
-  setAvailableQty(id: string, qty: number): ShopCatalogProduct {
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    all[idx] = { ...all[idx], availableQty: clampQty(qty) ?? 0 };
-    this.writeAll(all);
-    return all[idx];
+  async setAvailableQty(id: string, qty: number): Promise<ShopCatalogProduct> {
+    const res = await this.prisma.shopProduct.updateMany({
+      where: { id },
+      data: { availableQty: clampQty(qty) ?? 0 },
+    });
+    if (res.count === 0) {
+      throw new NotFoundException('Shop catalog product not found');
+    }
+    return this.requireOne(id);
   }
 
   /** Currently available quantity for a stock-tracked product, or null if untracked/missing. */
-  getAvailableQty(id: string): number | null {
-    const p = this.readAll().find((x) => x.id === id);
-    return p?.availableQty ?? null;
+  async getAvailableQty(id: string): Promise<number | null> {
+    const row = await this.prisma.shopProduct.findUnique({
+      where: { id },
+      select: { availableQty: true },
+    });
+    return row?.availableQty ?? null;
   }
 
   /**
-   * Decrements kitchen-tracked stock for a paid order's lines, clamped at 0.
-   * Products that aren't stock-tracked (`availableQty` unset) are untouched.
-   * One read/write pass for the whole batch to keep it a single synchronous
-   * critical section (see readAll/writeAll — no `await` in between).
+   * Decrements kitchen-tracked stock for a paid order's lines, clamped at 0,
+   * as atomic per-row UPDATEs (safe under concurrent payments and kitchen
+   * edits). Products that aren't stock-tracked (`available_qty` NULL) are
+   * untouched. Pass the surrounding transaction client so the decrement
+   * commits together with the order status change.
    */
-  decrementStockForOrderLines(
+  async decrementStockForOrderLines(
     lines: { productId: string; qty: number }[],
-  ): void {
-    const all = this.readAll();
-    let changed = false;
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<void> {
     for (const line of lines) {
-      const idx = all.findIndex((p) => p.id === line.productId);
-      if (idx < 0 || all[idx].availableQty == null) continue;
-      all[idx] = {
-        ...all[idx],
-        availableQty: Math.max(0, all[idx].availableQty! - line.qty),
-      };
-      changed = true;
+      const qty = Math.max(0, Math.round(line.qty));
+      if (qty === 0) continue;
+      await tx.$executeRaw`
+        UPDATE shop_products
+        SET available_qty = GREATEST(0, available_qty - ${qty}),
+            updated_at = NOW()
+        WHERE id = ${line.productId} AND available_qty IS NOT NULL
+      `;
     }
-    if (changed) this.writeAll(all);
   }
 
   /**
@@ -738,65 +870,61 @@ export class ShopCatalogService {
    * cleans up any locally-uploaded images, and drops dangling references from
    * the home/shop layout and the popular config.
    */
-  deleteProduct(id: string): { id: string; deleted: true } {
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    const [removed] = all.splice(idx, 1);
-    this.writeAll(all);
+  async deleteProduct(id: string): Promise<{ id: string; deleted: true }> {
+    const removed = await this.requireOne(id);
+    await this.prisma.shopProduct.delete({ where: { id } });
 
-    if (removed?.imageUrl) this.tryRemoveLocalProductImage(removed.imageUrl);
-    if (Array.isArray(removed?.images)) {
+    if (removed.imageUrl) this.tryRemoveLocalProductImage(removed.imageUrl);
+    if (Array.isArray(removed.images)) {
       for (const img of removed.images) {
         this.tryRemoveLocalProductImage(img?.src);
       }
     }
 
     // Re-saving layout / popular prunes ids that no longer exist in the catalog.
-    this.setLayout(this.readLayout());
-    this.setPopularConfig(this.getPopularConfig());
+    await this.setLayout(await this.readLayout());
+    await this.setPopularConfig(await this.getPopularConfig());
 
     return { id, deleted: true };
   }
 
-  resetProductSyncOverrides(id: string): ShopCatalogProduct {
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Shop catalog product not found');
-    all[idx] = { ...all[idx], syncOverrides: undefined };
-    this.writeAll(all);
-    return all[idx];
+  async resetProductSyncOverrides(id: string): Promise<ShopCatalogProduct> {
+    const cur = await this.requireOne(id);
+    return this.saveProduct({ ...cur, syncOverrides: undefined });
   }
 
-  getPopularConfig(): HomePopularConfig {
-    this.ensurePopularFile();
-    try {
-      const raw = readFileSync(this.popularFilePath(), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_POPULAR };
-      const maxLimit = Math.max(
-        1,
-        Math.min(
-          POPULAR_HARD_MAX,
-          Number.isFinite(Number(parsed.maxLimit))
-            ? Number(parsed.maxLimit)
-            : DEFAULT_POPULAR.maxLimit,
-        ),
-      );
-      const ids = Array.isArray(parsed.productIds)
-        ? parsed.productIds
-            .map((x: unknown) => String(x ?? '').trim())
-            .filter(Boolean)
-            .slice(0, maxLimit)
-        : [];
-      return { productIds: ids, maxLimit };
-    } catch {
-      return { ...DEFAULT_POPULAR };
-    }
+  // ---------------------------------------------------------------------
+  // Home "popular" config — app_settings
+  // ---------------------------------------------------------------------
+
+  async getPopularConfig(): Promise<HomePopularConfig> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_POPULAR },
+    });
+    const parsed = row?.value as Partial<HomePopularConfig> | null | undefined;
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_POPULAR };
+    const maxLimit = Math.max(
+      1,
+      Math.min(
+        POPULAR_HARD_MAX,
+        Number.isFinite(Number(parsed.maxLimit))
+          ? Number(parsed.maxLimit)
+          : DEFAULT_POPULAR.maxLimit,
+      ),
+    );
+    const ids = Array.isArray(parsed.productIds)
+      ? parsed.productIds
+          .map((x: unknown) => String(x ?? '').trim())
+          .filter(Boolean)
+          .slice(0, maxLimit)
+      : [];
+    return { productIds: ids, maxLimit };
   }
 
-  setPopularConfig(input: Partial<HomePopularConfig>): HomePopularConfig {
-    const cur = this.getPopularConfig();
+  async setPopularConfig(
+    input: Partial<HomePopularConfig>,
+  ): Promise<HomePopularConfig> {
+    const cur = await this.getPopularConfig();
     const maxLimit = Math.max(
       1,
       Math.min(
@@ -809,8 +937,7 @@ export class ShopCatalogService {
     const rawIds = Array.isArray(input.productIds)
       ? input.productIds
       : cur.productIds;
-    const all = this.readAll();
-    const validIds = new Set(all.map((p) => p.id));
+    const validIds = new Set((await this.loadAll()).map((p) => p.id));
     const dedup: string[] = [];
     for (const id of rawIds) {
       const s = String(id ?? '').trim();
@@ -820,19 +947,18 @@ export class ShopCatalogService {
       if (dedup.length >= maxLimit) break;
     }
     const next: HomePopularConfig = { productIds: dedup, maxLimit };
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(
-      this.popularFilePath(),
-      JSON.stringify(next, null, 2),
-      'utf-8',
-    );
+    await this.prisma.appSetting.upsert({
+      where: { key: SETTING_POPULAR },
+      create: { key: SETTING_POPULAR, value: toJsonDocument(next) },
+      update: { value: toJsonDocument(next) },
+    });
     return next;
   }
 
-  listPopularProducts(): ShopCatalogProduct[] {
-    const cfg = this.getPopularConfig();
+  async listPopularProducts(): Promise<ShopCatalogProduct[]> {
+    const cfg = await this.getPopularConfig();
     if (cfg.productIds.length === 0) return [];
-    const byId = new Map(this.readAll().map((p) => [p.id, p]));
+    const byId = new Map((await this.loadAll()).map((p) => [p.id, p]));
     const out: ShopCatalogProduct[] = [];
     for (const id of cfg.productIds) {
       const p = byId.get(id);
@@ -842,17 +968,22 @@ export class ShopCatalogService {
     return out;
   }
 
-  /** Fixed path on the persistent disk (Render: mount at /opt/render/project/src/data). */
-  sitesCatalogFilePath(): string {
-    return resolve(process.cwd(), 'data', 'products.catalog.json');
+  // ---------------------------------------------------------------------
+  // moja-sites catalog (sync source). The uploaded copy lives in app_settings;
+  // local files / URL are fallbacks for dev and first-time setup.
+  // ---------------------------------------------------------------------
+
+  /** Label shown to admins for the stored upload (no longer a disk path). */
+  private sitesCatalogStoredLabel(): string {
+    return `app_settings:${SETTING_SITES_SOURCE}`;
   }
 
-  /** First existing catalog file, in priority order. */
+  /** Local file fallbacks, in priority order. */
   private findSitesCatalogPath(): string | null {
     const candidates: string[] = [];
     const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
     if (envPath) candidates.push(resolve(envPath));
-    candidates.push(this.sitesCatalogFilePath());
+    candidates.push(resolve(process.cwd(), 'data', 'products.catalog.json'));
     candidates.push(resolve(process.cwd(), 'config', 'products.catalog.json'));
     candidates.push(
       resolve(
@@ -869,65 +1000,77 @@ export class ShopCatalogService {
     return null;
   }
 
-  private preferredSitesCatalogPathForErrors(): string {
-    const envPath = process.env.MOJA_SITES_CATALOG_PATH?.trim();
-    if (envPath) return resolve(envPath);
-    return this.sitesCatalogFilePath();
-  }
-
   private deriveSitesCatalogUrl(): string | null {
     const explicit = process.env.MOJA_SITES_CATALOG_URL?.trim();
     if (explicit) return explicit;
     const shopBase = process.env.SHOP_WEB_BASE_URL?.trim();
     if (!shopBase) return null;
     try {
-      const origin = new URL(
-        shopBase.endsWith('/') ? shopBase : `${shopBase}/`,
-      ).origin;
+      const origin = new URL(shopBase.endsWith('/') ? shopBase : `${shopBase}/`)
+        .origin;
       return `${origin}/config/products.catalog.json`;
     } catch {
       return null;
     }
   }
 
-  getSitesCatalogFileInfo(): {
+  private async readStoredSitesCatalog(): Promise<{
+    catalog: SitesCatalog;
+    uploadedAt: string | null;
+  } | null> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_SITES_SOURCE },
+    });
+    const value = row?.value as
+      | { catalog?: unknown; uploadedAt?: unknown }
+      | null
+      | undefined;
+    if (!value || typeof value !== 'object') return null;
+    try {
+      return {
+        catalog: this.parseSitesCatalog(JSON.stringify(value.catalog)),
+        uploadedAt:
+          typeof value.uploadedAt === 'string' ? value.uploadedAt : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async getSitesCatalogFileInfo(): Promise<{
     exists: boolean;
     path: string;
     productCount?: number;
     mtime?: string;
-  } {
-    const path = this.sitesCatalogFilePath();
-    if (!existsSync(path)) {
-      return { exists: false, path };
+  }> {
+    const stored = await this.readStoredSitesCatalog();
+    if (!stored) {
+      return { exists: false, path: this.sitesCatalogStoredLabel() };
     }
-    try {
-      const raw = readFileSync(path, 'utf-8');
-      const catalog = this.parseSitesCatalog(raw);
-      const stat = statSync(path);
-      return {
-        exists: true,
-        path,
-        productCount: catalog.products.length,
-        mtime: stat.mtime.toISOString(),
-      };
-    } catch {
-      return { exists: true, path };
-    }
+    return {
+      exists: true,
+      path: this.sitesCatalogStoredLabel(),
+      productCount: stored.catalog.products.length,
+      mtime: stored.uploadedAt ?? undefined,
+    };
   }
 
-  saveSitesCatalogFile(raw: string): {
+  async saveSitesCatalogFile(raw: string): Promise<{
     path: string;
     productCount: number;
-  } {
+  }> {
     const catalog = this.parseSitesCatalog(raw);
-    mkdirSync(resolve(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(
-      this.sitesCatalogFilePath(),
-      JSON.stringify(catalog, null, 2),
-      'utf-8',
-    );
+    const value = toJsonDocument({
+      catalog,
+      uploadedAt: new Date().toISOString(),
+    });
+    await this.prisma.appSetting.upsert({
+      where: { key: SETTING_SITES_SOURCE },
+      create: { key: SETTING_SITES_SOURCE, value },
+      update: { value },
+    });
     return {
-      path: this.sitesCatalogFilePath(),
+      path: this.sitesCatalogStoredLabel(),
       productCount: catalog.products.length,
     };
   }
@@ -969,28 +1112,47 @@ export class ShopCatalogService {
 
     const url = this.deriveSitesCatalogUrl();
     if (url) {
-      const res = await fetch(url);
-      if (res.ok) {
-        const text = await res.text();
-        return {
-          catalog: this.parseSitesCatalog(text),
-          source: 'url',
-          sourceLabel: url,
-        };
+      const explicitUrl = Boolean(process.env.MOJA_SITES_CATALOG_URL?.trim());
+      let failure: string | null = null;
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          return {
+            catalog: this.parseSitesCatalog(text),
+            source: 'url',
+            sourceLabel: url,
+          };
+        }
+        failure = `HTTP ${res.status}`;
+      } catch (err) {
+        // Connection refused / DNS / timeout — treat like a non-OK response.
+        failure = err instanceof Error ? err.message : String(err);
       }
-      if (process.env.MOJA_SITES_CATALOG_URL?.trim()) {
+      if (explicitUrl) {
         throw new BadRequestException(
-          `Failed to fetch moja-sites catalog (${res.status}) from MOJA_SITES_CATALOG_URL`,
+          `Failed to fetch moja-sites catalog (${failure}) from MOJA_SITES_CATALOG_URL`,
         );
       }
-      /* SHOP_WEB_BASE_URL-derived URL failed — fall through to local file */
+      this.logger.warn(
+        `moja-sites catalog fetch from ${url} failed (${failure}); using stored copy / local file`,
+      );
+      /* SHOP_WEB_BASE_URL-derived URL failed — fall through to stored copy / local file */
+    }
+
+    const stored = await this.readStoredSitesCatalog();
+    if (stored) {
+      return {
+        catalog: stored.catalog,
+        source: 'path',
+        sourceLabel: this.sitesCatalogStoredLabel(),
+      };
     }
 
     const path = this.findSitesCatalogPath();
     if (!path) {
-      const preferred = this.preferredSitesCatalogPathForErrors();
       throw new BadRequestException(
-        `moja-sites catalog not found. On Render: upload the catalog once below (saved to ${preferred}), or set MOJA_SITES_CATALOG_URL to a public JSON URL. Local dev: clone moja-sites as a sibling repo, or set MOJA_SITES_CATALOG_PATH.`,
+        'moja-sites catalog not found. Upload the catalog once in the admin (it is stored in the database), or set MOJA_SITES_CATALOG_URL to a public JSON URL. Local dev: clone moja-sites as a sibling repo, or set MOJA_SITES_CATALOG_PATH.',
       );
     }
     return {
@@ -1000,23 +1162,22 @@ export class ShopCatalogService {
     };
   }
 
-  previewSyncFromSites(input: {
+  async previewSyncFromSites(input: {
     catalog?: SitesCatalog;
     mode?: ShopCatalogSyncMode;
     syncLayout?: boolean;
   }): Promise<ShopCatalogSyncPreview> {
-    return this.loadSitesCatalog(input.catalog).then(
-      ({ catalog, source, sourceLabel }) => {
-        const mode = input.mode ?? 'pricing_and_media';
-        return buildSyncPreview(
-          this.readAll(),
-          catalog,
-          mode,
-          source,
-          sourceLabel,
-          Boolean(input.syncLayout),
-        );
-      },
+    const { catalog, source, sourceLabel } = await this.loadSitesCatalog(
+      input.catalog,
+    );
+    const mode = input.mode ?? 'pricing_and_media';
+    return buildSyncPreview(
+      await this.loadAll(),
+      catalog,
+      mode,
+      source,
+      sourceLabel,
+      Boolean(input.syncLayout),
     );
   }
 
@@ -1040,8 +1201,9 @@ export class ShopCatalogService {
     const syncLayout = Boolean(input.syncLayout);
     const writeSeedConfig = Boolean(input.writeSeedConfig);
 
+    const current = await this.loadAll();
     const preview = buildSyncPreview(
-      this.readAll(),
+      current,
       catalog,
       mode,
       source,
@@ -1050,17 +1212,19 @@ export class ShopCatalogService {
     );
 
     const next = applySyncToMemberCatalog(
-      this.readAll(),
+      current,
       catalog,
       mode,
       createMissing,
     );
-    this.writeAll(next);
+    await this.saveAll(next);
 
+    // Dev convenience: refresh the committed seed under config/ so a fresh
+    // database boots with the synced catalog.
     if (writeSeedConfig) {
       mkdirSync(resolve(process.cwd(), 'config'), { recursive: true });
       writeFileSync(
-        this.seedFilePath(),
+        resolve(process.cwd(), 'config', 'shop-catalog.products.json'),
         JSON.stringify(next, null, 2),
         'utf-8',
       );
@@ -1068,11 +1232,11 @@ export class ShopCatalogService {
 
     let layoutUpdated = false;
     if (syncLayout) {
-      this.setLayout(sitesCatalogToLayout(catalog));
+      await this.setLayout(sitesCatalogToLayout(catalog));
       layoutUpdated = true;
       if (writeSeedConfig) {
         writeFileSync(
-          this.layoutSeedFilePath(),
+          resolve(process.cwd(), 'config', 'shop-catalog.layout.json'),
           JSON.stringify(sitesCatalogToLayout(catalog), null, 2),
           'utf-8',
         );
@@ -1096,11 +1260,11 @@ export class ShopCatalogService {
    * code when the line has a matching variant label, else the product-level
    * code, else null (caller falls back to the catalog product id).
    */
-  resolveSalesplayProductCode(
+  async resolveSalesplayProductCode(
     productId: string,
     variantLabel?: string | null,
-  ): string | null {
-    const product = this.readAll().find((p) => p.id === productId);
+  ): Promise<string | null> {
+    const product = await this.loadOne(productId);
     if (!product) return null;
     const label = variantLabel?.trim();
     if (label && product.salesplayVariantCodes) {
@@ -1116,9 +1280,9 @@ export class ShopCatalogService {
    * their parent product (reporting is product-level). Codes are matched
    * case-insensitively (keys are lower-cased).
    */
-  salesplayCodeIndex(): Map<string, SalesplayCodeMapping> {
+  async salesplayCodeIndex(): Promise<Map<string, SalesplayCodeMapping>> {
     const index = new Map<string, SalesplayCodeMapping>();
-    for (const p of this.readAll()) {
+    for (const p of await this.loadAll()) {
       const productCode = p.salesplayProductCode?.trim();
       if (productCode) {
         index.set(productCode.toLowerCase(), {
@@ -1150,7 +1314,12 @@ export class ShopCatalogService {
    * SalesPlay codes without leaving the dashboard.
    */
   async listKnownSalesplayCodes(): Promise<
-    { code: string; name: string; lineCount: number; mappedProductId: string | null }[]
+    {
+      code: string;
+      name: string;
+      lineCount: number;
+      mappedProductId: string | null;
+    }[]
   > {
     const rows = await this.prisma.posReceiptLine.groupBy({
       by: ['productCode'],
@@ -1160,7 +1329,7 @@ export class ShopCatalogService {
       orderBy: { _count: { productCode: 'desc' } },
       take: 500,
     });
-    const index = this.salesplayCodeIndex();
+    const index = await this.salesplayCodeIndex();
     return rows
       .filter((r) => r.productCode?.trim())
       .map((r) => {
@@ -1180,6 +1349,8 @@ export class ShopCatalogService {
   // so the resulting public URL is /uploads/products/<file>. resolveApiAssetUrl
   // on the client side prepends the API base, giving the same absolute URL to
   // the member app and any other consumer (e.g. moja-sites) pointing at this API.
+  // NOTE: uploads still live on local disk — mount a persistent volume for
+  // data/ (see docs/DEPLOYMENT.md §6.1) or move to object storage.
   // ---------------------------------------------------------------------
 
   private productImagesDir(): string {
@@ -1199,7 +1370,7 @@ export class ShopCatalogService {
     }
   }
 
-  attachProductImage(
+  async attachProductImage(
     id: string,
     file: {
       buffer: Buffer;
@@ -1207,7 +1378,7 @@ export class ShopCatalogService {
       originalname?: string;
       size: number;
     },
-  ): ShopCatalogProduct {
+  ): Promise<ShopCatalogProduct> {
     if (!file || !file.buffer || !file.buffer.length) {
       throw new BadRequestException('No file provided');
     }
@@ -1228,9 +1399,8 @@ export class ShopCatalogService {
       );
     }
 
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Product not found');
+    const cur = await this.loadOne(id);
+    if (!cur) throw new NotFoundException('Product not found');
 
     mkdirSync(this.productImagesDir(), { recursive: true });
     const safeId = id.replace(/[^a-z0-9_-]/gi, '_');
@@ -1238,40 +1408,38 @@ export class ShopCatalogService {
     const diskPath = resolve(this.productImagesDir(), filename);
     writeFileSync(diskPath, file.buffer);
 
-    const prevUrl = all[idx].imageUrl;
+    const prevUrl = cur.imageUrl;
     const publicUrl = `${PRODUCT_IMAGE_PUBLIC_PREFIX}${filename}`;
-    const existingImages = Array.isArray(all[idx].images) ? all[idx].images! : [];
+    const existingImages = Array.isArray(cur.images) ? cur.images : [];
     const nextImages = [
-      { src: publicUrl, alt: all[idx].name },
-      ...existingImages.filter((img) => img.src !== prevUrl && img.src !== publicUrl),
+      { src: publicUrl, alt: cur.name },
+      ...existingImages.filter(
+        (img) => img.src !== prevUrl && img.src !== publicUrl,
+      ),
     ];
-    all[idx] = {
-      ...all[idx],
+    const saved = await this.saveProduct({
+      ...cur,
       imageUrl: publicUrl,
       images: nextImages,
-      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
-    };
-    this.writeAll(all);
+      syncOverrides: mergeSyncOverrides(cur.syncOverrides, ['imageUrl']),
+    });
 
     if (prevUrl && prevUrl !== publicUrl) {
       this.tryRemoveLocalProductImage(prevUrl);
     }
-    return all[idx];
+    return saved;
   }
 
-  clearProductImage(id: string): ShopCatalogProduct {
-    const all = this.readAll();
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx < 0) throw new NotFoundException('Product not found');
-    const prev = all[idx].imageUrl;
+  async clearProductImage(id: string): Promise<ShopCatalogProduct> {
+    const cur = await this.loadOne(id);
+    if (!cur) throw new NotFoundException('Product not found');
+    const prev = cur.imageUrl;
     if (prev) this.tryRemoveLocalProductImage(prev);
-    all[idx] = {
-      ...all[idx],
+    return this.saveProduct({
+      ...cur,
       imageUrl: '',
       images: undefined,
-      syncOverrides: mergeSyncOverrides(all[idx].syncOverrides, ['imageUrl']),
-    };
-    this.writeAll(all);
-    return all[idx];
+      syncOverrides: mergeSyncOverrides(cur.syncOverrides, ['imageUrl']),
+    });
   }
 }

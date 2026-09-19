@@ -173,10 +173,8 @@ The API writes admin-managed assets to **`<cwd>/data/`** on the local filesystem
 | `data/uploads/home-ads/<filename>.{png,jpg,webp,gif}` | Uploaded carousel images, served via `GET /uploads/home-ads/...` |
 | `data/uploads/products/<filename>.{png,jpg,webp,gif}` | Uploaded shop product images, served via `GET /uploads/products/...` |
 | `data/uploads/voucher-defs/<filename>.{png,jpg,webp,gif}` | Uploaded voucher hero images, served via `GET /uploads/voucher-defs/...` |
-| `data/shop-catalog.products.json` | Live shop catalog (prices, descriptions, `imageUrl`, etc.) |
-| `data/shop-catalog.layout.json` | Shop home layout (featured + sections) |
-| `data/home-popular.json` | Home "Popular items" curated list |
-| `data/products.catalog.json` | moja-sites catalog copy for **Sync from moja-sites** (upload once in admin) |
+
+**Shop catalog is in Postgres, not in `data/`** (since migration `20260919090000_shop_products_to_db`): products + kitchen stock live in `shop_products`; the shop layout, "Popular items" list and the uploaded moja-sites catalog copy live in `app_settings` (`shop_catalog.layout`, `shop_catalog.popular`, `shop_catalog.sites_source`). On the first boot after upgrading, the API imports the legacy `data/shop-catalog.products.json`, `data/shop-catalog.layout.json` and `data/home-popular.json` (falling back to the `config/` seeds) **once** when the table is empty — check the boot log for `Seeded N shop products from …`. The legacy files are not read again afterwards and can be deleted.
 
 `data/` is in `.gitignore`, so on hosts where each deploy spins up a **fresh container** (Render, Railway, Fly, Heroku, Cloud Run, etc.) this folder is empty after every redeploy and the carousel resets to the three hardcoded `DEFAULT_SLIDES` in `src/home-ads/home-ads.service.ts`. Any uploaded images become broken links.
 

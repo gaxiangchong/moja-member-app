@@ -422,7 +422,7 @@ export class FinanceReportService {
 
     return [
       ...tag(online, 'online_shop'),
-      ...this.unifyPosProductRows(tag(pos, 'pos')),
+      ...(await this.unifyPosProductRows(tag(pos, 'pos'))),
       ...tag(bento, 'bento'),
     ]
       .sort((a, b) => b.revenueCents - a.revenueCents)
@@ -437,10 +437,10 @@ export class FinanceReportService {
    * shares one identity — and rows collapsing onto the same product (e.g.
    * per-size POS codes) are re-aggregated. Unmapped codes pass through as-is.
    */
-  private unifyPosProductRows(
+  private async unifyPosProductRows(
     rows: FinanceOverviewResult['topProducts'],
-  ): FinanceOverviewResult['topProducts'] {
-    const index = this.shopCatalog.salesplayCodeIndex();
+  ): Promise<FinanceOverviewResult['topProducts']> {
+    const index = await this.shopCatalog.salesplayCodeIndex();
     if (index.size === 0) return rows;
 
     const byProduct = new Map<string, FinanceOverviewResult['topProducts'][number]>();

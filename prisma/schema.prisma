@@ -1360,3 +1360,31 @@ model EmailCampaignRecipient {
   @@index([campaignId, status])
   @@map("email_campaign_recipients")
 }
+
+/// Member-app shop catalog product (cakes, slices, drinks, specials).
+/// The full storefront/admin document (`ShopCatalogProduct` in
+/// `shop-catalog.service.ts`) lives in `document`; the columns mirror the
+/// fields we query or update independently. `availableQty` is the single
+/// source of truth for kitchen stock and is only ever changed through atomic
+/// UPDATEs (kitchen set / paid-order decrement), never by re-saving the
+/// document.
+model ShopProduct {
+  /// Canonical product id (storefront slug), e.g. "strawberry-shortcake".
+  id                   String   @id @db.VarChar(160)
+  category             String   @db.VarChar(32)
+  name                 String
+  isActive             Boolean  @default(true) @map("is_active")
+  sortOrder            Int      @default(0) @map("sort_order")
+  soldOut              Boolean  @default(false) @map("sold_out")
+  /// Kitchen-tracked count ready for sale; null = not stock-tracked.
+  availableQty         Int?     @map("available_qty")
+  salesplayProductCode String?  @map("salesplay_product_code") @db.VarChar(64)
+  document             Json
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@index([category])
+  @@index([salesplayProductCode])
+  @@map("shop_products")
+}

@@ -820,7 +820,7 @@ export class CustomersService {
   ) {
     this.validateMemberOrderTotals(dto);
     for (const line of dto.lines) {
-      const available = this.shopCatalog.getAvailableQty(line.productId);
+      const available = await this.shopCatalog.getAvailableQty(line.productId);
       if (available != null && line.qty > available) {
         throw new BadRequestException({
           code: 'CAKE_OUT_OF_STOCK',
@@ -894,6 +894,9 @@ export class CustomersService {
         where: { id: orderId },
         data: { status: 'placed' },
       });
+      // Kitchen stock comes down in the same transaction as the status flip,
+      // so a webhook retry or crash can never double-decrement.
+      await this.shopCatalog.decrementStockForOrderLines(finalizedLines, tx);
       await tx.storedWallet.upsert({
         where: { customerId: order.customerId },
         create: {
@@ -934,7 +937,6 @@ export class CustomersService {
       );
     });
     if (finalized) {
-      this.shopCatalog.decrementStockForOrderLines(finalizedLines);
       this.pushShopOrderToSalesplay(orderId);
       if (finalizedCustomerId) {
         void this.campaignAutomation
@@ -984,17 +986,20 @@ export class CustomersService {
         fulfillmentSummaryLines: fulfillmentSummaryLinesFromJson(
           order.fulfillmentSummary,
         ),
-        lines: order.lines.map((line) => ({
-          productId: line.productId,
-          name: line.name,
-          variantLabel: line.variantLabel,
-          unitPriceCents: line.unitPriceCents,
-          qty: line.qty,
-          salesplayProductCode: this.shopCatalog.resolveSalesplayProductCode(
-            line.productId,
-            line.variantLabel,
-          ),
-        })),
+        lines: await Promise.all(
+          order.lines.map(async (line) => ({
+            productId: line.productId,
+            name: line.name,
+            variantLabel: line.variantLabel,
+            unitPriceCents: line.unitPriceCents,
+            qty: line.qty,
+            salesplayProductCode:
+              await this.shopCatalog.resolveSalesplayProductCode(
+                line.productId,
+                line.variantLabel,
+              ),
+          })),
+        ),
         customer: {
           displayName: order.customer.displayName,
           phoneE164: order.customer.phoneE164,
