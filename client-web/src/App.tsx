@@ -36,6 +36,7 @@ import {
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
+import { InstallBanner } from './components/InstallBanner';
 import {
   clearPendingPayment,
   readPendingPayment,
@@ -795,9 +796,16 @@ function App() {
       if (handoff) {
         setTab('shop');
       }
-      if (handoff || shopScreen) {
+      // PWA shortcut / deep link into the guest-accessible shop tab. Member-only
+      // tabs are handled after login (see the `profile` effect below).
+      const guestShopTab = !handoff && u.searchParams.get('tab') === 'shop';
+      if (guestShopTab) setTab('shop');
+      const pwaSource = u.searchParams.has('source');
+      if (handoff || shopScreen || guestShopTab || pwaSource) {
         u.searchParams.delete('cartHandoff');
         u.searchParams.delete('shopScreen');
+        if (guestShopTab) u.searchParams.delete('tab');
+        u.searchParams.delete('source');
         const qs = u.searchParams.toString();
         window.history.replaceState({}, '', `${u.pathname}${qs ? `?${qs}` : ''}`);
       }
@@ -1906,6 +1914,8 @@ function App() {
                     <span className="homeMembershipBannerLink">Join free →</span>
                   </button>
                 )}
+
+                <InstallBanner />
 
                 {popularItems.length > 0 && (
                   <section>

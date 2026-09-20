@@ -53,10 +53,10 @@ small items are pulled forward.
 Things that will bite in production regardless of features.
 
 1. ✅ **Move catalog + stock from JSON files to Postgres** — done 19 Sep. `shop_products` (columns + `document` JSON, `available_qty` as the single stock source), layout / popular / moja-sites upload in `app_settings`. Stock changes are atomic `UPDATE … GREATEST(0, available_qty - qty)` and the paid-order decrement runs inside the order-finalize transaction. Legacy JSON files are imported once on first boot. Per-date stock (`ProductStockDay`) comes in Phase 1.
-2. Production env checklist: Xendit live keys + webhook token, WhatsApp **production template approval** (Meta review takes days — submit now), `CLIENT_WEB_ORIGIN`, admin JWT secret, persistent `data/` volume for images (or S3/R2).
-3. Turn the client into an installable **PWA** (manifest + service worker, icons, offline shell). This is the cheapest way to be "on the phone" in October; native apps come in Phase 5.
+2. ◐ Production env checklist (code side done 19 Sep: `DATA_DIR`, readiness gate, `GET /health/readiness`; account side pending — owner): Xendit live keys + webhook token, WhatsApp **production template approval** (Meta review takes days — submit now), `CLIENT_WEB_ORIGIN`, admin JWT secret, persistent `data/` volume for images (or S3/R2).
+3. ✅ **PWA** — done 20 Sep. `manifest.webmanifest`, generated icons (192/512/maskable/apple-touch), hand-rolled `sw.js` (shell precache, network-first navigations, cache-first hashed assets, stale-while-revalidate images, API never cached), in-app "Add to home screen" banner with iOS fallback text, `?tab=shop` shortcut. Bump `CACHE_VERSION` in `sw.js` when the precache list changes.
 4. Smoke-test runbook from `docs/DEPLOYMENT.md` §12 executed on the real host; Xendit sandbox → live cut-over; SalesPlay webhook pointed at production.
-5. Decide the `mobile/` question now (see Phase 5) so Phase 1 API work is shaped correctly.
+5. ✅ Decided 19 Sep: **Capacitor wrap of `client-web`** for the store apps (Phase 5); `mobile/` (Expo) is not developed further.
 
 ### Phase 1 — Pickup ordering, production-grade (22 Sep → 10 Oct)  ★ must
 
