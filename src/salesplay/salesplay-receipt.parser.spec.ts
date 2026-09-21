@@ -176,7 +176,42 @@ describe('parseCreditNote', () => {
     expect(parsed!.reason).toBe('Customer changed mind');
   });
 
+  it('parses the live SalesPlay credit_note_and_refund shape', () => {
+    // Field names per https://developer.salesplay.com GET /credit_note_and_refund.
+    const parsed = parseCreditNote({
+      receipt_number: '1-2207299',
+      receipt_type: 'CASH_REFUND',
+      refund_for: '1-2207203',
+      receipt_date: '2026-07-19',
+      receipt_time: '3:10 PM',
+      receipt_date_time: '2026-07-19 15:10:00',
+      total_money: '25.50',
+      customer_id: '1000',
+      note: 'Partial return',
+      receipt_delete_status: false,
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.salesplayCreditNoteId).toBe('1-2207299');
+    expect(parsed!.salesplayReceiptId).toBe('1-2207203');
+    expect(parsed!.amountCents).toBe(2550);
+    expect(parsed!.reason).toBe('Partial return');
+    expect(parsed!.customerHints.salesplayCustomerId).toBe('1000');
+    expect(parsed!.businessDate.toISOString()).toBe('2026-07-19T00:00:00.000Z');
+  });
+
+  it('does not treat the credit note receipt_number as the original sale', () => {
+    const parsed = parseCreditNote({
+      receipt_number: '1-2207299',
+      total_money: '10.00',
+      // refund_for absent — original sale unknown; must not self-link.
+    });
+    expect(parsed!.salesplayCreditNoteId).toBe('1-2207299');
+    expect(parsed!.salesplayReceiptId).toBeNull();
+    expect(parsed!.amountCents).toBe(1000);
+  });
+
   it('returns null without a stable credit note id', () => {
     expect(parseCreditNote({ amount: 10 })).toBeNull();
+    expect(parseCreditNote({ total_money: '10.00' })).toBeNull();
   });
 });
