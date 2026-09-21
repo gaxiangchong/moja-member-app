@@ -257,7 +257,18 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
         if (page === MAX_PAGES_PER_RUN - 1) summary.stoppedReason = 'page_cap';
       }
 
-      await this.markPulled(resource);
+      // Only advance lastPulledAt after a successful pull. Stamping it on
+      // fetch_error would silence the reconcile scheduler for a full interval
+      // (default 24h) even though nothing was fetched — and with a finite
+      // lookback window, repeated failures can permanently miss receipts that
+      // webhooks also dropped.
+      if (summary.stoppedReason !== 'fetch_error') {
+        await this.markPulled(resource);
+      } else {
+        this.logger.warn(
+          `SalesPlay pull ${resource} stopped on fetch_error; leaving lastPulledAt unchanged so reconcile retries soon.`,
+        );
+      }
       this.logger.log(
         `SalesPlay pull ${resource}: ${summary.itemsIngested} new / ${summary.itemsSeen} seen across ${summary.pagesFetched} page(s) (${summary.stoppedReason}).`,
       );

@@ -177,8 +177,29 @@ export class SalesplayWebhookService {
 
     const existing = await this.prisma.posReceipt.findUnique({
       where: { salesplayReceiptId: parsed.salesplayReceiptId },
-      select: { id: true },
+      select: { id: true, customerId: true },
     });
+
+    // Deleted / non-SALE receipts must not contribute to POS GMV. Credit notes
+    // are the refund channel; voided or refund-typed receipts would otherwise
+    // inflate finance forever under first-write-wins idempotency.
+    if (this.isNonSaleReceipt(parsed)) {
+      if (existing) {
+        await this.removeVoidedReceipt(
+          existing.id,
+          existing.customerId,
+          parsed.salesplayReceiptId,
+        );
+      } else {
+        this.logger.debug(
+          `SalesPlay receipt ${parsed.salesplayReceiptId} is ${
+            parsed.isDeleted ? 'deleted' : parsed.receiptType
+          }; not ingesting.`,
+        );
+      }
+      return false;
+    }
+
     if (existing) {
       this.logger.debug(
         `SalesPlay receipt ${parsed.salesplayReceiptId} already ingested; skipping.`,
@@ -252,6 +273,71 @@ export class SalesplayWebhookService {
 
     await this.maybeAwardLoyalty(parsed, receiptId, customerId, originOnlineOrderId);
     return true;
+  }
+
+  /** True when the payload is a void/delete or an explicit non-SALE type. */
+  private isNonSaleReceipt(parsed: ParsedReceipt): boolean {
+    if (parsed.isDeleted) return true;
+    const type = parsed.receiptType?.trim();
+    return Boolean(type && type.toUpperCase() !== 'SALE');
+  }
+
+  /**
+   * Drop a previously ingested sale that SalesPlay later marked deleted/voided,
+   * and claw back any loyalty points awarded for it.
+   */
+  private async removeVoidedReceipt(
+    receiptId: string,
+    customerId: string | null,
+    salesplayReceiptId: string,
+  ): Promise<void> {
+    if (customerId) {
+      await this.clawBackLoyaltyForReceipt(customerId, receiptId);
+    }
+    await this.prisma.posReceipt.delete({ where: { id: receiptId } });
+    await this.audit.log({
+      actorType: 'system',
+      action: 'pos.receipt_voided',
+      entityType: 'pos_receipt',
+      entityId: receiptId,
+      metadata: { salesplayReceiptId },
+    });
+    this.logger.log(
+      `Removed voided SalesPlay receipt ${salesplayReceiptId} from POS ledger.`,
+    );
+  }
+
+  private async clawBackLoyaltyForReceipt(
+    customerId: string,
+    receiptId: string,
+  ): Promise<void> {
+    const entries = await this.prisma.loyaltyLedgerEntry.findMany({
+      where: {
+        customerId,
+        referenceType: 'pos_receipt',
+        referenceId: receiptId,
+      },
+      select: { deltaPoints: true },
+    });
+    const net = entries.reduce((sum, e) => sum + e.deltaPoints, 0);
+    if (net <= 0) return;
+    try {
+      await this.loyalty.appendLedgerEntry({
+        customerId,
+        deltaPoints: -net,
+        reason: 'salesplay_purchase_void',
+        referenceType: 'pos_receipt',
+        referenceId: receiptId,
+      });
+    } catch (err) {
+      // Insufficient balance (points already spent) — still remove the sale
+      // from finance; log so ops can reconcile manually.
+      this.logger.warn(
+        `Could not fully claw back ${net} pts for voided receipt ${receiptId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async maybeAwardLoyalty(
