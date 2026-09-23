@@ -1111,3 +1111,62 @@ body {
     row-gap: 12px;
   }
 }
+
+/* ---- Order lifecycle: status chip + Mark ready action ---- */
+
+.statusChip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.statusChip--placed {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
+.statusChip--preparing {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.statusChip--ready {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.statusChip--completed {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.statusChip--cancelled {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.btnReady {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.btnReady:disabled {
+  opacity: 0.55;
+}

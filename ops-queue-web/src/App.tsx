@@ -10,6 +10,7 @@ import {
   fetchQueueOrderDetail,
   fetchQueueOrders,
   type QueueOrderDetail,
+  setQueueOrderStatus,
   type QueueOrderSummary,
 } from './api';
 import { BentoPickupPanel } from './BentoPickupPanel';
@@ -373,24 +374,40 @@ function openKitchenPopup(): void {
   );
 }
 
+/** Short labels for the queue card chip. */
+const QUEUE_STATUS_LABEL: Record<string, string> = {
+  placed: 'New',
+  preparing: 'Preparing',
+  ready: 'Ready',
+  completed: 'Collected',
+  cancelled: 'Cancelled',
+};
+
 function OrderCard({
   order,
   pulse,
   busy,
   onDone,
+  onAdvance,
   onOpenDetail,
 }: {
   order: QueueOrderSummary;
   pulse: boolean;
   busy: boolean;
   onDone: () => void;
+  onAdvance: (next: 'preparing' | 'ready') => void;
   onOpenDetail: () => void;
 }) {
   return (
     <article className={`orderCard${pulse ? ' orderCard--pulse' : ''}`}>
       <div className="orderCardHead">
         <div>
-          <div className="idline">Order {formatOrderPickupLabel(order.orderNumber)}</div>
+          <div className="idline">
+            Order {formatOrderPickupLabel(order.orderNumber)}
+            <span className={`statusChip statusChip--${order.status}`}>
+              {QUEUE_STATUS_LABEL[order.status] ?? order.status}
+            </span>
+          </div>
           <div className="when">{placedLabel(order.placedAt)}</div>
         </div>
         <div className="muted" style={{ fontSize: '0.9rem' }}>
@@ -435,6 +452,26 @@ function OrderCard({
           <button type="button" className="btnGhost" onClick={onOpenDetail}>
             View details
           </button>
+          {order.status === 'placed' && (
+            <button
+              type="button"
+              className="btnGhost"
+              disabled={busy}
+              onClick={() => onAdvance('preparing')}
+            >
+              Start preparing
+            </button>
+          )}
+          {(order.status === 'placed' || order.status === 'preparing') && (
+            <button
+              type="button"
+              className="btnReady"
+              disabled={busy}
+              onClick={() => onAdvance('ready')}
+            >
+              Mark ready
+            </button>
+          )}
           <button type="button" className="btnPrimary" disabled={busy} onClick={onDone}>
             {busy ? 'Saving…' : 'Collected'}
           </button>
@@ -549,6 +586,21 @@ export function App() {
       })
       .catch((err) => {
         window.alert(err instanceof Error ? err.message : 'Could not mark order collected');
+      })
+      .finally(() => setCompletingId(null));
+  };
+
+  /** Start preparing / mark ready. Re-polls so a second tablet sees it too. */
+  const onAdvance = (id: string, next: 'preparing' | 'ready') => {
+    setCompletingId(id);
+    setQueueOrderStatus(apiKey, id, next, {}, apiBase.trim() || defaultBase)
+      .then(() => void poll())
+      .catch((err) => {
+        window.alert(
+          err instanceof Error ? err.message : 'Could not update this order',
+        );
+        // Another device may have moved it — resync rather than leave a stale card.
+        void poll();
       })
       .finally(() => setCompletingId(null));
   };
@@ -759,6 +811,7 @@ export function App() {
                       pulse={pulseIds.has(o.id)}
                       busy={completingId === o.id}
                       onDone={() => onDone(o.id)}
+                      onAdvance={(next) => onAdvance(o.id, next)}
                       onOpenDetail={() => setDetailModalId(o.id)}
                     />
                   ))}
@@ -774,6 +827,7 @@ export function App() {
                       pulse={pulseIds.has(o.id)}
                       busy={completingId === o.id}
                       onDone={() => onDone(o.id)}
+                      onAdvance={(next) => onAdvance(o.id, next)}
                       onOpenDetail={() => setDetailModalId(o.id)}
                     />
                   ))}

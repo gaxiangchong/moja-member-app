@@ -1,3 +1,4 @@
+import { OrdersModule } from '../orders/orders.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtAccessModule } from '../auth/jwt-access.module';
@@ -12,6 +13,7 @@ import { PhoneNormalizerService } from './phone-normalizer.service';
 
 @Module({
   imports: [
+    OrdersModule,
     ConfigModule,
     LoyaltyModule,
     JwtAccessModule,

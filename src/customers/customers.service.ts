@@ -22,6 +22,11 @@ import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import {
+  ProductStockService,
+  todayBusinessDate,
+} from '../orders/product-stock.service';
+import {
+  isMemberCancellable,
   NON_REVENUE_ORDER_STATUSES,
   ORDER_STATUS,
 } from '../orders/order-status';
@@ -133,6 +138,7 @@ export class CustomersService {
     private readonly shopCatalog: ShopCatalogService,
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
+    private readonly productStock: ProductStockService,
   ) {}
 
   /**
@@ -784,9 +790,19 @@ export class CustomersService {
         id: o.id,
         orderNumber: o.orderNumber,
         placedAt: o.placedAt.toISOString(),
+        preparingAt: o.preparingAt?.toISOString() ?? null,
+        readyAt: o.readyAt?.toISOString() ?? null,
         completedAt: o.completedAt?.toISOString() ?? null,
+        cancelledAt: o.cancelledAt?.toISOString() ?? null,
+        cancelReason: o.cancelReason,
+        fulfilmentType: o.fulfilmentType,
+        scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
+        scheduledSlot: o.scheduledSlot,
+        deliveryFeeCents: o.deliveryFeeCents,
         totalCents: o.totalCents,
         status: o.status,
+        /** Member may still call it off — the kitchen has not started. */
+        cancellable: isMemberCancellable(o.status),
         fulfillmentSummary: fulfillmentSummaryLinesFromJson(
           o.fulfillmentSummary,
         ),
@@ -801,6 +817,68 @@ export class CustomersService {
         })),
       })),
     };
+  }
+
+  /**
+   * Member cancels their own order before the kitchen starts on it. Anything
+   * later goes through support, so a half-decorated cake is never thrown away
+   * by a tap. Releases the day's reserved stock; the refund is handled
+   * separately by an admin (Phase 1 refund work).
+   */
+  async cancelMyOrder(customerId: string, orderId: string) {
+    const order = await this.prisma.customerOrder.findFirst({
+      where: { id: orderId, customerId },
+      select: {
+        id: true,
+        status: true,
+        scheduledDate: true,
+        lines: { select: { productId: true, qty: true } },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException({
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    }
+    if (!isMemberCancellable(order.status)) {
+      throw new BadRequestException({
+        code: 'ORDER_NOT_CANCELLABLE',
+        message:
+          'We have already started preparing this order. Please contact us for help.',
+      });
+    }
+
+    // Guarded by the expected status so a cancel racing the kitchen's
+    // "start preparing" cannot both win.
+    const updated = await this.prisma.customerOrder.updateMany({
+      where: { id: orderId, status: order.status },
+      data: {
+        status: ORDER_STATUS.CANCELLED,
+        cancelledAt: new Date(),
+        cancelReason: 'Cancelled by member',
+      },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException({
+        code: 'ORDER_NOT_CANCELLABLE',
+        message: 'This order has just moved on. Please contact us for help.',
+      });
+    }
+
+    const day =
+      order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();
+    await this.productStock
+      .releaseForOrderLines(order.lines, day)
+      .catch((err) =>
+        this.logger.error(
+          `Stock release failed for cancelled order ${orderId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
+
+    return { id: orderId, status: ORDER_STATUS.CANCELLED };
   }
 
   private validateMemberOrderTotals(dto: SubmitMemberOrderDto) {

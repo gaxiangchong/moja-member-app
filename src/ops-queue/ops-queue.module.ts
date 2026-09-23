@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { OrdersModule } from '../orders/orders.module';
 import { CustomersModule } from '../customers/customers.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
@@ -15,6 +16,7 @@ import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
 
 @Module({
   imports: [
+    OrdersModule,
     AuditModule,
     CustomersModule,
     EmployeesModule,

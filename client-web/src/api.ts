@@ -897,6 +897,15 @@ export type MemberOrderRow = {
   orderNumber: number;
   placedAt: string;
   completedAt: string | null;
+  preparingAt?: string | null;
+  readyAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
+  scheduledDate?: string | null;
+  scheduledSlot?: string | null;
+  deliveryFeeCents?: number;
+  cancellable?: boolean;
   totalCents: number;
   status: string;
   fulfillmentSummary: string[];
@@ -990,4 +999,19 @@ export async function consumeShopCartHandoff(token: string): Promise<{
     subtotalCents: Number(data.subtotalCents) || 0,
     fulfillment: data.fulfillment ?? null,
   };
+}
+
+/** Member cancels their own order (only allowed before the kitchen starts). */
+export async function cancelMyOrder(orderId: string): Promise<{ id: string; status: string }> {
+  const res = await authorizedFetch(
+    `/customers/me/orders/${encodeURIComponent(orderId)}/cancel`,
+    { method: 'POST' },
+  );
+  const data = await parseJson<{ id?: string; status?: string; message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join(', ') : 'Could not cancel this order';
+    throw new Error(msg);
+  }
+  return { id: data.id ?? orderId, status: data.status ?? 'cancelled' };
 }

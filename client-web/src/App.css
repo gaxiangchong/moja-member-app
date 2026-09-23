@@ -1657,6 +1657,17 @@
   gap: 10px;
 }
 
+/* The date and total are two spans in one child div — space them apart
+   instead of letting them run together ("…10:25 PMRM 159.00"). */
+.orderActiveHead > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
 .orderQrBlock {
   display: grid;
   gap: 8px;
@@ -3014,4 +3025,120 @@ code {
   font-size: 20px;
   line-height: 1;
   padding: 4px 6px;
+}
+
+/* ---- Order progress tracker (Orders tab, active orders) ---- */
+
+.orderProgress {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 0;
+}
+
+.orderProgressStep {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  text-align: center;
+}
+
+/* Connector line between dots. */
+.orderProgressStep::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: #e2e8f0;
+}
+
+.orderProgressStep:first-child::before {
+  display: none;
+}
+
+.orderProgressStep.is-done::before,
+.orderProgressStep.is-current::before {
+  background: #00348d;
+}
+
+.orderProgressDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  position: relative;
+  z-index: 1;
+}
+
+.orderProgressStep.is-done .orderProgressDot {
+  background: #00348d;
+  border-color: #00348d;
+}
+
+.orderProgressStep.is-current .orderProgressDot {
+  border-color: #00348d;
+  box-shadow: 0 0 0 4px rgba(0, 52, 141, 0.15);
+}
+
+.orderProgressLabel {
+  font-size: 11px;
+  line-height: 1.25;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.orderProgressStep.is-current .orderProgressLabel,
+.orderProgressStep.is-done .orderProgressLabel {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.orderProgressTime {
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.orderProgressCancelled {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.orderCancelBtn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.orderCancelBtn:disabled {
+  opacity: 0.55;
+}
+
+.orderHistoryCancelled {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b91c1c;
 }

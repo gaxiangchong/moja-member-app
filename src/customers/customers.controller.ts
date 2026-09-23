@@ -4,7 +4,9 @@ import {
   Controller,
   DefaultValuePipe,
   Get,
+  Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -65,6 +67,15 @@ export class CustomersController {
       message:
         'Orders are placed from Shop checkout. Complete payment on the Xendit page (or test payment in demo mode).',
     });
+  }
+
+  @Post('me/orders/:id/cancel')
+  @UseGuards(JwtAuthGuard)
+  async cancelMyOrder(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.customers.cancelMyOrder(user.customerId, id);
   }
 
   @Get('me/wallet')

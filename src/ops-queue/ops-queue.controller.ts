@@ -12,6 +12,7 @@ import {
 import { TimesheetCodeDto } from '../employees/dto/timesheet-code.dto';
 import { EmployeesService } from '../employees/employees.service';
 import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
+import { SetOrderStatusDto } from './dto/set-order-status.dto';
 import { OpsQueueService } from './ops-queue.service';
 
 @Controller('ops/queue')
@@ -44,6 +45,27 @@ export class OpsQueueController {
   async complete(@Param('id', ParseUUIDPipe) id: string) {
     const o = await this.ops.completeOrder(id);
     return { id: o.id, orderNumber: o.orderNumber, status: o.status };
+  }
+
+  /** Kitchen lifecycle: start preparing / mark ready / collected / cancel. */
+  @Patch('orders/:id/status')
+  async setStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOrderStatusDto,
+  ) {
+    const o = await this.ops.setOrderStatus(id, dto.status, {
+      reason: dto.reason,
+      staffCode: dto.staffCode,
+    });
+    return {
+      id: o.id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      preparingAt: o.preparingAt?.toISOString() ?? null,
+      readyAt: o.readyAt?.toISOString() ?? null,
+      completedAt: o.completedAt?.toISOString() ?? null,
+      cancelledAt: o.cancelledAt?.toISOString() ?? null,
+    };
   }
 
   @Get('bento/lookup/:code')

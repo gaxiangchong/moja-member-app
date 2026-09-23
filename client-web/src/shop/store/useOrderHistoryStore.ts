@@ -14,7 +14,16 @@ export type PastOrder = {
   id: string;
   orderNumber?: number;
   placedAt: string;
+  preparingAt?: string | null;
+  readyAt?: string | null;
   completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
+  scheduledDate?: string | null;
+  scheduledSlot?: string | null;
+  deliveryFeeCents?: number;
+  cancellable?: boolean;
   status?: string;
   totalCents: number;
   fulfillmentSummary: string[];

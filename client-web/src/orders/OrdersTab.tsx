@@ -1,18 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toDataURL } from 'qrcode';
-import { fetchMemberOrders, type MemberOrderRow } from '../api';
+import { cancelMyOrder, fetchMemberOrders, type MemberOrderRow } from '../api';
 import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
-import { useOrderHistoryStore, type PastOrder } from '../shop/store/useOrderHistoryStore';
+import {
+  useOrderHistoryStore,
+  type PastOrder,
+} from '../shop/store/useOrderHistoryStore';
 import { useShopStore } from '../shop/store/useShopStore';
-import { isHistoryOrderStatus, isOpenOrderStatus } from '../lib/orderStatus';
+import {
+  isHistoryOrderStatus,
+  isOpenOrderStatus,
+  ORDER_STATUS,
+  orderStatusLabel,
+} from '../lib/orderStatus';
+import { OrderProgress } from './OrderProgress';
 
 function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
     placedAt: row.placedAt,
+    preparingAt: row.preparingAt,
+    readyAt: row.readyAt,
     completedAt: row.completedAt,
+    cancelledAt: row.cancelledAt,
+    cancelReason: row.cancelReason,
+    fulfilmentType: row.fulfilmentType,
+    scheduledDate: row.scheduledDate,
+    scheduledSlot: row.scheduledSlot,
+    deliveryFeeCents: row.deliveryFeeCents,
+    cancellable: row.cancellable,
     status: row.status,
     totalCents: row.totalCents,
     fulfillmentSummary: row.fulfillmentSummary,
@@ -51,7 +69,13 @@ function OrderQrBlock({ orderNumber }: { orderNumber: number }) {
   return (
     <div className="orderQrBlock">
       {src ? (
-        <img src={src} alt={`Order ${label} QR`} width={200} height={200} className="orderQrImg" />
+        <img
+          src={src}
+          alt={`Order ${label} QR`}
+          width={200}
+          height={200}
+          className="orderQrImg"
+        />
       ) : (
         <p className="caption">Generating QR…</p>
       )}
@@ -71,9 +95,16 @@ function isBenignOrdersError(message: string): boolean {
   );
 }
 
-export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop: () => void }) {
+export function OrdersTab({
+  active,
+  onGoToShop,
+}: {
+  active: boolean;
+  onGoToShop: () => void;
+}) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const orders = useOrderHistoryStore((s) => s.orders);
   const setOrdersFromApi = useOrderHistoryStore((s) => s.setOrdersFromApi);
 
@@ -89,7 +120,9 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
         setErr(null);
         return;
       }
-      setErr('We could not refresh your orders. Pull to refresh again in a moment.');
+      setErr(
+        'We could not refresh your orders. Pull to refresh again in a moment.',
+      );
     } finally {
       setLoading(false);
     }
@@ -108,6 +141,29 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [active, load]);
+
+  const handleCancel = async (order: PastOrder) => {
+    if (
+      !window.confirm(
+        'Cancel this order? We have not started preparing it yet, so nothing is wasted.',
+      )
+    ) {
+      return;
+    }
+    setCancellingId(order.id);
+    try {
+      await cancelMyOrder(order.id);
+      await load();
+    } catch (e) {
+      window.alert(
+        e instanceof Error ? e.message : 'Could not cancel this order',
+      );
+      // The kitchen may have just started — resync so the button disappears.
+      await load();
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const activeOrders = orders.filter((o) => isOpenOrderStatus(o.status));
   const historyOrders = orders
@@ -138,7 +194,12 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
     <>
       <header className="pmTopBar">
         <h2>Orders</h2>
-        <button type="button" className="textAction" onClick={() => void load()} disabled={loading}>
+        <button
+          type="button"
+          className="textAction"
+          onClick={() => void load()}
+          disabled={loading}
+        >
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </header>
@@ -156,7 +217,8 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
         </h3>
         {!activeOrders.length ? (
           <p className="caption" style={{ margin: 0 }}>
-            No open orders. Place one from Shop — your QR appears here until the shop marks it collected.
+            No open orders. Place one from Shop — your QR appears here until the
+            shop marks it collected.
           </p>
         ) : (
           <div className="ordersActiveList">
@@ -164,13 +226,18 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
               const placed = new Date(order.placedAt);
               const when = Number.isNaN(placed.getTime())
                 ? order.placedAt
-                : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+                : placed.toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  });
               return (
                 <article key={order.id} className="orderActiveCard">
                   <div className="orderActiveHead">
                     <div>
                       <strong>{when}</strong>
-                      <span className="orderHistoryTotal">{formatRm(order.totalCents)}</span>
+                      <span className="orderHistoryTotal">
+                        {formatRm(order.totalCents)}
+                      </span>
                     </div>
                   </div>
                   {order.orderNumber != null ? (
@@ -180,8 +247,31 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
                       Order number not on this device yet — tap Refresh.
                     </p>
                   )}
+                  <OrderProgress
+                    status={order.status}
+                    fulfilmentType={order.fulfilmentType}
+                    placedAt={order.placedAt}
+                    preparingAt={order.preparingAt}
+                    readyAt={order.readyAt}
+                    completedAt={order.completedAt}
+                    cancelReason={order.cancelReason}
+                  />
                   {order.fulfillmentSummary.length ? (
-                    <p className="caption orderHistoryFulfill">{order.fulfillmentSummary.join(' · ')}</p>
+                    <p className="caption orderHistoryFulfill">
+                      {order.fulfillmentSummary.join(' · ')}
+                    </p>
+                  ) : null}
+                  {order.cancellable ? (
+                    <button
+                      type="button"
+                      className="orderCancelBtn"
+                      disabled={cancellingId === order.id}
+                      onClick={() => void handleCancel(order)}
+                    >
+                      {cancellingId === order.id
+                        ? 'Cancelling…'
+                        : 'Cancel order'}
+                    </button>
                   ) : null}
                 </article>
               );
@@ -192,11 +282,11 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
 
       <section className="pmCard">
         <h3 className="shopSectionTitle" style={{ marginTop: 0 }}>
-          History · collected
+          History
         </h3>
         {!historyOrders.length ? (
           <p className="caption" style={{ margin: 0 }}>
-            Collected orders will appear here.
+            Past orders will appear here.
           </p>
         ) : (
           <div className="orderHistoryList">
@@ -204,28 +294,51 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
               const placed = new Date(order.placedAt);
               const when = Number.isNaN(placed.getTime())
                 ? order.placedAt
-                : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+                : placed.toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  });
               const collectedAt = order.completedAt
                 ? new Date(order.completedAt)
                 : null;
               const collectedLabel =
                 collectedAt && !Number.isNaN(collectedAt.getTime())
-                  ? collectedAt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                  ? collectedAt.toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
                   : null;
               const linePreview = order.lines
                 .slice(0, 2)
-                .map((l) => `${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} × ${l.qty}`)
+                .map(
+                  (l) =>
+                    `${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} × ${l.qty}`,
+                )
                 .join(' · ');
-              const more = order.lines.length > 2 ? ` +${order.lines.length - 2} more` : '';
+              const more =
+                order.lines.length > 2
+                  ? ` +${order.lines.length - 2} more`
+                  : '';
               return (
                 <article key={order.id} className="orderHistoryCard">
                   <div className="orderHistoryHead">
                     <strong>{when}</strong>
-                    <span className="orderHistoryTotal">{formatRm(order.totalCents)}</span>
+                    <span className="orderHistoryTotal">
+                      {formatRm(order.totalCents)}
+                    </span>
                   </div>
-                  {collectedLabel ? (
+                  {order.status === ORDER_STATUS.CANCELLED ||
+                  order.status === ORDER_STATUS.REFUNDED ? (
+                    <p className="orderHistoryCancelled">
+                      {orderStatusLabel(order.status, order.fulfilmentType)}
+                      {order.cancelReason ? ` — ${order.cancelReason}` : ''}
+                    </p>
+                  ) : collectedLabel ? (
                     <p className="caption" style={{ margin: '4px 0 0' }}>
-                      Collected {collectedLabel}
+                      {order.fulfilmentType === 'DELIVERY'
+                        ? 'Delivered'
+                        : 'Collected'}{' '}
+                      {collectedLabel}
                     </p>
                   ) : null}
                   <p className="caption orderHistoryLines">
@@ -233,9 +346,15 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
                     {more}
                   </p>
                   {order.fulfillmentSummary.length ? (
-                    <p className="caption orderHistoryFulfill">{order.fulfillmentSummary.join(' · ')}</p>
+                    <p className="caption orderHistoryFulfill">
+                      {order.fulfillmentSummary.join(' · ')}
+                    </p>
                   ) : null}
-                  <button type="button" className="ghost orderHistoryReorder" onClick={() => handleReorder(order)}>
+                  <button
+                    type="button"
+                    className="ghost orderHistoryReorder"
+                    onClick={() => handleReorder(order)}
+                  >
                     Reorder
                   </button>
                 </article>

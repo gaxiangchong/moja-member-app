@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -19,7 +20,12 @@ import {
   ORDER_STATUS,
   OPEN_ORDER_STATUSES,
   canTransitionOrder,
+  type OrderStatus,
 } from '../orders/order-status';
+import {
+  ProductStockService,
+  todayBusinessDate,
+} from '../orders/product-stock.service';
 
 function fulfillmentLines(raw: Prisma.JsonValue | null): string[] {
   if (raw == null) return [];
@@ -76,9 +82,12 @@ function emptyBentoPackSummary(): BentoPackSummary {
 
 @Injectable()
 export class OpsQueueService {
+  private readonly logger = new Logger(OpsQueueService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly reportingSettings: ReportingSettingsService,
+    private readonly productStock: ProductStockService,
   ) {}
 
   async listOrders() {
@@ -111,7 +120,15 @@ export class OpsQueueService {
       id: o.id,
       orderNumber: o.orderNumber,
       placedAt: o.placedAt.toISOString(),
+      preparingAt: o.preparingAt?.toISOString() ?? null,
+      readyAt: o.readyAt?.toISOString() ?? null,
       completedAt: o.completedAt?.toISOString() ?? null,
+      cancelledAt: o.cancelledAt?.toISOString() ?? null,
+      cancelReason: o.cancelReason,
+      fulfilmentType: o.fulfilmentType,
+      scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
+      scheduledSlot: o.scheduledSlot,
+      deliveryFeeCents: o.deliveryFeeCents,
       totalCents: o.totalCents,
       status: o.status,
       fulfillmentSummary: fulfillmentLines(o.fulfillmentSummary),
@@ -175,10 +192,23 @@ export class OpsQueueService {
     };
   }
 
-  async completeOrder(id: string) {
+  /**
+   * Moves an order along the kitchen lifecycle
+   * (placed → preparing → ready → completed, or cancelled).
+   *
+   * The `updateMany` carries the expected current status, so two staff
+   * tapping the same button on different tablets cannot both apply the
+   * transition — the second finds zero rows updated and is told the order
+   * already moved on.
+   */
+  async setOrderStatus(
+    id: string,
+    next: OrderStatus,
+    opts: { reason?: string; staffCode?: string } = {},
+  ) {
     const existing = await this.prisma.customerOrder.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, scheduledDate: true },
     });
     if (!existing) {
       throw new NotFoundException({
@@ -186,25 +216,70 @@ export class OpsQueueService {
         message: 'Order not found',
       });
     }
-    if (!canTransitionOrder(existing.status, ORDER_STATUS.COMPLETED)) {
+    if (!canTransitionOrder(existing.status, next)) {
       throw new BadRequestException({
-        code: 'ORDER_NOT_ACTIVE',
-        message: 'Order is not in the active queue',
+        code: 'ORDER_TRANSITION_INVALID',
+        message: `Cannot move an order from ${existing.status} to ${next}.`,
       });
     }
-    return this.prisma.customerOrder.update({
+
+    const now = new Date();
+    const timestamps: Prisma.CustomerOrderUpdateManyMutationInput = {
+      status: next,
+      ...(next === ORDER_STATUS.PREPARING ? { preparingAt: now } : {}),
+      ...(next === ORDER_STATUS.READY ? { readyAt: now } : {}),
+      ...(next === ORDER_STATUS.COMPLETED ? { completedAt: now } : {}),
+      ...(next === ORDER_STATUS.CANCELLED
+        ? {
+            cancelledAt: now,
+            cancelReason: opts.reason?.trim()?.slice(0, 200) ?? null,
+          }
+        : {}),
+    };
+
+    const updated = await this.prisma.customerOrder.updateMany({
+      where: { id, status: existing.status },
+      data: timestamps,
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException({
+        code: 'ORDER_ALREADY_MOVED',
+        message:
+          'Another device already updated this order. Refresh to see it.',
+      });
+    }
+
+    // Cancelling frees the day's reserved stock for someone else to buy.
+    if (next === ORDER_STATUS.CANCELLED) {
+      const lines = await this.prisma.customerOrderLine.findMany({
+        where: { orderId: id },
+        select: { productId: true, qty: true },
+      });
+      const day =
+        existing.scheduledDate?.toISOString().slice(0, 10) ??
+        todayBusinessDate();
+      await this.productStock
+        .releaseForOrderLines(lines, day)
+        .catch((err) =>
+          this.logger.error(
+            `Stock release failed for cancelled order ${id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+    }
+
+    return this.prisma.customerOrder.findUniqueOrThrow({
       where: { id },
-      data: {
-        status: ORDER_STATUS.COMPLETED,
-        completedAt: new Date(),
-      },
       include: {
-        customer: {
-          select: { phoneE164: true, displayName: true },
-        },
+        customer: { select: { phoneE164: true, displayName: true } },
         lines: true,
       },
     });
+  }
+
+  async completeOrder(id: string) {
+    return this.setOrderStatus(id, ORDER_STATUS.COMPLETED);
   }
 
   async completeOrderByNumber(orderNumber: number) {

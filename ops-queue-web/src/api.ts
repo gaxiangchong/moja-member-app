@@ -10,11 +10,28 @@ export type QueueOrderLine = {
   imageUrl?: string | null;
 };
 
+export type OrderLifecycleStatus =
+  | 'pending_payment'
+  | 'placed'
+  | 'preparing'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
+  | 'refunded';
+
 export type QueueOrderSummary = {
   id: string;
   orderNumber: number;
   placedAt: string;
+  preparingAt?: string | null;
+  readyAt?: string | null;
   completedAt: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
+  scheduledDate?: string | null;
+  scheduledSlot?: string | null;
+  deliveryFeeCents?: number;
   totalCents: number;
   status: string;
   fulfillmentSummary: string[];
@@ -372,4 +389,25 @@ export async function registerMember(
   const data = await parseJson<OpsMemberCreateResult & { message?: string | string[] }>(res);
   assertOk(res, data as unknown as { message?: string | string[] });
   return data as OpsMemberCreateResult;
+}
+
+/** Move an order along the kitchen lifecycle. */
+export async function setQueueOrderStatus(
+  apiKey: string,
+  orderId: string,
+  status: 'preparing' | 'ready' | 'completed' | 'cancelled',
+  opts: { reason?: string; staffCode?: string } = {},
+  baseUrl: string = defaultBase,
+): Promise<{ id: string; orderNumber: number; status: string }> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/queue/orders/${encodeURIComponent(orderId)}/status`,
+    {
+      method: 'PATCH',
+      headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, ...opts }),
+    },
+  );
+  const data = await parseJson<{ id: string; orderNumber: number; status: string } & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data;
 }
