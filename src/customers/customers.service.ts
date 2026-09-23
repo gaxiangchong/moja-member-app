@@ -21,6 +21,7 @@ import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
+import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
   ProductStockService,
@@ -141,6 +142,7 @@ export class CustomersService {
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
     private readonly productStock: ProductStockService,
+    private readonly pickupRules: PickupRulesService,
   ) {}
 
   /**
@@ -917,6 +919,17 @@ export class CustomersService {
         : (dto.scheduledDate ?? todayBusinessDate());
 
     const order = await this.prisma.$transaction(async (tx) => {
+      await this.pickupRules.assertCanPlace(
+        {
+          fulfilmentType,
+          scheduledDate:
+            fulfilmentType === 'PICKUP' ? (dto.scheduledDate ?? null) : null,
+          scheduledSlot:
+            fulfilmentType === 'PICKUP' ? (dto.scheduledSlot ?? null) : null,
+        },
+        tx,
+      );
+
       const created = await tx.customerOrder.create({
         data: {
           customerId,

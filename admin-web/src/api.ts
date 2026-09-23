@@ -1117,6 +1117,43 @@ export async function updateRewardCatalogEntry(id: string, input: RewardCatalogI
   return parseCatalogResponse<RewardCatalogEntry>(res);
 }
 
+export type PickupSlotRule = {
+  start: string;
+  label: string;
+  weekdays: number[];
+  leadMinutes: number;
+  cutoffTime: string | null;
+  capacity: number | null;
+};
+
+export type PickupRules = {
+  timeZone: string;
+  openTime: string;
+  closeTime: string;
+  closedWeekdays: number[];
+  closedDates: string[];
+  maxAdvanceDays: number;
+  slots: PickupSlotRule[];
+};
+
+export async function fetchPickupRules(): Promise<PickupRules> {
+  const res = await authorizedFetch('/admin/shop/pickup-rules');
+  const data = await parseJson<PickupRules & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+export async function updatePickupRules(rules: PickupRules): Promise<PickupRules> {
+  const res = await authorizedFetch('/admin/shop/pickup-rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rules),
+  });
+  const data = await parseJson<PickupRules & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
 export async function deleteRewardCatalogEntry(id: string): Promise<void> {
   const res = await authorizedFetch(`/admin/rewards-workflow/reward-catalog/${encodeURIComponent(id)}`, {
     method: 'DELETE',

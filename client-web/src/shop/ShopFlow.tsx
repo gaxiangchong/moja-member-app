@@ -25,8 +25,10 @@ import {
   completeDemoShopOrder,
   createXenditCardTokenSession,
   createShopOrderCheckout,
+  fetchPickupSlots,
   fetchShopAvailability,
   fetchShopCatalogProducts,
+  type PickupSlotDay,
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
   isShopProductSoldOut,
@@ -217,6 +219,7 @@ export function ShopFlow({
       shortfall: boolean;
     }[]
   >([]);
+  const [pickupDay, setPickupDay] = useState<PickupSlotDay | null>(null);
   const appliedVoucher = useShopStore((s) => s.appliedVoucher);
   const appliedReward = useShopStore((s) => s.appliedReward);
   const applyVoucher = useShopStore((s) => s.applyVoucher);
@@ -245,6 +248,31 @@ export function ShopFlow({
   useEffect(() => {
     if (!appliedVoucher) setVoucherCodeInput('');
   }, [appliedVoucher]);
+
+  // Lead time, cut-offs, capacity, and closed days for the chosen collection day.
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    const date =
+      fulfillmentMethod === 'pickup' && pickupDate ? pickupDate : undefined;
+    let alive = true;
+    void fetchPickupSlots(date)
+      .then((day) => {
+        if (alive) setPickupDay(day);
+      })
+      .catch(() => {
+        if (alive) setPickupDay(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [screen, fulfillmentMethod, pickupDate]);
+
+  useEffect(() => {
+    if (!pickupDay || !pickupTime) return;
+    if (fulfillmentMethod !== 'pickup' || pickupDay.date !== pickupDate) return;
+    const chosen = pickupDay.slots.find((slot) => slot.start === pickupTime);
+    if (!chosen?.available) setPickupTime(null);
+  }, [pickupDay, pickupTime, pickupDate, fulfillmentMethod, setPickupTime]);
 
   // Availability is per collection day, so re-check whenever the member picks
   // a different date or changes the cart.
@@ -670,6 +698,32 @@ export function ShopFlow({
       setCheckoutErrors(errors);
       return;
     }
+    if (
+      draft.fulfillmentMethod === 'in_store' &&
+      pickupDay &&
+      !pickupDay.storeOpen &&
+      pickupDay.storeClosedReason
+    ) {
+      setCheckoutErrors([pickupDay.storeClosedReason]);
+      return;
+    }
+    if (
+      draft.fulfillmentMethod === 'pickup' &&
+      pickupDay &&
+      draft.pickupDate === pickupDay.date
+    ) {
+      if (pickupDay.closed && pickupDay.closedReason) {
+        setCheckoutErrors([pickupDay.closedReason]);
+        return;
+      }
+      const chosen = pickupDay.slots.find(
+        (slot) => slot.start === draft.pickupTime,
+      );
+      if (chosen && !chosen.available && chosen.reason) {
+        setCheckoutErrors([chosen.reason]);
+        return;
+      }
+    }
     if (paymentMethodMode === 'channel' && !selectedChannelCode.trim()) {
       setCheckoutErrors(['Select a payment method.']);
       return;
@@ -1033,8 +1087,9 @@ export function ShopFlow({
             </div>
             {fulfillmentMethod === 'in_store' ? (
               <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-                We will prepare this order right away at the counter. Show your
-                order QR when you collect.
+                {pickupDay && !pickupDay.storeOpen && pickupDay.storeClosedReason
+                  ? pickupDay.storeClosedReason
+                  : 'We will prepare this order right away at the counter. Show your order QR when you collect.'}
               </p>
             ) : null}
             {fulfillmentMethod === 'pickup' ? (
@@ -1043,7 +1098,8 @@ export function ShopFlow({
                 <input
                   id="pickupDate"
                   type="date"
-                  min={todayIsoDate()}
+                  min={pickupDay?.today ?? todayIsoDate()}
+                  max={pickupDay?.maxDate}
                   value={pickupDate ?? ''}
                   onChange={(e) => setPickupDate(e.target.value || null)}
                 />
@@ -1052,14 +1108,52 @@ export function ShopFlow({
                   id="pickupTime"
                   value={pickupTime ?? ''}
                   onChange={(e) => setPickupTime(e.target.value || null)}
+                  disabled={Boolean(pickupDay?.closed && pickupDate === pickupDay.date)}
                 >
                   <option value="">Select time</option>
-                  {PICKUP_TIME_SLOTS.map((slot) => (
-                    <option key={slot.value} value={slot.value}>
-                      {slot.label}
+                  {(pickupDay && pickupDate === pickupDay.date
+                    ? pickupDay.slots
+                    : PICKUP_TIME_SLOTS.map((slot) => ({
+                        start: slot.value,
+                        label: slot.label,
+                        available: true,
+                        reason: null as string | null,
+                        remaining: null as number | null,
+                      }))
+                  ).map((slot) => (
+                    <option
+                      key={slot.start}
+                      value={slot.start}
+                      disabled={!slot.available}
+                    >
+                      {slot.available
+                        ? slot.remaining == null
+                          ? slot.label
+                          : `${slot.label} · ${slot.remaining} left`
+                        : `${slot.label} · unavailable`}
                     </option>
                   ))}
                 </select>
+                {pickupDay && pickupDate === pickupDay.date && pickupDay.closedReason ? (
+                  <p className="pickupAvailShort">{pickupDay.closedReason}</p>
+                ) : null}
+                {pickupDay &&
+                pickupDate === pickupDay.date &&
+                !pickupDay.closed &&
+                pickupDay.leadTimeMessage ? (
+                  <p className="caption" style={{ margin: 0 }}>
+                    {pickupDay.leadTimeMessage}
+                  </p>
+                ) : null}
+                {pickupDay && pickupDate === pickupDay.date
+                  ? pickupDay.slots
+                      .filter((slot) => !slot.available && slot.reason)
+                      .map((slot) => (
+                        <p key={slot.start} className="pickupAvailShort">
+                          {slot.label}: {slot.reason}
+                        </p>
+                      ))
+                  : null}
               </div>
             ) : null}
             {dateAvailability.length > 0 ? (

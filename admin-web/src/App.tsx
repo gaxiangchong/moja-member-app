@@ -23,6 +23,7 @@ import { BentoVouchers } from './views/BentoVouchers';
 import { GiftRewards } from './views/GiftRewards';
 import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
+import { PickupRules } from './views/PickupRules';
 
 function identityLabel(identity: AdminIdentity): string {
   return identity.kind === 'user' ? identity.displayName || identity.email : identity.actorLabel;
@@ -251,6 +252,8 @@ function renderView(viewId: string) {
       return <PopularItems />;
     case 'sales-home-ads':
       return <HomeAds />;
+    case 'sales-pickup-rules':
+      return <PickupRules />;
     default:
       return null;
   }

@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { PickupRulesService } from './pickup-rules.service';
 import {
   ProductStockService,
   todayBusinessDate,
@@ -21,6 +22,7 @@ export class ShopAvailabilityController {
   constructor(
     private readonly shopCatalog: ShopCatalogService,
     private readonly productStock: ProductStockService,
+    private readonly pickupRules: PickupRulesService,
   ) {}
 
   /**
@@ -43,5 +45,14 @@ export class ShopAvailabilityController {
         sellableQty: map.get(p.id) ?? null,
       })),
     };
+  }
+
+  /**
+   * Which pickup windows are still open for a day: lead time, cut-off,
+   * capacity, store hours, and closed days. `date` defaults to today.
+   */
+  @Get('pickup-slots')
+  pickupSlots(@Query() query: AvailabilityQueryDto) {
+    return this.pickupRules.quoteDay(query.date ?? todayBusinessDate());
   }
 }

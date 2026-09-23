@@ -30,6 +30,7 @@ export const P = {
   IMPORT_PREVIEW: 'import:preview',
   EXPORT_RUN: 'export:run',
   MASTER_MANAGE: 'master:manage',
+  SHOP_MANAGE: 'shop:manage',
   REPORT_VIEW: 'report:view',
   EMPLOYEE_READ: 'employee:read',
   EMPLOYEE_MANAGE: 'employee:manage',
@@ -126,6 +127,7 @@ export const ROLE_PERMISSIONS: Record<AdminRoleCode, Set<string>> = {
     P.REPORT_VIEW,
     P.EMPLOYEE_READ,
     P.EMPLOYEE_MANAGE,
+    P.SHOP_MANAGE,
   ),
 };
 

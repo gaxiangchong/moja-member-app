@@ -1025,6 +1025,41 @@ export type ShopAvailability = {
 };
 
 /** Sellable quantity per product for one collection day. */
+export type PickupSlotOffer = {
+  start: string;
+  label: string;
+  available: boolean;
+  reason: string | null;
+  remaining: number | null;
+};
+
+export type PickupSlotDay = {
+  date: string;
+  today: string;
+  maxDate: string;
+  openTime: string;
+  closeTime: string;
+  closed: boolean;
+  closedReason: string | null;
+  storeOpen: boolean;
+  storeClosedReason: string | null;
+  leadTimeMessage: string | null;
+  slots: PickupSlotOffer[];
+};
+
+/** Open pickup windows for one day, including why a slot is closed. */
+export async function fetchPickupSlots(date?: string): Promise<PickupSlotDay> {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  const res = await fetch(`${base}/shop/pickup-slots${qs}`);
+  const data = await parseJson<PickupSlotDay & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to load pickup times',
+    );
+  }
+  return data;
+}
+
 export async function fetchShopAvailability(date?: string): Promise<ShopAvailability> {
   const qs = date ? `?date=${encodeURIComponent(date)}` : '';
   const res = await fetch(`${base}/shop/catalog/availability${qs}`);
