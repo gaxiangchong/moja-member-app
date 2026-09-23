@@ -83,14 +83,60 @@ The Luckin/Zus loop: order & pay in app → kitchen prepares → customer notifi
 
 Design so the dispatcher is pluggable (`DeliveryProvider` interface: `quote`, `create`, `cancel`, `webhook`) — Lalamove first, GrabExpress / own rider later.
 
-1. **Address capture** at checkout (saved addresses on `Customer`, Google Places or free-text + map pin), delivery date/slot, phone for rider.
-2. **Quote before pay**: `POST /shop/delivery/quote` → Lalamove *Get Quotation* (MOTORCYCLE / CAR by cake size) → show fee, add to order total, store `quotationId` (valid ~5 min; re-quote if expired).
-3. **Dispatch after payment & readiness**: order goes `ready` → ops presses *Call rider* (or auto at slot − X min) → Lalamove *Place Order* → store `deliveryOrderId`, share link.
-4. **Webhook** (`ORDER_STATUS_CHANGED`, `DRIVER_ASSIGNED`, `ORDER_AMOUNT_CHANGED`) → update `Delivery` row → member timeline (assigned / picked up / delivered) + WhatsApp on *out for delivery* and *delivered*.
-5. Delivery zones & fee policy in `AppSetting` (max radius, flat vs pass-through, free above RM X). Failure path: rider not found → ops manual re-call or switch to pickup + partial refund.
-6. Sandbox account, then production keys. Lalamove charges the business wallet — add a low-balance alert.
+#### Pricing model (decided 23 Sep 2026)
 
-**Acceptance:** quote matches Lalamove console; order tracked to delivered; refund path tested; finance ledger shows delivery fee as its own line.
+**The customer is charged at checkout and pays nothing to the driver.** Lalamove
+API jobs bill our own business wallet — the rider is not a payment terminal, so
+door-side cash would mean no record, no reconciliation, and change disputes.
+
+**The price the customer sees is our own zone table, not the live Lalamove
+quote.** The deciding constraint is timing: the cake is not baked at checkout,
+so the rider is only booked when the order turns `ready` — minutes to days
+later. A Lalamove quotation expires in minutes, so *any* quote shown at
+checkout is stale by dispatch, and the real cost can be higher (peak, weather,
+surge). Charging our own banded fee gives a stable customer-facing price, no
+expiry problem, insulation from surge, and a "free delivery above RM X"
+marketing lever we control.
+
+The Lalamove quotation API is still called at checkout, but as an **internal
+serviceability + cost check**, not as the price: it confirms the address is
+deliverable and records the estimated cost on the order. At dispatch we
+re-quote and book for real. When actual cost exceeds the charged fee by more
+than a configured threshold, log it and surface it in admin — after a month of
+real data the table gets adjusted from actuals rather than guesses.
+
+Fee table lives in `AppSetting` (`delivery.zones`), editable in admin:
+
+| Band | Fee | Notes |
+| --- | --- | --- |
+| 0–5 km | RM 8 | placeholder — set from real quotes |
+| 5–10 km | RM 12 | |
+| 10–15 km | RM 18 | |
+| > 15 km | unavailable | outside service radius |
+
+- **Vehicle tier branches on cart contents, not just distance.** Whole cakes
+  need a car/MPV (a motorcycle destroys them) at roughly double the
+  motorcycle fee; slices, cookies and drinks can go by motorcycle. The table
+  therefore carries a per-tier fee, and the cart picks the tier from the
+  strictest product in it.
+- Free delivery above a configurable order subtotal.
+
+#### Build steps
+
+1. **Address capture** at checkout (saved addresses on `Customer`, Google Places or free-text + map pin), delivery date/slot, phone for rider.
+2. **Fee at checkout**: `POST /shop/delivery/quote` → resolve distance band + vehicle tier → return **our** fee; in the background call Lalamove *Get Quotation* to validate serviceability and store `estimatedCostCents`. Reject out-of-radius addresses here.
+3. **`deliveryFeeCents` becomes a first-class order field.** `validateMemberOrderTotals` currently enforces `total = lines − discount` (`customers.service.ts:798`) and must become `total = lines − discount + deliveryFee`. **Loyalty points are earned on goods only, never on the delivery fee** — otherwise we pay rewards on money that passes straight to Lalamove. The fee is a separate line in finance reports and is *not* pushed to SalesPlay as a product.
+4. **Dispatch after payment & readiness**: order goes `ready` → ops presses *Call rider* (or auto at slot − X min) → re-quote → Lalamove *Place Order* → store `deliveryOrderId`, share link. Never dispatch before `ready`: an early rider incurs waiting fees and may cancel.
+5. **Webhook** (`ORDER_STATUS_CHANGED`, `DRIVER_ASSIGNED`, `ORDER_AMOUNT_CHANGED`) → update `Delivery` row → member timeline (assigned / picked up / delivered) + WhatsApp on *out for delivery* and *delivered*. `ORDER_AMOUNT_CHANGED` feeds the cost-variance log.
+6. **Failure path**: rider not found / delivery failed → ops re-dispatch, or switch to pickup with a **partial refund of just the delivery fee** (Xendit partial refund). Design this before launch, not after the first bad Saturday.
+7. **Wallet**: Lalamove is prepaid — a drained wallet fails dispatch silently. Add a balance check to the readiness report and an admin alert.
+8. Sandbox account first, then production keys, behind `FEATURE_DELIVERY`.
+
+**Open questions for Lalamove onboarding** (do not design around guesses):
+exact quotation validity window, and whether the account gets scheduled-order
+support in Malaysia or on-demand only.
+
+**Acceptance:** fee table drives the charged price; Lalamove quote logged as cost; order tracked to delivered; partial-refund path tested; finance ledger shows delivery fee as its own line and points exclude it.
 
 ### Phase 3 — SalesPlay stock sync (13 Oct → 24 Oct)  ◐ small, high value
 
