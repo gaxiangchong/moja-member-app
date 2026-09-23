@@ -1071,9 +1071,8 @@ export class CustomersService {
         pointsPerRm,
         balanceBefore,
       });
-      let balanceAfter = balanceBefore;
       if (earned.points > 0) {
-        const result = await this.loyalty.appendLedgerEntry(
+        const { balanceAfter } = await this.loyalty.appendLedgerEntry(
           {
             customerId: order.customerId,
             deltaPoints: earned.points,
@@ -1083,15 +1082,10 @@ export class CustomersService {
           },
           tx,
         );
-        balanceAfter = result.balanceAfter;
         this.logger.log(
           `Awarded ${earned.points} loyalty points (${earned.tier} ${earned.multiplier}×) for online order ${order.id} (customer=${order.customerId}, balanceAfter=${balanceAfter}).`,
         );
       }
-      await tx.customer.update({
-        where: { id: order.customerId },
-        data: { memberTier: tierForPoints(balanceAfter) },
-      });
 
       referrerRewardedId = await this.maybeRewardReferrerOnFirstOrder(
         tx,

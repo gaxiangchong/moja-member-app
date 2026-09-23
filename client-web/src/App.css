@@ -1919,6 +1919,32 @@
   font-size: 11px;
 }
 
+.homeTierTag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.homeTierTag--silver {
+  background: linear-gradient(135deg, #e8ecf2 0%, #c5ccd6 100%);
+  color: #1e293b;
+}
+
+.homeTierTag--gold {
+  background: linear-gradient(135deg, #fff7d6 0%, #f5d78a 60%, #d4a012 100%);
+  color: #422006;
+}
+
+.homeTierTag--platinum {
+  background: linear-gradient(135deg, #94a3b8 0%, #334155 100%);
+  color: #f8fafc;
+}
+
 .homeStatRow .homeSummaryValue {
   font-size: 14px;
 }

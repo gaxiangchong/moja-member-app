@@ -41,6 +41,7 @@ import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { tierForPoints, tierPointsRange } from '../loyalty/member-tier';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentsSettingsService } from '../payments/payments-settings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -325,7 +326,14 @@ export class AdminService {
     }
 
     if (q.status) parts.push({ status: q.status });
-    if (q.memberTier) parts.push({ memberTier: q.memberTier });
+    if (q.memberTier) {
+      const range = tierPointsRange(q.memberTier.trim().toLowerCase());
+      parts.push(
+        range
+          ? { wallet: { pointsCached: range } }
+          : { memberTier: q.memberTier },
+      );
+    }
     if (q.signupSource) parts.push({ signupSource: q.signupSource });
 
     if (q.tag?.trim()) {
@@ -411,7 +419,7 @@ export class AdminService {
         gender: c.gender,
         preferredStore: c.preferredStore,
         signupSource: c.signupSource,
-        memberTier: c.memberTier,
+        memberTier: tierForPoints(c.wallet?.pointsCached ?? 0),
         marketingConsent: c.marketingConsent,
         tags: c.tags,
         lastLoginAt: c.lastLoginAt,
@@ -475,7 +483,7 @@ export class AdminService {
       name: c.displayName ?? '',
       email: c.email ?? '',
       status: c.status,
-      member_tier: c.memberTier,
+      member_tier: tierForPoints(c.wallet?.pointsCached ?? 0),
       signup_source: c.signupSource,
       marketing_consent: c.marketingConsent ? 'yes' : 'no',
       points_balance: c.wallet?.pointsCached ?? 0,
@@ -737,7 +745,6 @@ export class AdminService {
         gender: dto.gender ?? undefined,
         preferredStore: dto.preferredStore ?? undefined,
         signupSource: dto.signupSource ?? undefined,
-        memberTier: dto.memberTier ?? undefined,
         marketingConsent: dto.marketingConsent ?? undefined,
         notes: dto.notes ?? undefined,
         tags: dto.tags !== undefined ? { set: dto.tags } : undefined,

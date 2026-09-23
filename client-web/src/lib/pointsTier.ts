@@ -5,6 +5,8 @@
  */
 export const POINT_TIER_THRESHOLDS = [0, 1000, 2000] as const;
 
+export const POINT_TIER_KEYS = ['silver', 'gold', 'platinum'] as const;
+
 export const POINT_TIER_LABELS = ['Silver', 'Gold', 'Platinum'] as const;
 
 export const POINT_TIER_EARN = ['1×', '1.5×', '2×'] as const;

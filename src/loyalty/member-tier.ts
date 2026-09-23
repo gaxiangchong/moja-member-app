@@ -31,6 +31,16 @@ export function tierPointsMultiplier(tier: MemberTierName): number {
   return TIER_POINTS_MULTIPLIER[tier];
 }
 
+/** Points-balance bounds for a tier name, or null for an unknown name. */
+export function tierPointsRange(
+  tier: string,
+): { gte: number; lt?: number } | null {
+  if (tier === 'silver') return { gte: 0, lt: GOLD_POINTS };
+  if (tier === 'gold') return { gte: GOLD_POINTS, lt: PLATINUM_POINTS };
+  if (tier === 'platinum') return { gte: PLATINUM_POINTS };
+  return null;
+}
+
 /**
  * Points for a purchase. `amountRm` is already floored to whole ringgit,
  * matching the base earn rule (RM 45.90 @ 1 pt/RM = 45, then × tier).

@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
+import { purchasePoints } from '../loyalty/member-tier';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -292,25 +292,15 @@ export class SalesplayWebhookService {
       pointsPerRm: this.pointsPerUnit(),
       balanceBefore,
     });
-    if (earned.points <= 0) {
-      await this.prisma.customer.update({
-        where: { id: customerId },
-        data: { memberTier: tierForPoints(balanceBefore) },
-      });
-      return;
-    }
+    if (earned.points <= 0) return;
 
-    const { balanceAfter } = await this.loyalty.appendLedgerEntry({
+    await this.loyalty.appendLedgerEntry({
       customerId,
       deltaPoints: earned.points,
       reason: 'salesplay_purchase',
       referenceType: 'pos_receipt',
       // pos_receipt id is a UUID, matching the ledger's referenceId column type.
       referenceId: receiptId,
-    });
-    await this.prisma.customer.update({
-      where: { id: customerId },
-      data: { memberTier: tierForPoints(balanceAfter) },
     });
 
     await this.audit.log({

@@ -2,7 +2,17 @@ import {
   purchasePoints,
   tierForPoints,
   tierPointsMultiplier,
+  tierPointsRange,
 } from './member-tier';
+
+describe('tierPointsRange', () => {
+  it('maps each tier to its points band', () => {
+    expect(tierPointsRange('silver')).toEqual({ gte: 0, lt: 1000 });
+    expect(tierPointsRange('gold')).toEqual({ gte: 1000, lt: 2000 });
+    expect(tierPointsRange('platinum')).toEqual({ gte: 2000 });
+    expect(tierPointsRange('vip')).toBeNull();
+  });
+});
 
 describe('tierForPoints', () => {
   it('keeps 500 and below on silver, and anyone under 1,000', () => {

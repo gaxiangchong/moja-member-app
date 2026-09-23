@@ -16,6 +16,16 @@ function formatRm(cents: number | undefined): string {
   return `RM ${(cents / 100).toFixed(2)}`;
 }
 
+const TIER_LABEL: Record<string, string> = {
+  silver: 'Silver · earns 1× points',
+  gold: 'Gold · earns 1.5× points',
+  platinum: 'Platinum · earns 2× points',
+};
+
+function memberTierLabel(tier: string): string {
+  return TIER_LABEL[tier.toLowerCase()] ?? tier;
+}
+
 /** What the cashier should tell the customer, per account state. */
 function nextStepAdvice(
   step: MemberNextStep,
@@ -337,7 +347,7 @@ function MemberResultCard({
         </div>
         <div>
           <dt>Tier</dt>
-          <dd>{member.memberTier}</dd>
+          <dd>{memberTierLabel(member.memberTier)}</dd>
         </div>
         <div>
           <dt>Email</dt>

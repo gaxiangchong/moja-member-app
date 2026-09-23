@@ -1571,7 +1571,12 @@ export class AdminDashboardController {
               </span>
               <span>
                 <label for="customerTierFilter">Tier</label>
-                <input type="text" id="customerTierFilter" placeholder="e.g. standard" style="width:120px" />
+                <select id="customerTierFilter">
+                  <option value="">All</option>
+                  <option value="silver">Silver (under 1,000 pts)</option>
+                  <option value="gold">Gold (1,000+ pts)</option>
+                  <option value="platinum">Platinum (2,000+ pts)</option>
+                </select>
               </span>
               <span>
                 <label for="customerSourceFilter">Source</label>
@@ -2367,7 +2372,12 @@ export class AdminDashboardController {
                   </div>
                   <div class="vc-field">
                     <label for="mailTier">Member tier</label>
-                    <input type="text" id="mailTier" placeholder="all tiers (e.g. gold)" />
+                    <select id="mailTier">
+                      <option value="">All tiers</option>
+                      <option value="silver">Silver</option>
+                      <option value="gold">Gold</option>
+                      <option value="platinum">Platinum</option>
+                    </select>
                   </div>
                   <div class="vc-field" id="mailBirthdayDaysWrap" style="display:none">
                     <label for="mailBirthdayDays">Birthday within (days)</label>
@@ -3960,7 +3970,7 @@ export class AdminDashboardController {
         <div class="form-row-2">
           <div class="form-section">
             <label for="emMemberTier">Member tier</label>
-            <input type="text" id="emMemberTier" maxlength="64" />
+            <input type="text" id="emMemberTier" readonly title="Set automatically from the points balance" />
           </div>
           <div class="form-section">
             <label for="emSignupSource">Signup source</label>
@@ -4183,6 +4193,8 @@ export class AdminDashboardController {
     let saChartMetric = 'gmv';
 
     const fmt = (value) => value === null || value === undefined || value === '' ? '-' : value;
+    const TIER_LABELS = { silver: 'Silver · 1×', gold: 'Gold · 1.5×', platinum: 'Platinum · 2×' };
+    const tierFmt = (tier) => TIER_LABELS[String(tier || '').toLowerCase()] || fmt(tier);
     const moneyFromCents = (cents) => {
       const n = Number(cents);
       if (!Number.isFinite(n)) return '-';
@@ -5031,7 +5043,7 @@ export class AdminDashboardController {
           } else {
             document.getElementById('emBirthday').value = '';
           }
-          document.getElementById('emMemberTier').value = c.memberTier || '';
+          document.getElementById('emMemberTier').value = tierFmt(c.memberTier);
           document.getElementById('emSignupSource').value = c.signupSource || '';
           document.getElementById('emGender').value = c.gender || '';
           document.getElementById('emPreferredStore').value = c.preferredStore || '';
@@ -5099,7 +5111,6 @@ export class AdminDashboardController {
         gender: document.getElementById('emGender').value.trim(),
         preferredStore: document.getElementById('emPreferredStore').value.trim(),
         signupSource: document.getElementById('emSignupSource').value.trim(),
-        memberTier: document.getElementById('emMemberTier').value.trim(),
         marketingConsent: document.getElementById('emMarketingConsent').checked,
         notes: document.getElementById('emNotes').value,
         tags,
@@ -5263,7 +5274,7 @@ export class AdminDashboardController {
         '</td><td>' +
         fmt(c.email) +
         '</td><td>' +
-        fmt(c.memberTier) +
+        tierFmt(c.memberTier) +
         '</td><td>' +
         fmt(c.signupSource) +
         '</td><td>' +
@@ -5778,7 +5789,7 @@ export class AdminDashboardController {
       document.getElementById('cpvTotalCount').textContent = fmt(data.summary?.uniquePriorityAudience);
 
       const rows = (data.guests || []).map((g) =>
-        '<tr><td>' + fmt(g.phoneE164) + '</td><td>' + fmt(g.displayName) + '</td><td>' + fmt(g.memberTier) + '</td><td>' +
+        '<tr><td>' + fmt(g.phoneE164) + '</td><td>' + fmt(g.displayName) + '</td><td>' + tierFmt(g.memberTier) + '</td><td>' +
         (g.isBirthdayToday ? statusPill('YES') : statusPill('NO')) + '</td><td>' +
         (g.isNotReturning ? statusPill('YES') : statusPill('NO')) + '</td><td>' + fmt(g.daysSinceLastSeen) + '</td><td>' +
         dateFmt(g.lastLoginAt) + '</td></tr>'
@@ -8750,13 +8761,13 @@ export class AdminDashboardController {
       customerPage = 1;
       loadCustomers().catch((e) => { statusPanel.textContent = e.message; });
     }
-    ['customerSortBy', 'customerSortDir', 'customerStatusFilter', 'customerPageSize'].forEach(function (id) {
+    ['customerSortBy', 'customerSortDir', 'customerStatusFilter', 'customerTierFilter', 'customerPageSize'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', reloadCustomersFromPageOne);
     });
     const customerHasVoucherEl = document.getElementById('customerHasVoucher');
     if (customerHasVoucherEl) customerHasVoucherEl.addEventListener('change', reloadCustomersFromPageOne);
-    ['customerSearch', 'customerTierFilter', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
+    ['customerSearch', 'customerSourceFilter', 'customerTagFilter'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); reloadCustomersFromPageOne(); }
