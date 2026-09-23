@@ -2172,19 +2172,23 @@ function App() {
                     />
                   </div>
                   <div className="tierTrack" aria-hidden>
-                    {POINT_TIER_THRESHOLDS.map((threshold, i) => (
+                    {POINT_TIER_LABELS.map((label, i) => (
                       <span
-                        key={threshold}
+                        key={label}
                         className={`tierTrackStop${tierProgress.activeTierIndex === i ? ' active' : ''}`}
                       >
-                        {POINT_TIER_LABELS[i]} · {threshold.toLocaleString()}
+                        {label}
+                        {POINT_TIER_THRESHOLDS[i] > 0
+                          ? ` · ${POINT_TIER_THRESHOLDS[i].toLocaleString()}`
+                          : ''}
                       </span>
                     ))}
                   </div>
                   <p className="accountTierHint">
+                    {tierProgress.earnLabel}
                     {pointsToNext > 0 && tierProgress.nextTierLabel
-                      ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
-                      : 'You have reached the top tier'}
+                      ? ` · ${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                      : ' · Top tier'}
                   </p>
                 </Card>
 
