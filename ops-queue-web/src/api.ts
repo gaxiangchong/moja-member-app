@@ -280,3 +280,96 @@ export async function collectBentoPickup(
   assertOk(res, data);
   return data as { pickupCode: string; deliveryDate: string; collectedCount: number; status: string };
 }
+
+// ---------------------------------------------------------------------------
+// Member desk (#/member): look up a member by phone, register a walk-in.
+// ---------------------------------------------------------------------------
+
+/** What the member has to do before they can sign in on their own phone. */
+export type MemberNextStep =
+  | 'activate_in_app'
+  | 'recover_via_otp'
+  | 'needs_email'
+  | 'ready';
+
+export type OpsMemberProfile = {
+  id: string;
+  phoneE164?: string;
+  displayName: string | null;
+  email: string | null;
+  birthday?: string | null;
+  gender?: string | null;
+  address?: string | null;
+  status: string;
+  memberTier: string;
+  marketingConsent: boolean;
+  tags?: string[];
+  notes?: string | null;
+  preferredStore?: string | null;
+  referralCode: string | null;
+  kitchenPickupCode: string | null;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  activated: boolean;
+  canSelfRecover: boolean;
+  pointsBalance?: number;
+  walletBalanceCents?: number;
+  activeVouchers?: number;
+  orderCount?: number;
+  lifetimeSpendCents?: number;
+  lastOrderAt?: string | null;
+};
+
+export type OpsMemberLookupResult =
+  | { found: false; phoneE164: string }
+  | {
+      found: true;
+      phoneE164: string;
+      nextStep: MemberNextStep;
+      member: OpsMemberProfile;
+    };
+
+export type OpsMemberCreateResult = {
+  phoneE164: string;
+  nextStep: MemberNextStep;
+  member: OpsMemberProfile;
+  alreadyExisted: boolean;
+};
+
+export async function lookupMember(
+  apiKey: string,
+  phone: string,
+  staffCode: string | undefined,
+  baseUrl: string = defaultBase,
+): Promise<OpsMemberLookupResult> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members/lookup`, {
+    method: 'POST',
+    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, staffCode: staffCode || undefined }),
+  });
+  const data = await parseJson<OpsMemberLookupResult & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as OpsMemberLookupResult;
+}
+
+export async function registerMember(
+  apiKey: string,
+  input: {
+    phone: string;
+    displayName?: string;
+    email?: string;
+    birthday?: string;
+    marketingConsent?: boolean;
+    staffCode?: string;
+  },
+  baseUrl: string = defaultBase,
+): Promise<OpsMemberCreateResult> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members`, {
+    method: 'POST',
+    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await parseJson<OpsMemberCreateResult & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as OpsMemberCreateResult;
+}

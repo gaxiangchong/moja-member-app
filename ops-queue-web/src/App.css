@@ -832,3 +832,282 @@ body {
 .scanCameraGate .btnPrimary {
   width: 100%;
 }
+
+/* ---------------------------------------------------------------------------
+   Member desk (#/member) — counter lookup + walk-in registration
+   --------------------------------------------------------------------------- */
+
+.memberDesk {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.memberDeskHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.memberDeskHeader h1 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--text);
+}
+
+.memberStaffCode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.memberStaffCode input {
+  width: 90px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  text-transform: uppercase;
+}
+
+.memberLookupForm {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.memberLookupForm label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.memberLookupRow {
+  display: flex;
+  gap: 8px;
+}
+
+.memberLookupRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  /* Large: the cashier reads this back to the customer. */
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
+.memberLookupRow button {
+  padding: 0 22px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 88px;
+}
+
+.memberLookupRow button:disabled {
+  opacity: 0.5;
+}
+
+.memberHint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.memberError {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.memberCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memberCard h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--text);
+}
+
+.memberCard label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: -4px;
+}
+
+.memberCard input[type='text'],
+.memberCard input:not([type]),
+.memberCard input[type='email'] {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.memberNormalized {
+  margin: 0;
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.memberCreated {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.memberConsent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  margin: 4px 0;
+}
+
+.memberConsent input {
+  width: 20px;
+  height: 20px;
+}
+
+.memberPrimary {
+  margin-top: 6px;
+  padding: 15px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  width: 100%;
+}
+
+.memberPrimary:disabled {
+  opacity: 0.5;
+}
+
+.memberStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px 8px;
+}
+
+.memberStats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.memberStatValue {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  word-break: break-word;
+}
+
+.memberStatLabel {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.memberAdvice {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.memberAdvice p {
+  margin: 4px 0 0;
+}
+
+.memberAdvice--ok {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #14532d;
+}
+
+.memberAdvice--action {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+}
+
+.memberDetails {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.memberDetails > div {
+  min-width: 0;
+}
+
+.memberDetails dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.memberDetails dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+@media (max-width: 380px) {
+  .memberStats {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 12px;
+  }
+}

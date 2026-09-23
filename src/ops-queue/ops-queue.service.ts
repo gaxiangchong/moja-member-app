@@ -251,7 +251,10 @@ export class OpsQueueService {
     return customer;
   }
 
-  private async loadTodayBentoDeliveries(customerId: string, deliveryDateIso: string) {
+  private async loadTodayBentoDeliveries(
+    customerId: string,
+    deliveryDateIso: string,
+  ) {
     const deliveryDate = parseDateOnly(deliveryDateIso);
     return this.prisma.bentoDeliveryDay.findMany({
       where: {
@@ -329,7 +332,10 @@ export class OpsQueueService {
     const code = this.resolveKitchenPickupCode(rawCode);
     const customer = await this.findCustomerByKitchenPickupCode(code);
     const deliveryDate = shopCalendarYmd();
-    const deliveries = await this.loadTodayBentoDeliveries(customer.id, deliveryDate);
+    const deliveries = await this.loadTodayBentoDeliveries(
+      customer.id,
+      deliveryDate,
+    );
     const scheduled = deliveries.filter(
       (d) => d.status === BentoDeliveryStatus.SCHEDULED,
     );

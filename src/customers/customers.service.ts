@@ -336,23 +336,27 @@ export class CustomersService {
     if (existing) {
       await this.loyalty.ensureWallet(existing.id);
       await this.wallet.ensureWallet(existing.id);
-      if (normalizedEmail && !existing.email) {
-        return this.prisma.customer.update({
-          where: { id: existing.id },
-          data: { email: normalizedEmail },
-        });
-      }
+
+      // Backfill whatever this member is missing, then always return. An
+      // earlier version returned early from each branch and fell through to
+      // `customer.create` when a member was already complete — which threw a
+      // duplicate-phone error. That is exactly the shape of a counter-created
+      // member activating in the app, so it broke that whole flow.
+      const patch: Prisma.CustomerUpdateInput = {};
+      if (normalizedEmail && !existing.email) patch.email = normalizedEmail;
       if (!existing.referralCode) {
-        const code = await this.generateUniqueReferralCode();
-        return this.prisma.customer.update({
+        patch.referralCode = await this.generateUniqueReferralCode();
+      }
+      if (Object.keys(patch).length > 0) {
+        await this.prisma.customer.update({
           where: { id: existing.id },
-          data: { referralCode: code, ...(normalizedEmail ? { email: normalizedEmail } : {}) },
+          data: patch,
         });
       }
       if (!existing.kitchenPickupCode) {
         await this.ensureKitchenPickupCode(existing.id);
-        return this.findByIdOrThrow(existing.id);
       }
+      return this.findByIdOrThrow(existing.id);
     }
 
     let referredById: string | null = null;
