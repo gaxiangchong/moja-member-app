@@ -24,6 +24,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { PaymentsSettingsService } from './payments-settings.service';
 import type { XenditPaymentRequestResponse } from './xendit-api.service';
 import { XenditApiService } from './xendit-api.service';
+import { ORDER_STATUS } from '../orders/order-status';
 
 @Injectable()
 export class PaymentsService {
@@ -827,7 +828,7 @@ export class PaymentsService {
         message: 'Order not found',
       });
     }
-    if (order.status !== 'pending_payment') {
+    if (order.status !== ORDER_STATUS.PENDING_PAYMENT) {
       throw new BadRequestException({
         code: 'ORDER_NOT_PENDING',
         message: 'Order is not awaiting payment.',

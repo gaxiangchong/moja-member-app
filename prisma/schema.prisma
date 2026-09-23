@@ -536,6 +536,14 @@ model PaymentIntent {
   @@map("payment_intents")
 }
 
+/// How the customer receives the order. Replaces parsing the free-text
+/// `fulfillment_summary` strings.
+enum OrderFulfilmentType {
+  IN_STORE
+  PICKUP
+  DELIVERY
+}
+
 model CustomerOrder {
   id                      String    @id @default(uuid()) @db.Uuid
   customerId              String    @map("customer_id") @db.Uuid
@@ -543,10 +551,28 @@ model CustomerOrder {
   /// Public pickup / order number (sequential). Shown on receipts, ops queue, and member QR.
   orderNumber             Int       @unique @default(autoincrement()) @map("order_number")
   totalCents              Int       @map("total_cents")
+  /// Delivery charged to the customer, already included in `totalCents`.
+  /// Excluded from loyalty points — see `finalizeShopOrderAfterPayment`.
+  deliveryFeeCents        Int       @default(0) @map("delivery_fee_cents")
+  /// Lifecycle value from `src/orders/order-status.ts` (ORDER_STATUS).
+  /// Kept as text, not a Postgres enum, because several reports filter it
+  /// from raw SQL.
   status                  String    @default("placed") @db.VarChar(32)
+  fulfilmentType          OrderFulfilmentType @default(PICKUP) @map("fulfilment_type")
+  /// Chosen collection / delivery day (null for in-store "right now" orders).
+  scheduledDate           DateTime? @map("scheduled_date") @db.Date
+  /// Slot start in 24h HH:mm, matching the shop's published pickup windows.
+  scheduledSlot           String?   @map("scheduled_slot") @db.VarChar(5)
+  /// Human-readable lines kept for receipts and historical orders; the
+  /// structured columns above are what code should read.
   fulfillmentSummary      Json?     @map("fulfillment_summary")
   placedAt                DateTime  @default(now()) @map("placed_at")
+  preparingAt             DateTime? @map("preparing_at")
+  readyAt                 DateTime? @map("ready_at")
+  /// Set when the order reaches `completed` (collected or delivered).
   completedAt             DateTime? @map("completed_at")
+  cancelledAt             DateTime? @map("cancelled_at")
+  cancelReason            String?   @map("cancel_reason") @db.VarChar(200)
   /// SalesPlay online_orders API system_unique_id after a successful push.
   salesplaySystemUniqueId String?   @map("salesplay_system_unique_id")
   salesplaySyncedAt       DateTime? @map("salesplay_synced_at")
@@ -555,7 +581,32 @@ model CustomerOrder {
 
   @@index([customerId, placedAt])
   @@index([status, placedAt])
+  /// Kitchen queue: "open orders for today / tomorrow, by slot".
+  @@index([scheduledDate, scheduledSlot])
   @@map("customer_orders")
+}
+
+/// Kitchen-declared availability of one product on one business day
+/// (Asia/Kuala_Lumpur), replacing the single global `shop_products.available_qty`.
+///
+/// `qty` is what the kitchen says it can make/has made for that day.
+/// `reservedQty` is how much is spoken for by paid orders (and by in-flight
+/// checkouts, which release on payment timeout). Sellable = qty - reservedQty.
+/// Rows are created on demand: a product with no row for a date falls back to
+/// `shop_products.available_qty` until the kitchen sets that day explicitly.
+model ProductStockDay {
+  id           String   @id @default(uuid()) @db.Uuid
+  productId    String   @map("product_id") @db.VarChar(160)
+  /// Business date in Asia/Kuala_Lumpur, matching how POS books its days.
+  businessDate DateTime @map("business_date") @db.Date
+  qty          Int      @default(0)
+  reservedQty  Int      @default(0) @map("reserved_qty")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, businessDate])
+  @@index([businessDate])
+  @@map("product_stock_days")
 }
 
 /// UTC calendar date when back office closed books for that day (sales report).

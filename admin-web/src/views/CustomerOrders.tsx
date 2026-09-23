@@ -16,6 +16,11 @@ function statusLabel(status: string): string {
   const st = status.toLowerCase();
   if (st === 'completed') return 'Completed';
   if (st === 'placed') return 'Open';
+  if (st === 'preparing') return 'Preparing';
+  if (st === 'ready') return 'Ready';
+  if (st === 'cancelled') return 'Cancelled';
+  if (st === 'refunded') return 'Refunded';
+  if (st === 'pending_payment') return 'Awaiting payment';
   return status;
 }
 

@@ -5,6 +5,7 @@ import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
 import { useOrderHistoryStore, type PastOrder } from '../shop/store/useOrderHistoryStore';
 import { useShopStore } from '../shop/store/useShopStore';
+import { isHistoryOrderStatus, isOpenOrderStatus } from '../lib/orderStatus';
 
 function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
   return {
@@ -108,9 +109,9 @@ export function OrdersTab({ active, onGoToShop }: { active: boolean; onGoToShop:
     };
   }, [active, load]);
 
-  const activeOrders = orders.filter((o) => (o.status ?? 'placed') === 'placed');
+  const activeOrders = orders.filter((o) => isOpenOrderStatus(o.status));
   const historyOrders = orders
-    .filter((o) => o.status === 'completed')
+    .filter((o) => isHistoryOrderStatus(o.status))
     .slice()
     .sort((a, b) => {
       const ta = new Date(a.completedAt || a.placedAt).getTime();

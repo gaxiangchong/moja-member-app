@@ -14,6 +14,7 @@ import {
   UnifiedTransactionRow,
   UnifiedTransactionsResult,
 } from './finance-report.types';
+import { NON_REVENUE_ORDER_STATUSES } from '../orders/order-status';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22,7 +23,7 @@ const UUID_RE =
  * Online-shop revenue: any customer_order that is not still awaiting payment or
  * cancelled — matches getCakeSalesAnalytics so figures agree across views.
  */
-const ONLINE_PAID = Prisma.sql`o.status NOT IN ('pending_payment', 'cancelled')`;
+const ONLINE_PAID = Prisma.sql`o.status NOT IN (${Prisma.join(NON_REVENUE_ORDER_STATUSES)})`;
 /** Bento revenue: a successful bento subscription payment. */
 const BENTO_PAID = Prisma.sql`pi.purpose = 'bento_subscription' AND pi.status = 'SUCCEEDED'`;
 /**

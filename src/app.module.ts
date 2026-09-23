@@ -6,6 +6,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ReadinessModule } from './config/readiness.module';
+import { OrdersModule } from './orders/orders.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -60,6 +61,7 @@ import { MailerModule } from './mailer/mailer.module';
     BentoVoucherModule,
     MailerModule,
     ReadinessModule,
+    OrdersModule,
   ],
   controllers: [HealthController, AdminDashboardController],
 })

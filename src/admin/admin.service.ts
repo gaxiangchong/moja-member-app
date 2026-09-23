@@ -72,6 +72,11 @@ import type { UpdateVoucherPushRuleDto } from './dto/update-voucher-push-rule.dt
 import type { CreatePerksCampaignRuleDto } from './dto/create-perks-campaign-rule.dto';
 import type { UpdatePerksCampaignRuleDto } from './dto/update-perks-campaign-rule.dto';
 import { dataDir } from '../config/data-dir';
+import {
+  NON_REVENUE_ORDER_STATUSES,
+  ORDER_STATUS,
+  OPEN_ORDER_STATUSES,
+} from '../orders/order-status';
 
 function dtoHas<T extends object>(dto: T, key: keyof T): boolean {
   return Object.prototype.hasOwnProperty.call(dto, key);
@@ -2089,7 +2094,7 @@ export class AdminService {
     now: Date,
   ): Promise<SalesAnalyticsResult> {
     const trunc = bucket;
-    const paidStatusFilter = Prisma.sql`o.status NOT IN ('pending_payment', 'cancelled')`;
+    const paidStatusFilter = Prisma.sql`o.status NOT IN (${Prisma.join(NON_REVENUE_ORDER_STATUSES)})`;
 
     const bucketSeries = () => {
       if (trunc === 'week') {
@@ -2183,7 +2188,7 @@ export class AdminService {
       `,
       this.prisma.customerOrder.count({
         where: {
-          status: { notIn: ['pending_payment', 'cancelled', 'completed'] },
+          status: { in: OPEN_ORDER_STATUSES },
           placedAt: { gte: from, lt: to },
         },
       }),
@@ -2885,8 +2890,8 @@ export class AdminService {
     const take = Math.min(Math.max(query.limit ?? 100, 1), 200);
     const where: Prisma.CustomerOrderWhereInput = {};
     const st = query.status ?? 'all';
-    if (st === 'placed') where.status = 'placed';
-    else if (st === 'completed') where.status = 'completed';
+    if (st === 'placed') where.status = { in: OPEN_ORDER_STATUSES };
+    else if (st === 'completed') where.status = ORDER_STATUS.COMPLETED;
 
     const parseDayStart = (iso: string) =>
       iso.length >= 10
@@ -2906,7 +2911,7 @@ export class AdminService {
     if (from || toEx) {
       if (query.dateField === 'completed' && st === 'completed') {
         where.AND = [
-          { status: 'completed' },
+          { status: ORDER_STATUS.COMPLETED },
           {
             OR: [
               {

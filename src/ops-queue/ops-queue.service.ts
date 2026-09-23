@@ -15,6 +15,11 @@ import { parseDateOnly } from '../bento/bento-weekly.util';
 import { parseKitchenPickupCodeInput } from '../customers/kitchen-pickup-code.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
+import {
+  ORDER_STATUS,
+  OPEN_ORDER_STATUSES,
+  canTransitionOrder,
+} from '../orders/order-status';
 
 function fulfillmentLines(raw: Prisma.JsonValue | null): string[] {
   if (raw == null) return [];
@@ -79,7 +84,7 @@ export class OpsQueueService {
   async listOrders() {
     const [pending, history] = await Promise.all([
       this.prisma.customerOrder.findMany({
-        where: { status: 'placed' },
+        where: { status: { in: OPEN_ORDER_STATUSES } },
         orderBy: { placedAt: 'asc' },
         take: 80,
         include: {
@@ -90,7 +95,7 @@ export class OpsQueueService {
         },
       }),
       this.prisma.customerOrder.findMany({
-        where: { status: 'completed' },
+        where: { status: ORDER_STATUS.COMPLETED },
         orderBy: { completedAt: 'desc' },
         take: 80,
         include: {
@@ -181,7 +186,7 @@ export class OpsQueueService {
         message: 'Order not found',
       });
     }
-    if (existing.status !== 'placed') {
+    if (!canTransitionOrder(existing.status, ORDER_STATUS.COMPLETED)) {
       throw new BadRequestException({
         code: 'ORDER_NOT_ACTIVE',
         message: 'Order is not in the active queue',
@@ -190,7 +195,7 @@ export class OpsQueueService {
     return this.prisma.customerOrder.update({
       where: { id },
       data: {
-        status: 'completed',
+        status: ORDER_STATUS.COMPLETED,
         completedAt: new Date(),
       },
       include: {

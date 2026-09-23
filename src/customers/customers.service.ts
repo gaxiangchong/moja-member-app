@@ -21,6 +21,10 @@ import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
+import {
+  NON_REVENUE_ORDER_STATUSES,
+  ORDER_STATUS,
+} from '../orders/order-status';
 
 /**
  * Product-interest tags stored in Customer.tags[] for targeted marketing.
@@ -833,7 +837,7 @@ export class CustomersService {
         data: {
           customerId,
           totalCents: dto.totalCents,
-          status: 'pending_payment',
+          status: ORDER_STATUS.PENDING_PAYMENT,
           fulfillmentSummary:
             dto.fulfillmentSummary == null
               ? Prisma.JsonNull
@@ -880,7 +884,7 @@ export class CustomersService {
           message: 'Order not found',
         });
       }
-      if (order.status !== 'pending_payment') {
+      if (order.status !== ORDER_STATUS.PENDING_PAYMENT) {
         return;
       }
       finalized = true;
@@ -892,7 +896,7 @@ export class CustomersService {
       }));
       await tx.customerOrder.update({
         where: { id: orderId },
-        data: { status: 'placed' },
+        data: { status: ORDER_STATUS.PLACED },
       });
       // Kitchen stock comes down in the same transaction as the status flip,
       // so a webhook retry or crash can never double-decrement.
@@ -1054,7 +1058,7 @@ export class CustomersService {
     const paidOrderCount = await tx.customerOrder.count({
       where: {
         customerId: buyerCustomerId,
-        status: { notIn: ['pending_payment', 'cancelled'] },
+        status: { notIn: NON_REVENUE_ORDER_STATUSES },
       },
     });
     if (paidOrderCount !== 1) return undefined;
