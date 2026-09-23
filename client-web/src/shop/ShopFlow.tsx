@@ -10,7 +10,10 @@ import {
 } from './types';
 import type { MemberRewardsPayload } from '../api';
 import { formatRm } from './data/mockCatalog';
-import { fulfillmentSummaryLines, validateCheckout } from './lib/checkoutValidation';
+import {
+  fulfillmentSummaryLines,
+  validateCheckout,
+} from './lib/checkoutValidation';
 import {
   checkoutCatalogRewards,
   checkoutIssuedVouchers,
@@ -22,6 +25,7 @@ import {
   completeDemoShopOrder,
   createXenditCardTokenSession,
   createShopOrderCheckout,
+  fetchShopAvailability,
   fetchShopCatalogProducts,
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
@@ -29,7 +33,6 @@ import {
 } from '../api';
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
-
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
 type PaymentMethodMode = 'channel' | 'card_token';
@@ -60,10 +63,7 @@ function todayIsoDate(): string {
 // Channels intentionally hidden from the checkout UI even if returned by the
 // backend's XENDIT_SHOP_CHANNEL_CODES list — e.g. removed by product without
 // requiring an env redeploy.
-const HIDDEN_PAYMENT_CHANNELS = new Set<string>([
-  'SHOPEEPAY',
-  'SHOPEEPAY_MY',
-]);
+const HIDDEN_PAYMENT_CHANNELS = new Set<string>(['SHOPEEPAY', 'SHOPEEPAY_MY']);
 
 const CHANNEL_LOGOS: Record<string, string> = {
   TOUCHNGO: '/images/payments/touchngo.png',
@@ -103,8 +103,7 @@ function PaymentChannelIcon({ code, label }: { code: string; label: string }) {
       </span>
     );
   }
-  const fallback =
-    code === 'CARDS' || code === 'CREDIT_CARD' ? 'CARD' : 'PAY';
+  const fallback = code === 'CARDS' || code === 'CREDIT_CARD' ? 'CARD' : 'PAY';
   return (
     <span
       style={{
@@ -159,11 +158,14 @@ export function ShopFlow({
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [channels, setChannels] = useState<Array<{ code: string; label: string }>>([]);
+  const [channels, setChannels] = useState<
+    Array<{ code: string; label: string }>
+  >([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelCode, setSelectedChannelCode] = useState('');
-  const [paymentMethodMode, setPaymentMethodMode] = useState<PaymentMethodMode>('channel');
+  const [paymentMethodMode, setPaymentMethodMode] =
+    useState<PaymentMethodMode>('channel');
   const [cardPaymentTokenId, setCardPaymentTokenId] = useState('');
   const [cardSessionId, setCardSessionId] = useState<string | null>(null);
   const [cardSessionLoading, setCardSessionLoading] = useState(false);
@@ -171,7 +173,9 @@ export function ShopFlow({
   const [cardSubmitReady, setCardSubmitReady] = useState(false);
   const [cardSubmitBusy, setCardSubmitBusy] = useState(false);
   const [cardInitAttempted, setCardInitAttempted] = useState(false);
-  const [demoCheckout, setDemoCheckout] = useState<DemoCheckoutSnapshot | null>(null);
+  const [demoCheckout, setDemoCheckout] = useState<DemoCheckoutSnapshot | null>(
+    null,
+  );
   const [demoCompleting, setDemoCompleting] = useState(false);
   const [voucherCodeInput, setVoucherCodeInput] = useState('');
   const [voucherCodeError, setVoucherCodeError] = useState<string | null>(null);
@@ -200,6 +204,19 @@ export function ShopFlow({
   const setPickupDate = useShopStore((s) => s.setPickupDate);
   const pickupTime = useShopStore((s) => s.pickupTime);
   const setPickupTime = useShopStore((s) => s.setPickupTime);
+  /**
+   * Availability for the chosen pickup date. Only the stock-tracked products
+   * actually in the cart are shown — the member does not need a stock report,
+   * just a warning when what they picked is tight or gone for that day.
+   */
+  const [dateAvailability, setDateAvailability] = useState<
+    {
+      productId: string;
+      name: string;
+      sellableQty: number;
+      shortfall: boolean;
+    }[]
+  >([]);
   const appliedVoucher = useShopStore((s) => s.appliedVoucher);
   const appliedReward = useShopStore((s) => s.appliedReward);
   const applyVoucher = useShopStore((s) => s.applyVoucher);
@@ -222,11 +239,50 @@ export function ShopFlow({
     () => checkoutCatalogRewards(memberRewards),
     [memberRewards],
   );
-  const showPromoSection = issuedVouchers.length > 0 || catalogRewards.length > 0;
+  const showPromoSection =
+    issuedVouchers.length > 0 || catalogRewards.length > 0;
 
   useEffect(() => {
     if (!appliedVoucher) setVoucherCodeInput('');
   }, [appliedVoucher]);
+
+  // Availability is per collection day, so re-check whenever the member picks
+  // a different date or changes the cart.
+  useEffect(() => {
+    if (fulfillmentMethod !== 'pickup' || !pickupDate || cart.length === 0) {
+      setDateAvailability([]);
+      return;
+    }
+    let alive = true;
+    void fetchShopAvailability(pickupDate)
+      .then((res) => {
+        if (!alive) return;
+        const byId = new Map(res.products.map((p) => [p.id, p.sellableQty]));
+        setDateAvailability(
+          cart
+            .map((line) => {
+              const qty = byId.get(line.productId);
+              // null = not stock-tracked, so nothing useful to say.
+              if (qty == null) return null;
+              return {
+                productId: line.productId,
+                name: line.name,
+                sellableQty: qty,
+                shortfall: qty < line.qty,
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null),
+        );
+      })
+      .catch(() => {
+        // Availability is advisory here — the server re-checks and rejects at
+        // checkout, so a failed lookup must not block the member from paying.
+        if (alive) setDateAvailability([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fulfillmentMethod, pickupDate, cart]);
 
   useEffect(() => {
     if (!initialScreen) return;
@@ -270,7 +326,9 @@ export function ShopFlow({
       })
       .catch((err) => {
         if (!alive) return;
-        setCatalogError(err instanceof Error ? err.message : 'Failed to load products');
+        setCatalogError(
+          err instanceof Error ? err.message : 'Failed to load products',
+        );
       })
       .finally(() => {
         if (alive) setCatalogLoading(false);
@@ -296,7 +354,9 @@ export function ShopFlow({
       })
       .catch((err) => {
         if (!alive) return;
-        setChannelsError(err instanceof Error ? err.message : 'Could not load payment methods');
+        setChannelsError(
+          err instanceof Error ? err.message : 'Could not load payment methods',
+        );
       })
       .finally(() => {
         if (alive) setChannelsLoading(false);
@@ -315,7 +375,9 @@ export function ShopFlow({
     });
   }, [category, query, products]);
 
-  const product = productId ? products.find((p) => p.id === productId) : undefined;
+  const product = productId
+    ? products.find((p) => p.id === productId)
+    : undefined;
 
   const goBrowse = () => {
     setScreen('browse');
@@ -362,10 +424,17 @@ export function ShopFlow({
       const components = new XenditComponents({
         componentsSdkKey: session.componentsSdkKey,
       });
-      xenditComponentsRef.current = components as typeof xenditComponentsRef.current;
-      components.addEventListener('submission-ready', () => setCardSubmitReady(true));
-      components.addEventListener('submission-not-ready', () => setCardSubmitReady(false));
-      components.addEventListener('submission-begin', () => setCardSubmitBusy(true));
+      xenditComponentsRef.current =
+        components as typeof xenditComponentsRef.current;
+      components.addEventListener('submission-ready', () =>
+        setCardSubmitReady(true),
+      );
+      components.addEventListener('submission-not-ready', () =>
+        setCardSubmitReady(false),
+      );
+      components.addEventListener('submission-begin', () =>
+        setCardSubmitBusy(true),
+      );
       components.addEventListener('submission-end', () => {
         setCardSubmitBusy(false);
         // If a tokenization request is still pending after submission ends,
@@ -386,7 +455,9 @@ export function ShopFlow({
         }, 600);
       });
       components.addEventListener('session-expired-or-canceled', () => {
-        setCardSessionError('Card tokenization session expired or canceled. Start a new one.');
+        setCardSessionError(
+          'Card tokenization session expired or canceled. Start a new one.',
+        );
         const pending = pendingTokenizationRef.current;
         if (pending) {
           pendingTokenizationRef.current = null;
@@ -439,7 +510,9 @@ export function ShopFlow({
       }
     } catch (err) {
       setCardSessionError(
-        err instanceof Error ? err.message : 'Could not initialize card tokenization.',
+        err instanceof Error
+          ? err.message
+          : 'Could not initialize card tokenization.',
       );
     } finally {
       setCardSessionLoading(false);
@@ -484,12 +557,17 @@ export function ShopFlow({
         sdk.submit();
       } catch (err) {
         pendingTokenizationRef.current = null;
-        reject(err instanceof Error ? err : new Error('Card submission failed.'));
+        reject(
+          err instanceof Error ? err : new Error('Card submission failed.'),
+        );
       }
     });
   }, []);
 
-  const promoMinSpendError = (minSpendSen: number | null | undefined, label: string) => {
+  const promoMinSpendError = (
+    minSpendSen: number | null | undefined,
+    label: string,
+  ) => {
     if (minSpendSen != null && subtotal < minSpendSen) {
       return `Minimum order ${formatRm(minSpendSen)} to use this ${label}.`;
     }
@@ -509,7 +587,9 @@ export function ShopFlow({
       return;
     }
     if (v.value <= 0) {
-      setCheckoutErrors(['This voucher has no discount amount configured yet.']);
+      setCheckoutErrors([
+        'This voucher has no discount amount configured yet.',
+      ]);
       return;
     }
     setCheckoutErrors(null);
@@ -561,7 +641,9 @@ export function ShopFlow({
       return;
     }
     if (match.value <= 0) {
-      setVoucherCodeError('This voucher has no discount amount configured yet.');
+      setVoucherCodeError(
+        'This voucher has no discount amount configured yet.',
+      );
       applyVoucher(null);
       return;
     }
@@ -594,7 +676,9 @@ export function ShopFlow({
     }
     if (paymentMethodMode === 'card_token') {
       if (cardSessionLoading || !cardSessionId) {
-        setCheckoutErrors(['Card form is still loading. Please wait a moment.']);
+        setCheckoutErrors([
+          'Card form is still loading. Please wait a moment.',
+        ]);
         return;
       }
       if (cardSessionError) {
@@ -643,6 +727,12 @@ export function ShopFlow({
           totalCents: total,
           discountCents: discount,
           fulfillmentSummary: lines,
+          fulfilmentType:
+            draft.fulfillmentMethod === 'in_store' ? 'IN_STORE' : 'PICKUP',
+          scheduledDate:
+            draft.fulfillmentMethod === 'pickup' ? draft.pickupDate : null,
+          scheduledSlot:
+            draft.fulfillmentMethod === 'pickup' ? draft.pickupTime : null,
           lines: linePayload,
         },
       });
@@ -703,7 +793,9 @@ export function ShopFlow({
         'No payment redirect URL. Use Xendit test keys and a valid channel, or enable PAYMENTS_DEMO_MODE for local test checkout.',
       ]);
     } catch (err) {
-      setCheckoutErrors([err instanceof Error ? err.message : 'Checkout could not start.']);
+      setCheckoutErrors([
+        err instanceof Error ? err.message : 'Checkout could not start.',
+      ]);
     } finally {
       setPlacingOrder(false);
     }
@@ -738,7 +830,9 @@ export function ShopFlow({
       resetAfterOrder();
       setScreen('browse');
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Could not complete test payment.');
+      window.alert(
+        err instanceof Error ? err.message : 'Could not complete test payment.',
+      );
     } finally {
       setDemoCompleting(false);
     }
@@ -750,13 +844,28 @@ export function ShopFlow({
         <>
           <header className="shopTopBar pmTopBar">
             <h2>Shop</h2>
-            <button type="button" className="shopCartBtn" onClick={openCart} aria-label="Open cart">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <button
+              type="button"
+              className="shopCartBtn"
+              onClick={openCart}
+              aria-label="Open cart"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
                 <path d="M6 2h12l1.5 4H4.5z" />
                 <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
                 <path d="M9 11h6" />
               </svg>
-              {itemCount > 0 ? <span className="shopCartBadge">{itemCount > 99 ? '99+' : itemCount}</span> : null}
+              {itemCount > 0 ? (
+                <span className="shopCartBadge">
+                  {itemCount > 99 ? '99+' : itemCount}
+                </span>
+              ) : null}
             </button>
           </header>
           <section className="pmCard shopSearchCard">
@@ -820,14 +929,20 @@ export function ShopFlow({
                         }}
                       />
                     ) : null}
-                    {soldOut ? <span className="shopSoldOutBadge">Sold out</span> : null}
+                    {soldOut ? (
+                      <span className="shopSoldOutBadge">Sold out</span>
+                    ) : null}
                   </div>
                   <div className="productBody">
                     <strong>{p.name}</strong>
                     <p>{p.shortDescription}</p>
                     <div className="productFoot">
                       <span className="shopFromLabel">from</span>
-                      <span>{formatRm(p.variants?.[0]?.priceCents ?? p.basePriceCents)}</span>
+                      <span>
+                        {formatRm(
+                          p.variants?.[0]?.priceCents ?? p.basePriceCents,
+                        )}
+                      </span>
                     </div>
                   </div>
                 </button>
@@ -843,7 +958,13 @@ export function ShopFlow({
       )}
 
       {screen === 'product' && product && (
-        <ProductDetailScreen product={product} onBack={goBrowse} onOpenCart={openCart} itemCount={itemCount} addToCart={addToCart} />
+        <ProductDetailScreen
+          product={product}
+          onBack={goBrowse}
+          onOpenCart={openCart}
+          itemCount={itemCount}
+          addToCart={addToCart}
+        />
       )}
 
       {screen === 'cart' && (
@@ -865,7 +986,11 @@ export function ShopFlow({
       {screen === 'checkout' && (
         <>
           <header className="shopTopBar pmTopBar">
-            <button type="button" className="textAction shopBackLink" onClick={openCart}>
+            <button
+              type="button"
+              className="textAction shopBackLink"
+              onClick={openCart}
+            >
               ← Cart
             </button>
             <h2 className="shopTitleCenter">Checkout</h2>
@@ -885,14 +1010,22 @@ export function ShopFlow({
             <div className="shopFulfillmentRow">
               <button
                 type="button"
-                className={fulfillmentMethod === 'in_store' ? 'chip active shopFulfillmentChip' : 'chip shopFulfillmentChip'}
+                className={
+                  fulfillmentMethod === 'in_store'
+                    ? 'chip active shopFulfillmentChip'
+                    : 'chip shopFulfillmentChip'
+                }
                 onClick={() => setFulfillmentMethod('in_store')}
               >
                 In store · now
               </button>
               <button
                 type="button"
-                className={fulfillmentMethod === 'pickup' ? 'chip active shopFulfillmentChip' : 'chip shopFulfillmentChip'}
+                className={
+                  fulfillmentMethod === 'pickup'
+                    ? 'chip active shopFulfillmentChip'
+                    : 'chip shopFulfillmentChip'
+                }
                 onClick={() => setFulfillmentMethod('pickup')}
               >
                 Self pickup
@@ -900,7 +1033,8 @@ export function ShopFlow({
             </div>
             {fulfillmentMethod === 'in_store' ? (
               <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-                We will prepare this order right away at the counter. Show your order QR when you collect.
+                We will prepare this order right away at the counter. Show your
+                order QR when you collect.
               </p>
             ) : null}
             {fulfillmentMethod === 'pickup' ? (
@@ -928,120 +1062,154 @@ export function ShopFlow({
                 </select>
               </div>
             ) : null}
+            {dateAvailability.length > 0 ? (
+              <div className="pickupAvailability">
+                {dateAvailability.map((row) => (
+                  <p
+                    key={row.productId}
+                    className={
+                      row.shortfall ? 'pickupAvailShort' : 'pickupAvailOk'
+                    }
+                  >
+                    {row.name}:{' '}
+                    {row.shortfall
+                      ? `only ${row.sellableQty} left for this date`
+                      : `${row.sellableQty} available`}
+                  </p>
+                ))}
+              </div>
+            ) : null}
             <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-              We don&apos;t offer delivery at the moment — orders are collected at our store.
+              We don&apos;t offer delivery at the moment — orders are collected
+              at our store.
             </p>
           </section>
 
           {showPromoSection ? (
-          <section className="pmCard">
-            <h3 className="shopSectionTitle">Voucher or reward</h3>
-            <p className="caption" style={{ marginTop: 0 }}>
-              Apply one voucher or one points reward — not both.
-            </p>
-            <div className="shopPromoGrid">
-              {issuedVouchers.length > 0 ? (
-                <div>
-                  <p className="caption">Voucher code</p>
-                  <p className="caption" style={{ marginTop: 0, marginBottom: 8 }}>
-                    Enter a code from your wallet (Perks → Vouchers).
-                  </p>
-                  <div className="shopVoucherCodeRow">
-                    <input
-                      id="voucherCode"
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      placeholder="e.g. WELCOME10"
-                      value={voucherCodeInput}
-                      onChange={(e) => {
-                        setVoucherCodeInput(e.target.value);
-                        if (voucherCodeError) setVoucherCodeError(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleApplyVoucherCode();
-                        }
-                      }}
-                    />
-                    <button type="button" onClick={handleApplyVoucherCode}>
-                      Apply
-                    </button>
-                  </div>
-                  {voucherCodeError ? (
-                    <p className="shopVoucherCodeError" role="alert">
-                      {voucherCodeError}
+            <section className="pmCard">
+              <h3 className="shopSectionTitle">Voucher or reward</h3>
+              <p className="caption" style={{ marginTop: 0 }}>
+                Apply one voucher or one points reward — not both.
+              </p>
+              <div className="shopPromoGrid">
+                {issuedVouchers.length > 0 ? (
+                  <div>
+                    <p className="caption">Voucher code</p>
+                    <p
+                      className="caption"
+                      style={{ marginTop: 0, marginBottom: 8 }}
+                    >
+                      Enter a code from your wallet (Perks → Vouchers).
                     </p>
-                  ) : null}
-                  {appliedVoucher ? (
-                    <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-                      Applied: <strong>{appliedVoucher.title}</strong> ({appliedVoucher.code})
-                      {appliedVoucher.value > 0 ? ` · −${formatRm(appliedVoucher.value)}` : ''}
-                    </p>
-                  ) : null}
-                  <div className="shopPromoList" style={{ marginTop: 10 }}>
-                    {issuedVouchers.map((v) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
-                        onClick={() => handleSelectIssuedVoucher(v)}
-                      >
-                        <strong>{v.title}</strong>
-                        <small>
-                          {v.code}
-                          {v.value > 0 ? ` · −${formatRm(v.value)}` : ''}
-                        </small>
+                    <div className="shopVoucherCodeRow">
+                      <input
+                        id="voucherCode"
+                        type="text"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="e.g. WELCOME10"
+                        value={voucherCodeInput}
+                        onChange={(e) => {
+                          setVoucherCodeInput(e.target.value);
+                          if (voucherCodeError) setVoucherCodeError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyVoucherCode();
+                          }
+                        }}
+                      />
+                      <button type="button" onClick={handleApplyVoucherCode}>
+                        Apply
                       </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {catalogRewards.length > 0 ? (
-                <div>
-                  <p className="caption">Rewards ({pointsBalance} pts)</p>
-                  <div className="shopPromoList">
-                    {catalogRewards.map((r) => {
-                      const affordable = pointsBalance >= r.pointsCost;
-                      return (
+                    </div>
+                    {voucherCodeError ? (
+                      <p className="shopVoucherCodeError" role="alert">
+                        {voucherCodeError}
+                      </p>
+                    ) : null}
+                    {appliedVoucher ? (
+                      <p
+                        className="caption"
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                      >
+                        Applied: <strong>{appliedVoucher.title}</strong> (
+                        {appliedVoucher.code})
+                        {appliedVoucher.value > 0
+                          ? ` · −${formatRm(appliedVoucher.value)}`
+                          : ''}
+                      </p>
+                    ) : null}
+                    <div className="shopPromoList" style={{ marginTop: 10 }}>
+                      {issuedVouchers.map((v) => (
                         <button
-                          key={r.id}
+                          key={v.id}
                           type="button"
-                          disabled={!affordable}
-                          className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
-                          onClick={() => handleSelectCatalogReward(r)}
+                          className={`shopPromoItem ${appliedVoucher?.id === v.id ? 'active' : ''}`}
+                          onClick={() => handleSelectIssuedVoucher(v)}
                         >
-                          <strong>{r.title}</strong>
+                          <strong>{v.title}</strong>
                           <small>
-                            {r.pointsCost} pts
-                            {r.valueCents > 0 ? ` · −${formatRm(r.valueCents)}` : ''}
+                            {v.code}
+                            {v.value > 0 ? ` · −${formatRm(v.value)}` : ''}
                           </small>
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </div>
-            {(appliedVoucher || appliedReward) && (
-              <button type="button" className="ghost shopClearPromo" onClick={() => {
-                applyVoucher(null);
-                applyReward(null);
-                setVoucherCodeInput('');
-                setVoucherCodeError(null);
-              }}>
-                Clear promotion
-              </button>
-            )}
-          </section>
+                ) : null}
+                {catalogRewards.length > 0 ? (
+                  <div>
+                    <p className="caption">Rewards ({pointsBalance} pts)</p>
+                    <div className="shopPromoList">
+                      {catalogRewards.map((r) => {
+                        const affordable = pointsBalance >= r.pointsCost;
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            disabled={!affordable}
+                            className={`shopPromoItem ${appliedReward?.id === r.id ? 'active' : ''}`}
+                            onClick={() => handleSelectCatalogReward(r)}
+                          >
+                            <strong>{r.title}</strong>
+                            <small>
+                              {r.pointsCost} pts
+                              {r.valueCents > 0
+                                ? ` · −${formatRm(r.valueCents)}`
+                                : ''}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              {(appliedVoucher || appliedReward) && (
+                <button
+                  type="button"
+                  className="ghost shopClearPromo"
+                  onClick={() => {
+                    applyVoucher(null);
+                    applyReward(null);
+                    setVoucherCodeInput('');
+                    setVoucherCodeError(null);
+                  }}
+                >
+                  Clear promotion
+                </button>
+              )}
+            </section>
           ) : null}
 
           <section className="pmCard">
             <h3 className="shopSectionTitle">Payment</h3>
             <p className="caption" style={{ marginTop: 0 }}>
-              Pick a channel (Xendit supports many methods per country). You will complete payment on the secure Xendit page
-              (use test keys in the dashboard for test cards and wallets).
+              Pick a channel (Xendit supports many methods per country). You
+              will complete payment on the secure Xendit page (use test keys in
+              the dashboard for test cards and wallets).
             </p>
             <div className="shopFieldGrid" style={{ marginTop: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1070,11 +1238,19 @@ export function ShopFlow({
                 <span>Visa / Mastercard</span>
               </label>
             </div>
-            {channelsLoading ? <p className="caption">Loading payment methods…</p> : null}
+            {channelsLoading ? (
+              <p className="caption">Loading payment methods…</p>
+            ) : null}
             {channelsError ? <p className="err">{channelsError}</p> : null}
-            {paymentMethodMode === 'channel' && !channelsLoading && !channelsError && channels.length ? (
+            {paymentMethodMode === 'channel' &&
+            !channelsLoading &&
+            !channelsError &&
+            channels.length ? (
               <div className="shopFieldGrid" style={{ marginTop: 8 }}>
-                <p className="caption" style={{ marginTop: 0, marginBottom: 4 }}>
+                <p
+                  className="caption"
+                  style={{ marginTop: 0, marginBottom: 4 }}
+                >
                   Choose wallet / online banking method
                 </p>
                 <div
@@ -1096,8 +1272,12 @@ export function ShopFlow({
                           gap: 10,
                           padding: '10px 12px',
                           borderRadius: 12,
-                          border: active ? '1px solid #5b6cff' : '1px solid rgba(255,255,255,0.12)',
-                          background: active ? 'rgba(91,108,255,0.12)' : 'rgba(255,255,255,0.03)',
+                          border: active
+                            ? '1px solid #5b6cff'
+                            : '1px solid rgba(255,255,255,0.12)',
+                          background: active
+                            ? 'rgba(91,108,255,0.12)'
+                            : 'rgba(255,255,255,0.03)',
                           cursor: 'pointer',
                           width: '100%',
                           textAlign: 'left',
@@ -1105,9 +1285,25 @@ export function ShopFlow({
                         }}
                       >
                         <PaymentChannelIcon code={c.code} label={c.label} />
-                        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                          <strong style={{ fontSize: 13, color: 'var(--primary,rgb(34, 44, 229))' }}>{c.label}</strong>
-                          <small className="caption" style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}>
+                        <span
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          <strong
+                            style={{
+                              fontSize: 13,
+                              color: 'var(--primary,rgb(34, 44, 229))',
+                            }}
+                          >
+                            {c.label}
+                          </strong>
+                          <small
+                            className="caption"
+                            style={{ margin: 0, color: 'rgba(26,26,26,0.72)' }}
+                          >
                             {c.code}
                           </small>
                         </span>
@@ -1116,16 +1312,26 @@ export function ShopFlow({
                   })}
                 </div>
               </div>
-            ) : paymentMethodMode === 'channel' && !channelsLoading && !channelsError ? (
-              <p className="caption">No channels configured. Set XENDIT_SHOP_CHANNEL_CODES on the server.</p>
+            ) : paymentMethodMode === 'channel' &&
+              !channelsLoading &&
+              !channelsError ? (
+              <p className="caption">
+                No channels configured. Set XENDIT_SHOP_CHANNEL_CODES on the
+                server.
+              </p>
             ) : null}
             {paymentMethodMode === 'card_token' ? (
               <div className="shopFieldGrid" style={{ marginTop: 8 }}>
                 <p className="caption" style={{ marginTop: 0 }}>
-                  Enter your card details below. We&apos;ll verify your card and start payment when you tap Pay.
+                  Enter your card details below. We&apos;ll verify your card and
+                  start payment when you tap Pay.
                 </p>
-                {cardSessionError ? <p className="err">{cardSessionError}</p> : null}
-                {cardSessionLoading ? <p className="caption">Preparing secure card form...</p> : null}
+                {cardSessionError ? (
+                  <p className="err">{cardSessionError}</p>
+                ) : null}
+                {cardSessionLoading ? (
+                  <p className="caption">Preparing secure card form...</p>
+                ) : null}
                 <div ref={cardContainerRef} />
                 {cardSessionError ? (
                   <button
@@ -1184,7 +1390,8 @@ export function ShopFlow({
                 disabled={
                   placingOrder ||
                   (paymentMethodMode === 'channel' &&
-                    (channelsLoading || (!channels.length && !channelsLoading))) ||
+                    (channelsLoading ||
+                      (!channels.length && !channelsLoading))) ||
                   (paymentMethodMode === 'card_token' &&
                     (cardSessionLoading ||
                       !cardSessionId ||
@@ -1222,13 +1429,18 @@ export function ShopFlow({
           </header>
           <section className="pmCard">
             <p className="caption" style={{ marginTop: 0 }}>
-              Demo mode (server PAYMENTS_DEMO_MODE): no Xendit redirect. Tap below to simulate a successful payment and
-              confirm your order.
+              Demo mode (server PAYMENTS_DEMO_MODE): no Xendit redirect. Tap
+              below to simulate a successful payment and confirm your order.
             </p>
             <p style={{ marginTop: 12 }}>
-              <strong>Order #{demoCheckout.orderNumber}</strong> · {formatRm(demoCheckout.totalCents)}
+              <strong>Order #{demoCheckout.orderNumber}</strong> ·{' '}
+              {formatRm(demoCheckout.totalCents)}
             </p>
-            <button type="button" onClick={() => void handleCompleteDemoPayment()} disabled={demoCompleting}>
+            <button
+              type="button"
+              onClick={() => void handleCompleteDemoPayment()}
+              disabled={demoCompleting}
+            >
               {demoCompleting ? 'Completing…' : 'Complete test payment'}
             </button>
           </section>
@@ -1262,29 +1474,51 @@ function ProductDetailScreen({
   addToCart: (input: AddToCartInput) => void;
 }) {
   const variants = product.variants;
-  const [variantId, setVariantId] = useState<string | null>(variants?.[0]?.id ?? null);
+  const [variantId, setVariantId] = useState<string | null>(
+    variants?.[0]?.id ?? null,
+  );
   const [qty, setQty] = useState(1);
 
   const selectedVariant = variants?.find((v) => v.id === variantId);
   const unitCents = selectedVariant?.priceCents ?? product.basePriceCents;
   const variantLabel = selectedVariant?.label;
   const soldOut = isShopProductSoldOut(product);
-  const maxQty = product.availableQty != null ? Math.max(1, product.availableQty) : 99;
+  const maxQty =
+    product.availableQty != null ? Math.max(1, product.availableQty) : 99;
 
   return (
     <>
       <header className="shopTopBar pmTopBar">
-        <button type="button" className="textAction shopBackLink" onClick={onBack}>
+        <button
+          type="button"
+          className="textAction shopBackLink"
+          onClick={onBack}
+        >
           ← Browse
         </button>
         <h2 className="shopTitleCenter">Details</h2>
-        <button type="button" className="shopCartBtn" onClick={onOpenCart} aria-label="Open cart">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <button
+          type="button"
+          className="shopCartBtn"
+          onClick={onOpenCart}
+          aria-label="Open cart"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden
+          >
             <path d="M6 2h12l1.5 4H4.5z" />
             <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
             <path d="M9 11h6" />
           </svg>
-          {itemCount > 0 ? <span className="shopCartBadge">{itemCount > 99 ? '99+' : itemCount}</span> : null}
+          {itemCount > 0 ? (
+            <span className="shopCartBadge">
+              {itemCount > 99 ? '99+' : itemCount}
+            </span>
+          ) : null}
         </button>
       </header>
 
@@ -1309,7 +1543,9 @@ function ProductDetailScreen({
           <p className="caption" style={{ marginTop: 0 }}>
             {product.description}
           </p>
-          {soldOut ? <p className="shopSoldOutNotice">Sold out for now</p> : null}
+          {soldOut ? (
+            <p className="shopSoldOutNotice">Sold out for now</p>
+          ) : null}
           {variants?.length ? (
             <div className="shopFieldGrid">
               <span className="caption">Size / option</span>
@@ -1364,7 +1600,9 @@ function ProductDetailScreen({
               onOpenCart();
             }}
           >
-            {soldOut ? 'Sold out' : `Add to cart · ${formatRm(unitCents * qty)}`}
+            {soldOut
+              ? 'Sold out'
+              : `Add to cart · ${formatRm(unitCents * qty)}`}
           </button>
         </div>
       </article>
@@ -1400,7 +1638,11 @@ function CartScreen({
   return (
     <>
       <header className="shopTopBar pmTopBar">
-        <button type="button" className="textAction shopBackLink" onClick={onBack}>
+        <button
+          type="button"
+          className="textAction shopBackLink"
+          onClick={onBack}
+        >
           ← Shop
         </button>
         <h2 className="shopTitleCenter">Cart</h2>
@@ -1425,20 +1667,36 @@ function CartScreen({
                 />
                 <div className="shopCartLineBody">
                   <strong>{l.name}</strong>
-                  {l.variantLabel ? <span className="caption">{l.variantLabel}</span> : null}
+                  {l.variantLabel ? (
+                    <span className="caption">{l.variantLabel}</span>
+                  ) : null}
                   <div className="shopCartLineFoot">
                     <div className="shopStepper">
-                      <button type="button" className="ghost" onClick={() => setLineQty(l.lineId, l.qty - 1)}>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setLineQty(l.lineId, l.qty - 1)}
+                      >
                         −
                       </button>
                       <span>{l.qty}</span>
-                      <button type="button" className="ghost" onClick={() => setLineQty(l.lineId, l.qty + 1)}>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setLineQty(l.lineId, l.qty + 1)}
+                      >
                         +
                       </button>
                     </div>
-                    <span className="shopLineTotal">{formatRm(l.unitPriceCents * l.qty)}</span>
+                    <span className="shopLineTotal">
+                      {formatRm(l.unitPriceCents * l.qty)}
+                    </span>
                   </div>
-                  <button type="button" className="textAction shopRemoveLine" onClick={() => removeLine(l.lineId)}>
+                  <button
+                    type="button"
+                    className="textAction shopRemoveLine"
+                    onClick={() => removeLine(l.lineId)}
+                  >
                     Remove
                   </button>
                 </div>
@@ -1474,7 +1732,11 @@ function CartScreen({
               </div>
             </div>
             <div className="row shopCartActions">
-              <button type="button" className="ghost" onClick={onContinueShopping}>
+              <button
+                type="button"
+                className="ghost"
+                onClick={onContinueShopping}
+              >
                 Continue
               </button>
               <button type="button" onClick={onCheckout}>

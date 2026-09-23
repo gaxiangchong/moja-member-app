@@ -3142,3 +3142,26 @@ code {
   font-weight: 600;
   color: #b91c1c;
 }
+
+/* ---- Per-date availability shown under the pickup date picker ---- */
+
+.pickupAvailability {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.pickupAvailability p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pickupAvailOk {
+  color: #15803d;
+}
+
+.pickupAvailShort {
+  color: #b45309;
+  font-weight: 600;
+}

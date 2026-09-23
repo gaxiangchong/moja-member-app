@@ -1170,3 +1170,117 @@ body {
 .btnReady:disabled {
   opacity: 0.55;
 }
+
+/* ---- Kitchen 7-day availability grid ---- */
+
+.kitchenPage {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 12px 48px;
+}
+
+.kitchenTabs {
+  margin-bottom: 12px;
+}
+
+.dayGridWrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.dayGridHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dayGridHead h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--text);
+}
+
+.dayGridHint {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* The grid is wide by nature — let it scroll rather than squash the cells. */
+.dayGridScroll {
+  overflow-x: auto;
+}
+
+.dayGrid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 620px;
+}
+
+.dayGrid th,
+.dayGrid td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 6px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.dayGridProductHead,
+.dayGridProduct {
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  min-width: 160px;
+}
+
+.dayGridDow {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dayGridDate {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dayGridInput {
+  width: 52px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not set for that day yet — showing the product-level fallback. */
+.dayGridInput.is-implicit {
+  color: #94a3b8;
+  background: var(--surface2);
+}
+
+.dayGridInput:disabled {
+  opacity: 0.6;
+}
+
+.dayGridReserved {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b45309;
+}

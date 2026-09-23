@@ -518,6 +518,9 @@ export async function createShopOrderCheckout(payload: {
     discountCents?: number;
     lines: SubmitMemberOrderLine[];
     fulfillmentSummary?: string[] | null;
+    fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
+    scheduledDate?: string | null;
+    scheduledSlot?: string | null;
   };
 }): Promise<ShopOrderCheckoutResult> {
   const res = await authorizedFetch('/payments/xendit/shop-order', {
@@ -1014,4 +1017,22 @@ export async function cancelMyOrder(orderId: string): Promise<{ id: string; stat
     throw new Error(msg);
   }
   return { id: data.id ?? orderId, status: data.status ?? 'cancelled' };
+}
+
+export type ShopAvailability = {
+  businessDate: string;
+  products: { id: string; sellableQty: number | null }[];
+};
+
+/** Sellable quantity per product for one collection day. */
+export async function fetchShopAvailability(date?: string): Promise<ShopAvailability> {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  const res = await fetch(`${base}/shop/catalog/availability${qs}`);
+  const data = await parseJson<ShopAvailability & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to load availability',
+    );
+  }
+  return data;
 }

@@ -22,9 +22,11 @@ import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import {
+  parseBusinessDate,
   ProductStockService,
   todayBusinessDate,
 } from '../orders/product-stock.service';
+import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import {
   isMemberCancellable,
   NON_REVENUE_ORDER_STATUSES,
@@ -905,21 +907,27 @@ export class CustomersService {
     dto: SubmitMemberOrderDto,
   ) {
     this.validateMemberOrderTotals(dto);
-    for (const line of dto.lines) {
-      const available = await this.shopCatalog.getAvailableQty(line.productId);
-      if (available != null && line.qty > available) {
-        throw new BadRequestException({
-          code: 'CAKE_OUT_OF_STOCK',
-          message: `${line.name} only has ${available} left.`,
-        });
-      }
-    }
-    return this.prisma.$transaction(async (tx) => {
+
+    const fulfilmentType = dto.fulfilmentType ?? 'PICKUP';
+    // In-store "prepare now" orders come out of today's tray; a scheduled
+    // pickup consumes the count for its own day.
+    const businessDate =
+      fulfilmentType === 'IN_STORE'
+        ? todayBusinessDate()
+        : (dto.scheduledDate ?? todayBusinessDate());
+
+    const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.customerOrder.create({
         data: {
           customerId,
           totalCents: dto.totalCents,
           status: ORDER_STATUS.PENDING_PAYMENT,
+          fulfilmentType,
+          scheduledDate:
+            fulfilmentType === 'IN_STORE' || !dto.scheduledDate
+              ? null
+              : parseBusinessDate(dto.scheduledDate),
+          scheduledSlot: dto.scheduledSlot ?? null,
           fulfillmentSummary:
             dto.fulfillmentSummary == null
               ? Prisma.JsonNull
@@ -937,8 +945,31 @@ export class CustomersService {
         },
         include: { lines: true },
       });
+
+      // Hold the stock for this day *now*, while the member goes to pay —
+      // otherwise two people can both reach the payment page for the last
+      // cake and one of them gets charged for something we cannot bake.
+      // Abandoned checkouts are released by `releaseExpiredOrderReservations`.
+      const failed = await this.productStock.reserveForOrderLines(
+        created.lines.map((l) => ({ productId: l.productId, qty: l.qty })),
+        businessDate,
+        tx,
+      );
+      if (failed.length > 0) {
+        const names = created.lines
+          .filter((l) => failed.includes(l.productId))
+          .map((l) => l.name);
+        throw new BadRequestException({
+          code: 'CAKE_OUT_OF_STOCK',
+          message: `${names.join(', ')} ${
+            names.length === 1 ? 'is' : 'are'
+          } no longer available for ${businessDate}. Please pick another day or adjust your cart.`,
+        });
+      }
       return created;
     });
+
+    return order;
   }
 
   /**
@@ -980,9 +1011,16 @@ export class CustomersService {
         where: { id: orderId },
         data: { status: ORDER_STATUS.PLACED },
       });
-      // Kitchen stock comes down in the same transaction as the status flip,
-      // so a webhook retry or crash can never double-decrement.
-      await this.shopCatalog.decrementStockForOrderLines(finalizedLines, tx);
+      // The stock was already reserved when the order was created, so paying
+      // converts that reservation into a real consumption: both `qty` and
+      // `reserved_qty` come down. Same transaction as the status flip, so a
+      // webhook retry can never apply it twice.
+      await this.productStock.consumeForOrderLines(
+        finalizedLines,
+        order.scheduledDate?.toISOString().slice(0, 10) ??
+          shopCalendarYmd(order.placedAt),
+        tx,
+      );
       await tx.storedWallet.upsert({
         where: { customerId: order.customerId },
         create: {

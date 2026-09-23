@@ -4,6 +4,7 @@ import {
   setKitchenStockQty,
   type KitchenStockItem,
 } from './api';
+import { KitchenDayGrid } from './KitchenDayGrid';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
@@ -21,6 +22,7 @@ export function KitchenWindowApp() {
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [view, setView] = useState<'today' | 'days'>('today');
 
   const load = useCallback(async () => {
     if (authState.status !== 'authenticated') return;
@@ -84,6 +86,21 @@ export function KitchenWindowApp() {
     );
   }
 
+  const base = authState.apiBase.trim() || defaultBase;
+
+  if (view === 'days') {
+    return (
+      <div className="kitchenPage">
+        <div className="kitchenTabs">
+          <button type="button" className="btnGhost" onClick={() => setView('today')}>
+            ← Today's tray
+          </button>
+        </div>
+        <KitchenDayGrid apiKey={authState.apiKey} apiBase={base} />
+      </div>
+    );
+  }
+
   return (
     <div className="loginPage">
       <div className="loginCard" style={{ maxWidth: 520 }}>
@@ -91,6 +108,14 @@ export function KitchenWindowApp() {
           Moja <span>Kitchen</span>
         </div>
         <h1 className="loginTitle">Cake stock</h1>
+        <button
+          type="button"
+          className="btnGhost"
+          style={{ marginBottom: 8 }}
+          onClick={() => setView('days')}
+        >
+          Next 7 days →
+        </button>
         <p className="loginLead">
           Set how many of each cake are ready right now. The shop updates
           automatically.

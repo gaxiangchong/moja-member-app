@@ -411,3 +411,58 @@ export async function setQueueOrderStatus(
   assertOk(res, data as unknown as { message?: string | string[] });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Per-day kitchen stock (#/kitchen day grid)
+// ---------------------------------------------------------------------------
+
+export type StockDayCell = {
+  productId: string;
+  businessDate: string;
+  qty: number;
+  reservedQty: number;
+  sellableQty: number;
+  /** False when the day has no explicit row yet (showing the fallback count). */
+  explicit: boolean;
+};
+
+export type StockDayGrid = {
+  from: string;
+  days: number;
+  products: { id: string; name: string; category: string }[];
+  cells: StockDayCell[];
+};
+
+export async function fetchStockDayGrid(
+  apiKey: string,
+  from: string | undefined,
+  days: number,
+  baseUrl: string = defaultBase,
+): Promise<StockDayGrid> {
+  const qs = new URLSearchParams({ days: String(days) });
+  if (from) qs.set('from', from);
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days?${qs.toString()}`,
+    { headers: { 'x-ops-api-key': apiKey } },
+  );
+  const data = await parseJson<StockDayGrid & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as StockDayGrid;
+}
+
+export async function setStockDayQty(
+  apiKey: string,
+  productId: string,
+  businessDate: string,
+  qty: number,
+  baseUrl: string = defaultBase,
+): Promise<StockDayCell> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days`, {
+    method: 'POST',
+    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, businessDate, qty }),
+  });
+  const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as StockDayCell;
+}
