@@ -6,6 +6,7 @@ import {
   OPEN_ORDER_STATUSES,
   ORDER_STATUS,
   orderProgressStep,
+  stockHoldOnCancel,
 } from './order-status';
 
 describe('order status sets', () => {
@@ -81,6 +82,15 @@ describe('canTransitionOrder', () => {
 
   it('rejects an unknown source status', () => {
     expect(canTransitionOrder('whatever', ORDER_STATUS.COMPLETED)).toBe(false);
+  });
+});
+
+describe('stockHoldOnCancel', () => {
+  it('releases the unpaid reservation and restores qty after payment', () => {
+    expect(stockHoldOnCancel(ORDER_STATUS.PENDING_PAYMENT)).toBe('reservation');
+    expect(stockHoldOnCancel(ORDER_STATUS.PLACED)).toBe('consumed');
+    expect(stockHoldOnCancel(ORDER_STATUS.PREPARING)).toBe('consumed');
+    expect(stockHoldOnCancel(ORDER_STATUS.READY)).toBe('consumed');
   });
 });
 

@@ -20,6 +20,7 @@ import {
   ORDER_STATUS,
   OPEN_ORDER_STATUSES,
   canTransitionOrder,
+  stockHoldOnCancel,
   type OrderStatus,
 } from '../orders/order-status';
 import {
@@ -237,9 +238,29 @@ export class OpsQueueService {
         : {}),
     };
 
-    const updated = await this.prisma.customerOrder.updateMany({
-      where: { id, status: existing.status },
-      data: timestamps,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.customerOrder.updateMany({
+        where: { id, status: existing.status },
+        data: timestamps,
+      });
+      if (result.count === 0 || next !== ORDER_STATUS.CANCELLED) return result;
+
+      // Unpaid orders only hold reserved_qty. Paid orders already consumed
+      // qty at payment, so a cancel has to add that qty back or the cake
+      // stays off the menu.
+      const lines = await tx.customerOrderLine.findMany({
+        where: { orderId: id },
+        select: { productId: true, qty: true },
+      });
+      const day =
+        existing.scheduledDate?.toISOString().slice(0, 10) ??
+        todayBusinessDate();
+      if (stockHoldOnCancel(existing.status) === 'reservation') {
+        await this.productStock.releaseForOrderLines(lines, day, tx);
+      } else {
+        await this.productStock.restoreConsumedForOrderLines(lines, day, tx);
+      }
+      return result;
     });
     if (updated.count === 0) {
       throw new BadRequestException({
@@ -247,26 +268,6 @@ export class OpsQueueService {
         message:
           'Another device already updated this order. Refresh to see it.',
       });
-    }
-
-    // Cancelling frees the day's reserved stock for someone else to buy.
-    if (next === ORDER_STATUS.CANCELLED) {
-      const lines = await this.prisma.customerOrderLine.findMany({
-        where: { orderId: id },
-        select: { productId: true, qty: true },
-      });
-      const day =
-        existing.scheduledDate?.toISOString().slice(0, 10) ??
-        todayBusinessDate();
-      await this.productStock
-        .releaseForOrderLines(lines, day)
-        .catch((err) =>
-          this.logger.error(
-            `Stock release failed for cancelled order ${id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          ),
-        );
     }
 
     return this.prisma.customerOrder.findUniqueOrThrow({
