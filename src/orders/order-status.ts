@@ -29,6 +29,26 @@ export const ORDER_STATUS = {
 
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 
+/**
+ * Written by the abandoned-checkout sweep. A payment that succeeds after this
+ * cancel still has to place the order — the member was charged.
+ */
+export const ABANDONED_CHECKOUT_CANCEL_REASON = 'Payment not completed';
+
+/**
+ * Unpaid checkouts only incremented `reserved_qty`. Payment already ran
+ * `consume` (both `qty` and `reserved_qty` down) before the order reached
+ * `placed`. Cancelling has to undo whichever of those actually happened,
+ * or the cake stays unsellable after a paid cancel.
+ */
+export function stockHoldOnCancel(
+  fromStatus: string,
+): 'reservation' | 'consumed' {
+  return fromStatus === ORDER_STATUS.PENDING_PAYMENT
+    ? 'reservation'
+    : 'consumed';
+}
+
 export const ALL_ORDER_STATUSES: OrderStatus[] = Object.values(ORDER_STATUS);
 
 /**

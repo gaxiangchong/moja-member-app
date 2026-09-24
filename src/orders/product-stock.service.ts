@@ -239,8 +239,10 @@ export class ProductStockService {
   }
 
   /**
-   * Gives stock back — a cancelled or refunded order. Clamped at zero so a
-   * double release cannot drive the reservation negative.
+   * Drops an unpaid checkout hold. Only `reserved_qty` moves; `qty` stays.
+   * A paid order has already been consumed, so cancelling that must call
+   * `restoreConsumedForOrderLines` instead — releasing the reservation again
+   * does not put the cake back on sale.
    */
   async releaseForOrderLines(
     lines: { productId: string; qty: number }[],
@@ -260,9 +262,31 @@ export class ProductStockService {
   }
 
   /**
-   * Consumes reserved stock when an order is handed over: both `qty` and
-   * `reserved_qty` come down, so the day's remaining count stays correct and
-   * the item is not double-counted against a later order.
+   * Puts a paid order's quantity back when it is cancelled before handover.
+   * Payment already consumed the reservation (`qty` and `reserved_qty` both
+   * down), so this adds `qty` back and leaves `reserved_qty` alone.
+   */
+  async restoreConsumedForOrderLines(
+    lines: { productId: string; qty: number }[],
+    businessDate: string,
+    tx: Tx = this.prisma,
+  ): Promise<void> {
+    const date = parseBusinessDate(businessDate);
+    for (const line of lines) {
+      const qty = Math.max(0, Math.round(line.qty));
+      if (qty === 0) continue;
+      await tx.$executeRaw`
+        UPDATE product_stock_days
+        SET qty = qty + ${qty}, updated_at = NOW()
+        WHERE product_id = ${line.productId} AND business_date = ${date}::date
+      `;
+    }
+  }
+
+  /**
+   * Converts a checkout reservation into a sale when payment succeeds.
+   * Both `qty` and `reserved_qty` come down, so the day's remaining count
+   * stays correct and the item is not held against a later order.
    */
   async consumeForOrderLines(
     lines: { productId: string; qty: number }[],

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { ORDER_STATUS } from './order-status';
+import { ABANDONED_CHECKOUT_CANCEL_REASON, ORDER_STATUS } from './order-status';
 import { ProductStockService } from './product-stock.service';
 
 /**
@@ -68,30 +68,27 @@ export class OrdersMaintenanceService {
 
     let released = 0;
     for (const order of stale) {
-      // Guarded: if the payment webhook lands in this instant, the order is no
-      // longer pending_payment and we must not release stock it now owns.
-      const cancelled = await this.prisma.customerOrder.updateMany({
-        where: { id: order.id, status: ORDER_STATUS.PENDING_PAYMENT },
-        data: {
-          status: ORDER_STATUS.CANCELLED,
-          cancelledAt: new Date(),
-          cancelReason: 'Payment not completed',
-        },
-      });
-      if (cancelled.count === 0) continue;
-
       const day =
         order.scheduledDate?.toISOString().slice(0, 10) ??
         shopCalendarYmd(order.placedAt);
-      await this.productStock
-        .releaseForOrderLines(order.lines, day)
-        .catch((err) =>
-          this.logger.error(
-            `Stock release failed for expired order ${order.id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          ),
-        );
+      // Status and stock move together. If the payment webhook already placed
+      // the order, updateMany matches nothing and the reservation stays with
+      // it. A later successful payment of a row we do cancel is revived by
+      // finalizeShopOrderAfterPayment because of the cancel reason below.
+      const cancelled = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.customerOrder.updateMany({
+          where: { id: order.id, status: ORDER_STATUS.PENDING_PAYMENT },
+          data: {
+            status: ORDER_STATUS.CANCELLED,
+            cancelledAt: new Date(),
+            cancelReason: ABANDONED_CHECKOUT_CANCEL_REASON,
+          },
+        });
+        if (result.count === 0) return result;
+        await this.productStock.releaseForOrderLines(order.lines, day, tx);
+        return result;
+      });
+      if (cancelled.count === 0) continue;
       released += 1;
     }
     if (released > 0) {

@@ -30,9 +30,11 @@ import {
 } from '../orders/product-stock.service';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import {
+  ABANDONED_CHECKOUT_CANCEL_REASON,
   isMemberCancellable,
   NON_REVENUE_ORDER_STATUSES,
   ORDER_STATUS,
+  stockHoldOnCancel,
 } from '../orders/order-status';
 
 /**
@@ -836,8 +838,8 @@ export class CustomersService {
   /**
    * Member cancels their own order before the kitchen starts on it. Anything
    * later goes through support, so a half-decorated cake is never thrown away
-   * by a tap. Releases the day's reserved stock; the refund is handled
-   * separately by an admin (Phase 1 refund work).
+   * by a tap. Payment has already consumed that day's qty, so the cancel puts
+   * the qty back. The refund is handled separately by an admin.
    */
   async cancelMyOrder(customerId: string, orderId: string) {
     const order = await this.prisma.customerOrder.findFirst({
@@ -863,34 +865,36 @@ export class CustomersService {
       });
     }
 
-    // Guarded by the expected status so a cancel racing the kitchen's
-    // "start preparing" cannot both win.
-    const updated = await this.prisma.customerOrder.updateMany({
-      where: { id: orderId, status: order.status },
-      data: {
-        status: ORDER_STATUS.CANCELLED,
-        cancelledAt: new Date(),
-        cancelReason: 'Cancelled by member',
-      },
-    });
-    if (updated.count === 0) {
-      throw new BadRequestException({
-        code: 'ORDER_NOT_CANCELLABLE',
-        message: 'This order has just moved on. Please contact us for help.',
-      });
-    }
-
     const day =
       order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();
-    await this.productStock
-      .releaseForOrderLines(order.lines, day)
-      .catch((err) =>
-        this.logger.error(
-          `Stock release failed for cancelled order ${orderId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
+    // Guarded by the expected status so a cancel racing the kitchen's
+    // "start preparing" cannot both win. Stock moves in the same transaction:
+    // a failed restore must not leave the order cancelled and the cake unsellable.
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.customerOrder.updateMany({
+        where: { id: orderId, status: order.status },
+        data: {
+          status: ORDER_STATUS.CANCELLED,
+          cancelledAt: new Date(),
+          cancelReason: 'Cancelled by member',
+        },
+      });
+      if (updated.count === 0) {
+        throw new BadRequestException({
+          code: 'ORDER_NOT_CANCELLABLE',
+          message: 'This order has just moved on. Please contact us for help.',
+        });
+      }
+      if (stockHoldOnCancel(order.status) === 'reservation') {
+        await this.productStock.releaseForOrderLines(order.lines, day, tx);
+      } else {
+        await this.productStock.restoreConsumedForOrderLines(
+          order.lines,
+          day,
+          tx,
+        );
+      }
+    });
 
     return { id: orderId, status: ORDER_STATUS.CANCELLED };
   }
@@ -999,8 +1003,12 @@ export class CustomersService {
    * Marks a pending shop order as placed, increments lifetime spend, and
    * credits loyalty points to the universal `loyalty_wallets` ledger — the
    * same place SalesPlay POS receipts write to. All work is atomic in one
-   * transaction. Idempotency is guarded by the `pending_payment → placed`
-   * status transition: subsequent calls return early without re-awarding.
+   * transaction. Idempotency is guarded by a conditional status transition:
+   * subsequent calls return early without re-awarding.
+   *
+   * The abandoned-checkout sweep may already have cancelled the order if the
+   * bank redirect outlived the hold. A successful payment still places it and
+   * takes the stock back, because the member was charged.
    */
   async finalizeShopOrderAfterPayment(orderId: string): Promise<void> {
     const pointsPerRm = this.loyaltyPointsPerCurrencyUnit();
@@ -1008,7 +1016,6 @@ export class CustomersService {
     let finalizedCustomerId: string | undefined;
     let finalizedTotalCents = 0;
     let referrerRewardedId: string | undefined;
-    let finalizedLines: { productId: string; qty: number }[] = [];
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
@@ -1020,30 +1027,67 @@ export class CustomersService {
           message: 'Order not found',
         });
       }
-      if (order.status !== ORDER_STATUS.PENDING_PAYMENT) {
-        return;
-      }
-      finalized = true;
-      finalizedCustomerId = order.customerId;
-      finalizedTotalCents = order.totalCents;
-      finalizedLines = order.lines.map((l) => ({
+      const lines = order.lines.map((l) => ({
         productId: l.productId,
         qty: l.qty,
       }));
-      await tx.customerOrder.update({
-        where: { id: orderId },
+      const day =
+        order.scheduledDate?.toISOString().slice(0, 10) ??
+        shopCalendarYmd(order.placedAt);
+
+      // Claim pending → placed first. If the sweep already cancelled the
+      // unpaid hold, claim that row instead. Any other status (already
+      // placed, or cancelled by the member/staff) is left alone.
+      const fromPending = await tx.customerOrder.updateMany({
+        where: { id: orderId, status: ORDER_STATUS.PENDING_PAYMENT },
         data: { status: ORDER_STATUS.PLACED },
       });
-      // The stock was already reserved when the order was created, so paying
-      // converts that reservation into a real consumption: both `qty` and
-      // `reserved_qty` come down. Same transaction as the status flip, so a
-      // webhook retry can never apply it twice.
-      await this.productStock.consumeForOrderLines(
-        finalizedLines,
-        order.scheduledDate?.toISOString().slice(0, 10) ??
-          shopCalendarYmd(order.placedAt),
-        tx,
-      );
+      let revived = false;
+      if (fromPending.count === 0) {
+        const fromAbandoned = await tx.customerOrder.updateMany({
+          where: {
+            id: orderId,
+            status: ORDER_STATUS.CANCELLED,
+            cancelReason: ABANDONED_CHECKOUT_CANCEL_REASON,
+          },
+          data: {
+            status: ORDER_STATUS.PLACED,
+            cancelledAt: null,
+            cancelReason: null,
+          },
+        });
+        if (fromAbandoned.count === 0) return;
+        revived = true;
+      }
+
+      finalized = true;
+      finalizedCustomerId = order.customerId;
+      finalizedTotalCents = order.totalCents;
+      if (revived) {
+        // The sweep already released the reservation. Take it back, then
+        // consume it the same way a normal payment does. If another order
+        // took the last cake, still place this one — the member paid.
+        const failed = await this.productStock.reserveForOrderLines(
+          lines,
+          day,
+          tx,
+        );
+        const held = lines.filter((l) => !failed.includes(l.productId));
+        if (held.length > 0) {
+          await this.productStock.consumeForOrderLines(held, day, tx);
+        }
+        if (failed.length > 0) {
+          this.logger.error(
+            `Shop order ${orderId} was paid after its checkout hold expired, but ${failed.join(', ')} could not be reserved again.`,
+          );
+        }
+      } else {
+        // The stock was already reserved when the order was created, so paying
+        // converts that reservation into a real consumption: both `qty` and
+        // `reserved_qty` come down. Same transaction as the status flip, so a
+        // webhook retry can never apply it twice.
+        await this.productStock.consumeForOrderLines(lines, day, tx);
+      }
       await tx.storedWallet.upsert({
         where: { customerId: order.customerId },
         create: {
