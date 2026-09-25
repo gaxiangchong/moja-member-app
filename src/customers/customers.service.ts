@@ -26,9 +26,9 @@ import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
   ProductStockService,
+  stockBusinessDateForOrder,
   todayBusinessDate,
 } from '../orders/product-stock.service';
-import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import {
   ABANDONED_CHECKOUT_CANCEL_REASON,
   isMemberCancellable,
@@ -848,6 +848,7 @@ export class CustomersService {
         id: true,
         status: true,
         scheduledDate: true,
+        placedAt: true,
         lines: { select: { productId: true, qty: true } },
       },
     });
@@ -865,8 +866,7 @@ export class CustomersService {
       });
     }
 
-    const day =
-      order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();
+    const day = stockBusinessDateForOrder(order);
     // Guarded by the expected status so a cancel racing the kitchen's
     // "start preparing" cannot both win. Stock moves in the same transaction:
     // a failed restore must not leave the order cancelled and the cake unsellable.
@@ -1031,9 +1031,7 @@ export class CustomersService {
         productId: l.productId,
         qty: l.qty,
       }));
-      const day =
-        order.scheduledDate?.toISOString().slice(0, 10) ??
-        shopCalendarYmd(order.placedAt);
+      const day = stockBusinessDateForOrder(order);
 
       // Claim pending → placed first. If the sweep already cancelled the
       // unpaid hold, claim that row instead. Any other status (already
