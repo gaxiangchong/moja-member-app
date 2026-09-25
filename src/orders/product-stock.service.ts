@@ -34,6 +34,25 @@ export function todayBusinessDate(): string {
 }
 
 /**
+ * The stock day an order holds.
+ *
+ * Scheduled pickup and delivery store that calendar date. In-store orders
+ * leave `scheduledDate` null and hold the shop day they were placed — the
+ * same day payment consumes. A later cancel has to use this day. Using
+ * "today" after midnight restores a different row and leaves the original
+ * day's cake unsellable, or inflates the next day's count.
+ */
+export function stockBusinessDateForOrder(order: {
+  scheduledDate: Date | null;
+  placedAt: Date;
+}): string {
+  if (order.scheduledDate) {
+    return order.scheduledDate.toISOString().slice(0, 10);
+  }
+  return shopCalendarYmd(order.placedAt);
+}
+
+/**
  * Per-day kitchen availability.
  *
  * A product is sellable for a date when `qty - reservedQty > 0`. Products with

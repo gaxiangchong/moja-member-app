@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ABANDONED_CHECKOUT_CANCEL_REASON, ORDER_STATUS } from './order-status';
-import { ProductStockService } from './product-stock.service';
+import {
+  ProductStockService,
+  stockBusinessDateForOrder,
+} from './product-stock.service';
 
 /**
  * Returns stock held by checkouts that were never paid for.
@@ -68,9 +70,7 @@ export class OrdersMaintenanceService {
 
     let released = 0;
     for (const order of stale) {
-      const day =
-        order.scheduledDate?.toISOString().slice(0, 10) ??
-        shopCalendarYmd(order.placedAt);
+      const day = stockBusinessDateForOrder(order);
       // Status and stock move together. If the payment webhook already placed
       // the order, updateMany matches nothing and the reservation stays with
       // it. A later successful payment of a row we do cancel is revived by

@@ -2,6 +2,7 @@ import { CustomersService } from '../customers/customers.service';
 import { OpsQueueService } from '../ops-queue/ops-queue.service';
 import { ABANDONED_CHECKOUT_CANCEL_REASON, ORDER_STATUS } from './order-status';
 import { OrdersMaintenanceService } from './orders-maintenance.service';
+import { stockBusinessDateForOrder } from './product-stock.service';
 
 const PICKUP_DAY = '2026-09-26';
 const LINES = [{ productId: 'cake-1', qty: 1 }];
@@ -19,6 +20,26 @@ function order(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe('stockBusinessDateForOrder', () => {
+  it('keeps a scheduled pickup on its chosen day', () => {
+    expect(
+      stockBusinessDateForOrder({
+        scheduledDate: new Date(`${PICKUP_DAY}T00:00:00.000Z`),
+        placedAt: new Date('2026-09-24T02:00:00.000Z'),
+      }),
+    ).toBe(PICKUP_DAY);
+  });
+
+  it('uses the Malaysia shop day an in-store order was placed', () => {
+    expect(
+      stockBusinessDateForOrder({
+        scheduledDate: null,
+        placedAt: new Date('2026-09-24T16:30:00.000Z'),
+      }),
+    ).toBe('2026-09-25');
+  });
+});
 
 describe('shop order stock lifecycle', () => {
   it('puts qty back when a member cancels a paid order', async () => {
@@ -59,6 +80,60 @@ describe('shop order stock lifecycle', () => {
       tx,
     );
     expect(productStock.releaseForOrderLines).not.toHaveBeenCalled();
+  });
+
+  it('restores the placement day when an in-store order is cancelled after midnight', async () => {
+    // 26 Sep 10:00 in Malaysia. The order was placed 25 Sep 00:30 Malaysia.
+    jest.useFakeTimers({
+      now: new Date('2026-09-26T02:00:00.000Z').getTime(),
+    });
+    try {
+      const placedAt = new Date('2026-09-24T16:30:00.000Z');
+      const tx = {
+        customerOrder: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      const prisma = {
+        customerOrder: {
+          findFirst: jest.fn().mockResolvedValue(
+            order({
+              scheduledDate: null,
+              placedAt,
+              status: ORDER_STATUS.PLACED,
+            }),
+          ),
+        },
+        $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
+          fn(tx),
+        ),
+      };
+      const productStock = {
+        releaseForOrderLines: jest.fn(),
+        restoreConsumedForOrderLines: jest.fn().mockResolvedValue(undefined),
+      };
+      const service = new CustomersService(
+        prisma as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        { get: jest.fn() } as never,
+        {} as never,
+        productStock as never,
+        {} as never,
+      );
+
+      await service.cancelMyOrder('cust-1', 'order-1');
+
+      expect(productStock.restoreConsumedForOrderLines).toHaveBeenCalledWith(
+        LINES,
+        '2026-09-25',
+        tx,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('consumes the existing reservation when payment lands on a pending order', async () => {
@@ -190,6 +265,60 @@ describe('shop order stock lifecycle', () => {
       PICKUP_DAY,
       tx,
     );
+  });
+
+  it('releases the placement day when the kitchen cancels an in-store hold after midnight', async () => {
+    jest.useFakeTimers({
+      now: new Date('2026-09-26T02:00:00.000Z').getTime(),
+    });
+    try {
+      const placedAt = new Date('2026-09-24T16:30:00.000Z');
+      const tx = {
+        customerOrder: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUnique: jest.fn(),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'order-1' }),
+        },
+        customerOrderLine: {
+          findMany: jest.fn().mockResolvedValue(LINES),
+        },
+      };
+      const prisma = {
+        customerOrder: {
+          findUnique: jest.fn().mockResolvedValue(
+            order({
+              status: ORDER_STATUS.PENDING_PAYMENT,
+              scheduledDate: null,
+              placedAt,
+            }),
+          ),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'order-1' }),
+        },
+        $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
+          fn(tx),
+        ),
+      };
+      const productStock = {
+        releaseForOrderLines: jest.fn().mockResolvedValue(undefined),
+        restoreConsumedForOrderLines: jest.fn(),
+      };
+      const ops = new OpsQueueService(
+        prisma as never,
+        {} as never,
+        productStock as never,
+      );
+
+      await ops.setOrderStatus('order-1', ORDER_STATUS.CANCELLED);
+
+      expect(productStock.releaseForOrderLines).toHaveBeenCalledWith(
+        LINES,
+        '2026-09-25',
+        tx,
+      );
+      expect(productStock.restoreConsumedForOrderLines).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('cancels an expired unpaid order and releases its reservation together', async () => {
