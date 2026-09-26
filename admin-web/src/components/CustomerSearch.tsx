@@ -22,7 +22,7 @@ export function CustomerSearch({
     if (!search.trim()) return;
     setLoading(true);
     setError(null);
-    fetchCustomers({ search: search.trim(), pageSize: 10 })
+    fetchCustomers({ filters: { search: search.trim() }, pageSize: 10 })
       .then((res) => setResults(res.items))
       .catch((err) => setError(err instanceof Error ? err.message : 'Search failed'))
       .finally(() => setLoading(false));

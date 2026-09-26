@@ -14,6 +14,7 @@ import {
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { parseDateOnly } from '../bento/bento-weekly.util';
 import { parseKitchenPickupCodeInput } from '../customers/kitchen-pickup-code.util';
+import { OrderNotificationService } from '../notifications/order-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import {
@@ -88,6 +89,7 @@ export class OpsQueueService {
     private readonly prisma: PrismaService,
     private readonly reportingSettings: ReportingSettingsService,
     private readonly productStock: ProductStockService,
+    private readonly orderNotices: OrderNotificationService,
   ) {}
 
   async listOrders() {
@@ -267,6 +269,12 @@ export class OpsQueueService {
             }`,
           ),
         );
+    }
+
+    if (next === ORDER_STATUS.READY) {
+      void this.orderNotices.notify(id, 'ready');
+    } else if (next === ORDER_STATUS.CANCELLED) {
+      void this.orderNotices.notify(id, 'cancelled');
     }
 
     return this.prisma.customerOrder.findUniqueOrThrow({

@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminBootstrapDto } from './dto/admin-bootstrap.dto';
+import { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import { AdminAuthGuard } from './guards/admin-auth.guard';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
 import type { AdminAuthState } from './types/admin-auth.types';
@@ -23,6 +24,16 @@ export class AdminAuthController {
       req.ip ||
       undefined;
     return this.auth.login(dto, ip);
+  }
+
+  /** An admin changes their own password (requires the current one). */
+  @Post('password')
+  @UseGuards(AdminAuthGuard)
+  changePassword(
+    @CurrentAdmin() admin: AdminAuthState,
+    @Body() dto: ChangeAdminPasswordDto,
+  ) {
+    return this.auth.changeOwnPassword(admin, dto);
   }
 
   @Get('me')

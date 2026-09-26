@@ -1015,7 +1015,10 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" data-menu-group="bento" open>
+        <!-- Collapsed by default: bento is no longer an active product line.
+             The views still work for the remaining subscriptions and for
+             historical reporting — see bento-web/DEPRECATED.md. -->
+        <details class="nav-group" data-menu-group="bento">
           <summary>Bento (meal plans)</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="bento-overview">
@@ -2871,7 +2874,12 @@ export class AdminDashboardController {
                 <div class="sa-kpi-card">
                   <div class="sa-kpi-card-title">Last pull</div>
                   <div class="sa-kpi-card-value" id="fsValPull" style="font-size:18px">—</div>
-                  <div class="sa-kpi-card-delta">backfill / reconciliation</div>
+                  <div class="sa-kpi-card-delta" id="fsPullDetail">backfill / reconciliation</div>
+                </div>
+                <div class="sa-kpi-card">
+                  <div class="sa-kpi-card-title">Scheduled pull</div>
+                  <div class="sa-kpi-card-value" id="fsValSchedule" style="font-size:18px">—</div>
+                  <div class="sa-kpi-card-delta" id="fsScheduleDetail">—</div>
                 </div>
                 <div class="sa-kpi-card">
                   <div class="sa-kpi-card-title">Receipts today (MYT)</div>
@@ -9310,6 +9318,30 @@ export class AdminDashboardController {
         'pull ' + (d.pullEnabled ? 'on' : 'off') + ' · reconcile ' + (d.reconcileEnabled ? 'on' : 'off');
       document.getElementById('fsValWebhook').textContent = fsAgo(d.lastWebhookAt);
       document.getElementById('fsValPull').textContent = fsAgo(d.lastPulledAt);
+      document.getElementById('fsPullDetail').textContent =
+        d.pullInProgress ? 'pull running now…' : 'backfill / reconciliation';
+
+      // Scheduled pull: cadence plus how long until the next one is due.
+      var everyLabel = d.intervalHours === 1
+        ? 'every hour'
+        : d.intervalHours < 1
+          ? 'every ' + Math.round(d.intervalHours * 60) + ' min'
+          : 'every ' + d.intervalHours + 'h';
+      if (!d.reconcileEnabled) {
+        document.getElementById('fsValSchedule').textContent = 'Off';
+        document.getElementById('fsScheduleDetail').textContent =
+          'set SALESPLAY_RECONCILE_ENABLED=true';
+      } else {
+        document.getElementById('fsValSchedule').textContent = everyLabel;
+        var dueMs = d.nextPullDueAt ? new Date(d.nextPullDueAt).getTime() - Date.now() : 0;
+        var dueLabel = dueMs <= 0
+          ? 'due now'
+          : dueMs < 60 * 60 * 1000
+            ? 'next in ' + Math.max(1, Math.round(dueMs / 60000)) + ' min'
+            : 'next in ' + Math.round(dueMs / 3600000) + 'h';
+        document.getElementById('fsScheduleDetail').textContent =
+          dueLabel + ' · ' + d.lookbackDays + '-day lookback';
+      }
       document.getElementById('fsValToday').textContent = fmt(d.receiptsToday);
       document.getElementById('fsTodayDetail').textContent =
         d.unmatchedReceiptsToday + ' walk-in · ' + d.onlineSettlementReceiptsToday + ' online settlement';

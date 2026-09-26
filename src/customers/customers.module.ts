@@ -6,6 +6,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
@@ -21,6 +22,7 @@ import { PhoneNormalizerService } from './phone-normalizer.service';
     SalesplayModule,
     ShopCatalogModule,
     RewardsWorkflowModule,
+    NotificationsModule,
   ],
   controllers: [CustomersController],
   providers: [CustomersService, PhoneNormalizerService],

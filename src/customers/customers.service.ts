@@ -19,6 +19,7 @@ import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discoun
 import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
+import { OrderNotificationService } from '../notifications/order-notification.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
@@ -143,7 +144,11 @@ export class CustomersService {
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
     private readonly productStock: ProductStockService,
+<<<<<<< Updated upstream
     private readonly pickupRules: PickupRulesService,
+=======
+    private readonly orderNotices: OrderNotificationService,
+>>>>>>> Stashed changes
   ) {}
 
   /**
@@ -892,6 +897,8 @@ export class CustomersService {
         ),
       );
 
+    void this.orderNotices.notify(orderId, 'cancelled');
+
     return { id: orderId, status: ORDER_STATUS.CANCELLED };
   }
 
@@ -1095,6 +1102,7 @@ export class CustomersService {
     });
     if (finalized) {
       this.pushShopOrderToSalesplay(orderId);
+      void this.orderNotices.notify(orderId, 'placed');
       if (finalizedCustomerId) {
         void this.campaignAutomation
           .runMinPurchaseTrigger(finalizedCustomerId, finalizedTotalCents)

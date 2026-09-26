@@ -6,6 +6,7 @@ import { EmployeesModule } from '../employees/employees.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { ReportingSettingsModule } from '../admin/reporting-settings.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { OpsQueueController } from './ops-queue.controller';
 import { OpsKitchenController } from './ops-kitchen.controller';
@@ -24,6 +25,7 @@ import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
     ReportingSettingsModule,
     ShopCatalogModule,
     WalletModule,
+    NotificationsModule,
   ],
   controllers: [OpsQueueController, OpsKitchenController, OpsMembersController],
   providers: [OpsQueueService, OpsMembersService, OpsApiKeyGuard],

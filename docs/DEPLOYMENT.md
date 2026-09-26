@@ -93,6 +93,7 @@ Copy **`.env.example`** to **`.env`** on the server (or inject equivalent keys f
 | `WHATSAPP_PROVIDER` | `meta` (default) or `twilio`. Selects which WhatsApp transport to use. OTP is sent only on first-time registration and forgot-PIN recovery; routine sign-in always uses PIN. |
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Required for real OTP via Meta WhatsApp Cloud API (`WHATSAPP_PROVIDER=meta`). |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` or `TWILIO_MESSAGING_SERVICE_SID` | Required for real OTP via Twilio WhatsApp (`WHATSAPP_PROVIDER=twilio`). Add `TWILIO_WHATSAPP_CONTENT_SID` for production templates. |
+| `WHATSAPP_ORDER_READY_TEMPLATE_NAME` (Meta) or `TWILIO_WHATSAPP_ORDER_READY_CONTENT_SID` (Twilio) | Approved utility template for "order ready". Until it is set, the kitchen's mark-ready action emails the member instead. Same three-variable shape for placed (`WHATSAPP_ORDER_PLACED_TEMPLATE_NAME`) and cancelled. See `.env.example`. |
 | `FEATURE_SHOP_SSO`, `FEATURE_CAMPAIGN_ASYNC` | Feature flags; see [rollout-checklist.md](rollout-checklist.md). |
 | `SHOP_WEB_BASE_URL`, `SHOP_HANDOFF_*` | Shop SSO handoff; see [shop-ecosystem-sso-plan.md](shop-ecosystem-sso-plan.md). |
 
@@ -257,6 +258,7 @@ Point previews at your staging API to verify CORS and auth before going live.
    - **Meta**: set **`WHATSAPP_ACCESS_TOKEN`** and **`WHATSAPP_PHONE_NUMBER_ID`** per [README](../README.md) Meta setup. Use an **approved template** in production (`WHATSAPP_OTP_TEMPLATE_NAME` / `WHATSAPP_OTP_TEMPLATE_LANG`).
    - **Twilio**: set **`TWILIO_ACCOUNT_SID`**, **`TWILIO_AUTH_TOKEN`**, and either **`TWILIO_WHATSAPP_FROM`** (approved WhatsApp sender) or **`TWILIO_MESSAGING_SERVICE_SID`**. Use an **approved Content template** in production via **`TWILIO_WHATSAPP_CONTENT_SID`** (plain `Body` only works inside the 24h window or Sandbox).
 3. Remove or avoid **`OTP_MOCK_FIXED_CODE`** in production.
+4. **Order-ready notices.** Submit the utility templates in `.env.example` (three variables: name, order number, detail) and set `WHATSAPP_ORDER_READY_TEMPLATE_NAME` or `TWILIO_WHATSAPP_ORDER_READY_CONTENT_SID` once Meta approves them. Until then, mark-ready emails the member when `RESEND_API_KEY` and a from-address are set. `GET /health/readiness` reports `order_ready_notification` as a warning while the template is missing.
 
 ---
 

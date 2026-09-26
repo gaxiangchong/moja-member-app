@@ -1269,3 +1269,110 @@ select {
   opacity: 0.4;
   cursor: default;
 }
+
+/* ---------------------------------------------------------------------------
+   Customer grid: filter toolbar, per-column filter row, sortable headers
+   --------------------------------------------------------------------------- */
+
+.gridToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gridToolbarSearch {
+  flex: 1 1 240px;
+  max-width: 340px;
+}
+
+.gridToolbarSpacer {
+  flex: 1 1 auto;
+}
+
+/* The grid is wide by nature — scroll it rather than squashing the columns. */
+.gridScroll {
+  overflow-x: auto;
+}
+
+.dataGrid {
+  min-width: 1080px;
+}
+
+.gridSortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.gridSortable:hover {
+  color: var(--accent);
+}
+
+.gridFilterRow th {
+  padding-top: 6px;
+  padding-bottom: 8px;
+  vertical-align: top;
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-strong);
+  font-weight: 400;
+}
+
+.gridFilterInput {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.gridFilterInput:disabled {
+  opacity: 0.5;
+}
+
+.gridToolbar .gridFilterInput {
+  width: auto;
+  min-width: 140px;
+  flex: 0 0 auto;
+}
+
+.gridFilterPair {
+  display: flex;
+  gap: 4px;
+}
+
+.gridFilterStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gridFilterCheck {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.gridFilterCheck input {
+  width: 14px;
+  height: 14px;
+}
+
+/* Right-align and tabular-align the numeric columns so they scan vertically. */
+.gridNumeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager .gridFilterInput {
+  width: auto;
+  min-width: 110px;
+}
