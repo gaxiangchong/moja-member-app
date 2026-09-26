@@ -385,6 +385,10 @@ export class AuthService {
     });
     const isFirstTimeSetup = !before?.loginPinHash;
     const hash = await bcrypt.hash(pin, 12);
+    await this.prisma.customer.updateMany({
+      where: { id: customerId, status: CustomerStatus.DRAFT },
+      data: { status: CustomerStatus.ACTIVE },
+    });
     const customer = await this.prisma.customer.update({
       where: { id: customerId },
       data: { loginPinHash: hash },

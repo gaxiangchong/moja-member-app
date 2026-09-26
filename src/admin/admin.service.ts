@@ -673,7 +673,12 @@ export class AdminService {
     const loginPinHash = await bcrypt.hash(pin, 12);
     await this.prisma.customer.update({
       where: { id },
-      data: { loginPinHash },
+      data: {
+        loginPinHash,
+        ...(customer.status === CustomerStatus.DRAFT
+          ? { status: CustomerStatus.ACTIVE }
+          : {}),
+      },
     });
 
     await this.audit.log({
