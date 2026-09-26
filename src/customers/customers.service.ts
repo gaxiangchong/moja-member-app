@@ -203,29 +203,28 @@ export class CustomersService {
     const currentYear = now.getUTCFullYear();
     if (customer.birthday.getUTCMonth() !== currentMonth) return;
 
-    const yearRef = String(currentYear);
-    const already = await this.prisma.loyaltyLedgerEntry.findFirst({
-      where: {
-        customerId,
-        reason: 'birthday_reward',
-        referenceType: 'birthday',
-        referenceId: yearRef,
-      },
-      select: { id: true },
-    });
-    if (already) return;
-
+    // The year lives in referenceType: ledger referenceId is a UUID column.
+    const yearRef = `birthday_${currentYear}`;
     try {
+      const already = await this.prisma.loyaltyLedgerEntry.findFirst({
+        where: {
+          customerId,
+          reason: 'birthday_reward',
+          referenceType: yearRef,
+        },
+        select: { id: true },
+      });
+      if (already) return;
+
       const result = await this.loyalty.appendLedgerEntry({
         customerId,
         deltaPoints: rewardPoints,
         reason: 'birthday_reward',
-        referenceType: 'birthday',
-        referenceId: yearRef,
+        referenceType: yearRef,
       });
       this.logger.log(
         `Awarded ${rewardPoints} birthday points to member ${customerId} ` +
-          `for ${yearRef} (balanceAfter=${result.balanceAfter}).`,
+          `for ${currentYear} (balanceAfter=${result.balanceAfter}).`,
       );
     } catch (err) {
       // A birthday gift must never break profile load/update.
