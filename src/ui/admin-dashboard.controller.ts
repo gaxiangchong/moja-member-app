@@ -8497,31 +8497,41 @@ export class AdminDashboardController {
 
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
-      const tasks = [
-        loadOverview(),
-        loadVoucherCampaigns(),
-        loadCustomers(),
-        loadLoyalty(),
-        loadGiftRewards(),
-        loadWalletLedger(),
-        loadAudit(),
-        loadLoginAudit(),
-        loadCampaignSegments(),
-        loadCampaignHistory(),
-        loadCampaignVoucherInsights(),
-        loadImportHistory(),
-        loadExportJobs(),
-        loadReporting(),
-        loadPerksCampaignRules(),
-        loadShopCatalog(),
-        loadBentoMenu(),
-        scRefreshSitesCatalogFileHint(),
-        loadShopLayout(),
-        loadHomeAdSlides(),
-        loadPopularItems(),
+      const loaders = [
+        ['Overview', loadOverview],
+        ['Vouchers', loadVoucherCampaigns],
+        ['Customers', loadCustomers],
+        ['Loyalty transactions', loadLoyalty],
+        ['Gift rewards', loadGiftRewards],
+        ['Wallet transactions', loadWalletLedger],
+        ['Audit logs', loadAudit],
+        ['Admin login logs', loadLoginAudit],
+        ['Customer segments', loadCampaignSegments],
+        ['Campaign history', loadCampaignHistory],
+        ['Campaign insights', loadCampaignVoucherInsights],
+        ['Import history', loadImportHistory],
+        ['Export jobs', loadExportJobs],
+        ['Reports', loadReporting],
+        ['Perks campaign rules', loadPerksCampaignRules],
+        ['Shopping catalog', loadShopCatalog],
+        ['Bento menu', loadBentoMenu],
+        ['Catalog file info', scRefreshSitesCatalogFileHint],
+        ['Shop layout', loadShopLayout],
+        ['Home ad carousel', loadHomeAdSlides],
+        ['Popular items', loadPopularItems],
       ];
-      const results = await Promise.allSettled(tasks);
-      const failed = results.filter((r) => r.status === 'rejected');
+      const results = await Promise.allSettled(
+        loaders.map(function (l) {
+          return Promise.resolve().then(l[1]);
+        }),
+      );
+      const failed = [];
+      results.forEach(function (r, i) {
+        if (r.status !== 'rejected') return;
+        const reason = (r.reason && r.reason.message) || String(r.reason);
+        failed.push(loaders[i][0] + ' (' + reason.slice(0, 140) + ')');
+        console.warn('[admin-dashboard] ' + loaders[i][0] + ' failed to load:', r.reason);
+      });
       const succeeded = results.length - failed.length;
       if (!failed.length) {
         isConnected = true;
@@ -8537,7 +8547,7 @@ export class AdminDashboardController {
       }
       isConnected = true;
       updateConnectionUi();
-      statusPanel.textContent = 'Connected with limited access. Some modules could not load due to permissions or unavailable endpoints.';
+      statusPanel.textContent = 'Connected with limited access. Could not load: ' + failed.join('; ');
     }
 
     function firstVisibleView() {
