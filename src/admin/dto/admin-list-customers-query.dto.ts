@@ -1,5 +1,6 @@
 import { CustomerStatus } from '@prisma/client';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
+import { BooleanQueryParam } from '../../common/boolean-query.decorator';
 import {
   IsBoolean,
   IsEnum,
@@ -7,9 +8,12 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
+
+const YMD = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
 export class AdminListCustomersQueryDto {
   @IsOptional()
@@ -29,6 +33,76 @@ export class AdminListCustomersQueryDto {
   @IsString()
   @MaxLength(200)
   search?: string;
+
+  // --- Per-column filters (admin grid). Each narrows one column only, and
+  // combines with `search` and the others via AND. ---
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  email?: string;
+
+  /** Lifetime spend range, in cents. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minSpentCents?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxSpentCents?: number;
+
+  /** Joined on/after this date (yyyy-mm-dd, inclusive). */
+  @IsOptional()
+  @IsString()
+  @Matches(YMD, { message: 'joinedFrom must be yyyy-mm-dd' })
+  joinedFrom?: string;
+
+  /** Joined on/before this date (yyyy-mm-dd, inclusive). */
+  @IsOptional()
+  @IsString()
+  @Matches(YMD, { message: 'joinedTo must be yyyy-mm-dd' })
+  joinedTo?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(YMD, { message: 'lastLoginFrom must be yyyy-mm-dd' })
+  lastLoginFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(YMD, { message: 'lastLoginTo must be yyyy-mm-dd' })
+  lastLoginTo?: string;
+
+  /** `true` = has never signed in. Overrides the lastLogin range when set. */
+  @IsOptional()
+  @BooleanQueryParam()
+  @IsBoolean()
+  neverLoggedIn?: boolean;
+
+  @IsOptional()
+  @BooleanQueryParam()
+  @IsBoolean()
+  marketingConsent?: boolean;
+
+  /** `true` = an email is on file (so forgot-PIN recovery can work). */
+  @IsOptional()
+  @BooleanQueryParam()
+  @IsBoolean()
+  hasEmail?: boolean;
 
   @IsOptional()
   @IsEnum(CustomerStatus)
@@ -61,11 +135,7 @@ export class AdminListCustomersQueryDto {
   maxPoints?: number;
 
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === 'true' || value === true) return true;
-    if (value === 'false' || value === false) return false;
-    return undefined;
-  })
+  @BooleanQueryParam()
   @IsBoolean()
   hasActiveVoucher?: boolean;
 

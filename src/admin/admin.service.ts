@@ -240,6 +240,25 @@ function validatePerksCampaignRuleFields(input: {
   }
 }
 
+/**
+ * Inclusive yyyy-mm-dd range over a timestamp column. The upper bound is
+ * pushed to the end of that day, so "to: 2026-09-26" includes the 26th
+ * rather than stopping at its midnight.
+ */
+function dateRangeFilter(
+  from?: string,
+  to?: string,
+): Prisma.DateTimeFilter | null {
+  const range: Prisma.DateTimeFilter = {};
+  if (from) range.gte = new Date(`${from}T00:00:00.000Z`);
+  if (to) {
+    range.lt = new Date(
+      new Date(`${to}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000,
+    );
+  }
+  return Object.keys(range).length > 0 ? range : null;
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -324,9 +343,56 @@ export class AdminService {
       parts.push({ OR: or });
     }
 
+    // Per-column filters from the admin grid. Each narrows a single column,
+    // unlike `search` above which spans phone/name/email.
+    if (q.name?.trim()) {
+      parts.push({
+        displayName: { contains: q.name.trim(), mode: 'insensitive' },
+      });
+    }
+    if (q.phone?.trim()) {
+      parts.push({
+        phoneE164: { contains: q.phone.trim(), mode: 'insensitive' },
+      });
+    }
+    if (q.email?.trim()) {
+      parts.push({ email: { contains: q.email.trim(), mode: 'insensitive' } });
+    }
+
     if (q.status) parts.push({ status: q.status });
     if (q.memberTier) parts.push({ memberTier: q.memberTier });
     if (q.signupSource) parts.push({ signupSource: q.signupSource });
+
+    if (q.minSpentCents != null || q.maxSpentCents != null) {
+      const range: Prisma.IntFilter = {};
+      if (q.minSpentCents != null) range.gte = q.minSpentCents;
+      if (q.maxSpentCents != null) range.lte = q.maxSpentCents;
+      parts.push({ storedWallet: { lifetimeSpentCents: range } });
+    }
+
+    const joined = dateRangeFilter(q.joinedFrom, q.joinedTo);
+    if (joined) parts.push({ createdAt: joined });
+
+    // "Never signed in" is a different question from a date range, so it wins
+    // when both are sent (the grid disables the range while it is ticked).
+    if (q.neverLoggedIn === true) {
+      parts.push({ lastLoginAt: null });
+    } else if (q.neverLoggedIn === false) {
+      parts.push({ lastLoginAt: { not: null } });
+    } else {
+      const lastLogin = dateRangeFilter(q.lastLoginFrom, q.lastLoginTo);
+      if (lastLogin) parts.push({ lastLoginAt: lastLogin });
+    }
+
+    if (q.marketingConsent != null) {
+      parts.push({ marketingConsent: q.marketingConsent });
+    }
+
+    if (q.hasEmail === true) {
+      parts.push({ NOT: { email: null }, email: { not: '' } });
+    } else if (q.hasEmail === false) {
+      parts.push({ OR: [{ email: null }, { email: '' }] });
+    }
 
     if (q.tag?.trim()) {
       const tags = q.tag

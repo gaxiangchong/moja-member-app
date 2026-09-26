@@ -305,6 +305,9 @@ export type AdminCustomer = {
   displayName: string | null;
   email: string | null;
   memberTier: string | null;
+  signupSource?: string | null;
+  marketingConsent?: boolean;
+  tags?: string[];
   pointsBalance: number;
   lifetimeSpentCents: number;
   referralsMade: number;
@@ -320,16 +323,91 @@ export type CustomersPage = {
   total: number;
 };
 
-export async function fetchCustomers(params: {
+/** Every filter the customer grid can apply. All optional; they AND together. */
+export type CustomerFilters = {
+  search?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  status?: string;
+  memberTier?: string;
+  signupSource?: string;
+  tag?: string;
+  minPoints?: string;
+  maxPoints?: string;
+  minSpentCents?: string;
+  maxSpentCents?: string;
+  joinedFrom?: string;
+  joinedTo?: string;
+  lastLoginFrom?: string;
+  lastLoginTo?: string;
+  neverLoggedIn?: string;
+  marketingConsent?: string;
+  hasEmail?: string;
+  hasActiveVoucher?: string;
+};
+
+export type CustomerSortBy =
+  | 'createdAt'
+  | 'lastLoginAt'
+  | 'points'
+  | 'spent'
+  | 'name'
+  | 'referrals';
+
+export type CustomerQuery = {
   page?: number;
   pageSize?: number;
-  search?: string;
-}): Promise<CustomersPage> {
+  sortBy?: CustomerSortBy;
+  sortDir?: 'asc' | 'desc';
+  filters?: CustomerFilters;
+};
+
+/** Filters + paging + sort as URL params, skipping anything blank. */
+export function customerQueryString(params: CustomerQuery): string {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
-  if (params.search?.trim()) qs.set('search', params.search.trim());
-  const query = qs.toString();
+  if (params.sortBy) qs.set('sortBy', params.sortBy);
+  if (params.sortDir) qs.set('sortDir', params.sortDir);
+  for (const [k, v] of Object.entries(params.filters ?? {})) {
+    const val = typeof v === 'string' ? v.trim() : v;
+    if (val) qs.set(k, String(val));
+  }
+  return qs.toString();
+}
+
+/**
+ * Downloads a CSV of every customer matching the current filters. The server
+ * reuses the same where clause as the list, so the export always matches what
+ * the grid is showing (paging aside).
+ */
+export async function downloadCustomersCsv(params: CustomerQuery): Promise<void> {
+  const query = customerQueryString({
+    ...params,
+    page: undefined,
+    pageSize: undefined,
+  });
+  const res = await authorizedFetch(
+    `/admin/customers/export${query ? `?${query}` : ''}`,
+  );
+  if (!res.ok) {
+    const data = await parseJson<{ message?: string | string[] }>(res);
+    throw new Error(extractMessage(data, res));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function fetchCustomers(params: CustomerQuery): Promise<CustomersPage> {
+  const query = customerQueryString(params);
   const res = await authorizedFetch(`/admin/customers${query ? `?${query}` : ''}`);
   const data = await parseJson<CustomersPage & { message?: string | string[] }>(
     res,

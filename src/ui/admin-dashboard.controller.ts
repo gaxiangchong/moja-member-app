@@ -1078,7 +1078,10 @@ export class AdminDashboardController {
             </button>
           </div>
         </details>
-        <details class="nav-group" data-menu-group="bento" open>
+        <!-- Collapsed by default: bento is no longer an active product line.
+             The views still work for the remaining subscriptions and for
+             historical reporting — see bento-web/DEPRECATED.md. -->
+        <details class="nav-group" data-menu-group="bento">
           <summary>Bento (meal plans)</summary>
           <div class="nav-items">
             <button type="button" class="nav-btn nav-sub" data-view="bento-overview">
