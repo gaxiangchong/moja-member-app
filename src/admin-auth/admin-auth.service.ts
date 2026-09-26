@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -14,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AdminAuthState } from './types/admin-auth.types';
 import type { AdminBootstrapDto } from './dto/admin-bootstrap.dto';
 import type { AdminLoginDto } from './dto/admin-login.dto';
+import type { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import type { CreateAdminUserDto } from './dto/create-admin-user.dto';
 import type { UpdateAdminUserDto } from './dto/update-admin-user.dto';
 
@@ -223,12 +225,32 @@ export class AdminAuthService {
         message: 'User not found',
       });
     }
+
+    // A shared ADMIN_API_KEYS value has no person behind it, so letting it
+    // reset a password would allow a silent takeover of a named account whose
+    // audit trail then reads as that person. Creating a new admin user stays
+    // allowed as the break-glass path — that one is visible in the user list.
+    if (dto.password !== undefined && actor.kind !== 'user') {
+      throw new ForbiddenException({
+        code: 'ADMIN_PASSWORD_RESET_REQUIRES_USER',
+        message:
+          'Password resets must be done by a signed-in admin, not an API key. Sign in, or create a new admin user instead.',
+      });
+    }
+
+    const passwordHash =
+      dto.password !== undefined
+        ? await bcrypt.hash(dto.password, 10)
+        : undefined;
     const user = await this.prisma.adminUser.update({
       where: { id },
       data: {
         role: dto.role,
         isActive: dto.isActive,
         displayName: dto.displayName,
+        ...(passwordHash
+          ? { passwordHash, passwordChangedAt: new Date() }
+          : {}),
       },
       select: {
         id: true,
@@ -244,7 +266,11 @@ export class AdminAuthService {
     await this.audit.log({
       actorType: 'admin',
       actorId: actor.actorLabel,
-      action: roleChanged ? 'admin.permission_updated' : 'admin.user_updated',
+      action: passwordHash
+        ? 'admin.password_reset'
+        : roleChanged
+          ? 'admin.permission_updated'
+          : 'admin.user_updated',
       entityType: 'admin_user',
       entityId: id,
       adminUserId: actor.adminUserId ?? null,
@@ -255,12 +281,95 @@ export class AdminAuthService {
         isActive: before.isActive,
         displayName: before.displayName,
       } as object,
+      // Records *that* the password changed, never the password itself.
       afterValue: {
         role: user.role,
         isActive: user.isActive,
         displayName: user.displayName,
+        ...(passwordHash ? { passwordReset: true } : {}),
       } as object,
     });
     return user;
+  }
+
+  /**
+   * An admin changes their own password. Requires the current one, so an
+   * unattended browser session cannot be used to lock the real owner out.
+   * Invalidates every other session for this account, and returns a fresh
+   * token so the caller stays signed in on this device.
+   */
+  async changeOwnPassword(
+    actor: AdminAuthState,
+    dto: ChangeAdminPasswordDto,
+  ): Promise<{ accessToken: string; expiresInSec: number }> {
+    if (actor.kind !== 'user' || !actor.adminUserId) {
+      throw new ForbiddenException({
+        code: 'ADMIN_PASSWORD_CHANGE_REQUIRES_USER',
+        message: 'Sign in as an admin user to change a password.',
+      });
+    }
+    const user = await this.prisma.adminUser.findUnique({
+      where: { id: actor.adminUserId },
+    });
+    if (!user?.isActive) {
+      throw new UnauthorizedException({
+        code: 'ADMIN_USER_INACTIVE',
+        message: 'Admin account is disabled',
+      });
+    }
+    const ok = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!ok) {
+      await this.audit.log({
+        actorType: 'admin',
+        actorId: actor.actorLabel,
+        action: 'admin.password_change_failed',
+        entityType: 'admin_user',
+        entityId: user.id,
+        adminUserId: user.id,
+        adminRole: user.role,
+        ipAddress: actor.ip ?? null,
+      });
+      throw new UnauthorizedException({
+        code: 'ADMIN_CURRENT_PASSWORD_INVALID',
+        message: 'Current password is incorrect.',
+      });
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException({
+        code: 'ADMIN_PASSWORD_UNCHANGED',
+        message: 'Choose a password different from the current one.',
+      });
+    }
+
+    const changedAt = new Date();
+    await this.prisma.adminUser.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(dto.newPassword, 10),
+        passwordChangedAt: changedAt,
+      },
+    });
+    await this.audit.log({
+      actorType: 'admin',
+      actorId: actor.actorLabel,
+      action: 'admin.password_changed',
+      entityType: 'admin_user',
+      entityId: user.id,
+      adminUserId: user.id,
+      adminRole: user.role,
+      ipAddress: actor.ip ?? null,
+    });
+
+    // The change just invalidated every token issued before `changedAt`,
+    // including the one that made this request — hand back a new one.
+    const secret =
+      this.config.get<string>('ADMIN_JWT_SECRET') ||
+      this.config.getOrThrow<string>('JWT_SECRET');
+    const expiresInSec = this.jwtExpiresSec();
+    const accessToken = await this.jwt.signAsync(
+      { sub: user.id, typ: 'admin', role: user.role },
+      { secret, expiresIn: expiresInSec },
+    );
+    return { accessToken, expiresInSec };
   }
 }

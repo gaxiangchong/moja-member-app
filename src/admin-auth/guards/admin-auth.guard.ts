@@ -36,7 +36,7 @@ export class AdminAuthGuard implements CanActivate {
       const secret =
         this.config.get<string>('ADMIN_JWT_SECRET') ||
         this.config.getOrThrow<string>('JWT_SECRET');
-      let payload: { sub: string; typ?: string };
+      let payload: { sub: string; typ?: string; iat?: number };
       try {
         payload = this.jwt.verify(token, { secret });
       } catch {
@@ -59,6 +59,19 @@ export class AdminAuthGuard implements CanActivate {
           code: 'ADMIN_USER_INACTIVE',
           message: 'Admin account is disabled',
         });
+      }
+      // A password change ends the account's other sessions. Without this an
+      // admin token stays valid for its full 7-day TTL, so resetting a
+      // compromised account's password would not actually lock anyone out.
+      // `iat` has one-second resolution, hence the second of slack.
+      if (user.passwordChangedAt && typeof payload.iat === 'number') {
+        const issuedAtMs = payload.iat * 1000 + 1000;
+        if (issuedAtMs < user.passwordChangedAt.getTime()) {
+          throw new UnauthorizedException({
+            code: 'ADMIN_TOKEN_STALE',
+            message: 'Password changed — please sign in again.',
+          });
+        }
       }
       const permissions = permissionsForRole(user.role);
       req.adminAuth = {

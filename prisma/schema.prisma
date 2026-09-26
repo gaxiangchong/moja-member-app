@@ -983,6 +983,10 @@ model AdminUser {
   role         AdminRoleCode @map("role")
   isActive     Boolean       @default(true) @map("is_active")
   lastLoginAt  DateTime?     @map("last_login_at")
+  /// When the password was last changed. Admin tokens issued before this are
+  /// rejected by AdminAuthGuard, so resetting a password actually ends the
+  /// old sessions instead of leaving them valid for the rest of the 7-day TTL.
+  passwordChangedAt DateTime? @map("password_changed_at")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
