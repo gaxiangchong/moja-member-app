@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
@@ -14,8 +10,6 @@ import { SalesplayWebhookService } from './salesplay-webhook.service';
 const RECEIPTS_RESOURCE = 'receipts';
 const CREDIT_NOTES_RESOURCE = 'credit_notes';
 
-/** How often the reconcile scheduler wakes to check whether a pull is due. */
-const RECONCILE_POLL_MS = 60 * 60 * 1000; // hourly
 /** Safety cap on pages per run so a bad cursor can never loop forever. */
 const MAX_PAGES_PER_RUN = 500;
 
@@ -38,6 +32,12 @@ export type PosSyncHealth = {
   unmatchedReceiptsToday: number;
   onlineSettlementReceiptsToday: number;
   totalReceipts: number;
+  /** Scheduler state, so the admin screen can show the cadence. */
+  intervalHours: number;
+  lookbackDays: number;
+  /** Null when the scheduled reconcile is switched off. */
+  nextPullDueAt: string | null;
+  pullInProgress: boolean;
 };
 
 /**
@@ -55,9 +55,8 @@ export type PosSyncHealth = {
  * off so nothing calls the SalesPlay API until deliberately switched on.
  */
 @Injectable()
-export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
+export class SalesplayPullService {
   private readonly logger = new Logger(SalesplayPullService.name);
-  private reconcileTimer: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor(
@@ -68,21 +67,29 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
     private readonly reportingSettings: ReportingSettingsService,
   ) {}
 
-  onModuleInit(): void {
+  /**
+   * Scheduler tick.
+   *
+   * Polls every 5 minutes but only *acts* once `SALESPLAY_RECONCILE_INTERVAL_HOURS`
+   * has elapsed since the last successful pull. The poll has to be finer than
+   * the target interval: when both were hourly, a pull finishing at 10:00 was
+   * not yet due at the 10:59 tick, so the next one ran at 11:59 and the real
+   * cadence drifted to ~2 hours. At 5-minute granularity an hourly target
+   * lands within ±5 minutes.
+   *
+   * Reading the due-time from `lastPulledAt` in the database (rather than an
+   * in-process timer) means a redeploy does not reset the schedule.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async reconcileTick(): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;
-    if (!this.reconcileEnabled()) return;
-    this.reconcileTimer = setInterval(() => {
-      void this.runReconcileIfDue().catch((err) => {
-        this.logger.error(
-          `SalesPlay reconcile tick failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-    }, RECONCILE_POLL_MS);
-    this.reconcileTimer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
+    try {
+      await this.runReconcileIfDue();
+    } catch (err) {
+      this.logger.error(
+        `SalesPlay reconcile tick failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private flagOn(name: string): boolean {
@@ -98,12 +105,27 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
     return this.flagOn('SALESPLAY_RECONCILE_ENABLED');
   }
 
-  private reconcileIntervalHours(): number {
-    const n = Number(this.config.get<string>('SALESPLAY_RECONCILE_INTERVAL_HOURS'));
-    return Number.isFinite(n) && n > 0 ? n : 24;
+  /**
+   * Target gap between reconcile pulls. Defaults to hourly; fractions are
+   * allowed (0.5 = every 30 min), floored at the 5-minute tick granularity.
+   */
+  reconcileIntervalHours(): number {
+    const n = Number(
+      this.config.get<string>('SALESPLAY_RECONCILE_INTERVAL_HOURS'),
+    );
+    return Number.isFinite(n) && n > 0 ? n : 1;
   }
 
-  /** Nightly reconcile: run only if enough time has passed since the last pull. */
+  /** When the next scheduled pull becomes due, or null when not scheduled. */
+  private nextDueAt(lastPulledAt: Date | null | undefined): Date | null {
+    if (!this.reconcileEnabled()) return null;
+    if (!lastPulledAt) return new Date();
+    return new Date(
+      lastPulledAt.getTime() + this.reconcileIntervalHours() * 60 * 60 * 1000,
+    );
+  }
+
+  /** Reconcile pull: run only if enough time has passed since the last one. */
   private async runReconcileIfDue(): Promise<void> {
     if (!this.reconcileEnabled() || this.running) return;
     const state = await this.prisma.salesplaySyncState.findUnique({
@@ -121,18 +143,26 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
    * Reconciliation pull: fetch recent records (a lookback window, not the full
    * cursor) and ingest any the webhooks missed. Cheap and idempotent.
    */
-  async reconcile(): Promise<{ receipts: PullSummary; creditNotes: PullSummary }> {
+  async reconcile(): Promise<{
+    receipts: PullSummary;
+    creditNotes: PullSummary;
+  }> {
     const lookbackDays = this.reconcileLookbackDays();
     const fromDate = salesplayFromDateTime(
       new Date(Date.now() - lookbackDays * 86_400_000),
     );
-    const receipts = await this.pullReceipts({ fromDate, persistCursor: false });
+    const receipts = await this.pullReceipts({
+      fromDate,
+      persistCursor: false,
+    });
     const creditNotes = await this.pullCreditNotes({ fromDate });
     return { receipts, creditNotes };
   }
 
   private reconcileLookbackDays(): number {
-    const n = Number(this.config.get<string>('SALESPLAY_RECONCILE_LOOKBACK_DAYS'));
+    const n = Number(
+      this.config.get<string>('SALESPLAY_RECONCILE_LOOKBACK_DAYS'),
+    );
     return Number.isFinite(n) && n > 0 ? n : 3;
   }
 
@@ -141,7 +171,10 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
    * sales reporting cutoff (`salesStartDate`) — or `SALESPLAY_BACKFILL_FROM` if
    * set — persisting the receipts cursor so it can resume.
    */
-  async backfill(): Promise<{ receipts: PullSummary; creditNotes: PullSummary }> {
+  async backfill(): Promise<{
+    receipts: PullSummary;
+    creditNotes: PullSummary;
+  }> {
     const fromDate = this.backfillFromDate();
     this.logger.log(
       `SalesPlay backfill starting from ${fromDate ?? '(no cutoff — full history)'}.`,
@@ -276,7 +309,10 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
     return row?.cursor ?? null;
   }
 
-  private async saveCursor(resource: string, cursor: string | null): Promise<void> {
+  private async saveCursor(
+    resource: string,
+    cursor: string | null,
+  ): Promise<void> {
     await this.prisma.salesplaySyncState.upsert({
       where: { resource },
       create: { resource, cursor },
@@ -309,7 +345,9 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
       onlineSettlementReceiptsToday,
       totalReceipts,
     ] = await Promise.all([
-      this.prisma.posReceipt.count({ where: { businessDate: { gte: todayStart } } }),
+      this.prisma.posReceipt.count({
+        where: { businessDate: { gte: todayStart } },
+      }),
       this.prisma.posCreditNote.count({
         where: { businessDate: { gte: todayStart } },
       }),
@@ -335,6 +373,11 @@ export class SalesplayPullService implements OnModuleInit, OnModuleDestroy {
       reconcileEnabled: this.reconcileEnabled(),
       lastWebhookAt: receiptState?.lastWebhookAt?.toISOString() ?? null,
       lastPulledAt: receiptState?.lastPulledAt?.toISOString() ?? null,
+      intervalHours: this.reconcileIntervalHours(),
+      lookbackDays: this.reconcileLookbackDays(),
+      nextPullDueAt:
+        this.nextDueAt(receiptState?.lastPulledAt)?.toISOString() ?? null,
+      pullInProgress: this.running,
       receiptsToday,
       creditNotesToday,
       unmatchedReceiptsToday,
