@@ -107,8 +107,7 @@ export class AdminDashboardMenuService {
     await this.audit.log({
       ...auditActorBase(auth),
       action: 'admin_dashboard.menu_updated',
-      entityType: 'app_setting',
-      entityId: SETTINGS_KEY,
+      entityType: SETTINGS_KEY,
       beforeValue: before ?? undefined,
       afterValue: next,
     });
@@ -121,8 +120,7 @@ export class AdminDashboardMenuService {
     await this.audit.log({
       ...auditActorBase(auth),
       action: 'admin_dashboard.menu_reset',
-      entityType: 'app_setting',
-      entityId: SETTINGS_KEY,
+      entityType: SETTINGS_KEY,
       beforeValue: before ?? undefined,
     });
     return this.settings();
