@@ -65,13 +65,8 @@ The Luckin/Zus loop: order & pay in app → kitchen prepares → customer notifi
 **Backend**
 - Order lifecycle: `pending_payment → placed → preparing → ready → collected` (+ `cancelled`, `refunded`). Add `readyAt`, `collectedAt`, `cancelledAt`, `fulfilmentType` (`in_store | pickup | delivery`), `scheduledFor` (date + slot) as real columns instead of the free-text `fulfillmentSummary`.
 - **Per-date stock**: `ProductStockDay(productId, businessDate, qty, reservedQty)`. Kitchen sets availability per day (default from a weekly template); checkout reserves against the chosen pickup date; expire reservations on abandoned payment (TTL job). Keep the "no date = today" path for in-store.
-<<<<<<< Updated upstream
 - ✅ Pickup rules in `app_settings` (`shop_pickup_rules`): lead time (default 2 h before the slot), optional cut-off clock per slot, per-slot capacity, store hours, closed weekdays and dates. Checkout shows which slots are still open and why. Enforced again when the order is created.
-- Notify on `ready`: WhatsApp utility template (generalise `WhatsappOtpService` → `WhatsappMessagingService`) with email fallback. Also on `placed` (confirmation) and `cancelled`.
-=======
-- Pickup rules in `AppSetting`: lead time (e.g. order ≥ 2 h before slot), cut-off per slot, per-slot capacity, store hours / closed days.
 - ✅ Notify on `ready`: WhatsApp utility template (`WhatsappMessagingService`) with email fallback until the template is approved. Also on `placed` (WhatsApp only; the receipt email is the confirmation) and `cancelled`. Abandoned unpaid checkouts are not notified.
->>>>>>> Stashed changes
 - Cancel/refund: member cancel before `preparing`; admin refund via Xendit refund API; stock released; points/vouchers reversed (compensating ledger entries).
 
 **Ops (kitchen)**

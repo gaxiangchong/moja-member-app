@@ -144,11 +144,8 @@ export class CustomersService {
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
     private readonly productStock: ProductStockService,
-<<<<<<< Updated upstream
     private readonly pickupRules: PickupRulesService,
-=======
     private readonly orderNotices: OrderNotificationService,
->>>>>>> Stashed changes
   ) {}
 
   /**
