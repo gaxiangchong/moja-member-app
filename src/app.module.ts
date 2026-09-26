@@ -12,7 +12,7 @@ import { HealthController } from './health/health.controller';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RewardsModule } from './rewards/rewards.module';
-import { AdminDashboardController } from './ui/admin-dashboard.controller';
+import { AdminDashboardModule } from './ui/admin-dashboard.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SegmentationModule } from './segmentation/segmentation.module';
 import { ImportExportModule } from './import-export/import-export.module';
@@ -62,7 +62,8 @@ import { MailerModule } from './mailer/mailer.module';
     MailerModule,
     ReadinessModule,
     OrdersModule,
+    AdminDashboardModule,
   ],
-  controllers: [HealthController, AdminDashboardController],
+  controllers: [HealthController],
 })
 export class AppModule {}

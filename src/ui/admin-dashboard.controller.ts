@@ -1,85 +1,13 @@
 import { Controller, Get, Header } from '@nestjs/common';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
-const DEFAULT_DASHBOARD_CONFIG = {
-  menuGroups: {
-    dashboard: { showGroup: false, showSubmenu: true },
-    customers: { showGroup: true, showSubmenu: true },
-    bento: { showGroup: true, showSubmenu: true },
-    wallet: { showGroup: false, showSubmenu: true },
-    loyalty: { showGroup: true, showSubmenu: true },
-    campaigns: { showGroup: false, showSubmenu: true },
-    mailer: { showGroup: true, showSubmenu: true },
-    'data-tools': { showGroup: false, showSubmenu: true },
-    finance: { showGroup: true, showSubmenu: true },
-    reports: { showGroup: false, showSubmenu: true },
-    settings: { showGroup: true, showSubmenu: true },
-    audit: { showGroup: false, showSubmenu: true },
-  },
-  menuViews: {
-    'dashboard-overview': true,
-    'dashboard-activity': true,
-    'dashboard-employees': true,
-    'customers-list': true,
-    'customer-orders': true,
-    'bento-overview': true,
-    'bento-sales': true,
-    'bento-menu': true,
-    'bento-pricing': true,
-    'bento-operations': true,
-    'bento-orders': true,
-    'bento-vouchers': true,
-    'voucher-campaigns': true,
-    'voucher-redeem': true,
-    'gift-rewards': true,
-    'mailer-campaigns': true,
-    'settings-shopping-catalog': true,
-    'settings-shop-layout': true,
-    'settings-popular-items': true,
-    'settings-home-ads': true,
-    'settings-system': true,
-    'reports-customers': true,
-    'reports-sales': true,
-    'finance-overview': true,
-    'finance-transactions': true,
-    'finance-daily': true,
-    'finance-sync': true,
-  },
-};
+import { AdminDashboardMenuService } from './admin-dashboard-menu.service';
 
 @Controller()
 export class AdminDashboardController {
+  constructor(private readonly menu: AdminDashboardMenuService) {}
+
   @Get('admin-dashboard/config.json')
   getDashboardConfig() {
-    return this.readDashboardConfig();
-  }
-
-  private readDashboardConfig() {
-    const path = resolve(process.cwd(), 'admin-dashboard.config.json');
-    if (!existsSync(path)) return DEFAULT_DASHBOARD_CONFIG;
-    try {
-      const raw = readFileSync(path, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object')
-        return DEFAULT_DASHBOARD_CONFIG;
-      const pg =
-        parsed.menuGroups && typeof parsed.menuGroups === 'object'
-          ? parsed.menuGroups
-          : {};
-      const pv =
-        parsed.menuViews && typeof parsed.menuViews === 'object'
-          ? parsed.menuViews
-          : {};
-      return {
-        ...DEFAULT_DASHBOARD_CONFIG,
-        ...parsed,
-        menuGroups: { ...DEFAULT_DASHBOARD_CONFIG.menuGroups, ...pg },
-        menuViews: { ...DEFAULT_DASHBOARD_CONFIG.menuViews, ...pv },
-      };
-    } catch {
-      return DEFAULT_DASHBOARD_CONFIG;
-    }
+    return this.menu.sidebarConfig();
   }
 
   @Get('admin-dashboard')
@@ -1003,6 +931,15 @@ export class AdminDashboardController {
         box-shadow: none;
       }
     }
+    .mv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 16px 20px 20px; }
+    .mv-group { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
+    .mv-group.locked { background: #f8fafc; }
+    .mv-group-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--text); padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+    .mv-group-head label { display: flex; align-items: center; gap: 8px; flex: 1; margin: 0; font-size: 14px; cursor: pointer; }
+    .mv-lock { font-size: 11px; font-weight: 600; color: #1d4ed8; background: #dbeafe; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+    .mv-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; font-weight: 500; color: var(--text); margin: 0; cursor: pointer; }
+    .mv-group.locked .mv-item, .mv-group.locked .mv-group-head label { cursor: not-allowed; color: var(--text-muted); }
+    .mv-group input[type=checkbox] { width: 16px; height: 16px; margin: 0; }
   </style>
 </head>
 <body class="login-locked">
@@ -1245,6 +1182,7 @@ export class AdminDashboardController {
             <button type="button" class="nav-btn nav-sub" data-view="settings-home-ads">Home ad carousel</button>
             <button type="button" class="nav-btn nav-sub" data-view="dashboard-employees">Employees &amp; payroll</button>
             <button type="button" class="nav-btn nav-sub" data-view="settings-system">System config</button>
+            <button type="button" class="nav-btn nav-sub" data-view="settings-menu">Menu visibility</button>
           </div>
         </details>
         <details class="nav-group" data-menu-group="audit" open>
@@ -2955,6 +2893,24 @@ export class AdminDashboardController {
           </div>
         </section>
 
+        <section id="settings-menu" class="tab-panel hidden">
+          <div class="sheet">
+            <div class="sheet-head">
+              <h2>Menu visibility</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="mvResetBtn">Reset to default</button>
+                <button type="button" class="btn-primary" id="mvSaveBtn">Save</button>
+              </div>
+            </div>
+            <div style="padding:12px 20px 0 20px;color:#64748b;font-size:13px">
+              Tick the menu items to show in the sidebar. Unticked items are hidden for every admin.
+              Customers, Loyalty &amp; rewards, Email marketing, and Settings are always shown.
+              <p class="field-hint" id="mvStatus" style="margin:8px 0 0 0"></p>
+            </div>
+            <div class="mv-grid" id="mvGroups"></div>
+          </div>
+        </section>
+
         <section id="settings-system" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head">
@@ -4048,6 +4004,7 @@ export class AdminDashboardController {
       'reports-customers', 'reports-sales',
       'finance-overview', 'finance-transactions', 'finance-daily', 'finance-sync',
       'settings-system', 'settings-shopping-catalog', 'settings-shop-layout', 'settings-popular-items', 'settings-home-ads',
+      'settings-menu',
       'audit', 'audit-logins',
     ];
     let hiddenViews = new Set();
@@ -4126,6 +4083,7 @@ export class AdminDashboardController {
       'settings-shop-layout': '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
       'settings-popular-items': '<polygon points="12 2 15 9 22 9.3 17 14 19 21 12 17 5 21 7 14 2 9.3 9 9 12 2"/>',
       'settings-home-ads': '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
+      'settings-menu': '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>',
       audit: iconAudit,
       'audit-logins': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
     };
@@ -4176,6 +4134,7 @@ export class AdminDashboardController {
       'settings-shop-layout': 'Settings · Shop layout',
       'settings-popular-items': 'Settings · Popular items',
       'settings-home-ads': 'Settings · Home ad carousel',
+      'settings-menu': 'Settings · Menu visibility',
       audit: 'Audit · Audit logs',
       'audit-logins': 'Audit · Admin login logs',
     };
@@ -8601,7 +8560,7 @@ export class AdminDashboardController {
 
     async function applyDashboardConfig() {
       try {
-        var res = await fetch('/admin-dashboard/config.json');
+        var res = await fetch('/admin-dashboard/config.json', { cache: 'no-store' });
         if (!res.ok) return;
         var cfg = await res.json();
         var groups = (cfg && cfg.menuGroups) || {};
@@ -8649,6 +8608,105 @@ export class AdminDashboardController {
         // Ignore config load failures and keep default menu behavior.
       }
     }
+
+    function mvSetStatus(text, isError) {
+      var el = document.getElementById('mvStatus');
+      if (!el) return;
+      el.textContent = text || '';
+      el.style.color = isError ? '#b91c1c' : '';
+    }
+
+    function mvErrorText(err) {
+      var msg = (err && err.message) || String(err);
+      if (msg.indexOf('(403)') !== -1) return 'Only admins with admin:manage (Super admin) can change the menu.';
+      return msg;
+    }
+
+    function mvSyncGroupBox(groupEl) {
+      var master = groupEl.querySelector('input[data-mv-group]');
+      if (!master) return;
+      var items = groupEl.querySelectorAll('input[data-mv-view]');
+      var on = 0;
+      items.forEach(function (i) { if (i.checked) on += 1; });
+      master.checked = on > 0 && on === items.length;
+      master.indeterminate = on > 0 && on < items.length;
+    }
+
+    function renderMenuVisibility(data) {
+      var root = document.getElementById('mvGroups');
+      if (!root) return;
+      root.innerHTML = (data.groups || []).map(function (g) {
+        var dis = g.locked ? ' disabled' : '';
+        var items = (g.views || []).map(function (v) {
+          return '<label class="mv-item"><input type="checkbox" data-mv-view="' + vcEsc(v.id) + '"' +
+            (v.visible ? ' checked' : '') + dis + ' /> ' + vcEsc(v.label) + '</label>';
+        }).join('');
+        return '<div class="mv-group' + (g.locked ? ' locked' : '') + '" data-mv-key="' + vcEsc(g.key) + '">' +
+          '<div class="mv-group-head"><label><input type="checkbox" data-mv-group="' + vcEsc(g.key) + '"' + dis + ' /> ' +
+          vcEsc(g.label) + '</label>' + (g.locked ? '<span class="mv-lock">Always shown</span>' : '') + '</div>' +
+          items + '</div>';
+      }).join('');
+      root.querySelectorAll('.mv-group').forEach(mvSyncGroupBox);
+      mvSetStatus(data.customized
+        ? 'Showing your saved menu.'
+        : 'Showing the default menu. Save to keep your own selection.');
+    }
+
+    async function loadMenuVisibility() {
+      mvSetStatus('Loading…');
+      try {
+        renderMenuVisibility(await api('/admin/dashboard-menu'));
+      } catch (err) {
+        mvSetStatus(mvErrorText(err), true);
+      }
+    }
+
+    async function saveMenuVisibility() {
+      var views = {};
+      document.querySelectorAll('#mvGroups input[data-mv-view]').forEach(function (el) {
+        views[el.getAttribute('data-mv-view')] = el.checked;
+      });
+      mvSetStatus('Saving…');
+      try {
+        renderMenuVisibility(await apiPut('/admin/dashboard-menu', { views: views }));
+        await applyDashboardConfig();
+        mvSetStatus('Saved. The sidebar now shows your selection.');
+      } catch (err) {
+        mvSetStatus(mvErrorText(err), true);
+      }
+    }
+
+    async function resetMenuVisibility() {
+      if (!window.confirm('Reset the sidebar to the default menu?')) return;
+      mvSetStatus('Resetting…');
+      try {
+        renderMenuVisibility(await apiDelete('/admin/dashboard-menu'));
+        await applyDashboardConfig();
+        mvSetStatus('Reset to the default menu.');
+      } catch (err) {
+        mvSetStatus(mvErrorText(err), true);
+      }
+    }
+
+    (function () {
+      var root = document.getElementById('mvGroups');
+      if (root) {
+        root.addEventListener('change', function (e) {
+          var t = e.target;
+          if (!t || t.disabled) return;
+          var groupEl = t.closest('.mv-group');
+          if (!groupEl) return;
+          if (t.hasAttribute('data-mv-group')) {
+            groupEl.querySelectorAll('input[data-mv-view]').forEach(function (i) { i.checked = t.checked; });
+          }
+          mvSyncGroupBox(groupEl);
+        });
+      }
+      var saveBtn = document.getElementById('mvSaveBtn');
+      if (saveBtn) saveBtn.addEventListener('click', function () { saveMenuVisibility(); });
+      var resetBtn = document.getElementById('mvResetBtn');
+      if (resetBtn) resetBtn.addEventListener('click', function () { resetMenuVisibility(); });
+    })();
 
     loginSubmitBtn.addEventListener('click', () => { submitLogin().catch(() => {}); });
     refreshDataBtn.addEventListener('click', () => {
@@ -11756,6 +11814,9 @@ export class AdminDashboardController {
             loadBentoVouchers().catch(function (err) {
               statusPanel.textContent = err.message || String(err);
             });
+          }
+          if (view === 'settings-menu' && isConnected) {
+            loadMenuVisibility();
           }
           if (view === 'settings-system' && isConnected) {
             loadReportingSettings().catch(function (err) {
