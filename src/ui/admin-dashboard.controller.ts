@@ -8497,6 +8497,21 @@ export class AdminDashboardController {
 
     async function loadAll() {
       statusPanel.innerHTML = 'Loading&hellip;';
+      try {
+        await api('/admin/auth/me');
+      } catch (err) {
+        isConnected = false;
+        updateConnectionUi();
+        const msg = (err && err.message) || String(err);
+        const rejected = msg.indexOf('(401)') !== -1;
+        const text = !rejected
+          ? 'Could not reach the admin API: ' + msg
+          : currentAuthMode === 'jwt'
+            ? 'Your admin session has expired or is invalid. Sign in again.'
+            : 'This API key is not accepted by the server. Use one of the keys set in ADMIN_API_KEYS on the server, or sign in with email and password.';
+        statusPanel.textContent = text;
+        throw new Error(text);
+      }
       const loaders = [
         ['Overview', loadOverview],
         ['Vouchers', loadVoucherCampaigns],
