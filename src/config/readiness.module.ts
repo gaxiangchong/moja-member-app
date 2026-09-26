@@ -5,16 +5,24 @@ import { EmailOtpService } from '../auth/email-otp.service';
 import { SmsOtpService } from '../auth/sms-otp.service';
 import { TwilioVerifyService } from '../auth/twilio-verify.service';
 import { WhatsappOtpService } from '../auth/whatsapp-otp.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReadinessController } from './readiness.controller';
 import { ReadinessService } from './readiness.service';
 
 @Module({
-  imports: [ConfigModule, PrismaModule, AdminAuthModule, PaymentsModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    AdminAuthModule,
+    PaymentsModule,
+    NotificationsModule,
+  ],
   controllers: [ReadinessController],
-  // The OTP channel services only depend on ConfigService, so they are cheap
-  // to instantiate here for their `isConfigured()` checks.
+  // OTP channel services are instantiated here for their `isConfigured()`
+  // checks. WhatsApp OTP delegates to WhatsappMessagingService, which comes
+  // from NotificationsModule.
   providers: [
     ReadinessService,
     WhatsappOtpService,

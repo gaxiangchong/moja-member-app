@@ -241,6 +241,27 @@ export class ReadinessService implements OnApplicationBootstrap {
         ? 'WhatsApp OTP uses an approved template.'
         : 'No WhatsApp template configured — plain-text OTP only works in sandbox / 24h reply window.',
     );
+    const waProvider = (this.config.get<string>('WHATSAPP_PROVIDER') ?? 'meta')
+      .trim()
+      .toLowerCase();
+    const orderReadyTemplate = secret(
+      waProvider === 'twilio'
+        ? 'TWILIO_WHATSAPP_ORDER_READY_CONTENT_SID'
+        : 'WHATSAPP_ORDER_READY_TEMPLATE_NAME',
+    );
+    const receiptEmail =
+      Boolean(secret('RESEND_API_KEY')) &&
+      Boolean(secret('RECEIPT_EMAIL_FROM') || secret('OTP_EMAIL_FROM'));
+    add(
+      'order_ready_notification',
+      production ? 'warn' : 'info',
+      Boolean(orderReadyTemplate),
+      orderReadyTemplate
+        ? 'Order-ready WhatsApp template configured.'
+        : receiptEmail
+          ? 'Order-ready WhatsApp template is not set — members are emailed when the kitchen marks an order ready, until Meta approves the template.'
+          : 'No order-ready WhatsApp template and no email sender — members will not be told when an order is ready.',
+    );
 
     // --- Web origins ----------------------------------------------------------
     const origins = secret('CLIENT_WEB_ORIGIN');
