@@ -16,7 +16,9 @@ const targets = [
   { id: 'client-home', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=home`, ready: 'nav.bottomTabs', interaction: 'button[aria-label="Rewards"]' },
   { id: 'client-shop-list', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopProductHit', interaction: '.shopProductHit' },
   { id: 'client-product-detail', app: 'client-web', url: `http://127.0.0.1:${ports.client}/?tab=shop`, ready: '.shopDetailCard', setup: '.shopProductHit', interaction: '.shopDetailBody > button' },
-  { id: 'bento-landing', app: 'bento-web', url: `http://127.0.0.1:${ports.bento}/`, ready: '.landing', interaction: '.landingLoginLink' },
+  // bento-web is deprecated (see bento-web/DEPRECATED.md) — no longer built or
+  // measured. Restore this line and the build/server below to bring it back.
+  // { id: 'bento-landing', app: 'bento-web', url: `http://127.0.0.1:${ports.bento}/`, ready: '.landing', interaction: '.landingLoginLink' },
 ];
 const thresholds = { lcpMs: 2500, cls: 0.1, inpMs: 200 };
 
@@ -118,9 +120,10 @@ function markdown(report) {
 async function main() {
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   await command(npm, ['run', 'build', '--prefix', 'client-web'], { VITE_API_BASE_URL: `http://127.0.0.1:${ports.api}` });
-  await command(npm, ['run', 'build', '--prefix', 'bento-web'], { VITE_API_BASE_URL: `http://127.0.0.1:${ports.api}` });
-  const servers = [apiServer(), staticServer(join(root, 'client-web/dist')), staticServer(join(root, 'bento-web/dist'))];
-  await Promise.all(servers.map((server, i) => listen(server, [ports.api, ports.client, ports.bento][i])));
+  // bento-web deprecated — build and static server commented out with its page.
+  // await command(npm, ['run', 'build', '--prefix', 'bento-web'], { VITE_API_BASE_URL: `http://127.0.0.1:${ports.api}` });
+  const servers = [apiServer(), staticServer(join(root, 'client-web/dist'))];
+  await Promise.all(servers.map((server, i) => listen(server, [ports.api, ports.client][i])));
   try {
     const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const pages = [];

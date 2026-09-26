@@ -151,6 +151,12 @@ In the [Twilio Console](https://console.twilio.com):
 
 For production accounts on either provider, an approved template is required by WhatsApp policy.
 
+### Order status (ready / placed / cancelled)
+
+When the kitchen marks an order ready, the API sends a **utility** template (not the OTP template). The same transport covers payment confirmation and cancellation. Until the template is approved, ready and cancelled notices are emailed instead (receipt email already covers "placed").
+
+Each template has exactly three body variables: `{{1}}` member name, `{{2}}` order number, `{{3}}` a short detail. Suggested copy is in `.env.example` (`WHATSAPP_ORDER_READY_TEMPLATE_NAME` / `TWILIO_WHATSAPP_ORDER_READY_CONTENT_SID`, and the placed and cancelled equivalents).
+
 ### 4) Test flow
 
 1. Start API:
@@ -328,7 +334,7 @@ Generic NestJS hosting notes: [NestJS deployment](https://docs.nestjs.com/deploy
 
 ## Local web performance baseline
 
-Run `npm run perf:baseline` to build `client-web` and `bento-web`, serve them with deterministic local API fixtures, and measure the member home, shop list, product detail, and bento landing pages under a simulated mobile/slow-4G profile. The command requires Chrome (override its location with `CHROME_PATH`) and writes stable-schema reports to `reports/performance/baseline.json` and `baseline.md`.
+Run `npm run perf:baseline` to build `client-web`, serve it with deterministic local API fixtures, and measure the member home, shop list, and product detail pages under a simulated mobile/slow-4G profile. (The bento landing page was dropped when `bento-web` was deprecated — see [bento-web/DEPRECATED.md](bento-web/DEPRECATED.md).) The command requires Chrome (override its location with `CHROME_PATH`) and writes stable-schema reports to `reports/performance/baseline.json` and `baseline.md`.
 
 Each page is sampled three times in independent, cold-cache browser contexts and reported as the median. A real control is exercised for INP; if Chrome exposes no qualifying Event Timing entry, INP is marked unavailable rather than passing as zero. LCP under 2.5 s, CLS under 0.1, and INP under 200 ms are advisory flags: a missed target is recorded but does not fail the command. Set `PERF_RUNS` or `PERF_OUTPUT_DIR` to override the sample count or output directory.
 

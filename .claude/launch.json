@@ -2,58 +2,36 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "bento-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "--port",
-        "5195",
-        "--strictPort"
-      ],
-      "cwd": "bento-web",
-      "port": 5195
-    },
-    {
       "name": "api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "start:dev"
-      ],
+      "runtimeArgs": ["run", "start:dev"],
       "port": 3153
-    },
-    {
-      "name": "ops-queue-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
-      "cwd": "ops-queue-web",
-      "port": 5194
     },
     {
       "name": "client-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
+      "runtimeArgs": ["run", "dev"],
       "cwd": "client-web",
       "port": 5193
     },
     {
+      "name": "ops-queue-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "ops-queue-web",
+      "port": 5194
+    },
+    {
+      "name": "admin-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "admin-web",
+      "port": 5196
+    },
+    {
       "name": "client-web-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "vite",
-        "preview",
-        "--port",
-        "5197",
-        "--strictPort"
-      ],
+      "runtimeArgs": ["vite", "preview", "--port", "5197", "--strictPort"],
       "cwd": "client-web",
       "port": 5197
     }
