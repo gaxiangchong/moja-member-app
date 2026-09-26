@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { purchasePoints } from '../loyalty/member-tier';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -282,16 +283,20 @@ export class SalesplayWebhookService {
     }
     if (parsed.netCents <= 0) return;
 
-    // Floor RM (major unit) before applying the rate — same formula as online
-    // checkout (`CustomersService.finalizeShopOrderAfterPayment`) so both
-    // channels award identical points for the same spend at any earn rate.
+    // Floor RM, then the tier multiplier — same formula as online checkout.
+    const balanceBefore = (await this.loyalty.getWalletSummary(customerId))
+      .pointsBalance;
     const amountRm = Math.floor(parsed.netCents / 100);
-    const points = Math.floor(amountRm * this.pointsPerUnit());
-    if (points <= 0) return;
+    const earned = purchasePoints({
+      amountRm,
+      pointsPerRm: this.pointsPerUnit(),
+      balanceBefore,
+    });
+    if (earned.points <= 0) return;
 
     await this.loyalty.appendLedgerEntry({
       customerId,
-      deltaPoints: points,
+      deltaPoints: earned.points,
       reason: 'salesplay_purchase',
       referenceType: 'pos_receipt',
       // pos_receipt id is a UUID, matching the ledger's referenceId column type.
@@ -307,12 +312,14 @@ export class SalesplayWebhookService {
         receiptId,
         salesplayReceiptId: parsed.salesplayReceiptId,
         netCents: parsed.netCents,
-        points,
+        points: earned.points,
+        tier: earned.tier,
+        multiplier: earned.multiplier,
       },
     });
 
     this.logger.log(
-      `Awarded ${points} pts to ${customerId} for SalesPlay receipt ${parsed.salesplayReceiptId}.`,
+      `Awarded ${earned.points} pts (${earned.tier} ${earned.multiplier}×) to ${customerId} for SalesPlay receipt ${parsed.salesplayReceiptId}.`,
     );
   }
 

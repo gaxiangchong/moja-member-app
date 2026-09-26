@@ -65,7 +65,7 @@ The Luckin/Zus loop: order & pay in app → kitchen prepares → customer notifi
 **Backend**
 - Order lifecycle: `pending_payment → placed → preparing → ready → collected` (+ `cancelled`, `refunded`). Add `readyAt`, `collectedAt`, `cancelledAt`, `fulfilmentType` (`in_store | pickup | delivery`), `scheduledFor` (date + slot) as real columns instead of the free-text `fulfillmentSummary`.
 - **Per-date stock**: `ProductStockDay(productId, businessDate, qty, reservedQty)`. Kitchen sets availability per day (default from a weekly template); checkout reserves against the chosen pickup date; expire reservations on abandoned payment (TTL job). Keep the "no date = today" path for in-store.
-- Pickup rules in `AppSetting`: lead time (e.g. order ≥ 2 h before slot), cut-off per slot, per-slot capacity, store hours / closed days.
+- ✅ Pickup rules in `app_settings` (`shop_pickup_rules`): lead time (default 2 h before the slot), optional cut-off clock per slot, per-slot capacity, store hours, closed weekdays and dates. Checkout shows which slots are still open and why. Enforced again when the order is created.
 - Notify on `ready`: WhatsApp utility template (generalise `WhatsappOtpService` → `WhatsappMessagingService`) with email fallback. Also on `placed` (confirmation) and `cancelled`.
 - Cancel/refund: member cancel before `preparing`; admin refund via Xendit refund API; stock released; points/vouchers reversed (compensating ledger entries).
 
@@ -75,7 +75,7 @@ The Luckin/Zus loop: order & pay in app → kitchen prepares → customer notifi
 
 **Member**
 - Order status screen with live steps (placed → preparing → ready → collected), pickup code big and scannable, "add to calendar", reorder button.
-- Checkout: availability shown per date/slot; disabled slots explained; lead-time message.
+- ✅ Checkout: availability shown per date/slot; disabled slots explained; lead-time message.
 
 **Acceptance:** place → pay → kitchen sees it within 5 s → mark ready → member gets WhatsApp → scan collect → SalesPlay shows the online order → finance daily close matches Xendit.
 

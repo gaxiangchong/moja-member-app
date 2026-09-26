@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { tierForPoints } from './member-tier';
 
 @Injectable()
 export class LoyaltyService {
@@ -93,6 +94,13 @@ export class LoyaltyService {
     await tx.loyaltyWallet.update({
       where: { customerId: params.customerId },
       data: { pointsCached: balanceAfter },
+    });
+
+    // Tier follows the balance, so every earn, redemption, and adjustment
+    // keeps `member_tier` current for admin filters, mailers, and segments.
+    await tx.customer.update({
+      where: { id: params.customerId },
+      data: { memberTier: tierForPoints(balanceAfter) },
     });
 
     return { balanceAfter };

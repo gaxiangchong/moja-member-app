@@ -42,6 +42,8 @@ import {
   readPendingPayment,
 } from './payments/pendingPayment';
 import {
+  POINT_TIER_EARN,
+  POINT_TIER_KEYS,
   POINT_TIER_LABELS,
   POINT_TIER_THRESHOLDS,
   pointsTierProgress,
@@ -1293,19 +1295,23 @@ function App() {
 
   const referralCount = profile?.referralCount ?? 0;
 
+  const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
+  const tierProgress = useMemo(
+    () => pointsTierProgress(pointsBalance),
+    [pointsBalance],
+  );
+  const { pointsToNext, progressPct } = tierProgress;
+
   const normalizedTierKey = useMemo(() => {
+    if (rewardsData) return POINT_TIER_KEYS[tierProgress.activeTierIndex];
     const raw = (profile?.memberTier ?? 'silver').trim().toLowerCase();
     if (raw.includes('plat')) return 'platinum';
     if (raw.includes('gold')) return 'gold';
-    if (raw.includes('silver')) return 'silver';
     return 'silver';
-  }, [profile?.memberTier]);
+  }, [rewardsData, tierProgress.activeTierIndex, profile?.memberTier]);
 
-  const tierDisplayName = useMemo(() => {
-    if (normalizedTierKey === 'platinum') return 'Platinum';
-    if (normalizedTierKey === 'gold') return 'Gold';
-    return 'Silver';
-  }, [normalizedTierKey]);
+  const tierDisplayName =
+    POINT_TIER_LABELS[POINT_TIER_KEYS.indexOf(normalizedTierKey)];
 
   const memberSince = useMemo(() => {
     const raw = profile?.createdAt;
@@ -1314,13 +1320,6 @@ function App() {
     if (Number.isNaN(d.getTime())) return null;
     return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }, [profile?.createdAt]);
-
-  const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
-  const tierProgress = useMemo(
-    () => pointsTierProgress(pointsBalance),
-    [pointsBalance],
-  );
-  const { pointsToNext, progressPct } = tierProgress;
 
   const voucherItems = rewardsData?.vouchers ?? [];
   const visibleVouchers = voucherItems.filter((v) => {
@@ -1758,7 +1757,7 @@ function App() {
                       type="button"
                       className="pmCard homeSummaryCard"
                       onClick={() => setMemberQrOpen(true)}
-                      aria-label={`Points balance, ${pointsBalance.toLocaleString()}. Show my member QR`}
+                      aria-label={`${tierDisplayName} member, ${pointsBalance.toLocaleString()} points. Show my member QR`}
                     >
                       <span className="homeSummaryIcon homeSummaryIcon--reward" aria-hidden>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1769,7 +1768,12 @@ function App() {
                         </svg>
                       </span>
                       <span className="homeSummaryText">
-                        <span className="homeSummaryLabel">Points</span>
+                        <span className="homeSummaryLabel">
+                          <span className={`homeTierTag homeTierTag--${normalizedTierKey}`}>
+                            {tierDisplayName}
+                          </span>{' '}
+                          Points
+                        </span>
                         <span className="homeSummaryValue">{pointsBalance.toLocaleString()}</span>
                       </span>
                     </button>
@@ -2126,6 +2130,11 @@ function App() {
                   </p>
                   <ul className="accountGuestBenefits">
                     <li>Earn points on every purchase</li>
+                    <li>
+                      Reach Gold at {POINT_TIER_THRESHOLDS[1].toLocaleString()} pts for{' '}
+                      {POINT_TIER_EARN[1]} points, and Platinum at{' '}
+                      {POINT_TIER_THRESHOLDS[2].toLocaleString()} pts for {POINT_TIER_EARN[2]}
+                    </li>
                     <li>Get member-only vouchers &amp; rewards</li>
                     <li>Track your order history</li>
                   </ul>
@@ -2172,19 +2181,23 @@ function App() {
                     />
                   </div>
                   <div className="tierTrack" aria-hidden>
-                    {POINT_TIER_THRESHOLDS.map((threshold, i) => (
+                    {POINT_TIER_LABELS.map((label, i) => (
                       <span
-                        key={threshold}
+                        key={label}
                         className={`tierTrackStop${tierProgress.activeTierIndex === i ? ' active' : ''}`}
                       >
-                        {POINT_TIER_LABELS[i]} · {threshold.toLocaleString()}
+                        {label}
+                        {POINT_TIER_THRESHOLDS[i] > 0
+                          ? ` · ${POINT_TIER_THRESHOLDS[i].toLocaleString()}`
+                          : ''}
                       </span>
                     ))}
                   </div>
                   <p className="accountTierHint">
+                    {tierProgress.earnLabel}
                     {pointsToNext > 0 && tierProgress.nextTierLabel
-                      ? `${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
-                      : 'You have reached the top tier'}
+                      ? ` · ${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                      : ' · Top tier'}
                   </p>
                 </Card>
 

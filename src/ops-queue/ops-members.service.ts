@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { tierForPoints } from '../loyalty/member-tier';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { OpsCreateMemberDto, OpsMemberLookupDto } from './dto/ops-member.dto';
@@ -135,6 +136,7 @@ export class OpsMembersService {
       nextStep: this.nextStep(customer),
       member: {
         ...profile,
+        memberTier: tierForPoints(points.pointsBalance),
         activated: Boolean(loginPinHash),
         canSelfRecover: Boolean(customer.email?.trim()),
         pointsBalance: points.pointsBalance,

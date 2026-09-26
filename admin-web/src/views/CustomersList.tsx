@@ -24,6 +24,17 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
 
+const TIER_LABEL: Record<string, string> = {
+  silver: 'Silver · 1×',
+  gold: 'Gold · 1.5×',
+  platinum: 'Platinum · 2×',
+};
+
+function tierLabel(tier: string | null): string {
+  if (!tier) return '—';
+  return TIER_LABEL[tier.toLowerCase()] ?? tier;
+}
+
 function statusBadgeTone(status: string): 'success' | 'danger' | 'neutral' {
   const s = status.toUpperCase();
   if (s === 'ACTIVE') return 'success';

@@ -18,7 +18,9 @@ import { BentoMenuModule } from '../bento/bento-menu.module';
 import { BentoModule } from '../bento/bento.module';
 import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { OrdersModule } from '../orders/orders.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
+import { PickupRulesAdminController } from './pickup-rules.admin.controller';
 
 @Module({
   imports: [
@@ -35,12 +37,14 @@ import { SalesplayModule } from '../salesplay/salesplay.module';
     BentoVoucherModule,
     PaymentsModule,
     SalesplayModule,
+    OrdersModule,
   ],
   controllers: [
     AdminController,
     AdminApprovalsController,
     AdminReportsController,
     AdminEmployeesController,
+    PickupRulesAdminController,
   ],
   providers: [AdminService, ApprovalsService, FinanceReportService],
 })

@@ -21,6 +21,8 @@ import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
+import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
+import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
   ProductStockService,
@@ -141,6 +143,7 @@ export class CustomersService {
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
     private readonly productStock: ProductStockService,
+    private readonly pickupRules: PickupRulesService,
   ) {}
 
   /**
@@ -382,6 +385,7 @@ export class CustomersService {
         ...(initialInterestTag ? { tags: [initialInterestTag] } : {}),
         referralCode,
         referredByCustomerId: referredById,
+        memberTier: 'silver',
       },
     });
     await this.loyalty.ensureWallet(customer.id);
@@ -485,6 +489,14 @@ export class CustomersService {
     await this.maybeGrantBirthdayReward(customerId);
     const loyaltyAfter = await this.loyalty.getWalletSummary(customerId);
 
+    const memberTier = tierForPoints(loyaltyAfter.pointsBalance);
+    if (customer.memberTier !== memberTier) {
+      await this.prisma.customer.update({
+        where: { id: customerId },
+        data: { memberTier },
+      });
+    }
+
     return {
       id: customer.id,
       phoneE164: customer.phoneE164,
@@ -497,7 +509,7 @@ export class CustomersService {
       address: customer.address,
       preferredStore: customer.preferredStore,
       signupSource: customer.signupSource,
-      memberTier: customer.memberTier,
+      memberTier,
       marketingConsent: customer.marketingConsent,
       lastLoginAt: customer.lastLoginAt,
       referralCode,
@@ -917,6 +929,17 @@ export class CustomersService {
         : (dto.scheduledDate ?? todayBusinessDate());
 
     const order = await this.prisma.$transaction(async (tx) => {
+      await this.pickupRules.assertCanPlace(
+        {
+          fulfilmentType,
+          scheduledDate:
+            fulfilmentType === 'PICKUP' ? (dto.scheduledDate ?? null) : null,
+          scheduledSlot:
+            fulfilmentType === 'PICKUP' ? (dto.scheduledSlot ?? null) : null,
+        },
+        tx,
+      );
+
       const created = await tx.customerOrder.create({
         data: {
           customerId,
@@ -1032,17 +1055,27 @@ export class CustomersService {
         },
       });
 
-      // Award loyalty points using the unified earn rate. Floor RM (major
-      // unit) × rate so RM 45.90 @ 1 pt/RM = 45 points — matching SalesPlay's
-      // in-store behavior so members get the same rate whichever channel
-      // they spend through.
+      // Floor RM, then apply the tier multiplier from the balance *before*
+      // this purchase. Gold 1.5×, platinum 2×, silver 1×. Same formula as
+      // in-store SalesPlay receipts.
+      const balanceBefore =
+        (
+          await tx.loyaltyWallet.findUnique({
+            where: { customerId: order.customerId },
+            select: { pointsCached: true },
+          })
+        )?.pointsCached ?? 0;
       const amountRm = Math.floor(order.totalCents / 100);
-      const points = Math.floor(amountRm * pointsPerRm);
-      if (points > 0) {
-        const result = await this.loyalty.appendLedgerEntry(
+      const earned = purchasePoints({
+        amountRm,
+        pointsPerRm,
+        balanceBefore,
+      });
+      if (earned.points > 0) {
+        const { balanceAfter } = await this.loyalty.appendLedgerEntry(
           {
             customerId: order.customerId,
-            deltaPoints: points,
+            deltaPoints: earned.points,
             reason: 'shop_order_purchase',
             referenceType: 'customer_order',
             referenceId: order.id,
@@ -1050,7 +1083,7 @@ export class CustomersService {
           tx,
         );
         this.logger.log(
-          `Awarded ${points} loyalty points for online order ${order.id} (customer=${order.customerId}, balanceAfter=${result.balanceAfter}).`,
+          `Awarded ${earned.points} loyalty points (${earned.tier} ${earned.multiplier}×) for online order ${order.id} (customer=${order.customerId}, balanceAfter=${balanceAfter}).`,
         );
       }
 

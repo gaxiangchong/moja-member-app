@@ -466,7 +466,7 @@ model Customer {
   address              String?        @map("address")
   preferredStore       String?        @map("preferred_store")
   signupSource         String         @default("otp") @map("signup_source")
-  memberTier           String         @default("standard") @map("member_tier")
+  memberTier           String         @default("silver") @map("member_tier")
   marketingConsent     Boolean        @default(false) @map("marketing_consent")
   notes                String?        @map("notes")
   tags                 String[]       @default([]) @map("tags")

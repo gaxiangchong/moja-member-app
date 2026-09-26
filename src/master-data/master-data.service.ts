@@ -114,8 +114,8 @@ export class MasterDataService {
     const entries: CreateMasterEntryDto[] = [
       {
         category: MasterEntryCategory.MEMBER_TIER,
-        code: 'standard',
-        label: 'Standard',
+        code: 'silver',
+        label: 'Silver',
         sortOrder: 10,
       },
       {
@@ -126,8 +126,8 @@ export class MasterDataService {
       },
       {
         category: MasterEntryCategory.MEMBER_TIER,
-        code: 'vip',
-        label: 'VIP',
+        code: 'platinum',
+        label: 'Platinum',
         sortOrder: 30,
       },
       {
