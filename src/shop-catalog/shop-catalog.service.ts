@@ -15,12 +15,23 @@ import {
 } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   applySyncToMemberCatalog,
   buildSyncPreview,
   sitesCatalogToLayout,
 } from './sites-catalog-sync.util';
+import {
+  applySalesplaySyncPlan,
+  buildSalesplaySyncPlan,
+  toSalesplayCsvRows,
+} from './salesplay-catalog-sync';
+import type {
+  SalesplayCsvParseResult,
+  SalesplaySyncOptions,
+  SalesplaySyncPlan,
+} from './salesplay-catalog-sync';
 import type {
   ShopCatalogSyncMode,
   ShopCatalogSyncPreview,
@@ -144,6 +155,8 @@ const SETTING_LAYOUT = 'shop_catalog.layout';
 const SETTING_POPULAR = 'shop_catalog.popular';
 /** Uploaded moja-sites `products.catalog.json` (sync source), with an `uploadedAt`. */
 const SETTING_SITES_SOURCE = 'shop_catalog.sites_source';
+/** Uploaded SalesPlay "Product list" CSV export, with an `uploadedAt`. */
+const SETTING_SALESPLAY_SOURCE = 'shop_catalog.salesplay_source';
 
 /** Safety ceiling, not a product decision — admin picks the actual max shown (see `maxLimit`). */
 const POPULAR_HARD_MAX = 100;
@@ -1249,6 +1262,159 @@ export class ShopCatalogService implements OnModuleInit {
       productsUpdated: preview.summary.toUpdate,
       productsCreated: createMissing ? preview.summary.toCreate : 0,
       layoutUpdated,
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // SalesPlay product-list CSV sync
+  //
+  // The POS is the master for product identity and price. The admin uploads
+  // the Back Office "Product list" export; we store it, diff it against the
+  // member catalog, and apply only what the admin ticks.
+  // ---------------------------------------------------------------------
+
+  /** Parses a SalesPlay Back Office product-list CSV export. */
+  parseSalesplayCsv(raw: string): SalesplayCsvParseResult {
+    // Excel writes a UTF-8 BOM. Left in, the first column parses as
+    // "<BOM>Product code" and every row looks like it has no product code.
+    const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    let records: Record<string, string>[];
+    try {
+      records = parseCsv(text, {
+        columns: (header: string[]) => header.map((h) => h.trim()),
+        skip_empty_lines: true,
+        relax_column_count: true,
+        trim: true,
+      }) as Record<string, string>[];
+    } catch (err) {
+      throw new BadRequestException(
+        `Could not read the CSV: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (records.length === 0) {
+      throw new BadRequestException('The CSV has no rows.');
+    }
+    if (!('Product code' in records[0]) || !('Product name' in records[0])) {
+      throw new BadRequestException(
+        'This does not look like a SalesPlay product list. Expected "Product code" and "Product name" columns.',
+      );
+    }
+    return toSalesplayCsvRows(records);
+  }
+
+  async saveSalesplayCsv(
+    raw: string,
+  ): Promise<{ rowCount: number; skippedCount: number; uploadedAt: string }> {
+    const parsed = this.parseSalesplayCsv(raw);
+    const uploadedAt = new Date().toISOString();
+    const value = toJsonDocument({ csv: raw, uploadedAt });
+    await this.prisma.appSetting.upsert({
+      where: { key: SETTING_SALESPLAY_SOURCE },
+      create: { key: SETTING_SALESPLAY_SOURCE, value },
+      update: { value },
+    });
+    return {
+      rowCount: parsed.rows.length,
+      skippedCount: parsed.skipped.length,
+      uploadedAt,
+    };
+  }
+
+  async getSalesplayCsvInfo(): Promise<{
+    exists: boolean;
+    uploadedAt?: string;
+    rowCount?: number;
+  }> {
+    const stored = await this.readStoredSalesplayCsv();
+    if (!stored) return { exists: false };
+    return {
+      exists: true,
+      uploadedAt: stored.uploadedAt ?? undefined,
+      rowCount: this.parseSalesplayCsv(stored.csv).rows.length,
+    };
+  }
+
+  private async readStoredSalesplayCsv(): Promise<{
+    csv: string;
+    uploadedAt: string | null;
+  } | null> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { key: SETTING_SALESPLAY_SOURCE },
+    });
+    const value = row?.value as
+      | { csv?: unknown; uploadedAt?: unknown }
+      | null
+      | undefined;
+    if (!value || typeof value !== 'object' || typeof value.csv !== 'string') {
+      return null;
+    }
+    return {
+      csv: value.csv,
+      uploadedAt:
+        typeof value.uploadedAt === 'string' ? value.uploadedAt : null,
+    };
+  }
+
+  /** The CSV to diff against: the one just uploaded, else the stored copy. */
+  private async loadSalesplayCsv(raw?: string): Promise<string> {
+    if (raw?.trim()) return raw;
+    const stored = await this.readStoredSalesplayCsv();
+    if (!stored) {
+      throw new BadRequestException(
+        'No SalesPlay product list uploaded yet. Export "Product list" from SalesPlay Back Office and upload the CSV first.',
+      );
+    }
+    return stored.csv;
+  }
+
+  async previewSalesplaySync(input: {
+    csv?: string;
+    options?: SalesplaySyncOptions;
+  }): Promise<SalesplaySyncPlan> {
+    const parsed = this.parseSalesplayCsv(
+      await this.loadSalesplayCsv(input.csv),
+    );
+    return buildSalesplaySyncPlan(
+      await this.loadAll(),
+      parsed,
+      input.options ?? {},
+    );
+  }
+
+  async applySalesplaySync(input: {
+    csv?: string;
+    options?: SalesplaySyncOptions;
+  }): Promise<{
+    plan: SalesplaySyncPlan;
+    productsUpdated: number;
+    productsCreated: number;
+    productsDeactivated: number;
+  }> {
+    const parsed = this.parseSalesplayCsv(
+      await this.loadSalesplayCsv(input.csv),
+    );
+    const current = await this.loadAll();
+    const plan = buildSalesplaySyncPlan(current, parsed, input.options ?? {});
+    const { updated, created, deactivated } = applySalesplaySyncPlan(
+      current,
+      plan,
+    );
+
+    // One row at a time, never saveAll(): this sync only ever touches the
+    // products it names, so a catalog product the POS has never heard of is
+    // left exactly as it is instead of being deleted.
+    for (const p of updated) {
+      await this.saveProduct(p);
+    }
+    for (const p of created) {
+      await this.saveProduct(this.normalizeProduct(p), { includeStock: true });
+    }
+
+    return {
+      plan,
+      productsUpdated: updated.length,
+      productsCreated: created.length,
+      productsDeactivated: deactivated.length,
     };
   }
 

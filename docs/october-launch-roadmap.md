@@ -140,6 +140,7 @@ support in Malaysia or on-demand only.
 
 ### Phase 3 — SalesPlay stock sync (13 Oct → 24 Oct)  ◐ small, high value
 
+- ✅ **Product-list sync** (`Settings → Shopping catalog → Sync with SalesPlay POS`). Upload the Back Office "Product list" CSV; it diffs the export against the member catalog and writes `salesplayProductCode` / `salesplayVariantCodes` onto every match. This is the prerequisite for everything below — without the codes there is nothing to map a receipt line onto. Categories `Delivery`, `GrabFood`, `Bento` and `OTHER` are out of scope by default (till bookkeeping, not storefront products). Optional switches: copy POS prices, add missing sizes, create missing products (hidden, no photo), hide products the POS dropped. Codes for products named differently on the till are mapped by hand once, then match themselves from then on.
 - On POS receipt ingest, map `PosReceiptLine.productCode` → catalog product via existing `salesplayProductCode` and **decrement today's `ProductStockDay`** (skip lines whose receipt is `originOnlineOrderId` — already decremented at checkout).
 - Nightly reconcile: kitchen count vs (opening − POS − online); show variance in the kitchen screen.
 - Optional: push stock to SalesPlay inventory if the account uses it (confirm in SalesPlay back office first; API coverage for inventory is thin).

@@ -54,7 +54,12 @@ import {
   PreviewShopCatalogSyncDto,
   SyncShopCatalogFromSitesDto,
 } from './dto/sync-shop-catalog-from-sites.dto';
+import {
+  PreviewShopCatalogSalesplaySyncDto,
+  SyncShopCatalogFromSalesplayDto,
+} from './dto/sync-shop-catalog-from-salesplay.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
+import type { SalesplaySyncOptions } from '../shop-catalog/salesplay-catalog-sync';
 import { HomeAdsService } from '../home-ads/home-ads.service';
 import { BentoMenuService } from '../bento/bento-menu.service';
 import {
@@ -74,6 +79,21 @@ import { UpdateBentoPackagesDto } from './dto/update-bento-packages.dto';
 import { UpdateBentoSettingsDto } from './dto/update-bento-settings.dto';
 import { CreateBentoDiscountVoucherDto } from './dto/create-bento-discount-voucher.dto';
 import { UpdateBentoDiscountVoucherDto } from './dto/update-bento-discount-voucher.dto';
+
+/** The sync switches, straight off the DTO — defaults live in the sync module. */
+function salesplaySyncOptions(
+  dto: SyncShopCatalogFromSalesplayDto,
+): SalesplaySyncOptions {
+  return {
+    categories: dto.categories,
+    updateCodes: dto.updateCodes,
+    updatePrices: dto.updatePrices,
+    createMissingProducts: dto.createMissingProducts,
+    createMissingVariants: dto.createMissingVariants,
+    deactivateMissing: dto.deactivateMissing,
+    assignments: dto.assignments,
+  };
+}
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
@@ -697,6 +717,45 @@ export class AdminController {
       createMissing: dto.createMissing,
       syncLayout: dto.syncLayout,
       writeSeedConfig: dto.writeSeedConfig,
+    });
+  }
+
+  // --- SalesPlay product-list CSV sync (POS is the master for codes/prices) ---
+
+  @Get('shop-catalog/salesplay-csv/info')
+  @RequirePermissions(P.VOUCHER_READ)
+  getSalesplayCsvInfo() {
+    return this.shopCatalog.getSalesplayCsvInfo();
+  }
+
+  /** Stores the Back Office "Product list" export so sync can be re-run without re-uploading. */
+  @Post('shop-catalog/salesplay-csv/file')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }),
+  )
+  uploadSalesplayCsv(@UploadedFile() file: Express.Multer.File) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('No file provided');
+    }
+    return this.shopCatalog.saveSalesplayCsv(file.buffer.toString('utf-8'));
+  }
+
+  @Post('shop-catalog/salesplay-csv/preview')
+  @RequirePermissions(P.VOUCHER_READ)
+  previewSalesplaySync(@Body() dto: PreviewShopCatalogSalesplaySyncDto) {
+    return this.shopCatalog.previewSalesplaySync({
+      csv: dto.csv,
+      options: salesplaySyncOptions(dto),
+    });
+  }
+
+  @Post('shop-catalog/salesplay-csv/apply')
+  @RequirePermissions(P.VOUCHER_UPDATE)
+  applySalesplaySync(@Body() dto: SyncShopCatalogFromSalesplayDto) {
+    return this.shopCatalog.applySalesplaySync({
+      csv: dto.csv,
+      options: salesplaySyncOptions(dto),
     });
   }
 

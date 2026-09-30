@@ -3051,6 +3051,75 @@ export class AdminDashboardController {
               </div>
             </div>
           </div>
+          <div class="sheet" style="margin-top:16px">
+            <div class="sheet-head">
+              <h2>Sync with SalesPlay POS</h2>
+              <div class="sheet-actions">
+                <button type="button" class="btn-outline" id="spSyncPreviewBtn">Preview sync</button>
+                <button type="button" class="btn-primary" id="spSyncApplyBtn">Apply sync</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;max-width:1100px">
+              <p class="field-hint" style="margin-top:0">
+                Matches every item in the SalesPlay <strong>Product list</strong> export to a product in this catalog and stores its POS product code.
+                That code is what online orders are pushed to SalesPlay with, and what folds in-store receipts onto the same product in Finance reports —
+                so anything left unmatched below will not add up across the two channels.
+              </p>
+              <div class="form-section" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+                <label for="spCsvFile"><strong>SalesPlay product list (CSV)</strong></label>
+                <p class="field-hint" id="spCsvFileHint" style="margin:6px 0 10px">Checking…</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <input type="file" id="spCsvFile" accept=".csv,text/csv" />
+                  <button type="button" class="btn-outline" id="spCsvSaveBtn">Upload to server</button>
+                </div>
+                <p class="field-hint" style="margin:8px 0 0">SalesPlay Back Office → Products → Export. The file is kept on the server, so you only re-upload it when the POS product list changes.</p>
+                <p class="field-hint" id="spCsvSaveResult"></p>
+              </div>
+              <div class="form-section">
+                <label>SalesPlay categories to sync</label>
+                <p class="field-hint" style="margin:4px 0 8px">Delivery charges, GrabFood mirror items, bento and the misc drawer are off by default — they are till bookkeeping, not storefront products.</p>
+                <div id="spCategoryList" style="display:flex;flex-wrap:wrap;gap:10px 18px;font-size:13px">
+                  <span class="field-hint">Run Preview sync to list the categories in your export.</span>
+                </div>
+              </div>
+              <div class="form-section">
+                <label><input type="checkbox" id="spOptCodes" style="width:auto;margin-right:8px" checked /> Store the SalesPlay product code on every matched product</label>
+                <label style="margin-top:6px"><input type="checkbox" id="spOptPrices" style="width:auto;margin-right:8px" /> Also copy SalesPlay prices into the app <span class="field-hint" style="display:inline">(prices you edited by hand are kept)</span></label>
+                <label style="margin-top:6px"><input type="checkbox" id="spOptNewVariants" style="width:auto;margin-right:8px" /> Add sizes SalesPlay sells that this product is missing (e.g. a slice)</label>
+                <label style="margin-top:6px"><input type="checkbox" id="spOptNewProducts" style="width:auto;margin-right:8px" /> Create products SalesPlay sells that the app does not have <span class="field-hint" style="display:inline">(added hidden, with no photo — publish them yourself)</span></label>
+                <label style="margin-top:6px"><input type="checkbox" id="spOptDeactivate" style="width:auto;margin-right:8px" /> Hide app products that SalesPlay no longer sells</label>
+              </div>
+              <div style="padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;margin-bottom:12px">
+                Run <strong>Sync from moja-sites</strong> first if you use both. It also writes prices, so whichever you run last wins.
+              </div>
+              <p class="field-hint" id="spSyncResult"></p>
+              <div id="spSyncSummary" style="display:none;margin:12px 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px"></div>
+              <div id="spSyncTables" style="display:none">
+                <h3 style="font-size:14px;margin:18px 0 6px">Matched <span class="field-hint" style="display:inline;font-weight:400" id="spMatchedCount"></span></h3>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>SalesPlay item</th><th style="width:130px">Code</th><th>App product</th><th style="width:150px">Code change</th><th style="width:160px">Price</th></tr></thead>
+                    <tbody id="spMatchedBody"></tbody>
+                  </table>
+                </div>
+                <h3 style="font-size:14px;margin:18px 0 6px">In SalesPlay, not in the app <span class="field-hint" style="display:inline;font-weight:400" id="spCsvOnlyCount"></span></h3>
+                <p class="field-hint" style="margin:0 0 8px">Use the last column when the same product is named differently on the till — the code is written onto that product when you apply, and it will match on its own from then on.</p>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>SalesPlay item</th><th style="width:130px">Code</th><th style="width:120px">Category</th><th style="width:110px">Price</th><th>What happens</th><th style="width:280px">Map to app product</th></tr></thead>
+                    <tbody id="spCsvOnlyBody"></tbody>
+                  </table>
+                </div>
+                <h3 style="font-size:14px;margin:18px 0 6px">In the app, not in SalesPlay <span class="field-hint" style="display:inline;font-weight:400" id="spCatalogOnlyCount"></span></h3>
+                <div class="table-wrap">
+                  <table class="data">
+                    <thead><tr><th>App product</th><th style="width:130px">Mapped code</th><th style="width:140px">Why</th><th>What happens</th></tr></thead>
+                    <tbody id="spCatalogOnlyBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
           <div id="scModalBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
           <div id="scModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="scModalTitle" style="width:min(760px, calc(100vw - 24px))">
             <div class="modal-head">
@@ -7464,6 +7533,307 @@ export class AdminDashboardController {
       await loadShopCatalog();
     }
 
+    // --- Sync with SalesPlay POS (product-list CSV) --------------------------
+
+    var lastSpSyncPlan = null;
+    /** Category name -> included. Null until the first preview fills it in. */
+    var spCategoryChoice = null;
+    /** Category names in render order; the checkboxes carry an index into this. */
+    var spCategoryNames = [];
+    /** SalesPlay code -> { productId, variantLabel } chosen by hand in the table below. */
+    var spAssignments = {};
+    /** Every catalog product/variant the admin can map a code onto, by index. */
+    var spUnitOptions = [];
+
+    /** Flattens the catalog into one entry per sellable unit, for the mapping dropdowns. */
+    function spBuildUnitOptions() {
+      spUnitOptions = [];
+      (lastShopCatalogProducts || []).forEach(function (p) {
+        var variants = p.variants || [];
+        if (!variants.length) {
+          spUnitOptions.push({ productId: p.id, variantLabel: null, label: p.name });
+          return;
+        }
+        variants.forEach(function (v) {
+          spUnitOptions.push({
+            productId: p.id,
+            variantLabel: v.label,
+            label: p.name + ' · ' + v.label,
+          });
+        });
+      });
+      spUnitOptions.sort(function (a, b) { return a.label.localeCompare(b.label); });
+    }
+
+    function spUnitSelect(code) {
+      var chosen = spAssignments[code];
+      var opts = ['<option value="">— not mapped —</option>'];
+      spUnitOptions.forEach(function (u, i) {
+        var selected = chosen && chosen.productId === u.productId &&
+          (chosen.variantLabel || null) === u.variantLabel;
+        opts.push('<option value="' + i + '"' + (selected ? ' selected' : '') + '>' + spEsc(u.label) + '</option>');
+      });
+      return '<select class="sp-assign" data-code="' + spEsc(code) + '" style="max-width:260px">' +
+        opts.join('') + '</select>';
+    }
+
+    /** Product and category names come from an uploaded file, so escape them. */
+    function spEsc(value) {
+      if (value === null || value === undefined || value === '') return '-';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function spMoney(cents) {
+      if (cents == null) return '-';
+      return 'RM' + (cents / 100).toFixed(2);
+    }
+
+    function spTag(text, bg, fg) {
+      return '<span style="background:' + bg + ';color:' + fg +
+        ';border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700">' + spEsc(text) + '</span>';
+    }
+
+    function spProductLabel(row) {
+      return '<strong>' + spEsc(row.productName) + '</strong>' +
+        (row.variantLabel ? ' <span style="color:#64748b">· ' + spEsc(row.variantLabel) + '</span>' : '') +
+        '<br/><span style="color:#64748b;font-size:12px">' + spEsc(row.productId) + '</span>';
+    }
+
+    function spCollectBody() {
+      var categories = spCategoryChoice
+        ? Object.keys(spCategoryChoice).filter(function (name) { return spCategoryChoice[name]; })
+        : undefined;
+      var assignments = Object.keys(spAssignments).map(function (code) {
+        return {
+          code: code,
+          productId: spAssignments[code].productId,
+          variantLabel: spAssignments[code].variantLabel,
+        };
+      });
+      return {
+        categories: categories,
+        assignments: assignments,
+        updateCodes: document.getElementById('spOptCodes').checked,
+        updatePrices: document.getElementById('spOptPrices').checked,
+        createMissingVariants: document.getElementById('spOptNewVariants').checked,
+        createMissingProducts: document.getElementById('spOptNewProducts').checked,
+        deactivateMissing: document.getElementById('spOptDeactivate').checked,
+      };
+    }
+
+    async function spRefreshCsvHint() {
+      var hint = document.getElementById('spCsvFileHint');
+      if (!hint) return;
+      try {
+        var info = await api('/admin/shop-catalog/salesplay-csv/info');
+        if (info && info.exists) {
+          var when = info.uploadedAt ? ' · uploaded ' + new Date(info.uploadedAt).toLocaleString() : '';
+          hint.innerHTML = '<span style="color:#059669;font-weight:600">Ready</span> — ' +
+            fmt(info.rowCount) + ' POS items on file' + when;
+        } else {
+          hint.innerHTML = '<span style="color:#b45309;font-weight:600">Nothing uploaded yet</span> — export the product list from SalesPlay Back Office and upload it below.';
+        }
+      } catch (e) {
+        hint.textContent = e.message;
+      }
+    }
+
+    async function spSaveCsvFile() {
+      var out = document.getElementById('spCsvSaveResult');
+      var input = document.getElementById('spCsvFile');
+      var file = input && input.files && input.files[0];
+      if (!file) {
+        if (out) out.textContent = 'Choose the exported CSV first.';
+        return;
+      }
+      if (out) out.textContent = 'Uploading…';
+      var headers = Object.assign({}, getAuthHeaders());
+      delete headers['Content-Type'];
+      var fd = new FormData();
+      fd.append('file', file);
+      var res = await fetch('/admin/shop-catalog/salesplay-csv/file', {
+        method: 'POST',
+        headers: headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        var txt = await res.text();
+        throw new Error('Upload failed (' + res.status + '): ' + txt);
+      }
+      var saved = await res.json();
+      if (input) input.value = '';
+      if (out) {
+        out.textContent = 'Uploaded ' + fmt(saved.rowCount) + ' POS items' +
+          (saved.skippedCount ? ' (' + fmt(saved.skippedCount) + ' unusable row(s) ignored)' : '') +
+          '. Now click Preview sync.';
+      }
+      // A new export can introduce categories, so let the next preview re-seed them.
+      spCategoryChoice = null;
+      await spRefreshCsvHint();
+    }
+
+    function spRenderCategories(categories) {
+      var wrap = document.getElementById('spCategoryList');
+      if (!wrap) return;
+      if (!spCategoryChoice) {
+        spCategoryChoice = {};
+        (categories || []).forEach(function (c) { spCategoryChoice[c.name] = c.included; });
+      }
+      spCategoryNames = (categories || []).map(function (c) { return c.name; });
+      wrap.innerHTML = (categories || []).map(function (c, i) {
+        return '<label style="display:inline-flex;align-items:center;gap:6px;font-weight:500">' +
+          '<input type="checkbox" class="sp-category" data-i="' + i + '" style="width:auto;margin:0"' +
+          (spCategoryChoice[c.name] ? ' checked' : '') + ' /> ' +
+          spEsc(c.name) + ' <span style="color:#94a3b8">(' + fmt(c.rowCount) + ')</span></label>';
+      }).join('') || '<span class="field-hint">No categories in this export.</span>';
+    }
+
+    function spRenderPlan(plan) {
+      lastSpSyncPlan = plan;
+      var summaryEl = document.getElementById('spSyncSummary');
+      var tables = document.getElementById('spSyncTables');
+      if (!summaryEl || !tables) return;
+      var s = plan.summary || {};
+
+      spRenderCategories(plan.categories);
+
+      summaryEl.style.display = 'block';
+      summaryEl.innerHTML =
+        '<strong>' + fmt(s.matched) + ' of ' + fmt(s.csvRowsInScope) + '</strong> POS items matched an app product' +
+        ' · <strong>' + fmt(s.codesToWrite) + '</strong> code(s) to write' +
+        (s.pricesToWrite ? ' · <strong>' + fmt(s.pricesToWrite) + '</strong> price(s) to update' : '') +
+        (s.pricesLocked ? ' · <span style="color:#92400e">' + fmt(s.pricesLocked) + ' price(s) kept (edited by hand)</span>' : '') +
+        (s.productsToCreate ? ' · <strong>' + fmt(s.productsToCreate) + '</strong> product(s) to create' : '') +
+        (s.variantsToCreate ? ' · <strong>' + fmt(s.variantsToCreate) + '</strong> size(s) to add' : '') +
+        (s.toDeactivate ? ' · <span style="color:#b91c1c">' + fmt(s.toDeactivate) + ' product(s) to hide</span>' : '') +
+        '<br/><span style="color:#64748b">Unmatched: ' + fmt(s.csvOnly) + ' in SalesPlay, ' + fmt(s.catalogOnly) + ' in the app.' +
+        (s.matchedDisabled ? ' ' + fmt(s.matchedDisabled) + ' matched item(s) are disabled in SalesPlay but still live in the app.' : '') +
+        ((plan.skipped || []).length ? ' ' + fmt(plan.skipped.length) + ' CSV row(s) unusable.' : '') +
+        '</span>';
+
+      tables.style.display = 'block';
+
+      document.getElementById('spMatchedCount').textContent = '(' + fmt(s.matched) + ')';
+      document.getElementById('spMatchedBody').innerHTML = (plan.matched || []).map(function (m) {
+        var codeCell = m.codeAction === 'unchanged'
+          ? '<span style="color:#64748b">already set</span>'
+          : m.codeAction === 'replace'
+            ? spTag('REPLACES ' + m.currentCode, '#fef3c7', '#92400e')
+            : spTag('WILL SET', '#dcfce7', '#166534');
+        var priceCell = m.priceAction === 'unchanged'
+          ? '<span style="color:#64748b">' + spMoney(m.currentPriceCents) + '</span>'
+          : m.priceAction === 'locked'
+            ? '<span style="color:#92400e">' + spMoney(m.currentPriceCents) + ' (kept, POS says ' + spMoney(m.csvPriceCents) + ')</span>'
+            : spMoney(m.currentPriceCents) + ' → <strong>' + spMoney(m.csvPriceCents) + '</strong>';
+        return '<tr>' +
+          '<td>' + spEsc(m.csvName) + (m.enabled ? '' : ' ' + spTag('DISABLED IN POS', '#fee2e2', '#b91c1c')) +
+            '<br/><span style="color:#94a3b8;font-size:11px">matched by ' + spEsc(m.via) + '</span></td>' +
+          '<td><code>' + spEsc(m.code) + '</code></td>' +
+          '<td>' + spProductLabel(m) + '</td>' +
+          '<td>' + codeCell + '</td>' +
+          '<td>' + priceCell + '</td>' +
+        '</tr>';
+      }).join('') || '<tr><td colspan="5" style="color:#64748b">Nothing matched yet.</td></tr>';
+
+      spBuildUnitOptions();
+      document.getElementById('spCsvOnlyCount').textContent = '(' + fmt(s.csvOnly) + ')';
+      document.getElementById('spCsvOnlyBody').innerHTML = (plan.csvOnly || []).map(function (r) {
+        var what;
+        if (r.willCreate && r.kind === 'new-variant') {
+          what = spTag('ADD SIZE', '#dcfce7', '#166534') + ' to <strong>' + spEsc(r.suggestedProductName) + '</strong>';
+        } else if (r.willCreate) {
+          what = spTag('CREATE HIDDEN', '#dcfce7', '#166534') + ' new product';
+          if (r.suggestedProductName) {
+            // Same cake under a slightly different name would be a duplicate.
+            what += '<br/><span style="color:#b45309">Careful — this looks like <strong>' +
+              spEsc(r.suggestedProductName) + '</strong>. Map it instead if it is the same thing.</span>';
+          }
+        } else if (r.skipReason) {
+          what = '<span style="color:#b45309">Skipped — ' + spEsc(r.skipReason) + '</span>';
+        } else if (r.kind === 'new-variant') {
+          what = '<span style="color:#64748b">Looks like a missing size of <strong>' + spEsc(r.suggestedProductName) + '</strong> — tick "Add sizes" above.</span>';
+        } else if (r.suggestedProductName) {
+          what = '<span style="color:#64748b">Possibly <strong>' + spEsc(r.suggestedProductName) + '</strong> under another name — map it on the right.</span>';
+        } else {
+          what = '<span style="color:#64748b">Not in the app. Map it on the right, or tick "Create products" above.</span>';
+        }
+        return '<tr>' +
+          '<td>' + spEsc(r.csvName) + (r.enabled ? '' : ' ' + spTag('DISABLED', '#fee2e2', '#b91c1c')) + '</td>' +
+          '<td><code>' + spEsc(r.code) + '</code></td>' +
+          '<td>' + spEsc(r.category) + '</td>' +
+          '<td>' + spMoney(r.csvPriceCents) + '</td>' +
+          '<td>' + what + '</td>' +
+          '<td>' + spUnitSelect(r.code) + '</td>' +
+        '</tr>';
+      }).join('') || '<tr><td colspan="6" style="color:#059669">Every SalesPlay item in scope is in the app.</td></tr>';
+
+      document.getElementById('spCatalogOnlyCount').textContent = '(' + fmt(s.catalogOnly) + ')';
+      document.getElementById('spCatalogOnlyBody').innerHTML = (plan.catalogOnly || []).map(function (r) {
+        var why = r.reason === 'disabled'
+          ? 'Disabled in SalesPlay'
+          : r.reason === 'out-of-scope'
+            ? 'Its category is unticked above'
+            : 'No matching POS item';
+        var what = r.willDeactivate
+          ? spTag('WILL HIDE', '#fee2e2', '#b91c1c') + ' from the app'
+          : r.currentCode
+            ? '<span style="color:#64748b">Left alone.</span>'
+            : '<span style="color:#b45309">No POS code — in-store sales of this will not show up in reports.</span>';
+        return '<tr>' +
+          '<td>' + spProductLabel(r) + (r.isActive ? '' : ' ' + spTag('HIDDEN', '#f1f5f9', '#64748b')) + '</td>' +
+          '<td>' + (r.currentCode ? '<code>' + spEsc(r.currentCode) + '</code>' : '<span style="color:#94a3b8">-</span>') + '</td>' +
+          '<td>' + why + '</td>' +
+          '<td>' + what + '</td>' +
+        '</tr>';
+      }).join('') || '<tr><td colspan="4" style="color:#059669">Every app product maps to a SalesPlay item.</td></tr>';
+    }
+
+    async function spSyncPreview() {
+      var out = document.getElementById('spSyncResult');
+      if (out) out.textContent = 'Loading preview…';
+      var plan = await apiPost('/admin/shop-catalog/salesplay-csv/preview', spCollectBody());
+      spRenderPlan(plan);
+      if (out) out.textContent = 'Preview ready. Review the three tables, then click Apply sync.';
+    }
+
+    async function spSyncApply() {
+      var out = document.getElementById('spSyncResult');
+      if (!lastSpSyncPlan) {
+        if (out) out.textContent = 'Run Preview sync first.';
+        return;
+      }
+      var s = lastSpSyncPlan.summary || {};
+      var work = (s.codesToWrite || 0) + (s.pricesToWrite || 0) + (s.productsToCreate || 0) +
+        (s.variantsToCreate || 0) + (s.toDeactivate || 0);
+      if (!work) {
+        if (out) out.textContent = 'Nothing to apply — the catalog already matches SalesPlay.';
+        return;
+      }
+      var parts = [];
+      if (s.codesToWrite) parts.push('set ' + s.codesToWrite + ' POS code(s)');
+      if (s.pricesToWrite) parts.push('change ' + s.pricesToWrite + ' price(s)');
+      if (s.variantsToCreate) parts.push('add ' + s.variantsToCreate + ' size(s)');
+      if (s.productsToCreate) parts.push('create ' + s.productsToCreate + ' hidden product(s)');
+      if (s.toDeactivate) parts.push('HIDE ' + s.toDeactivate + ' product(s) from the app');
+      if (!window.confirm('Apply sync? This will ' + parts.join(', ') + '.')) return;
+
+      if (out) out.textContent = 'Applying sync…';
+      var result = await apiPost('/admin/shop-catalog/salesplay-csv/apply', spCollectBody());
+      await loadShopCatalog();
+      // The returned plan describes the catalog as it was before applying, so
+      // re-diff against the new state rather than leaving stale work on screen.
+      await spSyncPreview();
+      if (out) {
+        out.textContent = 'Sync applied. Updated ' + fmt(result.productsUpdated) +
+          ', created ' + fmt(result.productsCreated) +
+          ', hidden ' + fmt(result.productsDeactivated) + '. Tables below now show what is left.';
+      }
+    }
+
     function haAbsoluteImageUrl(url) {
       if (!url) return '';
       return url;
@@ -8531,6 +8901,7 @@ export class AdminDashboardController {
         ['Shopping catalog', loadShopCatalog],
         ['Bento menu', loadBentoMenu],
         ['Catalog file info', scRefreshSitesCatalogFileHint],
+        ['SalesPlay product list', spRefreshCsvHint],
         ['Shop layout', loadShopLayout],
         ['Home ad carousel', loadHomeAdSlides],
         ['Popular items', loadPopularItems],
@@ -9553,6 +9924,7 @@ export class AdminDashboardController {
     document.getElementById('refreshShopCatalogBtn').addEventListener('click', () => {
       loadShopCatalog().catch((e) => { statusPanel.textContent = e.message; });
       scRefreshSitesCatalogFileHint().catch(function () {});
+      spRefreshCsvHint().catch(function () {});
     });
     // Shop catalog column sort (click header) + per-column filters.
     var scSortHeaders = document.querySelectorAll('th.sc-sortable');
@@ -10572,6 +10944,72 @@ export class AdminDashboardController {
       var out = document.getElementById('scSyncResult');
       if (out) out.textContent = e.message;
     }));
+
+    (function wireSalesplayCatalogSync() {
+      function fail(e) {
+        var out = document.getElementById('spSyncResult');
+        if (out) out.textContent = e.message;
+      }
+      var saveBtn = document.getElementById('spCsvSaveBtn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+          spSaveCsvFile().catch(function (e) {
+            var out = document.getElementById('spCsvSaveResult');
+            if (out) out.textContent = e.message;
+          });
+        });
+      }
+      var previewBtn = document.getElementById('spSyncPreviewBtn');
+      if (previewBtn) previewBtn.addEventListener('click', function () { spSyncPreview().catch(fail); });
+      var applyBtn = document.getElementById('spSyncApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function () { spSyncApply().catch(fail); });
+      // Apply recomputes the plan server-side from whatever is ticked, so a
+      // stale preview must not be what the confirmation dialog describes.
+      ['spOptCodes', 'spOptPrices', 'spOptNewVariants', 'spOptNewProducts', 'spOptDeactivate']
+        .forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) {
+            el.addEventListener('change', function () {
+              if (lastSpSyncPlan) spSyncPreview().catch(fail);
+            });
+          }
+        });
+      var csvOnlyBody = document.getElementById('spCsvOnlyBody');
+      if (csvOnlyBody) {
+        csvOnlyBody.addEventListener('change', function (e) {
+          var sel = e.target;
+          if (!sel || !sel.classList || !sel.classList.contains('sp-assign')) return;
+          var code = sel.getAttribute('data-code');
+          if (sel.value === '') delete spAssignments[code];
+          else {
+            var unit = spUnitOptions[Number(sel.value)];
+            if (unit) {
+              spAssignments[code] = {
+                productId: unit.productId,
+                variantLabel: unit.variantLabel,
+              };
+            }
+          }
+          // Re-run so the row moves into Matched with the code change it implies.
+          spSyncPreview().catch(fail);
+        });
+      }
+      var categoryList = document.getElementById('spCategoryList');
+      if (categoryList) {
+        categoryList.addEventListener('change', function (e) {
+          var box = e.target;
+          if (!box || !box.classList || !box.classList.contains('sp-category')) return;
+          var name = spCategoryNames[Number(box.getAttribute('data-i'))];
+          if (name === undefined || !spCategoryChoice) return;
+          spCategoryChoice[name] = box.checked;
+          // The scope changed, so the plan on screen no longer describes what
+          // Apply would do.
+          lastSpSyncPlan = null;
+          var out = document.getElementById('spSyncResult');
+          if (out) out.textContent = 'Categories changed — run Preview sync again.';
+        });
+      }
+    })();
 
     (function wireShopLayoutHandlers() {
       const refreshBtn = document.getElementById('refreshShopLayoutBtn');
