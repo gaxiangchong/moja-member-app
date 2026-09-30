@@ -3087,7 +3087,15 @@ export class AdminDashboardController {
                 <label style="margin-top:6px"><input type="checkbox" id="spOptPrices" style="width:auto;margin-right:8px" /> Also copy SalesPlay prices into the app <span class="field-hint" style="display:inline">(prices you edited by hand are kept)</span></label>
                 <label style="margin-top:6px"><input type="checkbox" id="spOptNewVariants" style="width:auto;margin-right:8px" /> Add sizes SalesPlay sells that this product is missing (e.g. a slice)</label>
                 <label style="margin-top:6px"><input type="checkbox" id="spOptNewProducts" style="width:auto;margin-right:8px" /> Create products SalesPlay sells that the app does not have <span class="field-hint" style="display:inline">(added hidden, with no photo — publish them yourself)</span></label>
-                <label style="margin-top:6px"><input type="checkbox" id="spOptDeactivate" style="width:auto;margin-right:8px" /> Hide app products that SalesPlay no longer sells</label>
+              </div>
+              <div class="form-section">
+                <label for="spOptMissing">App products SalesPlay does not sell</label>
+                <select id="spOptMissing" style="max-width:420px">
+                  <option value="keep" selected>Leave them alone</option>
+                  <option value="hide">Hide them from the storefront</option>
+                  <option value="delete">Delete them from the catalog</option>
+                </select>
+                <p class="field-hint" style="margin:6px 0 0">Deleting is permanent and takes the product's uploaded photos with it. Past orders are unaffected — they keep their own copy of what was bought. A product is only ever removed when <em>none</em> of its sizes match, it is not an open order, and it does not look like the same thing under a different till name; anything doubtful is listed below with the reason instead.</p>
               </div>
               <div style="padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;margin-bottom:12px">
                 Run <strong>Sync from moja-sites</strong> first if you use both. It also writes prices, so whichever you run last wins.
@@ -7621,7 +7629,7 @@ export class AdminDashboardController {
         updatePrices: document.getElementById('spOptPrices').checked,
         createMissingVariants: document.getElementById('spOptNewVariants').checked,
         createMissingProducts: document.getElementById('spOptNewProducts').checked,
-        deactivateMissing: document.getElementById('spOptDeactivate').checked,
+        missingAction: document.getElementById('spOptMissing').value || 'keep',
       };
     }
 
@@ -7709,7 +7717,9 @@ export class AdminDashboardController {
         (s.pricesLocked ? ' · <span style="color:#92400e">' + fmt(s.pricesLocked) + ' price(s) kept (edited by hand)</span>' : '') +
         (s.productsToCreate ? ' · <strong>' + fmt(s.productsToCreate) + '</strong> product(s) to create' : '') +
         (s.variantsToCreate ? ' · <strong>' + fmt(s.variantsToCreate) + '</strong> size(s) to add' : '') +
-        (s.toDeactivate ? ' · <span style="color:#b91c1c">' + fmt(s.toDeactivate) + ' product(s) to hide</span>' : '') +
+        (s.toHide ? ' · <span style="color:#b91c1c">' + fmt(s.toHide) + ' product(s) to hide</span>' : '') +
+        (s.toDelete ? ' · <span style="color:#b91c1c;font-weight:700">' + fmt(s.toDelete) + ' product(s) to DELETE</span>' : '') +
+        (s.removalBlocked ? ' · <span style="color:#92400e">' + fmt(s.removalBlocked) + ' kept for safety</span>' : '') +
         '<br/><span style="color:#64748b">Unmatched: ' + fmt(s.csvOnly) + ' in SalesPlay, ' + fmt(s.catalogOnly) + ' in the app.' +
         (s.matchedDisabled ? ' ' + fmt(s.matchedDisabled) + ' matched item(s) are disabled in SalesPlay but still live in the app.' : '') +
         ((plan.skipped || []).length ? ' ' + fmt(plan.skipped.length) + ' CSV row(s) unusable.' : '') +
@@ -7778,11 +7788,18 @@ export class AdminDashboardController {
           : r.reason === 'out-of-scope'
             ? 'Its category is unticked above'
             : 'No matching POS item';
-        var what = r.willDeactivate
-          ? spTag('WILL HIDE', '#fee2e2', '#b91c1c') + ' from the app'
-          : r.currentCode
-            ? '<span style="color:#64748b">Left alone.</span>'
-            : '<span style="color:#b45309">No POS code — in-store sales of this will not show up in reports.</span>';
+        var what;
+        if (r.action === 'delete') {
+          what = spTag('WILL DELETE', '#fee2e2', '#b91c1c') + ' permanently, with its photos';
+        } else if (r.action === 'hide') {
+          what = spTag('WILL HIDE', '#fee2e2', '#b91c1c') + ' from the storefront';
+        } else if (r.blockedReason) {
+          what = spTag('KEPT', '#fef3c7', '#92400e') + ' ' + spEsc(r.blockedReason);
+        } else if (r.currentCode) {
+          what = '<span style="color:#64748b">Left alone.</span>';
+        } else {
+          what = '<span style="color:#b45309">No POS code — in-store sales of this will not show up in reports.</span>';
+        }
         return '<tr>' +
           '<td>' + spProductLabel(r) + (r.isActive ? '' : ' ' + spTag('HIDDEN', '#f1f5f9', '#64748b')) + '</td>' +
           '<td>' + (r.currentCode ? '<code>' + spEsc(r.currentCode) + '</code>' : '<span style="color:#94a3b8">-</span>') + '</td>' +
@@ -7808,7 +7825,7 @@ export class AdminDashboardController {
       }
       var s = lastSpSyncPlan.summary || {};
       var work = (s.codesToWrite || 0) + (s.pricesToWrite || 0) + (s.productsToCreate || 0) +
-        (s.variantsToCreate || 0) + (s.toDeactivate || 0);
+        (s.variantsToCreate || 0) + (s.toHide || 0) + (s.toDelete || 0);
       if (!work) {
         if (out) out.textContent = 'Nothing to apply — the catalog already matches SalesPlay.';
         return;
@@ -7818,8 +7835,29 @@ export class AdminDashboardController {
       if (s.pricesToWrite) parts.push('change ' + s.pricesToWrite + ' price(s)');
       if (s.variantsToCreate) parts.push('add ' + s.variantsToCreate + ' size(s)');
       if (s.productsToCreate) parts.push('create ' + s.productsToCreate + ' hidden product(s)');
-      if (s.toDeactivate) parts.push('HIDE ' + s.toDeactivate + ' product(s) from the app');
+      if (s.toHide) parts.push('hide ' + s.toHide + ' product(s)');
+      if (s.toDelete) parts.push('DELETE ' + s.toDelete + ' product(s)');
       if (!window.confirm('Apply sync? This will ' + parts.join(', ') + '.')) return;
+
+      // Deleting is the one step with nothing to undo, so name what goes and
+      // make the admin type the count rather than click through twice.
+      if (s.toDelete) {
+        var names = [];
+        var seen = {};
+        (lastSpSyncPlan.catalogOnly || []).forEach(function (r) {
+          if (r.action === 'delete' && !seen[r.productId]) {
+            seen[r.productId] = true;
+            names.push('· ' + r.productName);
+          }
+        });
+        var typed = window.prompt(
+          'These ' + s.toDelete + ' product(s) will be deleted from the catalog, along with any photos you uploaded for them. This cannot be undone.\\n\\n' +
+          names.join('\\n') + '\\n\\nType ' + s.toDelete + ' to confirm.');
+        if (String(typed || '').trim() !== String(s.toDelete)) {
+          if (out) out.textContent = 'Cancelled — nothing was changed.';
+          return;
+        }
+      }
 
       if (out) out.textContent = 'Applying sync…';
       var result = await apiPost('/admin/shop-catalog/salesplay-csv/apply', spCollectBody());
@@ -7830,7 +7868,9 @@ export class AdminDashboardController {
       if (out) {
         out.textContent = 'Sync applied. Updated ' + fmt(result.productsUpdated) +
           ', created ' + fmt(result.productsCreated) +
-          ', hidden ' + fmt(result.productsDeactivated) + '. Tables below now show what is left.';
+          ', hidden ' + fmt(result.productsHidden) +
+          ', deleted ' + fmt(result.productsDeleted) +
+          '. Tables below now show what is left.';
       }
     }
 
@@ -10965,7 +11005,7 @@ export class AdminDashboardController {
       if (applyBtn) applyBtn.addEventListener('click', function () { spSyncApply().catch(fail); });
       // Apply recomputes the plan server-side from whatever is ticked, so a
       // stale preview must not be what the confirmation dialog describes.
-      ['spOptCodes', 'spOptPrices', 'spOptNewVariants', 'spOptNewProducts', 'spOptDeactivate']
+      ['spOptCodes', 'spOptPrices', 'spOptNewVariants', 'spOptNewProducts', 'spOptMissing']
         .forEach(function (id) {
           var el = document.getElementById(id);
           if (el) {

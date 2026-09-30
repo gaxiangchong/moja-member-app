@@ -38,6 +38,7 @@ import type {
   SitesCatalog,
 } from './sites-catalog.types';
 import { dataDir } from '../config/data-dir';
+import { OPEN_ORDER_STATUSES } from '../orders/order-status';
 
 export type ShopCatalogProductImage = {
   src: string;
@@ -887,6 +888,9 @@ export class ShopCatalogService implements OnModuleInit {
   async deleteProduct(id: string): Promise<{ id: string; deleted: true }> {
     const removed = await this.requireOne(id);
     await this.prisma.shopProduct.delete({ where: { id } });
+    // `product_stock_days` has no foreign key, so its rows would otherwise
+    // outlive the product and be picked up by a product later reusing the slug.
+    await this.prisma.productStockDay.deleteMany({ where: { productId: id } });
 
     if (removed.imageUrl) this.tryRemoveLocalProductImage(removed.imageUrl);
     if (Array.isArray(removed.images)) {
@@ -1374,11 +1378,7 @@ export class ShopCatalogService implements OnModuleInit {
     const parsed = this.parseSalesplayCsv(
       await this.loadSalesplayCsv(input.csv),
     );
-    return buildSalesplaySyncPlan(
-      await this.loadAll(),
-      parsed,
-      input.options ?? {},
-    );
+    return this.buildPlan(await this.loadAll(), parsed, input.options ?? {});
   }
 
   async applySalesplaySync(input: {
@@ -1388,34 +1388,66 @@ export class ShopCatalogService implements OnModuleInit {
     plan: SalesplaySyncPlan;
     productsUpdated: number;
     productsCreated: number;
-    productsDeactivated: number;
+    productsHidden: number;
+    productsDeleted: number;
+    deletedProductNames: string[];
   }> {
     const parsed = this.parseSalesplayCsv(
       await this.loadSalesplayCsv(input.csv),
     );
     const current = await this.loadAll();
-    const plan = buildSalesplaySyncPlan(current, parsed, input.options ?? {});
-    const { updated, created, deactivated } = applySalesplaySyncPlan(
+    const plan = await this.buildPlan(current, parsed, input.options ?? {});
+    const { updated, created, hidden, deleted } = applySalesplaySyncPlan(
       current,
       plan,
     );
 
     // One row at a time, never saveAll(): this sync only ever touches the
     // products it names, so a catalog product the POS has never heard of is
-    // left exactly as it is instead of being deleted.
+    // left exactly as it is instead of being changed behind the admin's back.
     for (const p of updated) {
       await this.saveProduct(p);
     }
     for (const p of created) {
       await this.saveProduct(this.normalizeProduct(p), { includeStock: true });
     }
+    for (const p of deleted) {
+      await this.deleteProduct(p.id);
+    }
 
     return {
       plan,
       productsUpdated: updated.length,
       productsCreated: created.length,
-      productsDeactivated: deactivated.length,
+      productsHidden: hidden.length,
+      productsDeleted: deleted.length,
+      deletedProductNames: deleted.map((p) => p.name),
     };
+  }
+
+  /**
+   * Adds the facts the pure planner cannot look up for itself — currently
+   * which products still have an order in flight, so removal never takes a
+   * cake the kitchen is mid-way through.
+   */
+  private async buildPlan(
+    products: ShopCatalogProduct[],
+    parsed: SalesplayCsvParseResult,
+    options: SalesplaySyncOptions,
+  ): Promise<SalesplaySyncPlan> {
+    let productIdsWithOpenOrders: string[] = [];
+    if (options.missingAction && options.missingAction !== 'keep') {
+      const rows = await this.prisma.customerOrderLine.findMany({
+        where: { order: { status: { in: OPEN_ORDER_STATUSES } } },
+        select: { productId: true },
+        distinct: ['productId'],
+      });
+      productIdsWithOpenOrders = rows.map((r) => r.productId);
+    }
+    return buildSalesplaySyncPlan(products, parsed, {
+      ...options,
+      productIdsWithOpenOrders,
+    });
   }
 
   // ---------------------------------------------------------------------

@@ -136,12 +136,46 @@ function isSubset(small: Set<string>, big: Set<string>): boolean {
   return true;
 }
 
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Two names that differ only by a typo or a spelling variant, as the till's
+ * `Pistache Noir` does from the catalog's `Pistachio Noir`. Allowance grows
+ * with length and is capped, so short names still have to be near-identical.
+ */
+function nearlySpelledTheSame(a: string, b: string): boolean {
+  const longest = Math.max(a.length, b.length);
+  if (longest < 6) return false;
+  const allowed = Math.min(3, Math.max(1, Math.round(longest * 0.2)));
+  return editDistance(a, b) <= allowed;
+}
+
 /**
  * Best guess at the catalog product a SalesPlay name refers to when the names
- * are not identical — one is the other plus a word, as in `Matcha Marmalade`
- * against `Matcha Marmalade Gateau`. Only answers when exactly one product
- * fits, so a guess is never ambiguous, and only ever a suggestion for the
- * admin: nothing is mapped or created off the back of it.
+ * are not identical: one is the other plus a word (`Matcha Marmalade` against
+ * `Matcha Marmalade Gateau`), or they differ by a spelling (`Pistache Noir`
+ * against `Pistachio Noir`). Only answers when exactly one product fits, so a
+ * guess is never ambiguous.
+ *
+ * This is a suggestion, never an action — nothing is mapped or created from
+ * it. It does, however, stop a product being removed as "no longer sold",
+ * because a name that is one letter out is the likeliest reason a real
+ * product looks missing.
  */
 export function suggestProductForName(
   baseName: string,
@@ -149,14 +183,21 @@ export function suggestProductForName(
 ): string | null {
   const csv = nameTokens(baseName);
   if (csv.size === 0) return null;
-  const hits = products.filter((p) => {
+  const byWords = products.filter((p) => {
     const cat = nameTokens(p.name);
     if (cat.size === 0) return false;
     const [small, big] = cat.size <= csv.size ? [cat, csv] : [csv, cat];
     // Two shared words minimum, or "Hot Latte" would suggest "Hot Chocolate".
     return small.size >= 2 && isSubset(small, big);
   });
-  return hits.length === 1 ? hits[0].id : null;
+  if (byWords.length === 1) return byWords[0].id;
+  if (byWords.length > 1) return null;
+
+  const key = normalizeProductName(baseName);
+  const bySpelling = products.filter((p) =>
+    nearlySpelledTheSame(key, normalizeProductName(p.name)),
+  );
+  return bySpelling.length === 1 ? bySpelling[0].id : null;
 }
 
 function parsePriceCents(raw: string): number {
@@ -326,7 +367,14 @@ export type SalesplayCatalogOnly = {
    * `out-of-scope` — the export has it, in a category this sync is ignoring.
    */
   reason: 'missing' | 'disabled' | 'out-of-scope';
-  willDeactivate: boolean;
+  /** What applying the plan does to this product, after the guards below. */
+  action: 'keep' | 'hide' | 'delete';
+  /**
+   * Why the chosen `missingAction` was not applied to this product. Deleting a
+   * cake that is still on sale takes its photos and storefront copy with it, so
+   * anything doubtful is kept and explained rather than acted on.
+   */
+  blockedReason: string | null;
 };
 
 export type SalesplaySyncOptions = {
@@ -340,8 +388,18 @@ export type SalesplaySyncOptions = {
   createMissingProducts?: boolean;
   /** Add missing sizes to catalog products that already exist. */
   createMissingVariants?: boolean;
-  /** Hide catalog products the export no longer sells. */
-  deactivateMissing?: boolean;
+  /**
+   * What to do with catalog products the export does not sell: leave them,
+   * hide them from the storefront, or delete them outright. Deleting also
+   * removes their uploaded photos and any stock rows; past orders are
+   * unaffected because order lines keep their own copy of the product.
+   */
+  missingAction?: 'keep' | 'hide' | 'delete';
+  /**
+   * Products with an order still open (placed / preparing / ready). These are
+   * never hidden or deleted — the kitchen is still working on them.
+   */
+  productIdsWithOpenOrders?: string[];
   /** Admin overrides: SalesPlay code → the catalog unit it belongs to. */
   assignments?: {
     code: string;
@@ -368,7 +426,11 @@ export type SalesplaySyncPlan = {
     pricesLocked: number;
     productsToCreate: number;
     variantsToCreate: number;
-    toDeactivate: number;
+    /** Distinct products, not units. */
+    toHide: number;
+    toDelete: number;
+    /** Products the chosen action was withheld from; see each row's `blockedReason`. */
+    removalBlocked: number;
     csvOnly: number;
     catalogOnly: number;
   };
@@ -437,7 +499,8 @@ export function buildSalesplaySyncPlan(
     updatePrices: options.updatePrices === true,
     createMissingProducts: options.createMissingProducts === true,
     createMissingVariants: options.createMissingVariants === true,
-    deactivateMissing: options.deactivateMissing === true,
+    missingAction: options.missingAction ?? 'keep',
+    productIdsWithOpenOrders: options.productIdsWithOpenOrders ?? [],
     assignments: options.assignments ?? [],
   };
 
@@ -588,8 +651,23 @@ export function buildSalesplaySyncPlan(
   }
 
   // A product whose 6" still sells in store must stay in the app even if its
-  // 8" has gone, so deactivation is decided per product, not per unit.
+  // 8" has gone, so removal is decided per product, not per unit.
   const stillSold = new Set(matched.map((m) => m.productId));
+  const openOrders = new Set(opts.productIdsWithOpenOrders);
+  /**
+   * Products an unmatched CSV row thinks it is, by name. `Citron Basque` and
+   * the export's `Citron Blossom Basque` are one cake, and removing it because
+   * the names differ by a word would be the worst thing this sync could do.
+   */
+  const probablyRenamed = new Map<string, string>();
+  for (const row of csvOnly) {
+    if (
+      row.suggestedProductId &&
+      !probablyRenamed.has(row.suggestedProductId)
+    ) {
+      probablyRenamed.set(row.suggestedProductId, row.csvName);
+    }
+  }
 
   const catalogOnly: SalesplayCatalogOnly[] = [];
   for (const u of units) {
@@ -604,6 +682,27 @@ export function buildSalesplaySyncPlan(
         : !inScope(exported)
           ? 'out-of-scope'
           : 'missing';
+
+    let action: SalesplayCatalogOnly['action'] = 'keep';
+    let blockedReason: string | null = null;
+    if (opts.missingAction !== 'keep') {
+      const renamedAs = probablyRenamed.get(u.productId);
+      if (stillSold.has(u.productId)) {
+        blockedReason = 'Another size of this product still sells in SalesPlay';
+      } else if (reason === 'out-of-scope') {
+        // A category we chose not to look at is no evidence the POS dropped it.
+        blockedReason = 'Its SalesPlay category is not being synced';
+      } else if (renamedAs) {
+        blockedReason = `Looks like "${renamedAs}" in SalesPlay — map that code to it first`;
+      } else if (openOrders.has(u.productId)) {
+        blockedReason = 'An order for this is still open';
+      } else if (opts.missingAction === 'hide' && !u.isActive) {
+        blockedReason = 'Already hidden';
+      } else {
+        action = opts.missingAction;
+      }
+    }
+
     catalogOnly.push({
       productId: u.productId,
       productName: u.productName,
@@ -611,13 +710,8 @@ export function buildSalesplaySyncPlan(
       currentCode: u.effectiveCode,
       isActive: u.isActive,
       reason,
-      willDeactivate:
-        opts.deactivateMissing &&
-        u.isActive &&
-        !stillSold.has(u.productId) &&
-        // A code we simply chose not to look at is no evidence the POS
-        // stopped selling it.
-        reason !== 'out-of-scope',
+      action,
+      blockedReason,
     });
   }
 
@@ -646,8 +740,16 @@ export function buildSalesplaySyncPlan(
       variantsToCreate: csvOnly.filter(
         (r) => r.willCreate && r.kind === 'new-variant',
       ).length,
-      toDeactivate: new Set(
-        catalogOnly.filter((r) => r.willDeactivate).map((r) => r.productId),
+      toHide: new Set(
+        catalogOnly.filter((r) => r.action === 'hide').map((r) => r.productId),
+      ).size,
+      toDelete: new Set(
+        catalogOnly
+          .filter((r) => r.action === 'delete')
+          .map((r) => r.productId),
+      ).size,
+      removalBlocked: new Set(
+        catalogOnly.filter((r) => r.blockedReason).map((r) => r.productId),
       ).size,
       csvOnly: csvOnly.length,
       catalogOnly: catalogOnly.length,
@@ -700,12 +802,14 @@ export function applySalesplaySyncPlan(
 ): {
   updated: ShopCatalogProduct[];
   created: ShopCatalogProduct[];
-  deactivated: ShopCatalogProduct[];
+  hidden: ShopCatalogProduct[];
+  /** Products to delete outright; the caller removes them and their images. */
+  deleted: ShopCatalogProduct[];
 } {
   const opts = plan.options;
   const byId = new Map(products.map((p) => [p.id, { ...p }]));
   const touched = new Set<string>();
-  const deactivatedIds = new Set<string>();
+  const hiddenIds = new Set<string>();
 
   if (opts.updateCodes || opts.updatePrices) {
     for (const m of plan.matched) {
@@ -833,21 +937,30 @@ export function applySalesplaySyncPlan(
     });
   }
 
-  if (opts.deactivateMissing) {
+  const deletedIds = new Set<string>();
+  if (opts.missingAction !== 'keep') {
     for (const row of plan.catalogOnly) {
-      if (!row.willDeactivate) continue;
       const p = byId.get(row.productId);
-      if (!p || p.isActive === false) continue;
-      p.isActive = false;
-      touched.add(p.id);
-      deactivatedIds.add(p.id);
+      if (!p) continue;
+      if (row.action === 'hide' && p.isActive !== false) {
+        p.isActive = false;
+        touched.add(p.id);
+        hiddenIds.add(p.id);
+      } else if (row.action === 'delete') {
+        deletedIds.add(p.id);
+      }
     }
   }
 
-  const updated = [...touched].map((id) => byId.get(id)!);
+  // A deleted product has nothing to save, so drop it from the update list —
+  // a code written moments earlier onto something about to go is noise.
+  const updated = [...touched]
+    .filter((id) => !deletedIds.has(id))
+    .map((id) => byId.get(id)!);
   return {
     updated,
     created,
-    deactivated: updated.filter((p) => deactivatedIds.has(p.id)),
+    hidden: updated.filter((p) => hiddenIds.has(p.id)),
+    deleted: [...deletedIds].map((id) => byId.get(id)!),
   };
 }

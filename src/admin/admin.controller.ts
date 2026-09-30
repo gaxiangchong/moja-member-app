@@ -90,7 +90,7 @@ function salesplaySyncOptions(
     updatePrices: dto.updatePrices,
     createMissingProducts: dto.createMissingProducts,
     createMissingVariants: dto.createMissingVariants,
-    deactivateMissing: dto.deactivateMissing,
+    missingAction: dto.missingAction,
     assignments: dto.assignments,
   };
 }

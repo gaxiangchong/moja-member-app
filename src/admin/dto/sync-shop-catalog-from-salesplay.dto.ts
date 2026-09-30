@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -61,11 +62,13 @@ export class SyncShopCatalogFromSalesplayDto {
   @IsBoolean()
   createMissingVariants?: boolean;
 
-  /** Hide catalog products SalesPlay no longer sells. Default false. */
+  /**
+   * What to do with catalog products SalesPlay no longer sells. Default
+   * `keep`. `delete` is irreversible and also removes their uploaded photos.
+   */
   @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  deactivateMissing?: boolean;
+  @IsIn(['keep', 'hide', 'delete'])
+  missingAction?: 'keep' | 'hide' | 'delete';
 
   /** Manual mappings for rows the matcher could not place on its own. */
   @IsOptional()

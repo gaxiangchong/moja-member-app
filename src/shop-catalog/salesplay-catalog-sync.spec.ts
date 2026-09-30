@@ -114,14 +114,26 @@ describe('suggestProductForName', () => {
     );
   });
 
+  it('spots the same product spelled differently on the till', () => {
+    expect(suggestProductForName('Pistache Noir', catalog)).toBe(
+      'pistachio-noir-cheesecake',
+    );
+  });
+
   it('stays quiet when it cannot be sure', () => {
-    // "Pistache" is not "Pistachio", and guessing would map real money to the
-    // wrong product.
-    expect(suggestProductForName('Pistache Noir', catalog)).toBeNull();
-    // Two words shared with nothing distinguishing them is not enough.
+    // Shares only "Basque", and the rest is nothing like an existing cake.
     expect(suggestProductForName('Gula Melaka Basque', catalog)).toBeNull();
     // A single shared word never suggests.
     expect(suggestProductForName('Americano', catalog)).toBeNull();
+    // Short names have to be near-identical, or every drink would match one.
+    expect(suggestProductForName('Koko', catalog)).toBeNull();
+    // Two cakes are equally close, so there is no single answer.
+    expect(
+      suggestProductForName('Noir', [
+        product({ id: 'a', name: 'Noira' }),
+        product({ id: 'b', name: 'Noire' }),
+      ]),
+    ).toBeNull();
   });
 });
 
@@ -305,12 +317,13 @@ describe('buildSalesplaySyncPlan', () => {
     const withBento = buildSalesplaySyncPlan(
       bento,
       toSalesplayCsvRows([csvRecord('600208', 'Bento', 'Bento', '17.90')]),
-      { deactivateMissing: true },
+      { missingAction: 'delete' },
     );
     expect(withBento.catalogOnly[0]).toMatchObject({
       productId: 'bento',
       reason: 'out-of-scope',
-      willDeactivate: false,
+      action: 'keep',
+      blockedReason: 'Its SalesPlay category is not being synced',
     });
   });
 
@@ -488,27 +501,93 @@ describe('applySalesplaySyncPlan', () => {
       ),
     ]);
     const plan = buildSalesplaySyncPlan(catalog, only6, {
-      deactivateMissing: true,
+      missingAction: 'delete',
     });
-    expect(plan.summary.toDeactivate).toBe(0);
-    expect(applySalesplaySyncPlan(catalog, plan).deactivated).toEqual([]);
+    expect(plan.summary.toDelete).toBe(0);
+    expect(plan.catalogOnly[0].blockedReason).toBe(
+      'Another size of this product still sells in SalesPlay',
+    );
+    expect(applySalesplaySyncPlan(catalog, plan).deleted).toEqual([]);
   });
 
+  const gone = toSalesplayCsvRows([
+    csvRecord('600316-160', 'Gula Melaka Basque (6in)', 'Cheesecake', '168.00'),
+  ]);
+
   it('hides a product the export dropped entirely', () => {
-    const gone = toSalesplayCsvRows([
+    const plan = buildSalesplaySyncPlan(catalog, gone, {
+      missingAction: 'hide',
+    });
+    expect(plan.summary.toHide).toBe(1);
+    expect(plan.summary.toDelete).toBe(0);
+    const { hidden, deleted } = applySalesplaySyncPlan(catalog, plan);
+    expect(deleted).toEqual([]);
+    expect(hidden.map((p) => p.id)).toEqual(['caramel-espresso-gateau']);
+    expect(hidden[0].isActive).toBe(false);
+  });
+
+  it('deletes a product the export dropped entirely', () => {
+    const plan = buildSalesplaySyncPlan(catalog, gone, {
+      missingAction: 'delete',
+    });
+    expect(plan.summary.toDelete).toBe(1);
+    const { deleted, updated } = applySalesplaySyncPlan(catalog, plan);
+    expect(deleted.map((p) => p.id)).toEqual(['caramel-espresso-gateau']);
+    // No point saving a code onto something that is about to be removed.
+    expect(updated).toEqual([]);
+  });
+
+  it('will not remove a product that is mid-order', () => {
+    const plan = buildSalesplaySyncPlan(catalog, gone, {
+      missingAction: 'delete',
+      productIdsWithOpenOrders: ['caramel-espresso-gateau'],
+    });
+    expect(plan.summary.toDelete).toBe(0);
+    expect(plan.catalogOnly[0].blockedReason).toBe(
+      'An order for this is still open',
+    );
+    expect(applySalesplaySyncPlan(catalog, plan).deleted).toEqual([]);
+  });
+
+  it('will not remove a product the POS merely renamed', () => {
+    // "Caramel Espresso Gateau" is gone from the export, but "Caramel Espresso
+    // Gateau Deluxe" is in it — almost certainly the same cake, so deleting it
+    // (and its photos) would be the wrong call.
+    const renamed = toSalesplayCsvRows([
       csvRecord(
-        '600316-160',
-        'Gula Melaka Basque (6in)',
-        'Cheesecake',
-        '168.00',
+        '30003-201',
+        'Caramel Espresso Gateau Deluxe (6in)',
+        'Creamcake',
+        '165.00',
       ),
     ]);
-    const plan = buildSalesplaySyncPlan(catalog, gone, {
-      deactivateMissing: true,
+    const plan = buildSalesplaySyncPlan(catalog, renamed, {
+      missingAction: 'delete',
     });
-    expect(plan.summary.toDeactivate).toBe(1);
-    const { deactivated } = applySalesplaySyncPlan(catalog, plan);
-    expect(deactivated.map((p) => p.id)).toEqual(['caramel-espresso-gateau']);
-    expect(deactivated[0].isActive).toBe(false);
+    expect(plan.summary.toDelete).toBe(0);
+    expect(plan.summary.removalBlocked).toBe(1);
+    expect(plan.catalogOnly[0].blockedReason).toContain(
+      'Caramel Espresso Gateau Deluxe',
+    );
+    expect(applySalesplaySyncPlan(catalog, plan).deleted).toEqual([]);
+  });
+
+  it('removes it once the admin maps the renamed code by hand', () => {
+    const plan = buildSalesplaySyncPlan(catalog, gone, {
+      missingAction: 'delete',
+      assignments: [
+        {
+          code: '600316-160',
+          productId: 'caramel-espresso-gateau',
+          variantLabel: '6 inch',
+        },
+      ],
+    });
+    // Mapped, so it is no longer missing — and its 8 inch sibling is spared too.
+    expect(plan.summary.toDelete).toBe(0);
+    expect(plan.matched[0]).toMatchObject({
+      productId: 'caramel-espresso-gateau',
+      via: 'manual',
+    });
   });
 });

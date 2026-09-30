@@ -31,6 +31,25 @@ describe('admin dashboard menu', () => {
     expect(catalog.sort()).toEqual(rendered);
   });
 
+  it('serves a page script that parses', () => {
+    // The dashboard's JS is a string inside a TS template literal, so an
+    // escape that works in TS can emit broken JS — `'a\n'` in the source
+    // becomes a literal newline in the served string, which is a syntax
+    // error the compiler never sees. `new Function` compiles without running.
+    const html = new AdminDashboardController(
+      {} as AdminDashboardMenuService,
+    ).getDashboard();
+    const scripts = [
+      ...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g),
+    ].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const src of scripts) {
+      // Compiling our own served output is the check; it is never called.
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      expect(() => new Function(src)).not.toThrow();
+    }
+  });
+
   it('lets an admin hide every item except Menu visibility', () => {
     const hideAll = Object.fromEntries(
       DASHBOARD_MENU.flatMap((g) => g.views.map((v) => [v.id, false])),
