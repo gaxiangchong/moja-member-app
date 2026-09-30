@@ -933,12 +933,11 @@ export class AdminDashboardController {
     }
     .mv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 16px 20px 20px; }
     .mv-group { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
-    .mv-group.locked { background: #f8fafc; }
     .mv-group-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--text); padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
     .mv-group-head label { display: flex; align-items: center; gap: 8px; flex: 1; margin: 0; font-size: 14px; cursor: pointer; }
-    .mv-lock { font-size: 11px; font-weight: 600; color: #1d4ed8; background: #dbeafe; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+    .mv-lock { font-size: 10px; font-weight: 600; color: #1d4ed8; background: #dbeafe; border-radius: 999px; padding: 1px 7px; white-space: nowrap; margin-left: 4px; }
     .mv-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; font-weight: 500; color: var(--text); margin: 0; cursor: pointer; }
-    .mv-group.locked .mv-item, .mv-group.locked .mv-group-head label { cursor: not-allowed; color: var(--text-muted); }
+    .mv-item:has(input:disabled) { cursor: not-allowed; color: var(--text-muted); }
     .mv-group input[type=checkbox] { width: 16px; height: 16px; margin: 0; }
   </style>
 </head>
@@ -2912,7 +2911,8 @@ export class AdminDashboardController {
             </div>
             <div style="padding:12px 20px 0 20px;color:#64748b;font-size:13px">
               Tick the menu items to show in the sidebar. Unticked items are hidden for every admin.
-              Customers, Loyalty &amp; rewards, Email marketing, and Settings are always shown.
+              Every item is yours to choose — only this screen stays visible, so the menu can always be changed back.
+              Locked out anyway? Open the dashboard with <code>?menu=all</code> to reveal everything for one visit.
               <p class="field-hint" id="mvStatus" style="margin:8px 0 0 0"></p>
             </div>
             <div class="mv-grid" id="mvGroups"></div>
@@ -8593,6 +8593,21 @@ export class AdminDashboardController {
 
     async function applyDashboardConfig() {
       try {
+        // Recovery hatch: ?menu=all shows the whole sidebar for this page load
+        // without changing what is saved, so a menu hidden down to nothing can
+        // always be reopened and fixed.
+        if (new URLSearchParams(window.location.search).get('menu') === 'all') {
+          document.querySelectorAll('.nav-group[data-menu-group]').forEach(function (g) {
+            g.classList.remove('hidden');
+            var items = g.querySelector('.nav-items');
+            if (items) items.classList.remove('hidden');
+          });
+          document.querySelectorAll('.nav-btn[data-view]').forEach(function (b) {
+            b.classList.remove('hidden');
+          });
+          hiddenViews = new Set();
+          return;
+        }
         var res = await fetch('/admin-dashboard/config.json', { cache: 'no-store' });
         if (!res.ok) return;
         var cfg = await res.json();
@@ -8669,14 +8684,17 @@ export class AdminDashboardController {
       var root = document.getElementById('mvGroups');
       if (!root) return;
       root.innerHTML = (data.groups || []).map(function (g) {
-        var dis = g.locked ? ' disabled' : '';
+        // Every item is the admin's choice now. Only this screen itself stays
+        // ticked, so the menu can always be changed back.
         var items = (g.views || []).map(function (v) {
+          var dis = v.locked ? ' disabled' : '';
           return '<label class="mv-item"><input type="checkbox" data-mv-view="' + vcEsc(v.id) + '"' +
-            (v.visible ? ' checked' : '') + dis + ' /> ' + vcEsc(v.label) + '</label>';
+            (v.visible ? ' checked' : '') + dis + ' /> ' + vcEsc(v.label) +
+            (v.locked ? ' <span class="mv-lock">always shown</span>' : '') + '</label>';
         }).join('');
-        return '<div class="mv-group' + (g.locked ? ' locked' : '') + '" data-mv-key="' + vcEsc(g.key) + '">' +
-          '<div class="mv-group-head"><label><input type="checkbox" data-mv-group="' + vcEsc(g.key) + '"' + dis + ' /> ' +
-          vcEsc(g.label) + '</label>' + (g.locked ? '<span class="mv-lock">Always shown</span>' : '') + '</div>' +
+        return '<div class="mv-group" data-mv-key="' + vcEsc(g.key) + '">' +
+          '<div class="mv-group-head"><label><input type="checkbox" data-mv-group="' + vcEsc(g.key) + '" /> ' +
+          vcEsc(g.label) + '</label></div>' +
           items + '</div>';
       }).join('');
       root.querySelectorAll('.mv-group').forEach(mvSyncGroupBox);
@@ -8730,7 +8748,11 @@ export class AdminDashboardController {
           var groupEl = t.closest('.mv-group');
           if (!groupEl) return;
           if (t.hasAttribute('data-mv-group')) {
-            groupEl.querySelectorAll('input[data-mv-view]').forEach(function (i) { i.checked = t.checked; });
+            // Skip disabled items (Menu visibility) so the group toggle cannot
+            // try to hide the one screen that must stay reachable.
+            groupEl.querySelectorAll('input[data-mv-view]').forEach(function (i) {
+              if (!i.disabled) i.checked = t.checked;
+            });
           }
           mvSyncGroupBox(groupEl);
         });

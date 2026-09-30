@@ -131,13 +131,17 @@ export const DASHBOARD_MENU: DashboardMenuGroup[] = [
   },
 ];
 
-/** Groups that stay visible whatever is saved, so admins cannot hide core tools. */
-export const LOCKED_MENU_GROUPS: ReadonlySet<string> = new Set([
-  'customers',
-  'loyalty',
-  'mailer',
-  'settings',
-]);
+/**
+ * The one item that cannot be hidden: the Menu visibility screen itself.
+ *
+ * Every other group and view is the admin's to show or hide. Hiding this one
+ * too would be a one-way door — with no nav button left to reach it, the only
+ * way back would be editing `app_settings` in the database by hand.
+ *
+ * (`?menu=all` on the dashboard URL also reveals everything for one page load,
+ * as a belt-and-braces recovery.)
+ */
+export const ALWAYS_VISIBLE_VIEW = 'settings-menu';
 
 /** Shape of the older `admin-dashboard.config.json` file (and its built-in default). */
 export type LegacyDashboardConfig = {
@@ -163,8 +167,9 @@ function legacyVisible(
 }
 
 /**
- * Visibility of every menu item. Locked groups are always shown; otherwise a
- * saved choice wins, and items without one follow the legacy config file.
+ * Visibility of every menu item: the admin's saved choice wins, and items
+ * without one fall back to the legacy config file. Only the Menu visibility
+ * screen is forced on (see {@link ALWAYS_VISIBLE_VIEW}).
  */
 export function resolveDashboardMenu(
   saved: SavedDashboardMenu | null,
@@ -173,7 +178,7 @@ export function resolveDashboardMenu(
   const out: Record<string, boolean> = {};
   for (const group of DASHBOARD_MENU) {
     for (const view of group.views) {
-      if (LOCKED_MENU_GROUPS.has(group.key)) {
+      if (view.id === ALWAYS_VISIBLE_VIEW) {
         out[view.id] = true;
       } else if (saved && typeof saved.views[view.id] === 'boolean') {
         out[view.id] = saved.views[view.id];
@@ -185,7 +190,7 @@ export function resolveDashboardMenu(
   return out;
 }
 
-/** Validates an admin's save: known item ids only, locked items forced on. */
+/** Validates an admin's save: known item ids only, Menu visibility forced on. */
 export function normalizeDashboardMenu(input: unknown): SavedDashboardMenu {
   const raw =
     input && typeof input === 'object'
@@ -199,10 +204,9 @@ export function normalizeDashboardMenu(input: unknown): SavedDashboardMenu {
   const entries = raw as Record<string, unknown>;
   const views: Record<string, boolean> = {};
   for (const group of DASHBOARD_MENU) {
-    const locked = LOCKED_MENU_GROUPS.has(group.key);
     for (const view of group.views) {
       const value = entries[view.id];
-      if (locked) {
+      if (view.id === ALWAYS_VISIBLE_VIEW) {
         views[view.id] = true;
       } else if (typeof value === 'boolean') {
         views[view.id] = value;
@@ -244,11 +248,12 @@ export function dashboardMenuSettings(
     groups: DASHBOARD_MENU.map((group) => ({
       key: group.key,
       label: group.label,
-      locked: LOCKED_MENU_GROUPS.has(group.key),
       views: group.views.map((v) => ({
         id: v.id,
         label: v.label,
         visible: visible[v.id] === true,
+        /** Only the Menu visibility screen itself; everything else is free. */
+        locked: v.id === ALWAYS_VISIBLE_VIEW,
       })),
     })),
   };

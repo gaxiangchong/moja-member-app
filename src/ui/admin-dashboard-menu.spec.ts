@@ -31,23 +31,26 @@ describe('admin dashboard menu', () => {
     expect(catalog.sort()).toEqual(rendered);
   });
 
-  it('keeps customers, loyalty, email marketing, and settings visible', () => {
+  it('lets an admin hide every item except Menu visibility', () => {
     const hideAll = Object.fromEntries(
       DASHBOARD_MENU.flatMap((g) => g.views.map((v) => [v.id, false])),
     );
     const visible = resolveDashboardMenu({ views: hideAll }, LEGACY);
+    // Previously customers / loyalty / mailer / settings were forced on; the
+    // admin now owns all of them.
     for (const id of [
       'customers-merge',
       'loyalty-rules',
       'gift-rewards',
       'mailer-campaigns',
       'settings-system',
-      'settings-menu',
+      'bento-menu',
+      'audit',
     ]) {
-      expect(visible[id]).toBe(true);
+      expect(visible[id]).toBe(false);
     }
-    expect(visible['bento-menu']).toBe(false);
-    expect(visible['audit']).toBe(false);
+    // The one exception, so the menu can always be changed back.
+    expect(visible['settings-menu']).toBe(true);
   });
 
   it('follows the legacy config until an admin saves a choice', () => {
@@ -75,17 +78,32 @@ describe('admin dashboard menu', () => {
     expect(cfg.menuGroups.customers.showGroup).toBe(true);
   });
 
-  it('forces locked items on and rejects unknown items when saving', () => {
+  it('forces only Menu visibility on, and rejects unknown items', () => {
     const saved = normalizeDashboardMenu({
-      views: { 'mailer-campaigns': false, 'finance-daily': false },
+      views: {
+        'mailer-campaigns': false,
+        'finance-daily': false,
+        'settings-menu': false,
+      },
     });
-    expect(saved.views['mailer-campaigns']).toBe(true);
+    expect(saved.views['mailer-campaigns']).toBe(false);
     expect(saved.views['finance-daily']).toBe(false);
+    // Ignores an attempt to hide the escape hatch rather than failing the save.
+    expect(saved.views['settings-menu']).toBe(true);
     expect(() =>
       normalizeDashboardMenu({ views: { 'not-a-menu': true } }),
     ).toThrow('Unknown menu item');
     expect(() =>
       normalizeDashboardMenu({ views: { 'finance-daily': 'yes' } }),
     ).toThrow('must be true or false');
+  });
+
+  it('can hide a previously locked group entirely', () => {
+    const visible = resolveDashboardMenu(
+      { views: { 'mailer-campaigns': false } },
+      {},
+    );
+    const cfg = dashboardSidebarConfig(visible);
+    expect(cfg.menuGroups.mailer.showGroup).toBe(false);
   });
 });
