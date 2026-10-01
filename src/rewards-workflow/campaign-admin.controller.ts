@@ -151,7 +151,9 @@ export class CampaignAdminController {
   deleteCampaign(
     @Param('campaignId') campaignId: string,
     @CurrentAdmin() _auth: AdminAuthState,
+    /** `?force=true` confirms removing unused vouchers from members' wallets. */
+    @Query('force') force?: string,
   ) {
-    return this.builder.deleteCampaign(campaignId);
+    return this.builder.deleteCampaign(campaignId, force === 'true');
   }
 }

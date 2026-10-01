@@ -1070,8 +1070,9 @@ export async function updateCampaign(id: string, input: UpdateCampaignInput): Pr
   return parseCatalogResponse<CampaignDetail>(res);
 }
 
-export async function deleteCampaign(id: string): Promise<void> {
-  const res = await authorizedFetch(`/admin/campaigns/${encodeURIComponent(id)}`, { method: 'DELETE' });
+/** `force` confirms removing unused vouchers from members' wallets; the server never deletes used ones. */
+export async function deleteCampaign(id: string, force = false): Promise<void> {
+  const res = await authorizedFetch(`/admin/campaigns/${encodeURIComponent(id)}${force ? '?force=true' : ''}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await parseJson<{ message?: string | string[] }>(res);
     throw new Error(extractMessage(data, res));

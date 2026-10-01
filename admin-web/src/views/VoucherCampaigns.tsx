@@ -403,9 +403,22 @@ export function VoucherCampaigns() {
 
   async function handleDelete() {
     if (!detail) return;
-    if (!window.confirm(`Delete campaign "${detail.name}"? Only possible if no vouchers have been issued.`)) return;
+    // Used or mid-checkout vouchers record what a member was given, so they block deletion.
+    const inUse = (detail.stats.USED ?? 0) + (detail.stats.LOCKED ?? 0);
+    const unused = (detail.stats.ACTIVE ?? 0) + (detail.stats.EXPIRED ?? 0) + (detail.stats.VOID ?? 0);
+    if (inUse > 0) {
+      setSaveError(
+        `${inUse} voucher(s) from this campaign have been used, so it can't be deleted. Switch it off with the Active toggle instead.`,
+      );
+      return;
+    }
+    const prompt =
+      unused > 0
+        ? `${unused} unused voucher(s) are in members' wallets. Deleting "${detail.name}" removes them. Delete anyway?`
+        : `Delete campaign "${detail.name}"?`;
+    if (!window.confirm(prompt)) return;
     try {
-      await deleteCampaign(detail.id);
+      await deleteCampaign(detail.id, unused > 0);
       setCampaigns((prev) => prev?.filter((c) => c.id !== detail.id) ?? prev);
       closeDrawer();
     } catch (err) {

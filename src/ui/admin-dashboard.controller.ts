@@ -10313,12 +10313,33 @@ export class AdminDashboardController {
       if (!window.confirm('Delete campaign "' + name + '"? This cannot be undone.')) return;
       var out = document.getElementById('voucherCampaignsListResult');
       if (out) out.textContent = 'Deleting…';
+      var base = '/admin/campaigns/' + encodeURIComponent(id);
       try {
-        await apiDelete('/admin/campaigns/' + encodeURIComponent(id));
+        await apiDelete(base);
         if (out) out.textContent = 'Deleted.';
         await loadVoucherCampaigns();
       } catch (e) {
-        if (out) out.textContent = e.message || String(e);
+        var msg = e.message || String(e);
+        // apiDelete wraps the server's JSON body in "Request failed (400): {...}".
+        var cut = msg.indexOf('{');
+        var body = null;
+        if (cut >= 0) { try { body = JSON.parse(msg.slice(cut)); } catch (_) { body = null; } }
+        if (body && body.code === 'CAMPAIGN_HAS_UNUSED_VOUCHERS') {
+          // Nothing has been spent, so this is allowed, but members will see the vouchers disappear.
+          if (!window.confirm(body.unusedVouchers + ' unused voucher(s) are in members’ wallets. Deleting "' + name + '" removes them. Delete anyway?')) {
+            if (out) out.textContent = 'Not deleted.';
+            return;
+          }
+          try {
+            await apiDelete(base + '?force=true');
+            if (out) out.textContent = 'Deleted, along with ' + body.unusedVouchers + ' unused voucher(s).';
+            await loadVoucherCampaigns();
+          } catch (e2) {
+            if (out) out.textContent = e2.message || String(e2);
+          }
+          return;
+        }
+        if (out) out.textContent = (body && body.message) || msg;
       }
     }
     function vcOpenIssue(id, name) {

@@ -610,20 +610,50 @@ export class CampaignBuilderService {
    * are real member assets) — deactivate instead. Cleans up the auto-created
    * linked reward-catalog entry when it has no redemptions.
    */
-  async deleteCampaign(campaignId: string) {
+  async deleteCampaign(campaignId: string, force = false) {
     const campaign = await this.prisma.voucherCampaign.findUnique({
       where: { id: campaignId },
       include: {
-        _count: { select: { vouchers: true } },
+        vouchers: {
+          select: {
+            status: true,
+            usageCount: true,
+            redemptions: { select: { status: true } },
+          },
+        },
         rewards: { include: { _count: { select: { userRewards: true } } } },
       },
     });
     if (!campaign) throw new NotFoundException('Campaign not found.');
 
-    if (campaign._count.vouchers > 0) {
-      throw new BadRequestException(
-        `Cannot delete: ${campaign._count.vouchers} voucher(s) already issued to members. Deactivate the campaign instead.`,
-      );
+    const issued = campaign.vouchers;
+    if (issued.length > 0) {
+      // A voucher a member has spent (or is spending right now) is the record
+      // of a discount they were given, so that is never deleted.
+      const inUse = issued.filter(
+        (v) =>
+          v.status === VoucherLifecycleStatus.USED ||
+          v.status === VoucherLifecycleStatus.LOCKED ||
+          v.usageCount > 0 ||
+          v.redemptions.some(
+            (r) => r.status === 'CONFIRMED' || r.status === 'LOCKED',
+          ),
+      ).length;
+      if (inUse > 0) {
+        throw new BadRequestException({
+          code: 'CAMPAIGN_HAS_USED_VOUCHERS',
+          message: `Cannot delete: ${inUse} voucher(s) have been used or are being used at checkout. Those record what members were given, so deactivate the campaign instead.`,
+        });
+      }
+      // Only unused vouchers remain. They sit in members' wallets, so removing
+      // them is visible to members — make the admin say so explicitly.
+      if (!force) {
+        throw new BadRequestException({
+          code: 'CAMPAIGN_HAS_UNUSED_VOUCHERS',
+          unusedVouchers: issued.length,
+          message: `${issued.length} unused voucher(s) are in members' wallets. Deleting this campaign removes them. Confirm to delete anyway.`,
+        });
+      }
     }
     const rewardsWithRedemptions = campaign.rewards.filter(
       (r) => r._count.userRewards > 0,
@@ -634,13 +664,40 @@ export class CampaignBuilderService {
       );
     }
 
-    await this.prisma.$transaction([
-      this.prisma.rewardCatalog.deleteMany({
+    const removedVouchers = await this.prisma.$transaction(async (tx) => {
+      // Only vouchers nobody has touched. If a member started using one between
+      // the check above and now, some rows survive, the count below is non-zero,
+      // and the whole delete rolls back rather than destroying a spent voucher.
+      const removed = await tx.voucher.deleteMany({
+        where: {
+          voucherCampaignId: campaignId,
+          status: {
+            in: [
+              VoucherLifecycleStatus.ACTIVE,
+              VoucherLifecycleStatus.EXPIRED,
+              VoucherLifecycleStatus.VOID,
+            ],
+          },
+          usageCount: 0,
+        },
+      });
+      const stillThere = await tx.voucher.count({
         where: { voucherCampaignId: campaignId },
-      }),
-      this.prisma.voucherCampaign.delete({ where: { id: campaignId } }),
-    ]);
-    return { deleted: true };
+      });
+      if (stillThere > 0) {
+        throw new BadRequestException({
+          code: 'CAMPAIGN_HAS_USED_VOUCHERS',
+          message:
+            'A voucher was just used, so the campaign was not deleted. Deactivate it instead.',
+        });
+      }
+      await tx.rewardCatalog.deleteMany({
+        where: { voucherCampaignId: campaignId },
+      });
+      await tx.voucherCampaign.delete({ where: { id: campaignId } });
+      return removed.count;
+    });
+    return { deleted: true, removedVouchers };
   }
 
   /**
