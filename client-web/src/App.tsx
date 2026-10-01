@@ -2121,6 +2121,8 @@ function App() {
                 isAuthenticated={Boolean(profile)}
                 onRequireAuth={() => openAuthOverlay('checkout')}
                 authResumeSignal={authResumeSignal}
+                creditsBalanceCents={profile?.storedWallet?.currentWalletBalance ?? 0}
+                onCreditsChanged={() => void loadMemberData().catch(() => undefined)}
               />
             )}
 
@@ -2138,7 +2140,11 @@ function App() {
             )}
 
             {tab === 'orders' && profile && (
-              <OrdersTab active={tab === 'orders'} onGoToShop={() => setTab('shop')} />
+              <OrdersTab
+                active={tab === 'orders'}
+                onGoToShop={() => setTab('shop')}
+                onCreditsChanged={() => void loadMemberData().catch(() => undefined)}
+              />
             )}
 
             {tab === 'account' && !profile && (

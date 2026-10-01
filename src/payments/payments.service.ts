@@ -470,6 +470,7 @@ export class PaymentsService {
     voucherIdRaw?: string,
     rewardDefinitionIdRaw?: string,
     idempotencyKeyRaw?: string,
+    payWithCredits = false,
   ) {
     const voucherId = voucherIdRaw?.trim() || null;
     const rewardDefinitionId = rewardDefinitionIdRaw?.trim() || null;
@@ -536,6 +537,15 @@ export class PaymentsService {
         pointsCost: rewardPointsCost,
       });
     };
+
+    if (payWithCredits && dto.totalCents > 0) {
+      return this.payShopOrderWithCredits({
+        customerId,
+        dto,
+        promoFinalize,
+        voucherLockToken,
+      });
+    }
 
     if (this.isDemoMode()) {
       const order = await this.customers.createPendingMemberOrder(
@@ -700,6 +710,124 @@ export class PaymentsService {
       discountCents,
       voucherId,
       voucherLockToken,
+    };
+  }
+
+  /**
+   * Pays a shop order entirely from the member's wallet credits — no Xendit
+   * step, and the order is placed straight away (works in demo mode too).
+   *
+   * Order of events, so nothing is ever lost half-way:
+   *  1. check the balance up front (a friendly error, before anything is held);
+   *  2. create the pending order (this reserves the day's stock);
+   *  3. debit the wallet and mark the order in ONE transaction;
+   *  4. place the order. If that fails the credits are returned and the
+   *     reservation released.
+   */
+  private async payShopOrderWithCredits(input: {
+    customerId: string;
+    dto: SubmitMemberOrderDto;
+    promoFinalize: (orderId: string) => Promise<void>;
+    voucherLockToken: string | null;
+  }) {
+    const { customerId, dto, promoFinalize, voucherLockToken } = input;
+    const totalCents = dto.totalCents;
+    const releaseLock = async () => {
+      if (voucherLockToken) {
+        await this.rewardsWorkflow
+          .releaseVoucherLock(voucherLockToken)
+          .catch(() => undefined);
+      }
+    };
+
+    const summary = await this.wallet.getSummary(customerId);
+    if (summary.isFrozen) {
+      await releaseLock();
+      throw new BadRequestException({
+        code: 'WALLET_FROZEN',
+        message: 'Your credits are on hold. Please contact us.',
+      });
+    }
+    if (summary.currentWalletBalance < totalCents) {
+      await releaseLock();
+      throw new BadRequestException({
+        code: 'WALLET_INSUFFICIENT_BALANCE',
+        message: `You have RM ${(summary.currentWalletBalance / 100).toFixed(2)} in credits but this order is RM ${(totalCents / 100).toFixed(2)}. Top up, or pay another way.`,
+      });
+    }
+
+    let order: Awaited<
+      ReturnType<CustomersService['createPendingMemberOrder']>
+    >;
+    try {
+      order = await this.customers.createPendingMemberOrder(customerId, dto);
+    } catch (err) {
+      await releaseLock();
+      throw err;
+    }
+
+    let debit: Awaited<ReturnType<WalletService['payOrderWithCredits']>>;
+    try {
+      debit = await this.wallet.payOrderWithCredits({
+        customerId,
+        orderId: order.id,
+        amountCents: totalCents,
+      });
+    } catch (err) {
+      // Most likely the balance changed since the check above.
+      await this.customers
+        .abandonPendingOrder(order.id, 'Credits payment failed')
+        .catch(() => undefined);
+      await releaseLock();
+      throw err;
+    }
+
+    try {
+      await this.customers.finalizeShopOrderAfterPayment(order.id);
+    } catch (err) {
+      this.logger.error(
+        `Placing credit-paid order ${order.id} failed; returning credits`,
+        err,
+      );
+      await this.wallet
+        .refundOrderCredits(order.id, 'Order could not be placed')
+        .catch((e) =>
+          this.logger.error(
+            `Credit refund FAILED for order ${order.id} — needs manual attention`,
+            e,
+          ),
+        );
+      await this.customers
+        .abandonPendingOrder(order.id, 'Order could not be placed')
+        .catch(() => undefined);
+      await releaseLock();
+      throw err;
+    }
+
+    // The order is real from here on — a promo bookkeeping hiccup must not
+    // undo a paid order.
+    await promoFinalize(order.id).catch((err) =>
+      this.logger.error(
+        `Promotion finalize failed for credit-paid order ${order.id}`,
+        err,
+      ),
+    );
+    void this.customers.addInterestTag(customerId, 'cake');
+
+    const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
+      where: { id: order.id },
+    });
+    return {
+      paidWithCredits: true as const,
+      order: {
+        id: refreshed.id,
+        orderNumber: refreshed.orderNumber,
+        placedAt: refreshed.placedAt.toISOString(),
+        status: refreshed.status,
+        totalCents: refreshed.totalCents,
+      },
+      creditsSpentCents: totalCents,
+      balanceCents: debit.balanceAfter,
     };
   }
 

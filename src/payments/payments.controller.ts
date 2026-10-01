@@ -144,6 +144,7 @@ export class PaymentsController {
       dto.voucherId,
       dto.rewardDefinitionId,
       dto.idempotencyKey,
+      dto.payWithCredits === true,
     );
   }
 

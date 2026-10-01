@@ -16,6 +16,7 @@ import { parseDateOnly } from '../bento/bento-weekly.util';
 import { parseKitchenPickupCodeInput } from '../customers/kitchen-pickup-code.util';
 import { OrderNotificationService } from '../notifications/order-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WalletService } from '../wallet/wallet.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import {
   ORDER_STATUS,
@@ -90,6 +91,7 @@ export class OpsQueueService {
     private readonly reportingSettings: ReportingSettingsService,
     private readonly productStock: ProductStockService,
     private readonly orderNotices: OrderNotificationService,
+    private readonly wallet: WalletService,
   ) {}
 
   async listOrders() {
@@ -265,6 +267,23 @@ export class OpsQueueService {
         .catch((err) =>
           this.logger.error(
             `Stock release failed for cancelled order ${id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+    }
+
+    // A cancelled or refunded order that was paid with credits gives them back
+    // (at most once, whichever path gets there first).
+    if (next === ORDER_STATUS.CANCELLED || next === ORDER_STATUS.REFUNDED) {
+      await this.wallet
+        .refundOrderCredits(
+          id,
+          next === ORDER_STATUS.REFUNDED ? 'Order refunded' : 'Order cancelled',
+        )
+        .catch((err) =>
+          this.logger.error(
+            `Credit refund failed for order ${id}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           ),

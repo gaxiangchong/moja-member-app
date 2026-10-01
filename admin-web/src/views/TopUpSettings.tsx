@@ -116,10 +116,10 @@ export function TopUpSettings() {
           Opens when a member taps <strong>Credits</strong> in the app. They pay for credit, and earn extra free
           credit for topping up more — for example top up RM100 and get RM20 extra, so RM120 lands in their wallet.
         </p>
-        <p className="dataTableMuted" style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: 8 }}>
-          <strong>Before you switch this on:</strong> members cannot yet pay with credits at checkout in the app.
-          Credit can only be used when staff deduct it for them (Wallet → Manual adjustment). Switch top-ups on once
-          you are happy with how credit will be spent.
+        <p className="dataTableMuted" style={{ background: '#f0f9ff', padding: '10px 12px', borderRadius: 8 }}>
+          <strong>Spending credits:</strong> at checkout a member can choose <em>Pay with credits</em> when their
+          balance covers the whole order. If they cancel an order paid that way, the credits go straight back to
+          their wallet. Credits can't be split with a card payment yet, and they don't expire.
         </p>
 
         <label className="switchRow" style={{ marginBottom: 16 }}>

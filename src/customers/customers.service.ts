@@ -942,9 +942,56 @@ export class CustomersService {
         ),
       );
 
+    // An order paid with credits gets them straight back; card payments are
+    // refunded by staff.
+    const creditsReturnedCents = await this.wallet
+      .refundOrderCredits(orderId, 'Order cancelled by you')
+      .catch((err) => {
+        this.logger.error(
+          `Credit refund failed for cancelled order ${orderId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return 0;
+      });
+
     void this.orderNotices.notify(orderId, 'cancelled');
 
-    return { id: orderId, status: ORDER_STATUS.CANCELLED };
+    return {
+      id: orderId,
+      status: ORDER_STATUS.CANCELLED,
+      creditsReturnedCents,
+    };
+  }
+
+  /**
+   * Cancels an order that never got paid and gives its reserved stock back —
+   * used when a checkout fails after the order row was created. Does nothing
+   * if the order has already been paid.
+   */
+  async abandonPendingOrder(orderId: string, reason: string): Promise<void> {
+    const order = await this.prisma.customerOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        scheduledDate: true,
+        placedAt: true,
+        lines: { select: { productId: true, qty: true } },
+      },
+    });
+    if (!order) return;
+    const cancelled = await this.prisma.customerOrder.updateMany({
+      where: { id: orderId, status: ORDER_STATUS.PENDING_PAYMENT },
+      data: {
+        status: ORDER_STATUS.CANCELLED,
+        cancelledAt: new Date(),
+        cancelReason: reason.slice(0, 200),
+      },
+    });
+    if (cancelled.count === 0) return;
+    const day =
+      order.scheduledDate?.toISOString().slice(0, 10) ??
+      shopCalendarYmd(order.placedAt);
+    await this.productStock.releaseForOrderLines(order.lines, day);
   }
 
   private validateMemberOrderTotals(dto: SubmitMemberOrderDto) {

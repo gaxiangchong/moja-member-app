@@ -497,6 +497,19 @@ export type ShopOrderCheckoutResult =
       };
     }
   | {
+      /** The whole order was paid from wallet credits. */
+      paidWithCredits: true;
+      order: {
+        id: string;
+        orderNumber: number;
+        placedAt: string;
+        status: string;
+        totalCents: number;
+      };
+      creditsSpentCents: number;
+      balanceCents: number;
+    }
+  | {
       demoMode: false;
       zeroPaid: false;
       orderId: string;
@@ -517,6 +530,8 @@ export async function createShopOrderCheckout(payload: {
   voucherId?: string;
   rewardDefinitionId?: string;
   idempotencyKey?: string;
+  /** Pay the whole order from wallet credits (no channel or card needed). */
+  payWithCredits?: boolean;
   order: {
     totalCents: number;
     discountCents?: number;
@@ -1057,18 +1072,29 @@ export async function consumeShopCartHandoff(token: string): Promise<{
 }
 
 /** Member cancels their own order (only allowed before the kitchen starts). */
-export async function cancelMyOrder(orderId: string): Promise<{ id: string; status: string }> {
+export async function cancelMyOrder(
+  orderId: string,
+): Promise<{ id: string; status: string; creditsReturnedCents?: number }> {
   const res = await authorizedFetch(
     `/customers/me/orders/${encodeURIComponent(orderId)}/cancel`,
     { method: 'POST' },
   );
-  const data = await parseJson<{ id?: string; status?: string; message?: string | string[] }>(res);
+  const data = await parseJson<{
+    id?: string;
+    status?: string;
+    creditsReturnedCents?: number;
+    message?: string | string[];
+  }>(res);
   if (!res.ok) {
     const raw = data.message;
     const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join(', ') : 'Could not cancel this order';
     throw new Error(msg);
   }
-  return { id: data.id ?? orderId, status: data.status ?? 'cancelled' };
+  return {
+    id: data.id ?? orderId,
+    status: data.status ?? 'cancelled',
+    creditsReturnedCents: Number(data.creditsReturnedCents) || 0,
+  };
 }
 
 export type ShopAvailability = {

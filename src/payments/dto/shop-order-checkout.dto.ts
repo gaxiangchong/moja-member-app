@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsOptional,
   IsString,
   MaxLength,
@@ -19,11 +20,11 @@ class HasChannelOrTokenConstraint implements ValidatorConstraintInterface {
     if (!obj) return false;
     const channel = obj.channelCode?.trim();
     const token = obj.paymentTokenId?.trim();
-    return Boolean(channel || token);
+    return Boolean(channel || token || obj.payWithCredits === true);
   }
 
   defaultMessage(): string {
-    return 'Either channelCode or paymentTokenId is required.';
+    return 'Either channelCode, paymentTokenId or payWithCredits is required.';
   }
 }
 
@@ -53,6 +54,11 @@ export class ShopOrderCheckoutDto {
   @IsString()
   @MaxLength(128)
   idempotencyKey?: string;
+
+  /** Pay the whole order from wallet credits instead of Xendit. */
+  @IsOptional()
+  @IsBoolean()
+  payWithCredits?: boolean;
 
   @Validate(HasChannelOrTokenConstraint)
   _channelOrTokenCheck?: boolean;

@@ -573,6 +573,10 @@ model CustomerOrder {
   /// Delivery charged to the customer, already included in `totalCents`.
   /// Excluded from loyalty points — see `finalizeShopOrderAfterPayment`.
   deliveryFeeCents        Int       @default(0) @map("delivery_fee_cents")
+  /// Part of `totalCents` paid from the member's wallet credits (sen). Zero when paid by card/e-wallet.
+  paidWithCreditsCents    Int       @default(0) @map("paid_with_credits_cents")
+  /// Set once those credits have been returned to the wallet (cancel / refund), so it happens at most once.
+  creditsRefundedAt       DateTime? @map("credits_refunded_at")
   /// Lifecycle value from `src/orders/order-status.ts` (ORDER_STATUS).
   /// Kept as text, not a Postgres enum, because several reports filter it
   /// from raw SQL.

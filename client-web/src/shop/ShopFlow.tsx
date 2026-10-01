@@ -38,7 +38,7 @@ import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
-type PaymentMethodMode = 'channel' | 'card_token';
+type PaymentMethodMode = 'channel' | 'card_token' | 'credits';
 
 type DemoCheckoutSnapshot = {
   orderId: string;
@@ -136,6 +136,8 @@ export function ShopFlow({
   isAuthenticated,
   onRequireAuth,
   authResumeSignal,
+  creditsBalanceCents = 0,
+  onCreditsChanged,
 }: {
   pointsBalance: number;
   memberRewards?: MemberRewardsPayload | null;
@@ -150,6 +152,10 @@ export function ShopFlow({
   onRequireAuth: () => void;
   /** Bumped by the app after a checkout-triggered sign-in succeeds, so we can resume straight into checkout. */
   authResumeSignal?: number;
+  /** Wallet credits the member can pay with (sen). */
+  creditsBalanceCents?: number;
+  /** Called after credits were spent so the app can refresh the balance. */
+  onCreditsChanged?: () => void;
 }) {
   const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
@@ -234,6 +240,12 @@ export function ShopFlow({
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
   const total = getTotalCents();
+  const creditsCoverTotal = total > 0 && creditsBalanceCents >= total;
+  useEffect(() => {
+    if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
+      setPaymentMethodMode('channel');
+    }
+  }, [paymentMethodMode, creditsCoverTotal]);
   const issuedVouchers = useMemo(
     () => checkoutIssuedVouchers(memberRewards),
     [memberRewards],
@@ -724,6 +736,12 @@ export function ShopFlow({
         return;
       }
     }
+    if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
+      setCheckoutErrors([
+        `You have ${formatRm(creditsBalanceCents)} in credits but this order is ${formatRm(total)}. Top up, or pay another way.`,
+      ]);
+      return;
+    }
     if (paymentMethodMode === 'channel' && !selectedChannelCode.trim()) {
       setCheckoutErrors(['Select a payment method.']);
       return;
@@ -771,9 +789,11 @@ export function ShopFlow({
       }
 
       const result = await createShopOrderCheckout({
-        ...(paymentMethodMode === 'card_token'
-          ? { paymentTokenId }
-          : { channelCode: selectedChannelCode.trim() }),
+        ...(paymentMethodMode === 'credits'
+          ? { payWithCredits: true }
+          : paymentMethodMode === 'card_token'
+            ? { paymentTokenId }
+            : { channelCode: selectedChannelCode.trim() }),
         ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
         ...(appliedReward ? { rewardDefinitionId: appliedReward.id } : {}),
         idempotencyKey: crypto.randomUUID(),
@@ -800,6 +820,34 @@ export function ShopFlow({
           linePayload,
         });
         setScreen('paymentDemo');
+        return;
+      }
+
+      if ('paidWithCredits' in result && result.paidWithCredits) {
+        const o = result.order;
+        useOrderHistoryStore.getState().addOrder({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          placedAt: o.placedAt,
+          status: o.status,
+          completedAt: null,
+          lines: linePayload.map((l) => ({
+            productId: l.productId,
+            name: l.name,
+            imageUrl: l.imageUrl ?? '',
+            unitPriceCents: l.unitPriceCents,
+            qty: l.qty,
+            variantLabel: l.variantLabel ?? undefined,
+          })),
+          totalCents: o.totalCents,
+          fulfillmentSummary: lines,
+        });
+        onCreditsChanged?.();
+        window.alert(
+          `Order placed — paid with credits\n\nPickup code: ${o.orderNumber}\nPaid: ${formatRm(result.creditsSpentCents)}\nCredits left: ${formatRm(result.balanceCents)}\n${lines.join('\n')}`,
+        );
+        resetAfterOrder();
+        goBrowse();
         return;
       }
 
@@ -1306,6 +1354,39 @@ export function ShopFlow({
               the dashboard for test cards and wallets).
             </p>
             <div className="shopFieldGrid" style={{ marginTop: 8 }}>
+              {creditsBalanceCents > 0 ? (
+                <>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      opacity: creditsCoverTotal ? 1 : 0.55,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentType"
+                      checked={paymentMethodMode === 'credits'}
+                      disabled={!creditsCoverTotal}
+                      onChange={() => {
+                        setPaymentMethodMode('credits');
+                        setCardSessionError(null);
+                      }}
+                    />
+                    <span>
+                      Pay with credits ({formatRm(creditsBalanceCents)}{' '}
+                      available)
+                    </span>
+                  </label>
+                  {!creditsCoverTotal && total > 0 ? (
+                    <p className="caption" style={{ margin: '0 0 4px 26px' }}>
+                      Not enough credits for this order. Top up from the
+                      Credits tile on Home, or pay another way.
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="radio"
@@ -1483,6 +1564,7 @@ export function ShopFlow({
                 onClick={() => void handlePlaceOrder()}
                 disabled={
                   placingOrder ||
+                  (paymentMethodMode === 'credits' && !creditsCoverTotal) ||
                   (paymentMethodMode === 'channel' &&
                     (channelsLoading ||
                       (!channels.length && !channelsLoading))) ||
@@ -1497,8 +1579,12 @@ export function ShopFlow({
                 {placingOrder
                   ? cardSubmitBusy
                     ? 'Verifying card…'
-                    : 'Starting payment…'
-                  : `Pay ${formatRm(total)}`}
+                    : paymentMethodMode === 'credits'
+                      ? 'Paying…'
+                      : 'Starting payment…'
+                  : paymentMethodMode === 'credits'
+                    ? `Pay ${formatRm(total)} with credits`
+                    : `Pay ${formatRm(total)}`}
               </button>
             </div>
           </section>

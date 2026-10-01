@@ -153,9 +153,12 @@ function isBenignOrdersError(message: string): boolean {
 export function OrdersTab({
   active,
   onGoToShop,
+  onCreditsChanged,
 }: {
   active: boolean;
   onGoToShop: () => void;
+  /** Called when credits were returned to the wallet, so the balance refreshes. */
+  onCreditsChanged?: () => void;
 }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -218,7 +221,13 @@ export function OrdersTab({
     }
     setCancellingId(order.id);
     try {
-      await cancelMyOrder(order.id);
+      const res = await cancelMyOrder(order.id);
+      if (res.creditsReturnedCents && res.creditsReturnedCents > 0) {
+        onCreditsChanged?.();
+        window.alert(
+          `Order cancelled. ${formatRm(res.creditsReturnedCents)} has been returned to your credits.`,
+        );
+      }
       await load();
     } catch (e) {
       window.alert(
