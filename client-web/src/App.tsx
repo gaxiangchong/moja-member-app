@@ -551,15 +551,31 @@ function PointsHistoryCard({
   );
 }
 
+/** "RM 5.00 off" / "15% off" for a wallet voucher, or null when it carries no discount figure. */
+function voucherValueLabel(d: {
+  rebateValueSen?: number | null;
+  percentageOff?: number | null;
+}): string | null {
+  if (d.percentageOff && d.percentageOff > 0) return `${d.percentageOff}% off`;
+  if (d.rebateValueSen && d.rebateValueSen > 0) return `RM ${(d.rebateValueSen / 100).toFixed(2)} off`;
+  return null;
+}
+
 function VoucherCard({
   title,
   conditions,
+  value,
+  minSpend,
   code,
   expiry,
   status,
 }: {
   title: string;
   conditions: string;
+  /** What the voucher is worth, e.g. "RM 5.00 off" or "15% off". */
+  value: string | null;
+  /** e.g. "Min. spend RM 20.00" or "No minimum spend". */
+  minSpend: string;
   /** The code to paste into the voucher box at checkout. */
   code: string;
   expiry: string;
@@ -583,7 +599,11 @@ function VoucherCard({
         <strong>{title}</strong>
         <span className={`statusBadge ${isExpiring ? 'warning' : ''}`}>{badgeLabel}</span>
       </div>
-      <p>{conditions}</p>
+      {value ? (
+        <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 800, color: '#00348d' }}>{value}</p>
+      ) : null}
+      <small style={{ display: 'block' }}>{minSpend}</small>
+      {conditions ? <p>{conditions}</p> : null}
       {code ? (
         <p style={{ margin: '4px 0' }}>
           Code: <strong style={{ letterSpacing: '0.04em', userSelect: 'all' }}>{code}</strong>
@@ -2182,14 +2202,14 @@ function App() {
                       className={perksSub === 'rewards' ? 'chip active' : 'chip'}
                       onClick={() => setPerksSub('rewards')}
                     >
-                      Rewards
+                      Redeem
                     </button>
                   </div>
                 )}
                 {SHOW_VOUCHERS && perksSub === 'vouchers' ? (
                   <>
                     <p className="caption" style={{ margin: '6px 0 0' }}>
-                      Your <strong>issued</strong> vouchers (added to your wallet). They are not the same as the points catalog under Rewards.
+                      Your <strong>issued</strong> vouchers (added to your wallet). They are not the same as the points catalog under Redeem.
                     </p>
                     <div className="tabsRow" style={{ marginTop: 8 }}>
                       {(['ACTIVE', 'USED', 'EXPIRED'] as VoucherTab[]).map((vt) => (
@@ -2209,6 +2229,12 @@ function App() {
                           key={v.id}
                           title={v.definition.title}
                           conditions={v.definition.description || ''}
+                          value={voucherValueLabel(v.definition)}
+                          minSpend={
+                            v.definition.minSpendSen
+                              ? `Min. spend ${formatRmCents(v.definition.minSpendSen)}`
+                              : 'No minimum spend'
+                          }
                           code={v.definition.code}
                           expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
                           status={v.status}
