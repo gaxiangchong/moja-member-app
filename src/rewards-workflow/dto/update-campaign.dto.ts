@@ -17,9 +17,11 @@ import { VoucherOrderType } from '@prisma/client';
 const AUTO_CREDIT_TRIGGERS = [
   'NEW_MEMBER',
   'BIRTHDAY',
+  'REFERRAL_PURCHASE',
   'REFERRAL_COUNT',
   'INACTIVE_DAYS',
   'MIN_PURCHASE',
+  'ALL_MEMBERS',
 ] as const;
 
 export class UpdateCampaignDto {
@@ -106,11 +108,19 @@ export class UpdateCampaignDto {
   @IsIn([...AUTO_CREDIT_TRIGGERS, ''])
   autoCreditTrigger?: string;
 
-  /** Meaning depends on autoCreditTrigger: referral count, days inactive, or
-   *  RM spend threshold (converted to sen server-side) for MIN_PURCHASE. */
+  /** Meaning depends on autoCreditTrigger: days before a birthday, max
+   *  vouchers per referrer, referral count, days since last purchase, or RM
+   *  spend threshold (converted to sen server-side) for MIN_PURCHASE. */
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   autoCreditThresholdValue?: number;
+
+  /** REFERRAL_PURCHASE: minimum RM of the referred friend's first order. 0 clears it. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  qualifyingMinSpendRM?: number;
 }

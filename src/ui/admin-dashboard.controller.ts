@@ -10109,8 +10109,11 @@ export class AdminDashboardController {
     var VC_TRIGGERS = {
       WELCOME: { type: 'AUTO', criteria: 'NEW_MEMBER' },
       BIRTHDAY: { type: 'AUTO', criteria: 'BIRTHDAY' },
-      REFERRAL: { type: 'AUTO', criteria: 'REFERRAL_COUNT', thresholdValue: 1 },
-      WINBACK: { type: 'AUTO', criteria: 'INACTIVE_DAYS', thresholdValue: 30 },
+      // No thresholds here: the server applies each template's defaults (birthday
+      // 30 days ahead, referral minimum first order RM30, win-back 60 days) and
+      // admin-web is where they are edited.
+      REFERRAL: { type: 'AUTO', criteria: 'REFERRAL_PURCHASE' },
+      WINBACK: { type: 'AUTO', criteria: 'INACTIVE_DAYS' },
       SPEND_EARN: { type: 'AUTO', criteria: 'MIN_PURCHASE', thresholdValue: 50 },
       CUSTOM: { type: 'MANUAL' }
     };

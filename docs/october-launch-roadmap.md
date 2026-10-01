@@ -154,7 +154,8 @@ Small (1–2 days each, safe to pull into October):
 Medium:
 - **Purchase-with-purchase**: new campaign template `PWP` — rule (cart contains X or subtotal ≥ Y) → offer add-on product at price Z; shown as a one-tap "Add for RM Z" card in cart; applied as a discounted order line so SalesPlay push and finance stay exact. Also `BUNDLE` (buy 2 get 1).
 - **Customer 360** in admin: total spend by channel, orders, AOV, first/last purchase, favourite products, points/wallet, vouchers held, feedback, dietary flags, RFM segment. Cohort/RFM report + CSV export in **Customer reports**.
-- Post-purchase automation: "haven't visited in 30 days" win-back is already a perks rule — wire it to a scheduled campaign run.
+- ✅ **Automatic vouchers** — welcome, birthday, referral, win-back and every-member campaigns are created from the Voucher templates and then run by themselves (event hooks + a 9am MYT daily sweep + a 10-minute all-members sweep). Every automatic voucher carries an `issue_key` with a database unique index, so a retry, an overlapping sweep or a second server can never issue the same one twice; a used voucher is never re-issued. Rules: birthday appears 30 days ahead (editable), once per birthday year, usable until 7 days after; referral goes to the referrer once per friend whose **first paid order is at least RM30** (editable per campaign, delivery excluded; optional per-referrer cap); win-back targets members who have bought before but not within N days (default 60), once per lapse. The member list shows buying activity (active / lapsed / never bought), last purchase, and welcome / birthday / referral voucher state, all filterable, with "send voucher to these N members" for manual win-back pushes.
+- Still open: automatic "next birthday" push notification when the voucher appears (needs the WhatsApp template), saved-segment audiences for campaigns.
 
 ### Phase 5 — Native apps & channels (Nov 2026 →)  ○ after launch
 

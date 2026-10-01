@@ -133,6 +133,23 @@ export class AdminController {
     });
   }
 
+  /** Active / lapsed / never-bought counts for the glance above the member list. */
+  @Get('customers/activity-summary')
+  @RequirePermissions(P.CUSTOMER_READ)
+  customerActivitySummary(
+    @Query('activeDays', new DefaultValuePipe(60), ParseIntPipe)
+    activeDays: number,
+  ) {
+    return this.admin.customerActivitySummary(activeDays);
+  }
+
+  /** Declared before `customers/:id` so the literal path wins over the param route. */
+  @Get('customers/ids')
+  @RequirePermissions(P.CUSTOMER_READ)
+  listCustomerIds(@Query() query: AdminListCustomersQueryDto) {
+    return this.admin.listCustomerIds(query);
+  }
+
   @Get('customers/:id/audit-logs')
   @RequirePermissions(P.AUDIT_READ)
   listCustomerAuditLogs(

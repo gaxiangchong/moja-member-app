@@ -9,6 +9,7 @@ import {
   issueCampaignToAllActive,
   issueCampaignVoucherToCustomer,
   revokeCampaignVoucher,
+  runVoucherAutomationNow,
   updateCampaign,
   type AutoCreditTrigger,
   type CampaignDetail,
@@ -22,22 +23,49 @@ import { CustomerSearch } from '../components/CustomerSearch';
 
 const TRIGGER_LABELS: Record<AutoCreditTrigger | '', string> = {
   '': 'None — issue manually only',
-  NEW_MEMBER: 'When a member signs up',
-  BIRTHDAY: "On a member's birthday",
-  REFERRAL_COUNT: 'When referral count reaches…',
-  INACTIVE_DAYS: 'When inactive for…',
-  MIN_PURCHASE: 'When a single order reaches…',
+  NEW_MEMBER: 'Welcome — when a member first signs in',
+  BIRTHDAY: "Birthday — before a member's birthday",
+  REFERRAL_PURCHASE: 'Referral — when a referred friend makes their first purchase',
+  REFERRAL_COUNT: 'Referral milestone — when referral count reaches…',
+  INACTIVE_DAYS: 'Win-back — when a past buyer has not bought for…',
+  MIN_PURCHASE: 'Spend — when a single order reaches…',
+  ALL_MEMBERS: 'Every member — including people who join later',
 };
 
-function triggerNeedsThreshold(trigger: AutoCreditTrigger | ''): boolean {
-  return trigger === 'REFERRAL_COUNT' || trigger === 'INACTIVE_DAYS' || trigger === 'MIN_PURCHASE';
-}
+/** What each trigger does, in the words the person setting it up needs. */
+const TRIGGER_HELP: Record<AutoCreditTrigger, string> = {
+  NEW_MEMBER: 'Each member gets this once, the first time they sign in.',
+  BIRTHDAY:
+    'Appears in the member’s wallet this many days before their birthday, once per year, and stays usable until the “valid for” days after the birthday.',
+  REFERRAL_PURCHASE:
+    'The member who referred a friend earns one voucher per friend, once that friend’s first paid order reaches the minimum.',
+  REFERRAL_COUNT:
+    'Earned once, when this many of a member’s referred friends have made a purchase.',
+  INACTIVE_DAYS:
+    'Sent once to members who have bought before but not within this many days. If they come back and lapse again, they are sent another. Members who never bought are not included.',
+  MIN_PURCHASE: 'Earned once, the first time a single order reaches this total.',
+  ALL_MEMBERS:
+    'Goes to every active member now, and to anyone who joins while the campaign is running. Once a member uses it, it is gone.',
+};
 
-function thresholdFieldLabel(trigger: AutoCreditTrigger | ''): string {
-  if (trigger === 'REFERRAL_COUNT') return 'Referrals';
-  if (trigger === 'INACTIVE_DAYS') return 'Days inactive';
-  if (trigger === 'MIN_PURCHASE') return 'Order total (RM)';
-  return '';
+type ThresholdSpec = { label: string; step: string; required: boolean; hint: string };
+
+/** The number a trigger needs, if any. Birthday, referral and win-back all have sensible defaults. */
+function thresholdSpec(trigger: AutoCreditTrigger | ''): ThresholdSpec | null {
+  switch (trigger) {
+    case 'BIRTHDAY':
+      return { label: 'Appears (days before birthday)', step: '1', required: false, hint: 'Blank = 30.' };
+    case 'REFERRAL_PURCHASE':
+      return { label: 'Max vouchers per referrer', step: '1', required: false, hint: '0 or blank = unlimited.' };
+    case 'REFERRAL_COUNT':
+      return { label: 'Referred friends who bought', step: '1', required: true, hint: '' };
+    case 'INACTIVE_DAYS':
+      return { label: 'Days since last purchase', step: '1', required: false, hint: 'Blank = 60.' };
+    case 'MIN_PURCHASE':
+      return { label: 'Order total (RM)', step: '0.01', required: true, hint: '' };
+    default:
+      return null;
+  }
 }
 
 function formatDate(iso: string | null): string {
@@ -94,6 +122,8 @@ type CreateForm = {
   tncText: string;
   autoCreditTrigger: AutoCreditTrigger | '';
   autoCreditThresholdValue: string;
+  /** REFERRAL_PURCHASE: the friend's first order must reach this many RM. */
+  qualifyingMinSpendRM: string;
 };
 
 function emptyCreateForm(preset?: CampaignTemplatePreset): CreateForm {
@@ -112,8 +142,59 @@ function emptyCreateForm(preset?: CampaignTemplatePreset): CreateForm {
     usageLimitPerUser: preset ? String(preset.usageLimitPerUser) : '1',
     tncText: preset?.tncText ?? '',
     autoCreditTrigger: (preset?.autoCreditTrigger as AutoCreditTrigger | null) ?? '',
-    autoCreditThresholdValue: '',
+    // Seed the template's own defaults so what the admin sees is what gets saved.
+    autoCreditThresholdValue: preset?.defaultThreshold != null ? String(preset.defaultThreshold) : '',
+    qualifyingMinSpendRM: preset?.qualifyingMinSpendRM != null ? String(preset.qualifyingMinSpendRM) : '',
   };
+}
+
+/** Trigger picker plus whatever numbers that trigger needs, with a plain-language explanation. */
+function TriggerFields(props: {
+  trigger: AutoCreditTrigger | '';
+  onTrigger: (t: AutoCreditTrigger | '') => void;
+  threshold: string;
+  onThreshold: (v: string) => void;
+  minSpend: string;
+  onMinSpend: (v: string) => void;
+}) {
+  const spec = thresholdSpec(props.trigger);
+  return (
+    <>
+      <div className="drawerFieldGrid">
+        <label className="filterField">
+          Trigger
+          <select value={props.trigger} onChange={(e) => props.onTrigger(e.target.value as AutoCreditTrigger | '')}>
+            {['', ...AUTO_CREDIT_TRIGGERS].map((t) => (
+              <option key={t} value={t}>{TRIGGER_LABELS[t as AutoCreditTrigger | '']}</option>
+            ))}
+          </select>
+        </label>
+        {props.trigger === 'REFERRAL_PURCHASE' ? (
+          <label className="filterField">
+            Friend’s first order must be at least (RM)
+            <input
+              type="number" min={0} step="0.01" value={props.minSpend}
+              onChange={(e) => props.onMinSpend(e.target.value)}
+            />
+            <span className="viewMuted">0 = no minimum. Delivery fees don’t count.</span>
+          </label>
+        ) : null}
+        {spec ? (
+          <label className="filterField">
+            {spec.label}{spec.required ? '' : <span className="viewMuted"> — optional</span>}
+            <input
+              type="number" min={0} step={spec.step} value={props.threshold}
+              onChange={(e) => props.onThreshold(e.target.value)}
+            />
+            {spec.hint ? <span className="viewMuted">{spec.hint}</span> : null}
+          </label>
+        ) : null}
+      </div>
+      {props.trigger ? (
+        <p className="viewMuted" style={{ marginTop: 12, marginBottom: 0 }}>{TRIGGER_HELP[props.trigger]}</p>
+      ) : null}
+    </>
+  );
 }
 
 export function VoucherCampaigns() {
@@ -136,6 +217,8 @@ export function VoucherCampaigns() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before the fetch; no data-fetching lib in this repo yet
@@ -149,6 +232,24 @@ export function VoucherCampaigns() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load campaigns'))
       .finally(() => setLoading(false));
   }, []);
+
+  /** Birthday and win-back vouchers go out every morning (9am Malaysia time); this does it now. */
+  async function runNow() {
+    setRunBusy(true);
+    setRunResult(null);
+    try {
+      const r = await runVoucherAutomationNow();
+      setRunResult(
+        `Issued ${r.birthday} birthday, ${r.winback} win-back and ${r.allMembers} all-member voucher(s). Nobody is ever issued the same one twice.`,
+      );
+      const refreshed = await fetchCampaigns();
+      setCampaigns(refreshed);
+    } catch (err) {
+      setRunResult(err instanceof Error ? err.message : 'Could not run the automation');
+    } finally {
+      setRunBusy(false);
+    }
+  }
 
   function openCreate() {
     setDrawerMode('create');
@@ -185,6 +286,7 @@ export function VoucherCampaigns() {
             d.autoCreditThreshold == null
               ? ''
               : String(d.autoCreditTrigger === 'MIN_PURCHASE' ? d.autoCreditThreshold / 100 : d.autoCreditThreshold),
+          qualifyingMinSpendRM: d.qualifyingMinSpendRM != null ? String(d.qualifyingMinSpendRM) : '',
         });
       })
       .catch((err) => setDetailError(err instanceof Error ? err.message : 'Failed to load campaign'));
@@ -204,8 +306,9 @@ export function VoucherCampaigns() {
     if (createForm.voucherType === 'FIXED_AMOUNT' && !createForm.discountAmountRM) {
       return setCreateError('Enter a discount amount.');
     }
-    if (triggerNeedsThreshold(createForm.autoCreditTrigger) && !createForm.autoCreditThresholdValue) {
-      return setCreateError(`Enter a value for "${TRIGGER_LABELS[createForm.autoCreditTrigger]}".`);
+    const createSpec = thresholdSpec(createForm.autoCreditTrigger);
+    if (createSpec?.required && !createForm.autoCreditThresholdValue) {
+      return setCreateError(`Enter a value for "${createSpec.label}".`);
     }
 
     setCreating(true);
@@ -225,6 +328,10 @@ export function VoucherCampaigns() {
               thresholdValue: createForm.autoCreditThresholdValue ? Number(createForm.autoCreditThresholdValue) : undefined,
             }
           : { type: 'MANUAL' },
+        qualifyingMinSpendRM:
+          createForm.autoCreditTrigger === 'REFERRAL_PURCHASE' && createForm.qualifyingMinSpendRM !== ''
+            ? Number(createForm.qualifyingMinSpendRM)
+            : undefined,
         startsAt: new Date(createForm.startsAt).toISOString(),
         endsAt: createForm.endsAt ? new Date(createForm.endsAt).toISOString() : undefined,
         voucherValidDays: createForm.voucherValidDays ? Number(createForm.voucherValidDays) : undefined,
@@ -245,8 +352,9 @@ export function VoucherCampaigns() {
     if (!detail || !editForm) return;
     setSaveError(null);
     const trigger = editForm.autoCreditTrigger ?? '';
-    if (triggerNeedsThreshold(trigger) && !editForm.autoCreditThresholdValue) {
-      setSaveError(`Enter a value for "${TRIGGER_LABELS[trigger]}".`);
+    const editSpec = thresholdSpec(trigger);
+    if (editSpec?.required && !editForm.autoCreditThresholdValue) {
+      setSaveError(`Enter a value for "${editSpec.label}".`);
       return;
     }
     setSaving(true);
@@ -265,6 +373,9 @@ export function VoucherCampaigns() {
         tncText: editForm.tncText?.trim(),
         autoCreditTrigger: editForm.autoCreditTrigger,
         autoCreditThresholdValue: editForm.autoCreditThresholdValue ? Number(editForm.autoCreditThresholdValue) : undefined,
+        // Blank on a referral campaign means "no minimum", so send 0 to clear it.
+        qualifyingMinSpendRM:
+          trigger === 'REFERRAL_PURCHASE' ? Number(editForm.qualifyingMinSpendRM || 0) : undefined,
       });
       setDetail(updated);
       setCampaigns((prev) => prev?.map((c) => (c.id === updated.id ? { ...c, name: updated.name } : c)) ?? prev);
@@ -350,10 +461,16 @@ export function VoucherCampaigns() {
               Promo vouchers pushed straight to a member's wallet — separate from points-catalog rewards.
             </p>
           </div>
-          <button type="button" className="toolbarButton toolbarButton--primary" onClick={openCreate}>
-            + New campaign
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="toolbarButton" onClick={runNow} disabled={runBusy}>
+              {runBusy ? 'Running…' : 'Run automation now'}
+            </button>
+            <button type="button" className="toolbarButton toolbarButton--primary" onClick={openCreate}>
+              + New campaign
+            </button>
+          </div>
         </div>
+        {runResult ? <p className="viewMuted" style={{ margin: '8px 0 0' }}>{runResult}</p> : null}
       </section>
 
       {loading ? <p className="viewMuted">Loading…</p> : null}
@@ -494,29 +611,14 @@ export function VoucherCampaigns() {
                     <p className="viewMuted" style={{ marginTop: 0, marginBottom: 12 }}>
                       Push this voucher to a member's wallet automatically instead of issuing it by hand.
                     </p>
-                    <div className="drawerFieldGrid">
-                      <label className="filterField">
-                        Trigger
-                        <select
-                          value={createForm.autoCreditTrigger}
-                          onChange={(e) => setCreateForm((f) => ({ ...f, autoCreditTrigger: e.target.value as AutoCreditTrigger | '' }))}
-                        >
-                          {['', ...AUTO_CREDIT_TRIGGERS].map((t) => (
-                            <option key={t} value={t}>{TRIGGER_LABELS[t as AutoCreditTrigger | '']}</option>
-                          ))}
-                        </select>
-                      </label>
-                      {triggerNeedsThreshold(createForm.autoCreditTrigger) ? (
-                        <label className="filterField">
-                          {thresholdFieldLabel(createForm.autoCreditTrigger)}
-                          <input
-                            type="number" min={0} step={createForm.autoCreditTrigger === 'MIN_PURCHASE' ? '0.01' : '1'}
-                            value={createForm.autoCreditThresholdValue}
-                            onChange={(e) => setCreateForm((f) => ({ ...f, autoCreditThresholdValue: e.target.value }))}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
+                    <TriggerFields
+                      trigger={createForm.autoCreditTrigger}
+                      onTrigger={(t) => setCreateForm((f) => ({ ...f, autoCreditTrigger: t }))}
+                      threshold={createForm.autoCreditThresholdValue}
+                      onThreshold={(v) => setCreateForm((f) => ({ ...f, autoCreditThresholdValue: v }))}
+                      minSpend={createForm.qualifyingMinSpendRM}
+                      onMinSpend={(v) => setCreateForm((f) => ({ ...f, qualifyingMinSpendRM: v }))}
+                    />
                   </section>
                 </div>
                 <div className="drawerFooter">
@@ -619,29 +721,14 @@ export function VoucherCampaigns() {
                         <p className="viewMuted" style={{ marginTop: 0, marginBottom: 12 }}>
                           Push this voucher to a member's wallet automatically instead of issuing it by hand.
                         </p>
-                        <div className="drawerFieldGrid">
-                          <label className="filterField">
-                            Trigger
-                            <select
-                              value={editForm.autoCreditTrigger ?? ''}
-                              onChange={(e) => setEditForm((f) => ({ ...f, autoCreditTrigger: e.target.value as AutoCreditTrigger | '' }))}
-                            >
-                              {['', ...AUTO_CREDIT_TRIGGERS].map((t) => (
-                                <option key={t} value={t}>{TRIGGER_LABELS[t as AutoCreditTrigger | '']}</option>
-                              ))}
-                            </select>
-                          </label>
-                          {triggerNeedsThreshold(editForm.autoCreditTrigger ?? '') ? (
-                            <label className="filterField">
-                              {thresholdFieldLabel(editForm.autoCreditTrigger ?? '')}
-                              <input
-                                type="number" min={0} step={editForm.autoCreditTrigger === 'MIN_PURCHASE' ? '0.01' : '1'}
-                                value={editForm.autoCreditThresholdValue ?? ''}
-                                onChange={(e) => setEditForm((f) => ({ ...f, autoCreditThresholdValue: e.target.value }))}
-                              />
-                            </label>
-                          ) : null}
-                        </div>
+                        <TriggerFields
+                          trigger={editForm.autoCreditTrigger ?? ''}
+                          onTrigger={(t) => setEditForm((f) => ({ ...f, autoCreditTrigger: t }))}
+                          threshold={editForm.autoCreditThresholdValue ?? ''}
+                          onThreshold={(v) => setEditForm((f) => ({ ...f, autoCreditThresholdValue: v }))}
+                          minSpend={editForm.qualifyingMinSpendRM ?? ''}
+                          onMinSpend={(v) => setEditForm((f) => ({ ...f, qualifyingMinSpendRM: v }))}
+                        />
                         <button type="button" className="toolbarButton toolbarButton--primary" style={{ marginTop: 12 }} onClick={handleSaveEdit} disabled={saving}>
                           {saving ? 'Saving…' : 'Save changes'}
                         </button>

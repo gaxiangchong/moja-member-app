@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  createCampaign,
   downloadCustomersCsv,
+  fetchActivitySummary,
+  fetchCampaigns,
+  fetchCustomerIds,
   fetchCustomers,
+  issueCampaignToCustomers,
+  type ActivitySummary,
+  type AwardState,
+  type CampaignSummary,
+  type CustomerActivity,
   type CustomerFilters,
   type CustomerSortBy,
   type CustomersPage,
@@ -11,7 +20,261 @@ const PAGE_SIZES = [20, 50, 100];
 /** Wait this long after the last keystroke before querying. */
 const FILTER_DEBOUNCE_MS = 350;
 
-const EMPTY_FILTERS: CustomerFilters = {};
+/** What "active" means by default: bought (online or in store) within this many days. */
+const DEFAULT_ACTIVE_DAYS = '60';
+const ACTIVE_DAYS_CHOICES = ['30', '60', '90', '180'];
+
+const EMPTY_FILTERS: CustomerFilters = { activeDays: DEFAULT_ACTIVE_DAYS };
+
+/** Filters that change what a member is *shown as* rather than who is listed. */
+const NON_FILTER_KEYS = new Set(['activeDays']);
+
+const AWARD_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Any' },
+  { value: 'none', label: 'Not given' },
+  { value: 'issued', label: 'Given' },
+  { value: 'available', label: 'Unused' },
+  { value: 'used', label: 'Used' },
+  { value: 'expired', label: 'Expired' },
+];
+
+const ACTIVITY_LABEL: Record<CustomerActivity, string> = {
+  active: 'Active',
+  lapsed: 'Lapsed',
+  never: 'Never bought',
+};
+
+const ACTIVITY_TONE: Record<CustomerActivity, 'success' | 'warning' | 'neutral'> = {
+  active: 'success',
+  lapsed: 'warning',
+  never: 'neutral',
+};
+
+/** One of the automatic vouchers (welcome / birthday) for one member. */
+function AwardBadge({ state }: { state: AwardState | undefined }) {
+  switch (state) {
+    case 'available':
+      return <span className="badge badge--success">Unused</span>;
+    case 'used':
+      return <span className="badge badge--neutral">Used</span>;
+    case 'expired':
+      return <span className="badge badge--danger">Expired</span>;
+    default:
+      return <span className="dataTableMuted">—</span>;
+  }
+}
+
+function ReferralAward({ referral }: { referral: { earned: number; used: number; available: number } | undefined }) {
+  if (!referral || referral.earned === 0) return <span className="dataTableMuted">—</span>;
+  return (
+    <span>
+      {referral.earned} earned
+      <span className="dataTableMuted">
+        {' · '}
+        {referral.used} used
+        {referral.available > 0 ? ` · ${referral.available} unused` : ''}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Push a campaign's voucher to every member matching the grid's current
+ * filters — the win-back flow: filter to "Lapsed", then send. Members already
+ * holding an unused voucher from the campaign are skipped, so it is safe to
+ * press twice.
+ */
+function VoucherPushPanel({
+  filters,
+  onClose,
+}: {
+  filters: CustomerFilters;
+  onClose: () => void;
+}) {
+  const [campaigns, setCampaigns] = useState<CampaignSummary[] | null>(null);
+  const [campaignId, setCampaignId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [form, setForm] = useState({ name: 'We miss you', amountRM: '8', validDays: '14' });
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    fetchCampaigns()
+      .then((all) => {
+        // Only live campaigns can be issued; win-back ones first, since that is the point.
+        const live = all
+          .filter((c) => c.status === 'active')
+          .sort((a, b) => Number(b.template === 'WINBACK') - Number(a.template === 'WINBACK'));
+        setCampaigns(live);
+        setCampaignId(live[0]?.id ?? '');
+      })
+      .catch((err) =>
+        setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Could not load campaigns' }),
+      );
+  }, []);
+
+  async function send() {
+    const campaign = campaigns?.find((c) => c.id === campaignId);
+    if (!campaign) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      // Only people who have actually joined; unactivated sign-ups are not members yet.
+      const { ids, capped } = await fetchCustomerIds({ ...filters, status: 'ACTIVE' });
+      if (ids.length === 0) {
+        setMessage({ tone: 'error', text: 'No active members match these filters.' });
+        return;
+      }
+      const ok = window.confirm(
+        `Send “${campaign.name}” (${campaign.discountDisplay}) to ${ids.length.toLocaleString()} member${ids.length === 1 ? '' : 's'}?` +
+          `${capped ? ' (Capped at 20,000 — narrow the filters to reach everyone.)' : ''}\n\nAnyone who already holds an unused one is skipped.`,
+      );
+      if (!ok) return;
+      const r = await issueCampaignToCustomers(campaign.id, ids, 'manual_from_member_list');
+      setMessage({
+        tone: 'ok',
+        text: `Sent to ${r.issued.toLocaleString()} member${r.issued === 1 ? '' : 's'}${
+          r.skippedHolding ? `; ${r.skippedHolding.toLocaleString()} already had one` : ''
+        }${r.failed ? `; ${r.failed} failed` : ''}.`,
+      });
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Could not send vouchers' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createWinback() {
+    const amount = Number(form.amountRM);
+    if (!form.name.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setMessage({ tone: 'error', text: 'Give the campaign a name and a discount above RM0.' });
+      return;
+    }
+    setCreating(true);
+    setMessage(null);
+    try {
+      const created = await createCampaign({
+        template: 'WINBACK',
+        name: form.name.trim(),
+        voucherType: 'FIXED_AMOUNT',
+        discountAmountRM: amount,
+        // Manual: it goes only to who you send it to here, never on its own.
+        trigger: { type: 'MANUAL' },
+        startsAt: new Date().toISOString(),
+        voucherValidDays: Number(form.validDays) || 14,
+      });
+      // The create call returns the raw record; the list view has the display
+      // fields (discount label, status) the dropdown needs, so re-read it.
+      const all = await fetchCampaigns();
+      const live = all
+        .filter((c) => c.status === 'active')
+        .sort((a, b) => Number(b.template === 'WINBACK') - Number(a.template === 'WINBACK'));
+      setCampaigns(live);
+      setCampaignId(created.id);
+      setMessage({ tone: 'ok', text: `Created “${created.name}”. Now choose Send.` });
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Could not create the campaign' });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="panelHead">
+        <div>
+          <h2 className="panelTitle">Send a voucher to these members</h2>
+          <p className="viewMuted" style={{ margin: '4px 0 0' }}>
+            Goes to everyone the filters above match, not just this page. For win-back, filter to{' '}
+            <strong>Lapsed</strong> first.
+          </p>
+        </div>
+        <button type="button" className="toolbarButton" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      {campaigns === null && !message ? <p className="viewMuted">Loading campaigns…</p> : null}
+
+      {campaigns && campaigns.length > 0 ? (
+        <div className="gridToolbar" style={{ marginTop: 12 }}>
+          <select
+            className="gridFilterInput"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            aria-label="Campaign to send"
+          >
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} — {c.discountDisplay}
+                {c.template === 'WINBACK' ? ' (win-back)' : ''}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="toolbarButton toolbarButton--primary"
+            onClick={send}
+            disabled={busy || !campaignId}
+          >
+            {busy ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      ) : null}
+
+      {campaigns && campaigns.length === 0 ? (
+        <p className="viewMuted" style={{ marginTop: 12 }}>
+          No live voucher campaign yet — create a win-back one below.
+        </p>
+      ) : null}
+
+      <details style={{ marginTop: 12 }} open={campaigns?.length === 0}>
+        <summary>Create a win-back campaign</summary>
+        <div className="gridToolbar" style={{ marginTop: 8 }}>
+          <input
+            className="gridFilterInput"
+            placeholder="Name"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            aria-label="Campaign name"
+          />
+          <input
+            className="gridFilterInput"
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="RM off"
+            value={form.amountRM}
+            onChange={(e) => setForm((f) => ({ ...f, amountRM: e.target.value }))}
+            aria-label="Amount off in RM"
+          />
+          <input
+            className="gridFilterInput"
+            type="number"
+            min={1}
+            placeholder="Valid days"
+            value={form.validDays}
+            onChange={(e) => setForm((f) => ({ ...f, validDays: e.target.value }))}
+            aria-label="Voucher valid for days"
+          />
+          <button type="button" className="toolbarButton" onClick={createWinback} disabled={creating}>
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+        <p className="viewMuted" style={{ margin: '4px 0 0' }}>
+          This one only goes to the members you send it to. For a win-back that runs by itself, set one up under
+          Vouchers with the “Win-back” trigger.
+        </p>
+      </details>
+
+      {message ? (
+        <p className={message.tone === 'error' ? 'viewError' : 'viewMuted'} style={{ marginTop: 12 }}>
+          {message.text}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 function formatRm(cents: number): string {
   return `RM ${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -78,6 +341,8 @@ export function CustomersList() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [summary, setSummary] = useState<ActivitySummary | null>(null);
+  const [pushOpen, setPushOpen] = useState(false);
   const firstRender = useRef(true);
 
   // Debounce the draft into `applied`, and reset to page 1 whenever the
@@ -125,11 +390,31 @@ export function CustomersList() {
     };
   }, [page, pageSize, sort, applied]);
 
+  // The active / lapsed / never-bought glance follows the "active within" window.
+  const activeDaysApplied = applied.activeDays || DEFAULT_ACTIVE_DAYS;
+  useEffect(() => {
+    let cancelled = false;
+    fetchActivitySummary(Number(activeDaysApplied))
+      .then((s) => {
+        if (!cancelled) setSummary(s);
+      })
+      .catch(() => {
+        // The glance is a convenience; the grid still works without it.
+        if (!cancelled) setSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDaysApplied]);
+
   const set = (patch: Partial<CustomerFilters>) =>
     setDraft((f) => ({ ...f, ...patch }));
 
   const activeFilterCount = useMemo(
-    () => Object.values(applied).filter((v) => v && String(v).trim()).length,
+    () =>
+      Object.entries(applied).filter(
+        ([k, v]) => !NON_FILTER_KEYS.has(k) && v && String(v).trim(),
+      ).length,
     [applied],
   );
 
@@ -177,6 +462,51 @@ export function CustomersList() {
 
   return (
     <div className="viewStack">
+      <div className="gridToolbar">
+        <span className="viewMuted">Buying:</span>
+        {(
+          [
+            ['', 'All', summary ? summary.total : null],
+            ['active', 'Active', summary?.active ?? null],
+            ['lapsed', 'Lapsed', summary?.lapsed ?? null],
+            ['never', 'Never bought', summary?.never ?? null],
+          ] as const
+        ).map(([value, label, count]) => (
+          <button
+            key={value || 'all'}
+            type="button"
+            className={`toolbarButton${(draft.activity ?? '') === value ? ' toolbarButton--primary' : ''}`}
+            onClick={() => set({ activity: value })}
+            title={
+              value === 'active'
+                ? `Bought within the last ${activeDaysApplied} days`
+                : value === 'lapsed'
+                  ? `Bought before, but not in the last ${activeDaysApplied} days`
+                  : value === 'never'
+                    ? 'Signed up but has never made a purchase'
+                    : 'Every activated member'
+            }
+          >
+            {label}
+            {count !== null ? ` · ${count.toLocaleString()}` : ''}
+          </button>
+        ))}
+        <label className="viewMuted" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          active = bought within
+          <select
+            className="gridFilterInput"
+            value={draft.activeDays ?? DEFAULT_ACTIVE_DAYS}
+            onChange={(e) => set({ activeDays: e.target.value })}
+            aria-label="Active means bought within this many days"
+          >
+            {ACTIVE_DAYS_CHOICES.map((d) => (
+              <option key={d} value={d}>
+                {d} days
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="gridToolbar">
         <input
           type="search"
@@ -226,6 +556,15 @@ export function CustomersList() {
           <option value="false">No active voucher</option>
         </select>
         <span className="gridToolbarSpacer" />
+        <button
+          type="button"
+          className="toolbarButton toolbarButton--primary"
+          onClick={() => setPushOpen((o) => !o)}
+          disabled={!data || data.total === 0}
+          title="Send a voucher to every member the filters match"
+        >
+          Send voucher to {data ? data.total.toLocaleString() : '…'}
+        </button>
         {activeFilterCount > 0 ? (
           <button type="button" className="toolbarButton" onClick={clearAll}>
             Clear {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}
@@ -242,6 +581,8 @@ export function CustomersList() {
       </div>
 
       {error ? <p className="viewError">{error}</p> : null}
+
+      {pushOpen ? <VoucherPushPanel filters={applied} onClose={() => setPushOpen(false)} /> : null}
 
       <section className="panel">
         <div className="gridScroll">
@@ -264,6 +605,8 @@ export function CustomersList() {
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Status</th>
+                <th>Buying</th>
+                <th>Last purchase</th>
                 <th>Tier</th>
                 <th
                   className="gridSortable"
@@ -289,6 +632,9 @@ export function CustomersList() {
                 >
                   Last login{sortMark('lastLogin')}
                 </th>
+                <th>Welcome voucher</th>
+                <th>Birthday voucher</th>
+                <th>Referral vouchers</th>
               </tr>
               {/* Filter row — one control per column. */}
               <tr className="gridFilterRow">
@@ -344,6 +690,20 @@ export function CustomersList() {
                     <option value="SUSPENDED">Suspended</option>
                   </select>
                 </th>
+                <th>
+                  <select
+                    className="gridFilterInput"
+                    value={draft.activity ?? ''}
+                    onChange={(e) => set({ activity: e.target.value })}
+                    aria-label="Filter by buying activity"
+                  >
+                    <option value="">Any</option>
+                    <option value="active">Active</option>
+                    <option value="lapsed">Lapsed</option>
+                    <option value="never">Never bought</option>
+                  </select>
+                </th>
+                <th></th>
                 <th>
                   <input
                     className="gridFilterInput"
@@ -458,12 +818,34 @@ export function CustomersList() {
                     </label>
                   </div>
                 </th>
+                {(
+                  [
+                    ['welcomeVoucher', 'Welcome voucher'],
+                    ['birthdayVoucher', 'Birthday voucher'],
+                    ['referralVoucher', 'Referral vouchers'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <th key={key}>
+                    <select
+                      className="gridFilterInput"
+                      value={draft[key] ?? ''}
+                      onChange={(e) => set({ [key]: e.target.value })}
+                      aria-label={`Filter by ${label.toLowerCase()}`}
+                    >
+                      {AWARD_FILTER_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={9} className="dataTableEmpty">
+                  <td colSpan={14} className="dataTableEmpty">
                     Loading…
                   </td>
                 </tr>
@@ -480,7 +862,13 @@ export function CustomersList() {
                       {c.status.toLowerCase()}
                     </span>
                   </td>
-                  <td>{c.memberTier || '—'}</td>
+                  <td>
+                    <span className={`badge badge--${ACTIVITY_TONE[c.activity] ?? 'neutral'}`}>
+                      {ACTIVITY_LABEL[c.activity] ?? '—'}
+                    </span>
+                  </td>
+                  <td>{c.lastPurchaseAt ? formatDate(c.lastPurchaseAt) : '—'}</td>
+                  <td>{tierLabel(c.memberTier)}</td>
                   <td className="gridNumeric">
                     {c.pointsBalance.toLocaleString()}
                   </td>
@@ -489,11 +877,20 @@ export function CustomersList() {
                   </td>
                   <td>{formatDate(c.createdAt)}</td>
                   <td>{c.lastLoginAt ? formatDate(c.lastLoginAt) : 'Never'}</td>
+                  <td>
+                    <AwardBadge state={c.awards?.welcome} />
+                  </td>
+                  <td>
+                    <AwardBadge state={c.awards?.birthday} />
+                  </td>
+                  <td>
+                    <ReferralAward referral={c.awards?.referral} />
+                  </td>
                 </tr>
               ))}
               {data && data.items.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={9} className="dataTableEmpty">
+                  <td colSpan={14} className="dataTableEmpty">
                     No customers match these filters.
                   </td>
                 </tr>

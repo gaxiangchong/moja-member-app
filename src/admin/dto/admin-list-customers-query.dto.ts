@@ -9,9 +9,13 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { AWARD_FILTERS, type AwardFilter } from '../customer-engagement';
+
+const AWARD_ACTIVITIES = ['active', 'lapsed', 'never'] as const;
 
 const YMD = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
@@ -138,6 +142,38 @@ export class AdminListCustomersQueryDto {
   @BooleanQueryParam()
   @IsBoolean()
   hasActiveVoucher?: boolean;
+
+  /**
+   * Purchase activity (online or in store), not account status: `active` bought
+   * within `activeDays`, `lapsed` bought before but not recently, `never` has
+   * never bought.
+   */
+  @IsOptional()
+  @IsIn([...AWARD_ACTIVITIES])
+  activity?: 'active' | 'lapsed' | 'never';
+
+  /** What "recently" means for `activity`. Defaults to 60 days. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  activeDays?: number;
+
+  /** State of the member's welcome voucher. */
+  @IsOptional()
+  @IsIn([...AWARD_FILTERS])
+  welcomeVoucher?: AwardFilter;
+
+  /** State of the member's birthday voucher. */
+  @IsOptional()
+  @IsIn([...AWARD_FILTERS])
+  birthdayVoucher?: AwardFilter;
+
+  /** State of the vouchers the member earned by referring friends. */
+  @IsOptional()
+  @IsIn([...AWARD_FILTERS])
+  referralVoucher?: AwardFilter;
 
   @IsOptional()
   @IsIn(['createdAt', 'lastLoginAt', 'points', 'spent', 'name', 'referrals'])

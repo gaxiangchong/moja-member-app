@@ -314,6 +314,25 @@ export type AdminCustomer = {
   activeVoucherCount: number;
   createdAt: string;
   lastLoginAt: string | null;
+  /** Latest paid order or in-store receipt; null = has never bought. */
+  lastPurchaseAt: string | null;
+  /** Purchase-based, not account status: bought within `activeDays`, bought before, or never. */
+  activity: CustomerActivity;
+  awards?: CustomerAwards;
+  /** Days to the next birthday, null when none is recorded. */
+  birthdayDaysUntil?: number | null;
+};
+
+export type CustomerActivity = 'active' | 'lapsed' | 'never';
+
+/** State of one automatic voucher for one member. */
+export type AwardState = 'none' | 'available' | 'used' | 'expired';
+
+export type CustomerAwards = {
+  welcome: AwardState;
+  birthday: AwardState;
+  /** Referral rewards repeat (one per friend), so they are counted. */
+  referral: { earned: number; used: number; available: number };
 };
 
 export type CustomersPage = {
@@ -321,6 +340,8 @@ export type CustomersPage = {
   page: number;
   pageSize: number;
   total: number;
+  /** What "active" meant for this response. */
+  activeDays: number;
 };
 
 /** Every filter the customer grid can apply. All optional; they AND together. */
@@ -345,6 +366,14 @@ export type CustomerFilters = {
   marketingConsent?: string;
   hasEmail?: string;
   hasActiveVoucher?: string;
+  /** '' | CustomerActivity */
+  activity?: string;
+  /** What "recently" means for `activity`; the server defaults to 60. */
+  activeDays?: string;
+  /** '' | none | issued | available | used | expired — per voucher column. */
+  welcomeVoucher?: string;
+  birthdayVoucher?: string;
+  referralVoucher?: string;
 };
 
 export type CustomerSortBy =
@@ -414,6 +443,32 @@ export async function fetchCustomers(params: CustomerQuery): Promise<CustomersPa
   );
   if (!res.ok) throw new Error(extractMessage(data, res));
   return data;
+}
+
+export type ActivitySummary = {
+  activeDays: number;
+  active: number;
+  lapsed: number;
+  never: number;
+  total: number;
+};
+
+/** How many activated members have bought within `activeDays`, bought earlier, or never bought. */
+export async function fetchActivitySummary(activeDays: number): Promise<ActivitySummary> {
+  const res = await authorizedFetch(`/admin/customers/activity-summary?activeDays=${activeDays}`);
+  return parseCatalogResponse<ActivitySummary>(res);
+}
+
+/**
+ * Ids of every member matching the grid's filters (not just the visible page),
+ * so a campaign can be pushed to the whole filtered set.
+ */
+export async function fetchCustomerIds(
+  filters: CustomerFilters,
+): Promise<{ ids: string[]; total: number; capped: boolean }> {
+  const query = customerQueryString({ filters });
+  const res = await authorizedFetch(`/admin/customers/ids${query ? `?${query}` : ''}`);
+  return parseCatalogResponse<{ ids: string[]; total: number; capped: boolean }>(res);
 }
 
 export type AdminOrderLine = {
@@ -867,6 +922,10 @@ export type CampaignTemplatePreset = {
   voucherValidDays: number;
   usageLimitPerUser: number;
   autoCreditTrigger: string | null;
+  /** Applied when the template's own trigger is used and no value is typed. */
+  defaultThreshold?: number;
+  /** REFERRAL_PURCHASE: default minimum RM of the friend's first order. */
+  qualifyingMinSpendRM?: number;
   tncText: string;
 };
 
@@ -911,9 +970,11 @@ export type CampaignIssuedVoucher = {
 export const AUTO_CREDIT_TRIGGERS = [
   'NEW_MEMBER',
   'BIRTHDAY',
+  'REFERRAL_PURCHASE',
   'REFERRAL_COUNT',
   'INACTIVE_DAYS',
   'MIN_PURCHASE',
+  'ALL_MEMBERS',
 ] as const;
 export type AutoCreditTrigger = (typeof AUTO_CREDIT_TRIGGERS)[number];
 
@@ -933,9 +994,11 @@ export type CampaignDetail = {
   usageLimitPerUser: number | null;
   totalRedemptionCap: number | null;
   tncText: string | null;
-  /** null = manual issue only. MIN_PURCHASE's threshold is stored in sen; others are plain counts. */
+  /** null = manual issue only. MIN_PURCHASE's threshold is stored in sen; others are plain counts or days. */
   autoCreditTrigger: AutoCreditTrigger | null;
   autoCreditThreshold: number | null;
+  /** REFERRAL_PURCHASE: the friend's first order must reach this many RM. null = no minimum. */
+  qualifyingMinSpendRM: number | null;
   vouchers: CampaignIssuedVoucher[];
   stats: Partial<Record<VoucherLifecycleStatus, number>>;
 };
@@ -956,9 +1019,11 @@ export type CreateCampaignInput = {
   trigger: {
     type: 'AUTO' | 'MANUAL' | 'POINTS_REDEEM';
     criteria?: AutoCreditTrigger;
-    /** Referral count, days inactive, or RM spend (MIN_PURCHASE only — converted to sen server-side). */
+    /** Days ahead, per-referrer max, referral count, days inactive, or RM spend (MIN_PURCHASE only — converted to sen server-side). Omit for the template default. */
     thresholdValue?: number;
   };
+  /** REFERRAL_PURCHASE: minimum RM of the friend's first order. Omit for the template default (RM30); 0 = none. */
+  qualifyingMinSpendRM?: number;
   startsAt: string;
   endsAt?: string;
   voucherValidDays?: number;
@@ -992,6 +1057,8 @@ export type UpdateCampaignInput = Partial<{
   /** '' clears the trigger (manual issue only). */
   autoCreditTrigger: AutoCreditTrigger | '';
   autoCreditThresholdValue: number;
+  /** REFERRAL_PURCHASE: minimum RM of the friend's first order; 0 clears it. */
+  qualifyingMinSpendRM: number;
 }>;
 
 export async function updateCampaign(id: string, input: UpdateCampaignInput): Promise<CampaignDetail> {
@@ -1033,6 +1100,26 @@ export async function issueCampaignToAllActive(
     body: JSON.stringify({ reason }),
   });
   return parseCatalogResponse<{ issued: number; failed: number; skipped: number; eligible: number }>(res);
+}
+
+/** Push a campaign's voucher to a chosen set of members. Anyone already holding one is skipped. */
+export async function issueCampaignToCustomers(
+  campaignId: string,
+  customerIds: string[],
+  reason?: string,
+): Promise<{ issued: number; failed: number; skippedHolding: number }> {
+  const res = await authorizedFetch(`/admin/campaigns/${encodeURIComponent(campaignId)}/bulk-issue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customerIds, reason }),
+  });
+  return parseCatalogResponse<{ issued: number; failed: number; skippedHolding: number }>(res);
+}
+
+/** Runs the birthday, win-back and all-members sweeps now instead of waiting for the schedule. */
+export async function runVoucherAutomationNow(): Promise<{ birthday: number; winback: number; allMembers: number }> {
+  const res = await authorizedFetch('/admin/campaigns/run-automation', { method: 'POST' });
+  return parseCatalogResponse<{ birthday: number; winback: number; allMembers: number }>(res);
 }
 
 export async function revokeCampaignVoucher(voucherId: string, reason?: string): Promise<void> {

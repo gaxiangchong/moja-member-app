@@ -10,6 +10,7 @@ import {
   VoucherType,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { birthdayVoucherExpiry } from '../common/birthday.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignFromTemplateDto } from './dto/create-campaign-from-template.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
@@ -23,6 +24,14 @@ type TemplatePreset = {
   voucherValidDays: number;
   usageLimitPerUser: number;
   autoCreditTrigger: string | null;
+  /**
+   * Threshold applied when an admin picks this template's own trigger and does
+   * not type one — so the template works the moment it is created. Meaning
+   * depends on the trigger (see `VoucherCampaign.autoCreditThreshold`).
+   */
+  defaultThreshold?: number;
+  /** REFERRAL_PURCHASE: default minimum RM of the referred friend's first order. */
+  qualifyingMinSpendRM?: number;
   tncText: string;
 };
 
@@ -45,8 +54,10 @@ const TEMPLATE_PRESETS: Record<CampaignTemplate, TemplatePreset> = {
     voucherValidDays: 7,
     usageLimitPerUser: 1,
     autoCreditTrigger: 'BIRTHDAY',
+    // Appears this many days before the birthday.
+    defaultThreshold: 30,
     tncText:
-      'Birthday voucher. Valid for 7 days around your birthday. One-time use.',
+      'Birthday voucher. Appears 30 days before your birthday and stays valid for 7 days after. One-time use.',
   },
   REFERRAL: {
     codePrefix: 'REF',
@@ -55,8 +66,11 @@ const TEMPLATE_PRESETS: Record<CampaignTemplate, TemplatePreset> = {
     minSpendRM: 0,
     voucherValidDays: 60,
     usageLimitPerUser: 1,
-    autoCreditTrigger: 'REFERRAL_COUNT',
-    tncText: 'Referral reward. Thank you for referring a friend!',
+    autoCreditTrigger: 'REFERRAL_PURCHASE',
+    // The friend's first order must be at least this much; admin can change it.
+    qualifyingMinSpendRM: 30,
+    tncText:
+      'Referral reward — earned when a friend you referred makes their first purchase in the app. Thank you for referring a friend!',
   },
   WINBACK: {
     codePrefix: 'WINBACK',
@@ -66,6 +80,8 @@ const TEMPLATE_PRESETS: Record<CampaignTemplate, TemplatePreset> = {
     voucherValidDays: 14,
     usageLimitPerUser: 1,
     autoCreditTrigger: 'INACTIVE_DAYS',
+    // Days since the member's last purchase.
+    defaultThreshold: 60,
     tncText: 'We miss you! Use this voucher on your next order.',
   },
   SPEND_EARN: {
@@ -132,8 +148,15 @@ export class CampaignBuilderService {
 
     const triggerValue =
       dto.trigger.type === 'AUTO' ? (dto.trigger.criteria ?? null) : null;
+    // The template's own trigger (WELCOME → NEW_MEMBER, etc.) is what runs
+    // unless the admin explicitly chose another, so its defaults only apply then.
+    const effectiveCriteria =
+      dto.trigger.type === 'AUTO'
+        ? (triggerValue ?? preset.autoCreditTrigger)
+        : null;
+    const usesPresetTrigger = effectiveCriteria === preset.autoCreditTrigger;
     // MIN_PURCHASE is entered in RM but compared against order totals in
-    // sen; REFERRAL_COUNT/INACTIVE_DAYS are plain counts, stored as-is.
+    // sen; the others are plain counts or days, stored as-is.
     const triggerThreshold =
       dto.trigger.type === 'AUTO' && dto.trigger.thresholdValue != null
         ? Math.round(
@@ -141,7 +164,18 @@ export class CampaignBuilderService {
               ? dto.trigger.thresholdValue * 100
               : dto.trigger.thresholdValue,
           )
-        : null;
+        : dto.trigger.type === 'AUTO' && usesPresetTrigger
+          ? (preset.defaultThreshold ?? null)
+          : null;
+    // Only meaningful for REFERRAL_PURCHASE. An explicit 0 means "no minimum".
+    const qualifyingMinSpendSen =
+      effectiveCriteria !== 'REFERRAL_PURCHASE'
+        ? null
+        : dto.qualifyingMinSpendRM != null
+          ? Math.round(dto.qualifyingMinSpendRM * 100)
+          : preset.qualifyingMinSpendRM != null
+            ? Math.round(preset.qualifyingMinSpendRM * 100)
+            : null;
 
     const campaign = await this.prisma.voucherCampaign.create({
       data: {
@@ -162,8 +196,14 @@ export class CampaignBuilderService {
         applicableOutlets: dto.applicableOutlets ?? [],
         applicableOrderTypes: dto.applicableOrderTypes ?? [],
         applicableCategories: dto.applicableCategories ?? [],
-        autoCreditTrigger: triggerValue ?? preset.autoCreditTrigger,
+        // A MANUAL / points-redeem campaign must never fire on its own, even
+        // when its template (e.g. WINBACK) has a trigger of its own.
+        autoCreditTrigger:
+          dto.trigger.type === 'AUTO'
+            ? (triggerValue ?? preset.autoCreditTrigger)
+            : null,
         autoCreditThreshold: triggerThreshold,
+        qualifyingMinSpend: qualifyingMinSpendSen,
         allowStacking: dto.allowStacking ?? false,
         visibleInWallet: true,
         tncText: dto.tncText?.trim() || preset.tncText,
@@ -219,13 +259,29 @@ export class CampaignBuilderService {
               ? dto.autoCreditThresholdValue * 100
               : dto.autoCreditThresholdValue,
           )
-        : dto.autoCreditTrigger !== undefined
+        : dto.autoCreditTrigger !== undefined &&
+            effectiveTrigger !== existing.autoCreditTrigger
           ? null // trigger changed with no fresh threshold — drop the stale one
+          : undefined;
+    // The referral minimum only applies to REFERRAL_PURCHASE. 0 clears it, and
+    // moving a campaign off that trigger drops a minimum that no longer means anything.
+    const nextQualifyingMinSpend =
+      effectiveTrigger !== 'REFERRAL_PURCHASE'
+        ? existing.qualifyingMinSpend != null
+          ? null
+          : undefined
+        : dto.qualifyingMinSpendRM !== undefined
+          ? dto.qualifyingMinSpendRM > 0
+            ? Math.round(dto.qualifyingMinSpendRM * 100)
+            : null
           : undefined;
 
     return this.prisma.voucherCampaign.update({
       where: { id: campaignId },
       data: {
+        ...(nextQualifyingMinSpend !== undefined
+          ? { qualifyingMinSpend: nextQualifyingMinSpend }
+          : {}),
         ...(dto.autoCreditTrigger !== undefined
           ? { autoCreditTrigger: effectiveTrigger }
           : {}),
@@ -294,6 +350,13 @@ export class CampaignBuilderService {
     expiresAt?: string | null,
     reason?: string | null,
     tx?: Prisma.TransactionClient,
+    /**
+     * Why this is being issued ("welcome", "birthday:2026", ...). Automation
+     * passes it so the unique index on (campaign, member, key) refuses a
+     * duplicate; a duplicate surfaces as Prisma P2002 for the caller to treat
+     * as "already issued". Hand-issued vouchers leave it unset.
+     */
+    issueKey?: string | null,
   ) {
     const db = tx ?? this.prisma;
     const campaign = await db.voucherCampaign.findUnique({
@@ -326,20 +389,16 @@ export class CampaignBuilderService {
       campaign.autoCreditTrigger === 'BIRTHDAY';
 
     let computedExpiry: Date | null = null;
-    let validFrom: Date | null = null;
     if (expiresAt) {
       // Explicit override always wins.
       computedExpiry = new Date(expiresAt);
     } else if (isBirthday && customer.birthday) {
-      // Anchor the validity window to the member's birthday so a birthday
-      // voucher can only be used around their birthday for the defined number
-      // of days, regardless of when it was issued.
-      const window = this.computeBirthdayWindow(
+      // Usable from the moment it appears (up to 30 days ahead) until
+      // `voucherValidDays` after the birthday itself.
+      computedExpiry = birthdayVoucherExpiry(
         customer.birthday,
         campaign.voucherValidDays ?? 7,
       );
-      validFrom = window.validFrom;
-      computedExpiry = window.expiresAt;
     } else if (campaign.voucherValidDays) {
       computedExpiry = new Date();
       computedExpiry.setDate(
@@ -349,10 +408,6 @@ export class CampaignBuilderService {
 
     const metadata: Record<string, string> = {};
     if (reason) metadata.issueReason = reason;
-    // Only record a start date when it's in the future (enforced at checkout).
-    if (validFrom && validFrom.getTime() > Date.now()) {
-      metadata.validFrom = validFrom.toISOString();
-    }
 
     const voucher = await db.voucher.create({
       data: {
@@ -364,35 +419,12 @@ export class CampaignBuilderService {
         expiresAt: computedExpiry,
         usageLimitPerUser: campaign.usageLimitPerUser,
         visibleInWallet: campaign.visibleInWallet,
+        issueKey: issueKey ?? null,
         metadata: Object.keys(metadata).length ? metadata : undefined,
       },
     });
 
     return voucher;
-  }
-
-  /**
-   * Resolve the next relevant birthday window for a member. Anchors a window of
-   * `validDays` length at this year's birthday; if that window has already
-   * fully passed, rolls forward to next year's birthday. Uses UTC month/day
-   * from the stored birthday (year is irrelevant).
-   */
-  private computeBirthdayWindow(
-    birthday: Date,
-    validDays: number,
-    now: Date = new Date(),
-  ): { validFrom: Date; expiresAt: Date } {
-    const days = validDays > 0 ? validDays : 7;
-    const month = birthday.getUTCMonth();
-    const day = birthday.getUTCDate();
-    const year = now.getUTCFullYear();
-    let start = new Date(Date.UTC(year, month, day, 0, 0, 0));
-    let end = new Date(start.getTime() + days * 86_400_000);
-    if (end.getTime() < now.getTime()) {
-      start = new Date(Date.UTC(year + 1, month, day, 0, 0, 0));
-      end = new Date(start.getTime() + days * 86_400_000);
-    }
-    return { validFrom: start, expiresAt: end };
   }
 
   async getCampaignDashboard() {
@@ -466,6 +498,9 @@ export class CampaignBuilderService {
         ? campaign.fixedAmountOff / 100
         : null,
       minSpendRM: campaign.minSpend ? campaign.minSpend / 100 : null,
+      qualifyingMinSpendRM: campaign.qualifyingMinSpend
+        ? campaign.qualifyingMinSpend / 100
+        : null,
       walletCreditRM: campaign.walletCreditAmount
         ? campaign.walletCreditAmount / 100
         : null,
@@ -483,7 +518,32 @@ export class CampaignBuilderService {
     const results: { customerId: string; voucherCode: string }[] = [];
     const errors: { customerId: string; error: string }[] = [];
 
-    for (const customerId of customerIds) {
+    // Pressing the button twice must not hand a member two of the same voucher:
+    // anyone still holding an unused, unexpired one from this campaign is skipped.
+    const holders = new Set(
+      (
+        await this.prisma.voucher.findMany({
+          where: {
+            voucherCampaignId: campaignId,
+            customerId: { in: customerIds },
+            status: {
+              in: [
+                VoucherLifecycleStatus.ACTIVE,
+                VoucherLifecycleStatus.LOCKED,
+              ],
+            },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+          select: { customerId: true },
+        })
+      ).map((v) => v.customerId),
+    );
+    const skippedHolding = [...new Set(customerIds)].filter((id) =>
+      holders.has(id),
+    ).length;
+
+    for (const customerId of new Set(customerIds)) {
+      if (holders.has(customerId)) continue;
       try {
         const voucher = await this.issueVoucherToCustomer(
           customerId,
@@ -503,6 +563,7 @@ export class CampaignBuilderService {
     return {
       issued: results.length,
       failed: errors.length,
+      skippedHolding,
       results,
       errors,
     };

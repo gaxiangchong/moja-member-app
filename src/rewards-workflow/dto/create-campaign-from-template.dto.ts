@@ -22,17 +22,21 @@ export class CampaignTriggerDto {
   @IsEnum([
     'NEW_MEMBER',
     'BIRTHDAY',
+    'REFERRAL_PURCHASE',
     'REFERRAL_COUNT',
     'INACTIVE_DAYS',
     'MIN_PURCHASE',
+    'ALL_MEMBERS',
     'WALLET_TOPUP',
   ] as const)
   criteria?:
     | 'NEW_MEMBER'
     | 'BIRTHDAY'
+    | 'REFERRAL_PURCHASE'
     | 'REFERRAL_COUNT'
     | 'INACTIVE_DAYS'
     | 'MIN_PURCHASE'
+    | 'ALL_MEMBERS'
     | 'WALLET_TOPUP';
 
   @IsOptional()
@@ -79,6 +83,16 @@ export class CreateCampaignFromTemplateDto {
   @IsNumber()
   @Min(0)
   minSpendRM?: number;
+
+  /**
+   * REFERRAL_PURCHASE: the referred friend's first paid order must be at least
+   * this many RM for the referrer to earn the voucher. Omit to use the
+   * template default (RM30); 0 means no minimum.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  qualifyingMinSpendRM?: number;
 
   @ValidateNested()
   @Type(() => CampaignTriggerDto)

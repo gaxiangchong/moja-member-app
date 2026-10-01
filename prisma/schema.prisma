@@ -331,11 +331,21 @@ model VoucherCampaign {
   applicableCategories   String[]           @default([]) @map("applicable_categories")
   applicableOutlets      String[]           @default([]) @map("applicable_outlets")
   applicableOrderTypes   VoucherOrderType[] @default([]) @map("applicable_order_types")
+  /// NEW_MEMBER | BIRTHDAY | REFERRAL_PURCHASE | REFERRAL_COUNT | INACTIVE_DAYS |
+  /// MIN_PURCHASE | ALL_MEMBERS. Null = manual issue only.
   autoCreditTrigger      String?            @map("auto_credit_trigger")
-  // Threshold the trigger fires at; meaning depends on autoCreditTrigger:
-  // REFERRAL_COUNT = referral count, INACTIVE_DAYS = days since last login,
-  // MIN_PURCHASE = order total in sen. Unused for NEW_MEMBER/BIRTHDAY.
+  // Meaning depends on autoCreditTrigger:
+  //   BIRTHDAY          = days before the birthday the voucher appears (default 30)
+  //   REFERRAL_PURCHASE = max vouchers one referrer can earn (null = unlimited)
+  //   REFERRAL_COUNT    = referred friends (who have bought) needed to earn it
+  //   INACTIVE_DAYS     = days since the member's last purchase
+  //   MIN_PURCHASE      = order total in sen
+  // Unused for NEW_MEMBER / ALL_MEMBERS.
   autoCreditThreshold    Int?               @map("auto_credit_threshold")
+  /// REFERRAL_PURCHASE only: the referred friend's first paid order must be at
+  /// least this much (sen, delivery excluded) for the referrer to earn the
+  /// voucher. Null or 0 = no minimum. Admin-configurable per campaign.
+  qualifyingMinSpend     Int?               @map("qualifying_min_spend")
   visibleInWallet        Boolean            @default(true) @map("visible_in_wallet")
   tncText                String?            @map("tnc_text")
   isActive               Boolean            @default(true) @map("is_active")
@@ -370,6 +380,11 @@ model Voucher {
   lockExpiresAt     DateTime?              @map("lock_expires_at")
   lockOrderId       String?                @map("lock_order_id") @db.Uuid
   visibleInWallet   Boolean                @default(true) @map("visible_in_wallet")
+  /// Why this voucher was issued, so automation can never issue the same one
+  /// twice: "welcome", "birthday:2026", "referral:<friend id>", "winback:<last
+  /// purchase date>". The unique index below is what makes that safe under
+  /// concurrent sweeps and retries. Null for hand-issued vouchers.
+  issueKey          String?                @map("issue_key") @db.VarChar(80)
   metadata          Json?
   createdAt         DateTime               @default(now()) @map("created_at")
   updatedAt         DateTime               @updatedAt @map("updated_at")
@@ -377,6 +392,7 @@ model Voucher {
   userRewards UserReward[]
   redemptions VoucherRedemption[]
 
+  @@unique([voucherCampaignId, customerId, issueKey])
   @@index([customerId, status, expiresAt])
   @@index([voucherCampaignId])
   @@map("vouchers")

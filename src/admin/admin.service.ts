@@ -45,6 +45,12 @@ import { tierForPoints, tierPointsRange } from '../loyalty/member-tier';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentsSettingsService } from '../payments/payments-settings.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  activityWhere,
+  awardFilterWhere,
+  DEFAULT_ACTIVE_DAYS,
+  loadEngagement,
+} from './customer-engagement';
 import { WalletService } from '../wallet/wallet.service';
 import { stringify } from 'csv-stringify/sync';
 import { ReportingSettingsService } from './reporting-settings.service';
@@ -423,6 +429,22 @@ export class AdminService {
       parts.push({ NOT: { vouchers: { some: { status: 'ISSUED' } } } });
     }
 
+    // Purchase activity, and the state of the three automatic award vouchers.
+    if (q.activity) {
+      parts.push(
+        activityWhere(q.activity, q.activeDays ?? DEFAULT_ACTIVE_DAYS),
+      );
+    }
+    if (q.welcomeVoucher) {
+      parts.push(awardFilterWhere('welcome', q.welcomeVoucher));
+    }
+    if (q.birthdayVoucher) {
+      parts.push(awardFilterWhere('birthday', q.birthdayVoucher));
+    }
+    if (q.referralVoucher) {
+      parts.push(awardFilterWhere('referral', q.referralVoucher));
+    }
+
     if (!parts.length) return {};
     return { AND: parts };
   }
@@ -474,8 +496,19 @@ export class AdminService {
       this.prisma.customer.count({ where }),
     ]);
 
+    const activeDays = query.activeDays ?? DEFAULT_ACTIVE_DAYS;
+    const engagement = await loadEngagement(
+      this.prisma,
+      items.map((c) => c.id),
+      activeDays,
+    );
+
     return {
+      activeDays,
       items: items.map((c) => ({
+        lastPurchaseAt: engagement.get(c.id)?.lastPurchaseAt ?? null,
+        activity: engagement.get(c.id)?.activity ?? 'never',
+        awards: engagement.get(c.id)?.awards,
         id: c.id,
         phoneE164: c.phoneE164,
         status: c.status,
@@ -502,6 +535,56 @@ export class AdminService {
       pageSize: take,
       total,
     };
+  }
+
+  /**
+   * How many signed-up members are still buying, for the glance at the top of
+   * the member list. Counts activated members only: someone who never set a PIN
+   * is not yet a member, so they are neither active nor lapsed.
+   */
+  async customerActivitySummary(activeDays = DEFAULT_ACTIVE_DAYS) {
+    const days = Math.min(Math.max(Math.floor(activeDays) || 0, 1), 3650);
+    const members: Prisma.CustomerWhereInput = { status: 'ACTIVE' };
+    const [active, lapsed, never] = await this.prisma.$transaction([
+      this.prisma.customer.count({
+        where: { AND: [members, activityWhere('active', days)] },
+      }),
+      this.prisma.customer.count({
+        where: { AND: [members, activityWhere('lapsed', days)] },
+      }),
+      this.prisma.customer.count({
+        where: { AND: [members, activityWhere('never', days)] },
+      }),
+    ]);
+    return {
+      activeDays: days,
+      active,
+      lapsed,
+      never,
+      total: active + lapsed + never,
+    };
+  }
+
+  /**
+   * Ids of every member matching the grid's filters, for acting on the whole
+   * filtered set (e.g. a win-back voucher) rather than one page of it. Capped so
+   * a careless "everyone" cannot build an unbounded list.
+   */
+  async listCustomerIds(
+    query: AdminListCustomersQueryDto,
+  ): Promise<{ ids: string[]; total: number; capped: boolean }> {
+    const where = this.buildCustomerWhere(query);
+    const cap = 20_000;
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.customer.findMany({
+        where,
+        select: { id: true },
+        orderBy: { createdAt: 'desc' },
+        take: cap,
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+    return { ids: rows.map((r) => r.id), total, capped: total > cap };
   }
 
   /**
@@ -543,12 +626,25 @@ export class AdminService {
       },
     });
 
+    const engagement = await loadEngagement(
+      this.prisma,
+      items.map((c) => c.id),
+      query.activeDays ?? DEFAULT_ACTIVE_DAYS,
+    );
+
     const iso = (d: Date | null | undefined) => (d ? d.toISOString() : '');
     const records = items.map((c) => ({
       phone: c.phoneE164,
       name: c.displayName ?? '',
       email: c.email ?? '',
       status: c.status,
+      activity: engagement.get(c.id)?.activity ?? 'never',
+      last_purchase_at: iso(engagement.get(c.id)?.lastPurchaseAt),
+      welcome_voucher: engagement.get(c.id)?.awards.welcome ?? 'none',
+      birthday_voucher: engagement.get(c.id)?.awards.birthday ?? 'none',
+      referral_vouchers_earned:
+        engagement.get(c.id)?.awards.referral.earned ?? 0,
+      referral_vouchers_used: engagement.get(c.id)?.awards.referral.used ?? 0,
       member_tier: tierForPoints(c.wallet?.pointsCached ?? 0),
       signup_source: c.signupSource,
       marketing_consent: c.marketingConsent ? 'yes' : 'no',
@@ -572,6 +668,12 @@ export class AdminService {
         'name',
         'email',
         'status',
+        'activity',
+        'last_purchase_at',
+        'welcome_voucher',
+        'birthday_voucher',
+        'referral_vouchers_earned',
+        'referral_vouchers_used',
         'member_tier',
         'signup_source',
         'marketing_consent',

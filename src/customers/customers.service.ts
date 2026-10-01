@@ -567,6 +567,17 @@ export class CustomersService {
       },
     });
     this.syncToSalesplay(updated);
+    if (dto.birthday) {
+      // A birthday inside the window earns its voucher straight away rather
+      // than at tomorrow's sweep. Best-effort: never fail a profile save.
+      void this.campaignAutomation
+        .runBirthdayTrigger(updated.id)
+        .catch((err) =>
+          this.logger.error(
+            `Birthday campaign trigger failed for ${updated.id}: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
     return this.getProfileBundle(updated.id);
   }
 
@@ -1010,7 +1021,9 @@ export class CustomersService {
     let finalized = false;
     let finalizedCustomerId: string | undefined;
     let finalizedTotalCents = 0;
-    let referrerRewardedId: string | undefined;
+    let finalizedDeliveryFeeCents = 0;
+    /** Set when this was a referred member's first paid order (see below). */
+    let referrerOfFirstOrderId: string | undefined;
     let finalizedLines: { productId: string; qty: number }[] = [];
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
@@ -1029,6 +1042,7 @@ export class CustomersService {
       finalized = true;
       finalizedCustomerId = order.customerId;
       finalizedTotalCents = order.totalCents;
+      finalizedDeliveryFeeCents = order.deliveryFeeCents;
       finalizedLines = order.lines.map((l) => ({
         productId: l.productId,
         qty: l.qty,
@@ -1090,7 +1104,7 @@ export class CustomersService {
         );
       }
 
-      referrerRewardedId = await this.maybeRewardReferrerOnFirstOrder(
+      referrerOfFirstOrderId = await this.maybeRewardReferrerOnFirstOrder(
         tx,
         order.customerId,
         order.id,
@@ -1108,12 +1122,27 @@ export class CustomersService {
             ),
           );
       }
-      if (referrerRewardedId) {
+      if (referrerOfFirstOrderId && finalizedCustomerId) {
+        const referrerId = referrerOfFirstOrderId;
+        const friendId = finalizedCustomerId;
+        // Delivery is not a purchase, so it does not count towards the
+        // campaign's minimum first order.
+        const goodsCents = Math.max(
+          0,
+          finalizedTotalCents - finalizedDeliveryFeeCents,
+        );
         void this.campaignAutomation
-          .runReferralCountTrigger(referrerRewardedId)
+          .runReferralPurchaseTrigger(referrerId, friendId, goodsCents)
           .catch((err) =>
             this.logger.error(
-              `Referral-count campaign trigger failed for referrer ${referrerRewardedId}: ${err instanceof Error ? err.message : String(err)}`,
+              `Referral-purchase campaign trigger failed for referrer ${referrerId}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+        void this.campaignAutomation
+          .runReferralCountTrigger(referrerId)
+          .catch((err) =>
+            this.logger.error(
+              `Referral-count campaign trigger failed for referrer ${referrerId}: ${err instanceof Error ? err.message : String(err)}`,
             ),
           );
       }
@@ -1186,23 +1215,22 @@ export class CustomersService {
   }
 
   /**
-   * Grants the referrer loyalty points the first time a member they referred
-   * completes a paid order. Runs inside the order-finalization transaction so
-   * it is atomic with the purchase. Idempotent: a referrer is rewarded at most
-   * once per referred member (guarded by a unique ledger reference).
+   * Called when a member's order is paid. If this is the first paid order of a
+   * member who was referred, returns the referrer's customer id so the caller
+   * can fire the referral voucher campaigns once the transaction commits —
+   * whether or not referral *points* are switched on. Returns undefined for
+   * anyone else (not referred, or not their first order).
    *
-   * Returns the referrer's customer id when a reward was actually granted (so
-   * the caller can fire a REFERRAL_COUNT campaign trigger after the
-   * transaction commits), or undefined otherwise.
+   * Also grants the referrer loyalty points when `REFERRAL_REWARD_POINTS` is
+   * above 0. Runs inside the order-finalization transaction so it is atomic
+   * with the purchase, and is idempotent: a referrer is rewarded at most once
+   * per referred member (guarded by a unique ledger reference).
    */
   private async maybeRewardReferrerOnFirstOrder(
     tx: Prisma.TransactionClient,
     buyerCustomerId: string,
     orderId: string,
   ): Promise<string | undefined> {
-    const rewardPoints = this.referralRewardPoints();
-    if (rewardPoints <= 0) return undefined;
-
     const buyer = await tx.customer.findUnique({
       where: { id: buyerCustomerId },
       select: { id: true, referredByCustomerId: true },
@@ -1220,6 +1248,10 @@ export class CustomersService {
     });
     if (paidOrderCount !== 1) return undefined;
 
+    const rewardPoints = this.referralRewardPoints();
+    // Points are optional; the voucher campaigns are not, so still report the referrer.
+    if (rewardPoints <= 0) return referrerId;
+
     // Idempotency: never reward the same referrer twice for the same referee.
     const existing = await tx.loyaltyLedgerEntry.findFirst({
       where: {
@@ -1230,7 +1262,7 @@ export class CustomersService {
       },
       select: { id: true },
     });
-    if (existing) return undefined;
+    if (existing) return referrerId;
 
     const result = await this.loyalty.appendLedgerEntry(
       {

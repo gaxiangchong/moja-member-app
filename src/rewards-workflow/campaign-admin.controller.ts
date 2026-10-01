@@ -15,6 +15,7 @@ import { AdminAuthGuard } from '../admin-auth/guards/admin-auth.guard';
 import { AdminPermissionsGuard } from '../admin-auth/guards/admin-permissions.guard';
 import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
+import { CampaignAutomationService } from './campaign-automation.service';
 import { CampaignBuilderService } from './campaign-builder.service';
 import { CreateCampaignFromTemplateDto } from './dto/create-campaign-from-template.dto';
 import { IssueVoucherToCustomerDto } from './dto/issue-voucher-to-customer.dto';
@@ -23,7 +24,10 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto';
 @Controller('admin/campaigns')
 @UseGuards(AdminAuthGuard, AdminPermissionsGuard)
 export class CampaignAdminController {
-  constructor(private readonly builder: CampaignBuilderService) {}
+  constructor(
+    private readonly builder: CampaignBuilderService,
+    private readonly automation: CampaignAutomationService,
+  ) {}
 
   @Get('templates')
   @RequirePermissions(P.VOUCHER_READ)
@@ -79,6 +83,17 @@ export class CampaignAdminController {
     @CurrentAdmin() _auth: AdminAuthState,
   ) {
     return this.builder.updateCampaign(campaignId, dto);
+  }
+
+  /**
+   * Runs the birthday, win-back and all-members sweeps right now instead of
+   * waiting for the schedule. Safe to press repeatedly: nobody is ever issued
+   * the same automatic voucher twice.
+   */
+  @Post('run-automation')
+  @RequirePermissions(P.VOUCHER_CREATE)
+  runAutomation(@CurrentAdmin() _auth: AdminAuthState) {
+    return this.automation.runAllNow();
   }
 
   @Post(':campaignId/issue/:customerId')
