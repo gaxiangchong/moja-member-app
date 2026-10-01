@@ -89,6 +89,16 @@ export class PaymentsService {
     return v === 'true' || v === '1' || v === 'yes';
   }
 
+  /**
+   * True when no real money moves: demo mode, or a Xendit test (development)
+   * key. The member app shows a small "test" note only in this case.
+   */
+  paymentsTestMode(): boolean {
+    if (this.paymentsDemoModeEnabled()) return true;
+    const key = this.config.get<string>('XENDIT_SECRET_KEY')?.trim() ?? '';
+    return key.startsWith('xnd_development_');
+  }
+
   private isDemoMode(): boolean {
     return this.paymentsDemoModeEnabled();
   }

@@ -29,7 +29,11 @@ export class PaymentsController {
   @Get('config')
   @SkipThrottle()
   getConfig() {
-    return { paymentsDemoMode: this.payments.paymentsDemoModeEnabled() };
+    return {
+      paymentsDemoMode: this.payments.paymentsDemoModeEnabled(),
+      /** No real money moves (demo mode or a Xendit test key). */
+      testMode: this.payments.paymentsTestMode(),
+    };
   }
 
   /**

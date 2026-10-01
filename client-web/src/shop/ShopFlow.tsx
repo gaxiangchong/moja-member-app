@@ -26,6 +26,7 @@ import {
   createXenditCardTokenSession,
   createShopOrderCheckout,
   fetchDeliveryInfo,
+  fetchPaymentsTestMode,
   type DeliveryInfo,
   fetchPickupSlots,
   fetchShopAvailability,
@@ -193,6 +194,8 @@ export function ShopFlow({
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelCode, setSelectedChannelCode] = useState('');
   const [deliveryInfo, setDeliveryInfo] = useState<DeliveryInfo | null>(null);
+  // Only a test release says anything about the payment channel.
+  const [testPayments, setTestPayments] = useState(false);
   const [paymentMethodMode, setPaymentMethodMode] =
     useState<PaymentMethodMode>('channel');
   const [cardPaymentTokenId, setCardPaymentTokenId] = useState('');
@@ -361,6 +364,17 @@ export function ShopFlow({
         if (alive) setDeliveryInfo(info);
       })
       .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    let alive = true;
+    void fetchPaymentsTestMode().then((v) => {
+      if (alive) setTestPayments(v);
+    });
     return () => {
       alive = false;
     };
@@ -960,7 +974,9 @@ export function ShopFlow({
       }
 
       setCheckoutErrors([
-        'No payment redirect URL. Use Xendit test keys and a valid channel, or enable PAYMENTS_DEMO_MODE for local test checkout.',
+        testPayments
+          ? 'No payment redirect URL. Use Xendit test keys and a valid channel, or enable PAYMENTS_DEMO_MODE for local test checkout.'
+          : 'We could not start the payment. Please try again.',
       ]);
     } catch (err) {
       setCheckoutErrors([
@@ -1399,19 +1415,14 @@ export function ShopFlow({
           {showPromoSection ? (
             <section className="pmCard">
               <h3 className="shopSectionTitle">Voucher or redemption code</h3>
-              <p className="caption" style={{ marginTop: 0 }}>
-                One voucher or code per order.
-              </p>
               <div className="shopPromoGrid">
                 {isAuthenticated ? (
                   <div>
-                    <p className="caption">Redemption / voucher code</p>
                     <p
                       className="caption"
                       style={{ marginTop: 0, marginBottom: 8 }}
                     >
-                      Paste your code here. You can copy it from Rewards →
-                      Vouchers.
+                      Paste your code from Rewards → Vouchers.
                     </p>
                     <div className="shopVoucherCodeRow">
                       <input
@@ -1419,7 +1430,7 @@ export function ShopFlow({
                         type="text"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder="Paste your code, e.g. PROMO-12345"
+                        placeholder="Paste code here"
                         value={voucherCodeInput}
                         onChange={(e) => {
                           setVoucherCodeInput(e.target.value);
@@ -1520,11 +1531,11 @@ export function ShopFlow({
 
           <section className="pmCard">
             <h3 className="shopSectionTitle">Payment</h3>
-            <p className="caption" style={{ marginTop: 0 }}>
-              Pick a channel (Xendit supports many methods per country). You
-              will complete payment on the secure Xendit page (use test keys in
-              the dashboard for test cards and wallets).
-            </p>
+            {testPayments ? (
+              <p className="caption" style={{ marginTop: 0 }}>
+                Test payment channel — no real money is charged.
+              </p>
+            ) : null}
             <div className="shopFieldGrid" style={{ marginTop: 8 }}>
               {creditsBalanceCents > 0 ? (
                 <>
@@ -1663,8 +1674,9 @@ export function ShopFlow({
               !channelsLoading &&
               !channelsError ? (
               <p className="caption">
-                No channels configured. Set XENDIT_SHOP_CHANNEL_CODES on the
-                server.
+                {testPayments
+                  ? 'No payment channels are set up on the server yet.'
+                  : 'Online payment is unavailable right now. Please try again later.'}
               </p>
             ) : null}
             {paymentMethodMode === 'card_token' ? (

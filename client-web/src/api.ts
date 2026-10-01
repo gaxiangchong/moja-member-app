@@ -1233,6 +1233,18 @@ export async function fetchDeliveryInfo(): Promise<DeliveryInfo> {
 }
 
 /** Open pickup windows for one day, including why a slot is closed. */
+/** Whether payments are in test mode. Any failure counts as "not test" so nothing test-like is shown by mistake. */
+export async function fetchPaymentsTestMode(): Promise<boolean> {
+  try {
+    const res = await fetch(`${base}/payments/config`);
+    if (!res.ok) return false;
+    const data = (await res.json()) as { testMode?: boolean };
+    return data.testMode === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchPickupSlots(date?: string): Promise<PickupSlotDay> {
   const qs = date ? `?date=${encodeURIComponent(date)}` : '';
   const res = await fetch(`${base}/shop/pickup-slots${qs}`);
