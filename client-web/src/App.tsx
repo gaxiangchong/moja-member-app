@@ -2205,24 +2205,34 @@ function App() {
                     </span>
                     <span className="accountPointsUnit">pts</span>
                   </div>
-                  <div className="progressWrap">
+                  <div
+                    className="progressWrap"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progressPct)}
+                    aria-label={
+                      tierProgress.nextTierLabel
+                        ? `Progress from ${tierDisplayName} to ${tierProgress.nextTierLabel}`
+                        : `${tierDisplayName} — top tier`
+                    }
+                  >
                     <div
                       className="progressBar"
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
+                  {/* One tier at a time: the bar is the journey from this tier to the next,
+                      so it starts again at Gold and again at Platinum. */}
                   <div className="tierTrack" aria-hidden>
-                    {POINT_TIER_LABELS.map((label, i) => (
-                      <span
-                        key={label}
-                        className={`tierTrackStop${tierProgress.activeTierIndex === i ? ' active' : ''}`}
-                      >
-                        {label}
-                        {POINT_TIER_THRESHOLDS[i] > 0
-                          ? ` · ${POINT_TIER_THRESHOLDS[i].toLocaleString()}`
-                          : ''}
-                      </span>
-                    ))}
+                    <span className="tierTrackStop active">
+                      {POINT_TIER_LABELS[tierProgress.activeTierIndex]}
+                    </span>
+                    <span className="tierTrackStop">
+                      {tierProgress.nextTierLabel
+                        ? `${tierProgress.nextTierLabel} · ${POINT_TIER_THRESHOLDS[tierProgress.activeTierIndex + 1].toLocaleString()}`
+                        : 'Top tier'}
+                    </span>
                   </div>
                   <p className="accountTierHint">
                     {tierProgress.earnLabel}
