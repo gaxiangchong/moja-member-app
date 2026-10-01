@@ -46,11 +46,12 @@ import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
 /**
- * Show the points-reward buttons in the checkout voucher box. Hidden for now:
- * members redeem in Rewards, copy the code, and paste it into the code box.
- * Set to true to bring the buttons back.
+ * Show tap-to-apply promo buttons in the checkout voucher box: the member's wallet
+ * vouchers (e.g. "Point Redemption RM5 · PROMO-… · −RM 5.00") and the points-reward
+ * buttons. Hidden for now so the box is just a text field: members copy their code
+ * from Rewards → Vouchers and paste it in. Set to true to bring the buttons back.
  */
-const SHOW_POINT_REWARDS_AT_CHECKOUT = false;
+const SHOW_CHECKOUT_PROMO_BUTTONS = false;
 
 type PaymentMethodMode = 'channel' | 'card_token' | 'credits';
 
@@ -277,7 +278,7 @@ export function ShopFlow({
     [memberRewards],
   );
   const catalogRewards = useMemo(
-    () => (SHOW_POINT_REWARDS_AT_CHECKOUT ? checkoutCatalogRewards(memberRewards) : []),
+    () => (SHOW_CHECKOUT_PROMO_BUTTONS ? checkoutCatalogRewards(memberRewards) : []),
     [memberRewards],
   );
   // The code box is always there: a member can paste a redemption code from
@@ -1409,8 +1410,8 @@ export function ShopFlow({
                       className="caption"
                       style={{ marginTop: 0, marginBottom: 8 }}
                     >
-                      Paste your code here (copy it from Rewards → Vouchers), or
-                      pick a voucher from your wallet below.
+                      Paste your code here. You can copy it from Rewards →
+                      Vouchers.
                     </p>
                     <div className="shopVoucherCodeRow">
                       <input
@@ -1452,6 +1453,7 @@ export function ShopFlow({
                           : ''}
                       </p>
                     ) : null}
+                    {SHOW_CHECKOUT_PROMO_BUTTONS ? (
                     <div className="shopPromoList" style={{ marginTop: 10 }}>
                       {issuedVouchers.map((v) => (
                         <button
@@ -1468,6 +1470,7 @@ export function ShopFlow({
                         </button>
                       ))}
                     </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {catalogRewards.length > 0 ? (
