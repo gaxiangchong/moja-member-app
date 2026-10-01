@@ -573,6 +573,12 @@ model CustomerOrder {
   /// Delivery charged to the customer, already included in `totalCents`.
   /// Excluded from loyalty points — see `finalizeShopOrderAfterPayment`.
   deliveryFeeCents        Int       @default(0) @map("delivery_fee_cents")
+  /// A points reward redeemed on this order. The points are taken when the order
+  /// is created and given back (once) if it is cancelled, refunded or never paid.
+  rewardId                String?   @map("reward_id") @db.VarChar(64)
+  rewardTitle             String?   @map("reward_title") @db.VarChar(200)
+  rewardPointsSpent       Int       @default(0) @map("reward_points_spent")
+  rewardPointsRefundedAt  DateTime? @map("reward_points_refunded_at")
   /// Delivery orders: where to, who to contact, and who books the courier.
   deliveryAddress         String?   @map("delivery_address")
   deliveryContactName     String?   @map("delivery_contact_name") @db.VarChar(120)

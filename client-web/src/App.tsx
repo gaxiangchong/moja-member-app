@@ -33,6 +33,7 @@ import {
   type MemberProfile,
   type MemberRewardsPayload,
   type PopularProduct,
+  type RewardRedemption,
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
@@ -380,6 +381,9 @@ function SectionHeader({
 // customer can read without leaking internal codes.
 function humanizeLoyaltyReason(entry: LoyaltyHistoryEntry): string {
   const reason = String(entry.reason || '').toLowerCase();
+  const orderRef = entry.orderNumber != null ? ` · order #${entry.orderNumber}` : '';
+  if (reason.startsWith('refund_checkout_redeem_')) return `Reward points returned${orderRef}`;
+  if (reason.startsWith('checkout_redeem_')) return `Reward redeemed${orderRef}`;
   if (entry.referenceType === 'customer_order' && entry.orderNumber != null) {
     return `Shop order #${entry.orderNumber}`;
   }
@@ -589,6 +593,67 @@ const VOUCHER_MIN_SPEND_CENTS = 2000;
 
 function formatRmCents(cents: number): string {
   return `RM ${(cents / 100).toFixed(2)}`;
+}
+
+/** Rewards the member has redeemed with points, newest first. */
+function RewardHistoryCard({ items }: { items: RewardRedemption[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, 5);
+  return (
+    <Card>
+      <SectionHeader title="Redeemed rewards" />
+      {items.length === 0 ? (
+        <p className="caption" style={{ margin: 0 }}>
+          Rewards you redeem with points will be listed here.
+        </p>
+      ) : (
+        <>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {visible.map((r) => (
+              <li
+                key={r.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '10px 12px',
+                  border: '1px solid rgba(0,0,0,0.06)',
+                  borderRadius: 12,
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <strong style={{ fontSize: 14, fontWeight: 600 }}>{r.title}</strong>
+                  <span className="caption" style={{ margin: 0 }}>
+                    {formatLoyaltyDate(r.redeemedAt)}
+                    {r.orderNumber != null ? ` · Order #${r.orderNumber}` : ''}
+                  </span>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <strong style={{ fontSize: 14, color: r.status === 'returned' ? '#64748b' : '#b45309' }}>
+                    {r.status === 'returned' ? '' : '−'}
+                    {r.pointsSpent.toLocaleString()} pts
+                  </strong>
+                  <div className="caption" style={{ margin: 0 }}>
+                    {r.status === 'returned'
+                      ? 'Order cancelled — points returned'
+                      : r.status === 'pending'
+                        ? 'Waiting for payment'
+                        : 'Redeemed'}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {items.length > 5 ? (
+            <button type="button" className="textAction" style={{ marginTop: 10 }} onClick={() => setExpanded((v) => !v)}>
+              {expanded ? 'Show less' : `Show all ${items.length}`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
 }
 
 function RewardCard({
@@ -2105,6 +2170,7 @@ function App() {
                         </Card>
                       )}
                     </div>
+                    <RewardHistoryCard items={rewardsData?.redemptions ?? []} />
                   </>
                 )}
               </>

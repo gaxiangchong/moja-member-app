@@ -69,6 +69,9 @@ export class LoyaltyService {
     },
   ): Promise<{ balanceAfter: number }> {
     await this.ensureWalletInTx(tx, params.customerId);
+    // One change to a balance at a time: without the lock two simultaneous
+    // redemptions both read the same balance and both succeed.
+    await tx.$queryRaw`SELECT id FROM loyalty_wallets WHERE customer_id = ${params.customerId}::uuid FOR UPDATE`;
     const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
     });
@@ -104,6 +107,90 @@ export class LoyaltyService {
     });
 
     return { balanceAfter };
+  }
+
+  /**
+   * Takes the points for a reward redeemed on an order, in one transaction with
+   * marking the order — so points never leave without the order recording what
+   * they bought, and two simultaneous redemptions cannot both spend the same
+   * points. Throws `LOYALTY_INSUFFICIENT_POINTS` when the balance is short.
+   */
+  async redeemRewardForOrder(params: {
+    customerId: string;
+    orderId: string;
+    rewardId: string;
+    title: string;
+    points: number;
+  }): Promise<{ balanceAfter: number }> {
+    if (!Number.isInteger(params.points) || params.points <= 0) {
+      throw new BadRequestException({
+        code: 'LOYALTY_NOOP',
+        message: 'points must be a positive integer',
+      });
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.customerOrder.updateMany({
+        where: {
+          id: params.orderId,
+          customerId: params.customerId,
+          rewardPointsSpent: 0,
+        },
+        data: {
+          rewardId: params.rewardId.slice(0, 64),
+          rewardTitle: params.title.slice(0, 200),
+          rewardPointsSpent: params.points,
+        },
+      });
+      if (claimed.count === 0) {
+        throw new BadRequestException({
+          code: 'REWARD_ALREADY_APPLIED',
+          message: 'A reward is already applied to this order.',
+        });
+      }
+      return this.appendInTx(tx, {
+        customerId: params.customerId,
+        deltaPoints: -params.points,
+        reason: `checkout_redeem_${params.rewardId}`,
+        referenceType: 'customer_order',
+        referenceId: params.orderId,
+      });
+    });
+  }
+
+  /**
+   * Gives back the points a reward cost when its order is cancelled, refunded
+   * or never paid. Safe to call from any path, any number of times: the order
+   * is claimed first, so the points come back at most once. Returns how many
+   * points were returned (0 when there was nothing to return).
+   */
+  async refundRewardForOrder(orderId: string): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.customerOrder.updateMany({
+        where: {
+          id: orderId,
+          rewardPointsSpent: { gt: 0 },
+          rewardPointsRefundedAt: null,
+        },
+        data: { rewardPointsRefundedAt: new Date() },
+      });
+      if (claimed.count === 0) return 0;
+      const order = await tx.customerOrder.findUniqueOrThrow({
+        where: { id: orderId },
+        select: {
+          customerId: true,
+          rewardId: true,
+          rewardPointsSpent: true,
+        },
+      });
+      await this.appendInTx(tx, {
+        customerId: order.customerId,
+        deltaPoints: order.rewardPointsSpent,
+        reason: `refund_checkout_redeem_${order.rewardId ?? ''}`,
+        referenceType: 'customer_order',
+        referenceId: orderId,
+      });
+      return order.rewardPointsSpent;
+    });
   }
 
   private async ensureWalletInTx(

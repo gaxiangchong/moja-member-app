@@ -288,11 +288,16 @@ export function OrdersTab({
     setCancellingId(order.id);
     try {
       const res = await cancelMyOrder(order.id);
+      const returned: string[] = [];
       if (res.creditsReturnedCents && res.creditsReturnedCents > 0) {
+        returned.push(`${formatRm(res.creditsReturnedCents)} to your credits`);
+      }
+      if (res.pointsReturned && res.pointsReturned > 0) {
+        returned.push(`${res.pointsReturned.toLocaleString()} points`);
+      }
+      if (returned.length) {
         onCreditsChanged?.();
-        window.alert(
-          `Order cancelled. ${formatRm(res.creditsReturnedCents)} has been returned to your credits.`,
-        );
+        window.alert(`Order cancelled. We've returned ${returned.join(' and ')}.`);
       }
       await load();
     } catch (e) {

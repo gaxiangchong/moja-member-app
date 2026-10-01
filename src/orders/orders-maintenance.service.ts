@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ORDER_STATUS } from './order-status';
 import { ProductStockService } from './product-stock.service';
@@ -25,6 +26,7 @@ export class OrdersMaintenanceService {
     private readonly prisma: PrismaService,
     private readonly productStock: ProductStockService,
     private readonly config: ConfigService,
+    private readonly loyalty: LoyaltyService,
   ) {}
 
   /** Generous enough for a slow bank/e-wallet redirect, short enough to matter. */
@@ -79,6 +81,17 @@ export class OrdersMaintenanceService {
         },
       });
       if (cancelled.count === 0) continue;
+
+      // An unpaid order gives back any reward points it was holding.
+      await this.loyalty
+        .refundRewardForOrder(order.id)
+        .catch((err) =>
+          this.logger.error(
+            `Reward points refund failed for expired order ${order.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
 
       const day =
         order.scheduledDate?.toISOString().slice(0, 10) ??

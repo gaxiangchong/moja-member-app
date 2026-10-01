@@ -1262,19 +1262,15 @@ export function ShopFlow({
                         reason: null as string | null,
                         remaining: null as number | null,
                       }))
-                  ).map((slot) => (
-                    <option
-                      key={slot.start}
-                      value={slot.start}
-                      disabled={!slot.available}
-                    >
-                      {slot.available
-                        ? slot.remaining == null
+                  )
+                    .filter((slot) => slot.available)
+                    .map((slot) => (
+                      <option key={slot.start} value={slot.start}>
+                        {slot.remaining == null
                           ? slot.label
-                          : `${slot.label} · ${slot.remaining} left`
-                        : `${slot.label} · unavailable`}
-                    </option>
-                  ))}
+                          : `${slot.label} · ${slot.remaining} left`}
+                      </option>
+                    ))}
                 </select>
                 {pickupDay && pickupDate === pickupDay.date && pickupDay.closedReason ? (
                   <p className="pickupAvailShort">{pickupDay.closedReason}</p>
@@ -1287,15 +1283,16 @@ export function ShopFlow({
                     {pickupDay.leadTimeMessage}
                   </p>
                 ) : null}
-                {pickupDay && pickupDate === pickupDay.date
-                  ? pickupDay.slots
-                      .filter((slot) => !slot.available && slot.reason)
-                      .map((slot) => (
-                        <p key={slot.start} className="pickupAvailShort">
-                          {slot.label}: {slot.reason}
-                        </p>
-                      ))
-                  : null}
+                {pickupDay &&
+                pickupDate === pickupDay.date &&
+                !pickupDay.closed &&
+                pickupDay.slots.length > 0 &&
+                pickupDay.slots.every((slot) => !slot.available) ? (
+                  <p className="caption" style={{ margin: 0 }}>
+                    No pickup times are left on this date. Please choose another
+                    date.
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {dateAvailability.length > 0 ? (

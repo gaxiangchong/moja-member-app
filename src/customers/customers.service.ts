@@ -596,8 +596,15 @@ export class CustomersService {
   }
 
   async getMeRewards(customerId: string) {
-    const [wallet, vouchers, rewardCatalog, newVouchers, newRewards] =
-      await this.prisma.$transaction([
+    const [
+      wallet,
+      vouchers,
+      rewardCatalog,
+      newVouchers,
+      newRewards,
+      redeemedOrders,
+      redeemedRewards,
+    ] = await this.prisma.$transaction([
         this.prisma.loyaltyWallet.findUnique({
           where: { customerId },
         }),
@@ -646,6 +653,29 @@ export class CustomersService {
           include: { voucherCampaign: true },
           orderBy: [{ createdAt: 'desc' }],
         }),
+        // Rewards redeemed at checkout: newest first.
+        this.prisma.customerOrder.findMany({
+          where: { customerId, rewardPointsSpent: { gt: 0 } },
+          orderBy: { placedAt: 'desc' },
+          take: 50,
+          select: {
+            id: true,
+            orderNumber: true,
+            placedAt: true,
+            status: true,
+            rewardId: true,
+            rewardTitle: true,
+            rewardPointsSpent: true,
+            rewardPointsRefundedAt: true,
+          },
+        }),
+        // Rewards redeemed straight from the points catalog.
+        this.prisma.userReward.findMany({
+          where: { customerId, status: 'REDEEMED' },
+          orderBy: { redeemedAt: 'desc' },
+          take: 50,
+          include: { rewardCatalog: { select: { name: true, pointsCost: true } } },
+        }),
       ]);
 
     const definitionIds = [
@@ -678,10 +708,37 @@ export class CustomersService {
         )?.birthday ?? null)
       : null;
 
+    const redemptions = [
+      ...redeemedOrders.map((o) => ({
+        id: o.id,
+        rewardId: o.rewardId,
+        title: o.rewardTitle ?? 'Reward',
+        pointsSpent: o.rewardPointsSpent,
+        redeemedAt: o.placedAt.toISOString(),
+        orderNumber: o.orderNumber,
+        // returned: cancelled / refunded / never paid, so the points came back.
+        status: o.rewardPointsRefundedAt
+          ? ('returned' as const)
+          : o.status === ORDER_STATUS.PENDING_PAYMENT
+            ? ('pending' as const)
+            : ('redeemed' as const),
+      })),
+      ...redeemedRewards.map((u) => ({
+        id: u.id,
+        rewardId: u.rewardCatalogId,
+        title: u.rewardCatalog.name,
+        pointsSpent: u.rewardCatalog.pointsCost,
+        redeemedAt: (u.redeemedAt ?? u.createdAt).toISOString(),
+        orderNumber: null as number | null,
+        status: 'redeemed' as const,
+      })),
+    ].sort((a, b) => b.redeemedAt.localeCompare(a.redeemedAt));
+
     return {
       wallet: {
         pointsBalance: wallet?.pointsCached ?? 0,
       },
+      redemptions,
       vouchers: [
         ...vouchers.map((v) => ({
           id: v.id,
@@ -971,12 +1028,25 @@ export class CustomersService {
         return 0;
       });
 
+    // Points spent on a reward for this order go back too.
+    const pointsReturned = await this.loyalty
+      .refundRewardForOrder(orderId)
+      .catch((err) => {
+        this.logger.error(
+          `Reward points refund failed for cancelled order ${orderId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return 0;
+      });
+
     void this.orderNotices.notify(orderId, 'cancelled');
 
     return {
       id: orderId,
       status: ORDER_STATUS.CANCELLED,
       creditsReturnedCents,
+      pointsReturned,
     };
   }
 
@@ -1008,6 +1078,8 @@ export class CustomersService {
       order.scheduledDate?.toISOString().slice(0, 10) ??
       shopCalendarYmd(order.placedAt);
     await this.productStock.releaseForOrderLines(order.lines, day);
+    // A reward taken for an order that never happened goes back.
+    await this.loyalty.refundRewardForOrder(orderId);
   }
 
   private validateMemberOrderTotals(dto: SubmitMemberOrderDto) {

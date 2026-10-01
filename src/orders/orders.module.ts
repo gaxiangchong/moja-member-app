@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { DeliverySettingsService } from './delivery-settings.service';
@@ -10,7 +11,7 @@ import { ProductStockService } from './product-stock.service';
 import { ShopAvailabilityController } from './shop-availability.controller';
 
 @Module({
-  imports: [ConfigModule, PrismaModule, ShopCatalogModule],
+  imports: [ConfigModule, PrismaModule, ShopCatalogModule, LoyaltyModule],
   controllers: [ShopAvailabilityController],
   providers: [
     ProductStockService,

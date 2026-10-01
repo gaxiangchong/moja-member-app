@@ -478,6 +478,7 @@ export class PaymentsService {
     let voucherLockToken: string | null = null;
     let customerVoucherId: string | null = null;
     let rewardPointsCost: number | null = null;
+    let rewardTitle: string | null = null;
     const subtotalCents = this.computeSubtotal(dto);
 
     if (voucherId && rewardDefinitionId) {
@@ -497,6 +498,7 @@ export class PaymentsService {
       );
       discountCents = resolved.discountCents;
       rewardPointsCost = resolved.pointsCost;
+      rewardTitle = resolved.title;
     } else if (voucherId) {
       try {
         const lock = await this.rewardsWorkflow.validateAndLockVoucher({
@@ -527,6 +529,35 @@ export class PaymentsService {
     dto.discountCents = discountCents;
     dto.totalCents = Math.max(0, subtotalCents - discountCents);
 
+    /**
+     * Takes the reward's points as soon as the order exists, so the same points
+     * cannot be spent twice. They come back if the order is cancelled, refunded
+     * or never paid. If the balance turns out to be short, the order is dropped.
+     */
+    const holdReward = async (orderId: string) => {
+      if (!rewardDefinitionId || !rewardPointsCost) return;
+      try {
+        await this.loyalty.redeemRewardForOrder({
+          customerId,
+          orderId,
+          rewardId: rewardDefinitionId,
+          title: rewardTitle ?? 'Reward',
+          points: rewardPointsCost,
+        });
+      } catch (err) {
+        await this.customers
+          .abandonPendingOrder(orderId, 'Reward points unavailable')
+          .catch(() => undefined);
+        if (err instanceof BadRequestException) {
+          throw new BadRequestException({
+            code: 'INSUFFICIENT_POINTS',
+            message: 'Not enough points for this reward.',
+          });
+        }
+        throw err;
+      }
+    };
+
     const promoFinalize = async (orderId: string) => {
       await this.finalizeShopPromotions({
         customerId,
@@ -543,6 +574,7 @@ export class PaymentsService {
         customerId,
         dto,
         promoFinalize,
+        holdReward,
         voucherLockToken,
       });
     }
@@ -552,6 +584,7 @@ export class PaymentsService {
         customerId,
         dto,
       );
+      await holdReward(order.id);
       await promoFinalize(order.id);
       return {
         demoMode: true as const,
@@ -568,6 +601,7 @@ export class PaymentsService {
         customerId,
         dto,
       );
+      await holdReward(order.id);
       await this.customers.finalizeShopOrderAfterPayment(order.id);
       await promoFinalize(order.id);
       const refreshed = await this.prisma.customerOrder.findUniqueOrThrow({
@@ -617,6 +651,7 @@ export class PaymentsService {
       customerId,
       dto,
     );
+    await holdReward(order.id);
     const referenceId = randomUUID();
     const base = this.memberPublicBase();
     const successUrl = `${base}/?tab=shop&shopPayment=success&orderNumber=${encodeURIComponent(String(order.orderNumber))}`;
@@ -650,6 +685,18 @@ export class PaymentsService {
       successReturnUrl: successUrl,
       failureReturnUrl: failureUrl,
       metadata: paymentMetadata,
+    }).catch(async (err: unknown) => {
+      // The payment never started: drop the order so its stock, voucher lock
+      // and reward points are given back now rather than after the timeout.
+      await this.customers
+        .abandonPendingOrder(order.id, 'Payment could not be started')
+        .catch(() => undefined);
+      if (voucherLockToken) {
+        await this.rewardsWorkflow
+          .releaseVoucherLock(voucherLockToken)
+          .catch(() => undefined);
+      }
+      throw err;
     });
 
     const paymentRequestId =
@@ -728,9 +775,11 @@ export class PaymentsService {
     customerId: string;
     dto: SubmitMemberOrderDto;
     promoFinalize: (orderId: string) => Promise<void>;
+    holdReward: (orderId: string) => Promise<void>;
     voucherLockToken: string | null;
   }) {
-    const { customerId, dto, promoFinalize, voucherLockToken } = input;
+    const { customerId, dto, promoFinalize, holdReward, voucherLockToken } =
+      input;
     const totalCents = dto.totalCents;
     const releaseLock = async () => {
       if (voucherLockToken) {
@@ -761,6 +810,13 @@ export class PaymentsService {
     >;
     try {
       order = await this.customers.createPendingMemberOrder(customerId, dto);
+    } catch (err) {
+      await releaseLock();
+      throw err;
+    }
+
+    try {
+      await holdReward(order.id);
     } catch (err) {
       await releaseLock();
       throw err;
@@ -1637,7 +1693,7 @@ export class PaymentsService {
     customerId: string,
     definitionId: string,
     subtotalCents: number,
-  ): Promise<{ discountCents: number; pointsCost: number }> {
+  ): Promise<{ discountCents: number; pointsCost: number; title: string }> {
     const def = await this.prisma.voucherDefinition.findFirst({
       where: { id: definitionId, ...memberRewardsCatalogWhere() },
       select: { id: true, title: true, pointsCost: true },
@@ -1680,7 +1736,7 @@ export class PaymentsService {
           'This reward has no discount value configured. Contact support if this looks wrong.',
       });
     }
-    return { discountCents, pointsCost };
+    return { discountCents, pointsCost, title: def.title };
   }
 
   /**
@@ -1694,7 +1750,7 @@ export class PaymentsService {
     customerId: string,
     rewardCatalogId: string,
     subtotalCents: number,
-  ): Promise<{ discountCents: number; pointsCost: number }> {
+  ): Promise<{ discountCents: number; pointsCost: number; title: string }> {
     const reward = await this.prisma.rewardCatalog.findFirst({
       where: {
         id: rewardCatalogId,
@@ -1750,7 +1806,7 @@ export class PaymentsService {
           'This reward has no discount value configured. Contact support if this looks wrong.',
       });
     }
-    return { discountCents, pointsCost };
+    return { discountCents, pointsCost, title: reward.name };
   }
 
   private async finalizeShopPromotions(input: {
@@ -1782,6 +1838,14 @@ export class PaymentsService {
       input.pointsCost != null &&
       input.pointsCost > 0
     ) {
+      // Points are normally taken when the order is created (`holdReward`).
+      // An order that was already waiting for payment before that change has
+      // not had them taken, so take them now.
+      const held = await this.prisma.customerOrder.findUnique({
+        where: { id: input.orderId },
+        select: { rewardPointsSpent: true },
+      });
+      if (held && held.rewardPointsSpent > 0) return;
       await this.loyalty.appendLedgerEntry({
         customerId: input.customerId,
         deltaPoints: -input.pointsCost,

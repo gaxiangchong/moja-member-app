@@ -737,8 +737,22 @@ export async function updateMe(input: {
   return data as MemberProfile;
 }
 
+/** A reward the member redeemed with points. */
+export type RewardRedemption = {
+  id: string;
+  title: string;
+  pointsSpent: number;
+  redeemedAt: string;
+  /** The shop order it was used on; null for rewards redeemed straight from the catalog. */
+  orderNumber: number | null;
+  /** `returned`: the order was cancelled or never paid, so the points came back. */
+  status: 'redeemed' | 'pending' | 'returned';
+};
+
 export type MemberRewardsPayload = {
   wallet: { pointsBalance: number };
+  /** Newest first. */
+  redemptions?: RewardRedemption[];
   vouchers: Array<{
     id: string;
     status: string;
@@ -1088,7 +1102,12 @@ export async function consumeShopCartHandoff(token: string): Promise<{
 /** Member cancels their own order (only allowed before the kitchen starts). */
 export async function cancelMyOrder(
   orderId: string,
-): Promise<{ id: string; status: string; creditsReturnedCents?: number }> {
+): Promise<{
+  id: string;
+  status: string;
+  creditsReturnedCents?: number;
+  pointsReturned?: number;
+}> {
   const res = await authorizedFetch(
     `/customers/me/orders/${encodeURIComponent(orderId)}/cancel`,
     { method: 'POST' },
@@ -1097,6 +1116,7 @@ export async function cancelMyOrder(
     id?: string;
     status?: string;
     creditsReturnedCents?: number;
+    pointsReturned?: number;
     message?: string | string[];
   }>(res);
   if (!res.ok) {
@@ -1108,6 +1128,7 @@ export async function cancelMyOrder(
     id: data.id ?? orderId,
     status: data.status ?? 'cancelled',
     creditsReturnedCents: Number(data.creditsReturnedCents) || 0,
+    pointsReturned: Number(data.pointsReturned) || 0,
   };
 }
 
