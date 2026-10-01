@@ -575,7 +575,7 @@ export class CustomersService {
       // A birthday inside the window earns its voucher straight away rather
       // than at tomorrow's sweep. Best-effort: never fail a profile save.
       void this.campaignAutomation
-        .runBirthdayTrigger(updated.id)
+        .onBirthdayChanged(updated.id)
         .catch((err) =>
           this.logger.error(
             `Birthday campaign trigger failed for ${updated.id}: ${err instanceof Error ? err.message : String(err)}`,
@@ -683,48 +683,51 @@ export class CustomersService {
             ...withDiscount(v.definition.id),
           },
         })),
-        ...newVouchers.map((v) => {
-          const d = campaignVoucherDiscount(v.voucherCampaign);
-          let description = v.voucherCampaign?.description ?? null;
-          const birthdayBlock =
-            v.status === 'ACTIVE'
-              ? birthdayVoucherBlock(v.voucherCampaign, memberBirthday)
-              : null;
-          if (birthdayBlock) {
-            description = `${
-              birthdayBlock.code === 'BIRTHDAY_NOT_SET'
-                ? 'Add your birthday to your profile to use this voucher.'
-                : `Usable from ${birthdayBlock.opensOn}.`
-            }${description ? ' ' + description : ''}`;
-          }
-          // Surface a "usable from" note for birthday (and other future-dated)
-          // vouchers so the member understands why they can't redeem it yet.
-          const validFrom = (v.metadata as { validFrom?: string } | null)
-            ?.validFrom;
-          if (validFrom) {
-            const from = new Date(validFrom);
-            if (!Number.isNaN(from.getTime()) && from.getTime() > Date.now()) {
-              const fromLabel = from.toISOString().slice(0, 10);
-              description = `Usable from ${fromLabel}.${description ? ' ' + description : ''}`;
+        ...newVouchers
+          // A birthday voucher only exists for the member while their birthday
+          // is in the window, so it is not listed outside it. It is not lost: it
+          // comes back when the window opens, and checkout enforces the same rule.
+          .filter(
+            (v) =>
+              !(
+                v.status === 'ACTIVE' &&
+                birthdayVoucherBlock(v.voucherCampaign, memberBirthday)
+              ),
+          )
+          .map((v) => {
+            const d = campaignVoucherDiscount(v.voucherCampaign);
+            let description = v.voucherCampaign?.description ?? null;
+            // Surface a "usable from" note for birthday (and other future-dated)
+            // vouchers so the member understands why they can't redeem it yet.
+            const validFrom = (v.metadata as { validFrom?: string } | null)
+              ?.validFrom;
+            if (validFrom) {
+              const from = new Date(validFrom);
+              if (
+                !Number.isNaN(from.getTime()) &&
+                from.getTime() > Date.now()
+              ) {
+                const fromLabel = from.toISOString().slice(0, 10);
+                description = `Usable from ${fromLabel}.${description ? ' ' + description : ''}`;
+              }
             }
-          }
-          return {
-            id: v.id,
-            status: mapNewVoucherStatus(v.status),
-            issuedAt: v.createdAt,
-            expiresAt: v.expiresAt,
-            definition: {
+            return {
               id: v.id,
-              code: v.code,
-              title: v.name,
-              description,
-              pointsCost: null as number | null,
-              rebateValueSen: d.rebateValueSen,
-              minSpendSen: d.minSpendSen,
-              percentageOff: d.percentageOff,
-            },
-          };
-        }),
+              status: mapNewVoucherStatus(v.status),
+              issuedAt: v.createdAt,
+              expiresAt: v.expiresAt,
+              definition: {
+                id: v.id,
+                code: v.code,
+                title: v.name,
+                description,
+                pointsCost: null as number | null,
+                rebateValueSen: d.rebateValueSen,
+                minSpendSen: d.minSpendSen,
+                percentageOff: d.percentageOff,
+              },
+            };
+          }),
       ],
       rewards: [
         ...rewardCatalog.map((r) => ({

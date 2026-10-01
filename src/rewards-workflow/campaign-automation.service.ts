@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CustomerStatus, Prisma, VoucherCampaign } from '@prisma/client';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
-import { nextBirthday } from '../common/birthday.util';
+import { birthdayVoucherExpiry, nextBirthday } from '../common/birthday.util';
 import { NON_REVENUE_ORDER_STATUSES } from '../orders/order-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { birthdayCampaignWindow } from './birthday-voucher.rule';
@@ -16,6 +16,12 @@ const INACTIVE_DAYS = 'INACTIVE_DAYS';
 const MIN_PURCHASE = 'MIN_PURCHASE';
 const ALL_MEMBERS = 'ALL_MEMBERS';
 
+/**
+ * A member is given one birthday voucher a year. Their next one comes around
+ * 365 days later, so 300 leaves slack for the lead-in without letting a changed
+ * birthday date earn a second voucher in the same year.
+ */
+const BIRTHDAY_COOLDOWN_MS = 300 * 86_400_000;
 /** Days since the last purchase before a member counts as lapsed, absent a campaign value. */
 const WINBACK_DEFAULT_DAYS = 60;
 /** Most members one all-members campaign is issued to per sweep. */
@@ -77,6 +83,52 @@ export class CampaignAutomationService {
           oncePerCampaign: true,
         },
       );
+    }
+  }
+
+  /**
+   * A member saved a new birthday. A voucher they already hold follows the
+   * birthday they have now (its expiry is re-anchored), and one they do not yet
+   * hold is issued if the new date is inside the window. Order matters: moving
+   * the date first means the voucher they hold is recognised, so changing the
+   * birthday can never earn a second one.
+   */
+  async onBirthdayChanged(customerId: string): Promise<void> {
+    await this.reanchorBirthdayVouchers(customerId);
+    await this.runBirthdayTrigger(customerId);
+  }
+
+  /**
+   * Points a member's unused birthday vouchers at their current birthday. An
+   * expiry fixed from the old date would otherwise cut a corrected, later
+   * birthday short — or keep a voucher alive after the date moved away. Whether
+   * it can be used today is still decided by the window at redemption.
+   */
+  private async reanchorBirthdayVouchers(customerId: string): Promise<void> {
+    const member = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { birthday: true },
+    });
+    if (!member?.birthday) return;
+    const vouchers = await this.prisma.voucher.findMany({
+      where: {
+        customerId,
+        status: 'ACTIVE',
+        voucherCampaign: {
+          OR: [{ template: 'BIRTHDAY' }, { autoCreditTrigger: BIRTHDAY }],
+        },
+      },
+      include: { voucherCampaign: true },
+    });
+    for (const voucher of vouchers) {
+      const { afterDays } = birthdayCampaignWindow(voucher.voucherCampaign!);
+      const expiresAt = birthdayVoucherExpiry(member.birthday, afterDays);
+      if (voucher.expiresAt?.getTime() === expiresAt.getTime()) continue;
+      await this.prisma.voucher.updateMany({
+        // Not one a checkout has locked in the meantime.
+        where: { id: voucher.id, status: 'ACTIVE' },
+        data: { expiresAt },
+      });
     }
   }
 
@@ -281,29 +333,27 @@ export class CampaignAutomationService {
       );
       // Vouchers from this campaign handed out by hand (no key) still count: a
       // member who was given one for this birthday must not get a second.
-      const lastCover = await this.latestVoucherExpiry(
-        campaign.id,
-        onlyMemberIds,
-      );
+      const lastVoucher = await this.latestVoucher(campaign.id, onlyMemberIds);
       for (const member of members) {
         if (!member.birthday) continue;
         const next = nextBirthday(member.birthday);
         if (next.daysUntil > leadDays) continue;
         const key = `birthday:${next.year}`;
         if (have.has(`${member.id}|${key}`)) continue;
-        // The window for this birthday opens lead-days before it; a voucher
-        // that is still good from then on already covers it.
-        const windowStart = Date.UTC(
-          next.year,
-          next.month,
-          next.day - leadDays,
-        );
-        const covered = lastCover.get(member.id);
-        if (
-          covered === null ||
-          (covered !== undefined && covered >= windowStart)
-        ) {
-          continue;
+        const last = lastVoucher.get(member.id);
+        if (last) {
+          // The window for this birthday opens lead-days before it; a voucher
+          // that is still good from then on already covers it.
+          const windowStart = Date.UTC(
+            next.year,
+            next.month,
+            next.day - leadDays,
+          );
+          if (last.expiresAt === null || last.expiresAt >= windowStart)
+            continue;
+          // One birthday voucher a year, whatever date the member gives. Without
+          // this, moving the birthday into a different window would earn another.
+          if (Date.now() - last.issuedAt < BIRTHDAY_COOLDOWN_MS) continue;
         }
         if (await this.issueOne(campaign, member.id, 'auto_birthday', key)) {
           issued++;
@@ -419,28 +469,41 @@ export class CampaignAutomationService {
   }
 
   /**
-   * For each member, when their most recent live (not withdrawn) voucher from a
-   * campaign stops being valid: a timestamp, or `null` when it never expires.
-   * Members with none are absent from the map.
+   * Per member, when they were last given a live (not withdrawn) voucher from a
+   * campaign and when it stops being valid (`null` = never). Members with none
+   * are absent from the map.
    */
-  private async latestVoucherExpiry(
+  private async latestVoucher(
     campaignId: string,
     memberIds?: string[],
-  ): Promise<Map<string, number | null>> {
+  ): Promise<Map<string, { issuedAt: number; expiresAt: number | null }>> {
     const rows = await this.prisma.voucher.findMany({
       where: {
         voucherCampaignId: campaignId,
         status: { not: 'VOID' },
         ...(memberIds ? { customerId: { in: memberIds } } : {}),
       },
-      select: { customerId: true, expiresAt: true },
+      select: { customerId: true, expiresAt: true, createdAt: true },
     });
-    const out = new Map<string, number | null>();
+    const out = new Map<
+      string,
+      { issuedAt: number; expiresAt: number | null }
+    >();
     for (const r of rows) {
-      const at = r.expiresAt ? r.expiresAt.getTime() : null;
+      const expires = r.expiresAt ? r.expiresAt.getTime() : null;
+      const issued = r.createdAt.getTime();
       const cur = out.get(r.customerId);
-      if (cur === null) continue; // already known to never expire
-      out.set(r.customerId, at === null ? null : Math.max(cur ?? 0, at));
+      if (!cur) {
+        out.set(r.customerId, { issuedAt: issued, expiresAt: expires });
+        continue;
+      }
+      out.set(r.customerId, {
+        issuedAt: Math.max(cur.issuedAt, issued),
+        expiresAt:
+          cur.expiresAt === null || expires === null
+            ? null
+            : Math.max(cur.expiresAt, expires),
+      });
     }
     return out;
   }

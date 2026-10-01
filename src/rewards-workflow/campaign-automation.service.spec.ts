@@ -163,7 +163,10 @@ describe('birthday voucher timing and duplicates', () => {
     jest.useRealTimers();
   });
 
-  function setup(birthday: Date, existing: { expiresAt: Date | null }[] = []) {
+  function setup(
+    birthday: Date,
+    existing: { expiresAt: Date | null; createdAt?: Date }[] = [],
+  ) {
     const prisma = {
       voucherCampaign: { findMany: jest.fn().mockResolvedValue([CAMPAIGN]) },
       customer: {
@@ -180,6 +183,7 @@ describe('birthday voucher timing and duplicates', () => {
             customerId: 'm',
             issueKey: null,
             expiresAt: e.expiresAt,
+            createdAt: e.createdAt ?? new Date(),
           })),
         ),
       },
@@ -231,9 +235,118 @@ describe('birthday voucher timing and duplicates', () => {
 
   it('still issues this year when the only voucher on file is last year’s', async () => {
     const { service, builder } = setup(bday(10, 20), [
-      { expiresAt: new Date('2025-10-27T15:59:59Z') },
+      {
+        expiresAt: new Date('2025-10-27T15:59:59Z'),
+        createdAt: new Date('2025-09-20T00:00:00Z'),
+      },
     ]);
     expect(await service.runBirthdayTrigger('m')).toBe(1);
+    expect(builder.issueVoucherToCustomer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('changing a birthday', () => {
+  // 1 Oct 2026, 08:00 in Malaysia.
+  const NOW = new Date('2026-10-01T00:00:00Z');
+  const bday = (month: number, day: number) =>
+    new Date(Date.UTC(1990, month - 1, day));
+  const CAMPAIGN = {
+    id: 'b1',
+    template: 'BIRTHDAY',
+    autoCreditTrigger: 'BIRTHDAY',
+    autoCreditThreshold: 30,
+    voucherValidDays: 7,
+    totalRedemptionCap: null,
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW.getTime());
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function setup(
+    birthday: Date,
+    held: { id: string; expiresAt: Date | null; createdAt?: Date }[],
+  ) {
+    const rows = held.map((v) => ({
+      id: v.id,
+      customerId: 'm',
+      issueKey: null,
+      expiresAt: v.expiresAt,
+      createdAt: v.createdAt ?? new Date(),
+      voucherCampaign: CAMPAIGN,
+    }));
+    const prisma = {
+      voucherCampaign: { findMany: jest.fn().mockResolvedValue([CAMPAIGN]) },
+      customer: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'm', status: 'ACTIVE', birthday }),
+      },
+      voucher: {
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue(rows),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const builder = { issueVoucherToCustomer: jest.fn().mockResolvedValue({}) };
+    const service = new CampaignAutomationService(
+      prisma as never,
+      builder as never,
+    );
+    return { service, prisma, builder };
+  }
+
+  it('moves a held voucher’s expiry to the corrected birthday', async () => {
+    // Issued for a 20 Oct birthday (good until 27 Oct); corrected to 30 Oct.
+    const { service, prisma, builder } = setup(bday(10, 30), [
+      { id: 'v1', expiresAt: new Date('2026-10-27T15:59:59Z') },
+    ]);
+    await service.onBirthdayChanged('m');
+    expect(prisma.voucher.updateMany).toHaveBeenCalledWith({
+      where: { id: 'v1', status: 'ACTIVE' },
+      // 30 Oct + 7 days = 6 Nov, end of day in Malaysia.
+      data: { expiresAt: new Date('2026-11-06T15:59:59Z') },
+    });
+    // It already holds one, so the change must not earn a second.
+    expect(builder.issueVoucherToCustomer).not.toHaveBeenCalled();
+  });
+
+  it('leaves the expiry alone when the date did not actually move', async () => {
+    const { service, prisma } = setup(bday(10, 20), [
+      { id: 'v1', expiresAt: new Date('2026-10-27T15:59:59Z') },
+    ]);
+    await service.onBirthdayChanged('m');
+    expect(prisma.voucher.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not give a second voucher in the same year for a different birthday window', async () => {
+    // Given one this month for an October birthday, the member now says
+    // 15 Nov. That window also opens soon, but they have had this year's.
+    const { service, builder } = setup(bday(11, 15), [
+      {
+        id: 'used',
+        expiresAt: new Date('2026-10-27T15:59:59Z'),
+        createdAt: new Date('2026-09-25T00:00:00Z'),
+      },
+    ]);
+    await service.runBirthdayTrigger('m');
+    expect(builder.issueVoucherToCustomer).not.toHaveBeenCalled();
+  });
+
+  it('gives a new one the following year', async () => {
+    // Last year’s voucher was issued more than 300 days ago.
+    const { service, builder } = setup(bday(10, 20), [
+      {
+        id: 'old',
+        expiresAt: new Date('2025-10-27T15:59:59Z'),
+        createdAt: new Date('2025-09-20T00:00:00Z'),
+      },
+    ]);
+    await service.runBirthdayTrigger('m');
     expect(builder.issueVoucherToCustomer).toHaveBeenCalledTimes(1);
   });
 });
