@@ -142,3 +142,68 @@ describe('normalizePickupRules', () => {
     ).toThrow(PickupRulesError);
   });
 });
+
+describe('collection windows that stay open until they end', () => {
+  const monday = '2026-10-05';
+  const at = (hhmm: string) =>
+    // Kuala Lumpur is UTC+8 all year.
+    new Date(
+      `${monday}T${String((Number(hhmm.slice(0, 2)) + 24 - 8) % 24).padStart(2, '0')}:${hhmm.slice(3)}:00.000Z`,
+    );
+  const slot = (start: string, now: string) =>
+    evaluatePickupDay({
+      rules: DEFAULT_PICKUP_RULES,
+      date: monday,
+      now: at(now),
+    }).slots.find((s) => s.start === start)!;
+
+  it('offers 7pm – 9pm even after 7pm, while the shop is still open', () => {
+    expect(slot('19:00', '19:57').available).toBe(true);
+    expect(slot('19:00', '20:59').available).toBe(true);
+  });
+
+  it('closes it once the window has ended', () => {
+    const late = slot('19:00', '21:00');
+    expect(late.available).toBe(false);
+    expect(late.reason).toContain('ended');
+  });
+
+  it('still needs lead time for the other slots, so 4pm – 7pm is closed at 5pm', () => {
+    const four = slot('16:00', '17:00');
+    expect(four.available).toBe(false);
+    expect(four.reason).toContain('started');
+    expect(slot('16:00', '13:00').available).toBe(true);
+  });
+
+  it('labels the third slot 4pm – 7pm', () => {
+    expect(
+      DEFAULT_PICKUP_RULES.slots.find((s) => s.start === '16:00')?.label,
+    ).toBe('4pm – 7pm');
+  });
+
+  it('a slot with no end time still closes when it starts', () => {
+    const rules = {
+      ...DEFAULT_PICKUP_RULES,
+      slots: DEFAULT_PICKUP_RULES.slots.map((s) =>
+        s.start === '19:00' ? { ...s, endTime: null } : s,
+      ),
+    };
+    const quote = evaluatePickupDay({
+      rules,
+      date: monday,
+      now: at('19:30'),
+    });
+    expect(quote.slots.find((s) => s.start === '19:00')?.available).toBe(false);
+  });
+
+  it('refuses an end before the start, or after closing time', () => {
+    const withEnd = (endTime: string) =>
+      normalizePickupRules({
+        ...DEFAULT_PICKUP_RULES,
+        slots: [{ ...DEFAULT_PICKUP_RULES.slots[3], endTime }],
+      });
+    expect(() => withEnd('18:00')).toThrow(PickupRulesError);
+    expect(() => withEnd('22:00')).toThrow(PickupRulesError);
+    expect(withEnd('21:00').slots[0].endTime).toBe('21:00');
+  });
+});

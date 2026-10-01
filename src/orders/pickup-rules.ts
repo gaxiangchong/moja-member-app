@@ -20,6 +20,12 @@ export type PickupSlotConfig = {
   cutoffTime: string | null;
   /** Max orders in this slot on one day. Null means no cap. */
   capacity: number | null;
+  /**
+   * When the collection window closes, HH:mm. With a lead time of 0 the slot
+   * stays orderable until this time, even after it has started ("open until
+   * nine"). Null keeps the old behaviour: the slot closes when it starts.
+   */
+  endTime: string | null;
 };
 
 export type ShopPickupRules = {
@@ -53,6 +59,7 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
       leadMinutes: 120,
       cutoffTime: null,
       capacity: null,
+      endTime: '13:00',
     },
     {
       start: '14:00',
@@ -61,22 +68,26 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
       leadMinutes: 120,
       cutoffTime: null,
       capacity: null,
+      endTime: '16:00',
     },
     {
       start: '16:00',
-      label: '4pm – 6pm',
+      label: '4pm – 7pm',
       weekdays: [1, 2, 3, 4, 5, 6],
       leadMinutes: 120,
       cutoffTime: null,
       capacity: null,
+      endTime: '19:00',
     },
     {
       start: '19:00',
       label: '7pm – 9pm',
       weekdays: [1, 2, 3, 4, 5, 6],
-      leadMinutes: 120,
+      // No lead time: orderable right up to nine, while the shop is open.
+      leadMinutes: 0,
       cutoffTime: null,
       capacity: null,
+      endTime: '21:00',
     },
     {
       start: '10:00',
@@ -85,6 +96,7 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
       leadMinutes: 120,
       cutoffTime: null,
       capacity: null,
+      endTime: '12:30',
     },
   ],
 };
@@ -306,7 +318,16 @@ function offerSlot(
     remaining,
   });
 
-  if (now.getTime() >= startAt.getTime()) {
+  if (slot.endTime) {
+    const endAt = zonedWallToUtc(date, slot.endTime, rules.timeZone);
+    if (now.getTime() >= endAt.getTime()) {
+      return unavailable('This pickup time has already ended.');
+    }
+    // Inside the window: only a slot with no lead time takes walk-in orders.
+    if (now.getTime() >= startAt.getTime() && slot.leadMinutes > 0) {
+      return unavailable('This pickup time has already started.');
+    }
+  } else if (now.getTime() >= startAt.getTime()) {
     return unavailable('This pickup time has already started.');
   }
   if (slot.cutoffTime) {
@@ -390,6 +411,19 @@ function normalizeSlot(
     }
     capacity = cap;
   }
+  const endRaw = raw.endTime;
+  let endTime: string | null = null;
+  if (endRaw != null && String(endRaw).trim() !== '') {
+    endTime = requireHhmm(endRaw, `${labelAt} end`);
+    if (minutesOf(endTime) <= minutesOf(start)) {
+      throw new PickupRulesError(`${labelAt} must end after it starts.`);
+    }
+    if (minutesOf(endTime) > minutesOf(closeTime)) {
+      throw new PickupRulesError(
+        `${labelAt} ends at ${endTime}, after closing time ${closeTime}.`,
+      );
+    }
+  }
   return {
     start,
     label,
@@ -397,6 +431,7 @@ function normalizeSlot(
     leadMinutes: Math.floor(leadRaw),
     cutoffTime,
     capacity,
+    endTime,
   };
 }
 

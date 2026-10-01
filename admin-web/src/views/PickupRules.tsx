@@ -18,6 +18,7 @@ const WEEKDAYS = [
 
 type SlotForm = {
   start: string;
+  endTime: string;
   label: string;
   weekdays: number[];
   leadMinutes: string;
@@ -28,6 +29,7 @@ type SlotForm = {
 function slotToForm(slot: PickupSlotRule): SlotForm {
   return {
     start: slot.start,
+    endTime: slot.endTime ?? '',
     label: slot.label,
     weekdays: [...slot.weekdays],
     leadMinutes: String(slot.leadMinutes),
@@ -39,6 +41,7 @@ function slotToForm(slot: PickupSlotRule): SlotForm {
 function emptySlot(): SlotForm {
   return {
     start: '12:00',
+    endTime: '',
     label: '',
     weekdays: [1, 2, 3, 4, 5, 6],
     leadMinutes: '120',
@@ -113,6 +116,7 @@ export function PickupRules() {
         maxAdvanceDays: Number(maxAdvanceDays),
         slots: slots.map((slot) => ({
           start: slot.start,
+          endTime: slot.endTime.trim() || null,
           label: slot.label.trim(),
           weekdays: slot.weekdays,
           leadMinutes: Number(slot.leadMinutes),
@@ -218,10 +222,16 @@ export function PickupRules() {
             Add slot
           </button>
         </div>
+        <p className="dataTableMuted" style={{ marginTop: 0 }}>
+          <strong>Ends</strong> is when the collection window closes. A slot with a lead time of 0 stays open for
+          orders until it ends — for example 7pm – 9pm can still be ordered at 8pm. Other slots close for orders
+          once their lead time is up.
+        </p>
         <table className="dataTable">
           <thead>
             <tr>
               <th>Start</th>
+              <th>Ends</th>
               <th>Label</th>
               <th>Days</th>
               <th>Lead (min)</th>
@@ -239,6 +249,14 @@ export function PickupRules() {
                     type="time"
                     value={slot.start}
                     onChange={(e) => updateSlot(index, { start: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="toolbarInput"
+                    type="time"
+                    value={slot.endTime}
+                    onChange={(e) => updateSlot(index, { endTime: e.target.value })}
                   />
                 </td>
                 <td>

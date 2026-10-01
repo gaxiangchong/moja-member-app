@@ -1455,6 +1455,8 @@ export type PickupSlotRule = {
   leadMinutes: number;
   cutoffTime: string | null;
   capacity: number | null;
+  /** When the window closes. With no lead time the slot stays orderable until then. */
+  endTime?: string | null;
 };
 
 export type PickupRules = {
