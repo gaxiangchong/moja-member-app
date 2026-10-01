@@ -3,6 +3,7 @@ import {
   clearShopCatalogProductImage,
   createShopCatalogProduct,
   deleteShopCatalogProduct,
+  fetchSalesplayCodeSuggestions,
   fetchShopCatalogProducts,
   resolveApiAssetUrl,
   SHOP_CATALOG_CATEGORIES,
@@ -12,6 +13,7 @@ import {
   type ShopCatalogProduct,
   type ShopCatalogProductInput,
 } from '../api';
+import { SalesplaySync } from './SalesplaySync';
 
 const CATEGORY_LABELS: Record<ShopCatalogCategory, string> = {
   whole_cakes: 'Whole cakes',
@@ -37,9 +39,36 @@ function rmInputToCents(value: string): number | null {
   return Math.round(n * 100);
 }
 
-type VariantRow = { id?: string; label: string; priceRm: string; available: boolean };
+/**
+ * How well a product is linked to the SalesPlay POS: how many of its sellable
+ * units (the product, or each size) have no code, and which codes it has.
+ */
+function posCodeStatus(p: ShopCatalogProduct): { missing: number; total: number; codes: string[] } {
+  const productCode = p.salesplayProductCode?.trim() || '';
+  const variants = p.variants ?? [];
+  if (variants.length === 0) {
+    return { missing: productCode ? 0 : 1, total: 1, codes: productCode ? [productCode] : [] };
+  }
+  const codes: string[] = [];
+  let missing = 0;
+  for (const v of variants) {
+    const own = p.salesplayVariantCodes?.[v.label]?.trim() || '';
+    if (own) codes.push(own);
+    else if (!productCode) missing += 1;
+  }
+  if (productCode) codes.unshift(productCode);
+  return { missing, total: variants.length, codes };
+}
+
+const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
+
+type VariantRow = { id?: string; label: string; priceRm: string; available: boolean; salesplayCode: string };
 
 type EditorForm = {
+  /** Product ID (slug). Editable only while creating. */
+  id: string;
+  /** SalesPlay POS product code for the whole product. */
+  salesplayCode: string;
   category: ShopCatalogCategory;
   categoryLabel: string;
   name: string;
@@ -59,6 +88,8 @@ type EditorForm = {
 
 function emptyForm(nextSortOrder: number): EditorForm {
   return {
+    id: '',
+    salesplayCode: '',
     category: 'specials',
     categoryLabel: '',
     name: '',
@@ -79,6 +110,8 @@ function emptyForm(nextSortOrder: number): EditorForm {
 
 function formFromProduct(p: ShopCatalogProduct): EditorForm {
   return {
+    id: p.id,
+    salesplayCode: p.salesplayProductCode ?? '',
     category: p.category,
     categoryLabel: p.categoryLabel ?? '',
     name: p.name,
@@ -98,6 +131,7 @@ function formFromProduct(p: ShopCatalogProduct): EditorForm {
       label: v.label,
       priceRm: centsToRmInput(v.priceCents),
       available: v.available !== false,
+      salesplayCode: p.salesplayVariantCodes?.[v.label] ?? '',
     })),
   };
 }
@@ -129,7 +163,9 @@ export function SalesCatalog() {
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ShopCatalogCategory | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'soldout'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'soldout' | 'nocode'>('all');
+  const [section, setSection] = useState<'products' | 'sync'>('products');
+  const [codeSuggestions, setCodeSuggestions] = useState<string[]>([]);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ShopCatalogProduct | null>(null);
@@ -152,6 +188,20 @@ export function SalesCatalog() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    // Suggestions are a convenience; the field still works without them.
+    fetchSalesplayCodeSuggestions().then(setCodeSuggestions).catch(() => undefined);
+  }, []);
+
+  async function reloadProducts() {
+    setProducts(await fetchShopCatalogProducts());
+  }
+
+  const missingCodeCount = useMemo(
+    () => (products ?? []).filter((p) => p.isActive !== false && posCodeStatus(p).missing > 0).length,
+    [products],
+  );
+
   const filtered = useMemo(() => {
     if (!products) return [];
     const q = search.trim().toLowerCase();
@@ -161,9 +211,16 @@ export function SalesCatalog() {
         if (statusFilter === 'active') return p.isActive !== false;
         if (statusFilter === 'inactive') return p.isActive === false;
         if (statusFilter === 'soldout') return Boolean(p.soldOut);
+        if (statusFilter === 'nocode') return posCodeStatus(p).missing > 0;
         return true;
       })
-      .filter((p) => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))
+      .filter(
+        (p) =>
+          !q ||
+          p.name.toLowerCase().includes(q) ||
+          p.id.toLowerCase().includes(q) ||
+          posCodeStatus(p).codes.some((c) => c.toLowerCase().includes(q)),
+      )
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }, [products, search, categoryFilter, statusFilter]);
 
@@ -198,7 +255,7 @@ export function SalesCatalog() {
   }
 
   function addVariant() {
-    setForm((f) => ({ ...f, variants: [...f.variants, { label: '', priceRm: '', available: true }] }));
+    setForm((f) => ({ ...f, variants: [...f.variants, { label: '', priceRm: '', available: true, salesplayCode: '' }] }));
   }
 
   function removeVariant(index: number) {
@@ -210,12 +267,23 @@ export function SalesCatalog() {
     if (!form.name.trim()) return setFormError('Name is required.');
     const priceCents = rmInputToCents(form.priceRm);
     if (priceCents == null) return setFormError('Base price must be a valid amount.');
+    const slug = form.id.trim();
+    if (!editingProduct && slug && !SLUG_RE.test(slug)) {
+      return setFormError('Product ID can only use lowercase letters, numbers, "-" and "_".');
+    }
     for (const v of form.variants) {
       if (!v.label.trim()) return setFormError('Every variant needs a label.');
       if (rmInputToCents(v.priceRm) == null) return setFormError(`Variant "${v.label}" needs a valid price.`);
     }
 
+    const variantCodes: Record<string, string> = {};
+    for (const v of form.variants) {
+      if (v.label.trim() && v.salesplayCode.trim()) variantCodes[v.label.trim()] = v.salesplayCode.trim();
+    }
     const input: ShopCatalogProductInput = {
+      ...(editingProduct || !slug ? {} : { id: slug }),
+      salesplayProductCode: form.salesplayCode.trim(),
+      salesplayVariantCodes: variantCodes,
       category: form.category,
       categoryLabel: form.categoryLabel.trim() || undefined,
       name: form.name.trim(),
@@ -315,14 +383,60 @@ export function SalesCatalog() {
 
   const previewImageUrl = editingProduct?.imageUrl ? resolveApiAssetUrl(editingProduct.imageUrl) : '';
 
+  const switcher = (
+    <div className="drawerRowActions">
+      <button
+        type="button"
+        className={section === 'products' ? 'toolbarButton toolbarButton--primary' : 'toolbarButton'}
+        onClick={() => setSection('products')}
+      >
+        Products
+      </button>
+      <button
+        type="button"
+        className={section === 'sync' ? 'toolbarButton toolbarButton--primary' : 'toolbarButton'}
+        onClick={() => setSection('sync')}
+      >
+        Sync with SalesPlay
+      </button>
+    </div>
+  );
+
+  if (section === 'sync') {
+    return (
+      <div className="viewStack">
+        {switcher}
+        <SalesplaySync products={products ?? []} onCatalogChanged={reloadProducts} />
+      </div>
+    );
+  }
+
   return (
     <div className="viewStack">
+      {switcher}
+      {missingCodeCount > 0 ? (
+        <p className="viewMuted" style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: 8, margin: 0 }}>
+          <strong>{missingCodeCount} live product{missingCodeCount === 1 ? ' has' : 's have'} no SalesPlay code.</strong>{' '}
+          Without it, online orders can't be pushed to the POS and in-store sales won't add up with online in reports.{' '}
+          <button type="button" className="toolbarButton" onClick={() => setSection('sync')}>
+            Sync with SalesPlay
+          </button>{' '}
+          <button type="button" className="toolbarButton" onClick={() => setStatusFilter('nocode')}>
+            Show them
+          </button>
+        </p>
+      ) : null}
+      <datalist id="salesplayCodeList">
+        {codeSuggestions.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
       <div className="filterGrid">
         <label className="filterField">
           Search
           <input
             type="text"
-            placeholder="Product name or id"
+            placeholder="Name, product ID or SalesPlay code"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -343,6 +457,7 @@ export function SalesCatalog() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
             <option value="soldout">Sold out</option>
+            <option value="nocode">No SalesPlay code</option>
           </select>
         </label>
         <button type="button" className="toolbarButton toolbarButton--primary filterSubmit" onClick={openCreate}>
@@ -362,6 +477,7 @@ export function SalesCatalog() {
                 <th>Name</th>
                 <th>Category</th>
                 <th>Price</th>
+                <th>SalesPlay code</th>
                 <th>Status</th>
                 <th>Sort</th>
               </tr>
@@ -385,6 +501,26 @@ export function SalesCatalog() {
                   <td>{p.categoryLabel || CATEGORY_LABELS[p.category]}</td>
                   <td>{p.priceDisplay || formatRm(p.basePriceCents)}</td>
                   <td>
+                    {(() => {
+                      const st = posCodeStatus(p);
+                      const shown = st.codes.slice(0, 2).join(', ');
+                      return (
+                        <>
+                          {st.codes.length ? <code title={st.codes.join(', ')}>{shown}{st.codes.length > 2 ? ` +${st.codes.length - 2}` : ''}</code> : null}
+                          {st.missing > 0 ? (
+                            <span
+                              className="badge badge--warning"
+                              style={{ marginLeft: st.codes.length ? 6 : 0 }}
+                              title="No SalesPlay product code — in-store sales cannot be matched to this product in reports"
+                            >
+                              {st.codes.length && st.total > 1 ? `${st.missing} of ${st.total} sizes: no code` : 'No POS code'}
+                            </span>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td>
                     <span className={`badge badge--${p.isActive === false ? 'neutral' : 'success'}`}>
                       {p.isActive === false ? 'Inactive' : 'Active'}
                     </span>
@@ -395,7 +531,7 @@ export function SalesCatalog() {
               ))}
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="dataTableEmpty">No products match these filters.</td>
+                  <td colSpan={7} className="dataTableEmpty">No products match these filters.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -504,6 +640,34 @@ export function SalesCatalog() {
               </section>
 
               <section>
+                <h3 className="drawerSectionTitle">SalesPlay link</h3>
+                <div className="drawerFieldGrid">
+                  <label className="filterField">
+                    Product ID {editingProduct ? <span className="viewMuted">— fixed once created</span> : <span className="viewMuted">— leave blank to use the name</span>}
+                    <input
+                      type="text" maxLength={64} placeholder="e.g. caramel-espresso-gateau"
+                      value={form.id} disabled={Boolean(editingProduct)}
+                      onChange={(e) => setForm((f) => ({ ...f, id: e.target.value.toLowerCase() }))}
+                    />
+                  </label>
+                  <label className="filterField">
+                    SalesPlay product code
+                    <input
+                      type="text" list="salesplayCodeList" maxLength={64} placeholder="Code of the matching product in the POS"
+                      value={form.salesplayCode}
+                      onChange={(e) => setForm((f) => ({ ...f, salesplayCode: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <p className="viewMuted" style={{ marginBottom: 0 }}>
+                  Links this product to its POS product, so online orders pushed to SalesPlay carry the POS code and
+                  in-store receipts count toward the same product in reports. For sized products, fill the{' '}
+                  <strong>POS code</strong> box on each size below — a size code wins over this one. Each POS code can
+                  belong to only one product. Not sure? Use <em>Sync with SalesPlay</em> to fill them from the POS export.
+                </p>
+              </section>
+
+              <section>
                 <h3 className="drawerSectionTitle">Details</h3>
                 <div className="drawerFieldGrid">
                   <label className="filterField">
@@ -585,6 +749,11 @@ export function SalesCatalog() {
                       <input
                         type="number" min={0} step="0.01" placeholder="RM" value={v.priceRm}
                         onChange={(e) => updateVariant(i, { priceRm: e.target.value })}
+                      />
+                      <input
+                        type="text" list="salesplayCodeList" placeholder="POS code" maxLength={64} value={v.salesplayCode}
+                        onChange={(e) => updateVariant(i, { salesplayCode: e.target.value })}
+                        aria-label="SalesPlay code for this size"
                       />
                       <Toggle checked={v.available} onChange={(val) => updateVariant(i, { available: val })} label="Available" />
                       <button type="button" className="variantRemove" onClick={() => removeVariant(i)} aria-label="Remove variant">

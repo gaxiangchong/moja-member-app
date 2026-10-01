@@ -573,9 +573,15 @@ export type ShopCatalogProduct = {
   soldOut?: boolean;
   isActive: boolean;
   sortOrder: number;
+  /** SalesPlay POS product code for this product (the POS is the master for it). */
+  salesplayProductCode?: string | null;
+  /** SalesPlay code per size, keyed by the variant label (a size code wins over the product code). */
+  salesplayVariantCodes?: Record<string, string>;
 };
 
 export type ShopCatalogProductInput = {
+  /** Only honoured when creating; leave out to get a slug of the name. */
+  id?: string;
   category: ShopCatalogCategory;
   name: string;
   shortDescription: string;
@@ -592,6 +598,8 @@ export type ShopCatalogProductInput = {
   badge?: string;
   soldOut?: boolean;
   variants?: ShopCatalogVariant[];
+  salesplayProductCode?: string;
+  salesplayVariantCodes?: Record<string, string>;
 };
 
 async function parseCatalogResponse<T>(res: Response): Promise<T> {
@@ -657,6 +665,142 @@ export async function clearShopCatalogProductImage(id: string): Promise<ShopCata
     method: 'DELETE',
   });
   return parseCatalogResponse<ShopCatalogProduct>(res);
+}
+
+/** POS codes seen on synced SalesPlay receipts — suggestions for the code fields. */
+export async function fetchSalesplayCodeSuggestions(): Promise<string[]> {
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-codes');
+  const data = await parseCatalogResponse<unknown>(res);
+  return Array.isArray(data) ? data.filter((c): c is string => typeof c === 'string') : [];
+}
+
+export type SalesplayCsvInfo = { exists: boolean; uploadedAt?: string; rowCount?: number };
+
+export async function fetchSalesplayCsvInfo(): Promise<SalesplayCsvInfo> {
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-csv/info');
+  return parseCatalogResponse<SalesplayCsvInfo>(res);
+}
+
+/** Stores the Back Office "Product list" export on the server (multipart). */
+export async function uploadSalesplayCsv(
+  file: File,
+): Promise<{ rowCount: number; skippedCount: number; uploadedAt: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-csv/file', {
+    method: 'POST',
+    body: form,
+  });
+  return parseCatalogResponse(res);
+}
+
+export type SalesplaySyncOptionsInput = {
+  /** Categories to consider; leave out for the server default. */
+  categories?: string[];
+  updateCodes: boolean;
+  updatePrices: boolean;
+  createMissingProducts: boolean;
+  createMissingVariants: boolean;
+  missingAction: 'keep' | 'hide' | 'delete';
+  assignments: { code: string; productId: string; variantLabel: string | null }[];
+};
+
+export type SalesplayMatch = {
+  code: string;
+  csvName: string;
+  category: string;
+  csvPriceCents: number;
+  enabled: boolean;
+  productId: string;
+  productName: string;
+  variantLabel: string | null;
+  via: 'code' | 'name' | 'manual';
+  currentCode: string | null;
+  codeAction: 'set' | 'replace' | 'unchanged';
+  currentPriceCents: number;
+  priceAction: 'set' | 'unchanged' | 'locked';
+};
+
+export type SalesplayCsvOnly = {
+  code: string;
+  csvName: string;
+  baseName: string;
+  variantLabel: string | null;
+  category: string;
+  csvPriceCents: number;
+  enabled: boolean;
+  kind: 'new-product' | 'new-variant';
+  suggestedProductId: string | null;
+  suggestedProductName: string | null;
+  willCreate: boolean;
+  skipReason: string | null;
+};
+
+export type SalesplayCatalogOnly = {
+  productId: string;
+  productName: string;
+  variantLabel: string | null;
+  currentCode: string | null;
+  isActive: boolean;
+  reason: 'missing' | 'disabled' | 'out-of-scope';
+  action: 'keep' | 'hide' | 'delete';
+  blockedReason: string | null;
+};
+
+export type SalesplaySyncPlan = {
+  categories: { name: string; rowCount: number; included: boolean }[];
+  summary: {
+    csvRows: number;
+    csvRowsInScope: number;
+    catalogUnits: number;
+    matched: number;
+    matchedDisabled: number;
+    codesToWrite: number;
+    pricesToWrite: number;
+    pricesLocked: number;
+    productsToCreate: number;
+    variantsToCreate: number;
+    toHide: number;
+    toDelete: number;
+    removalBlocked: number;
+    csvOnly: number;
+    catalogOnly: number;
+  };
+  matched: SalesplayMatch[];
+  csvOnly: SalesplayCsvOnly[];
+  catalogOnly: SalesplayCatalogOnly[];
+  skipped: { line: number; name: string; reason: string }[];
+};
+
+export async function previewSalesplaySync(
+  body: SalesplaySyncOptionsInput,
+): Promise<SalesplaySyncPlan> {
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-csv/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return parseCatalogResponse<SalesplaySyncPlan>(res);
+}
+
+export type SalesplaySyncResult = {
+  plan: SalesplaySyncPlan;
+  productsUpdated: number;
+  productsCreated: number;
+  productsHidden: number;
+  productsDeleted: number;
+  deletedProductNames: string[];
+};
+
+export async function applySalesplaySync(
+  body: SalesplaySyncOptionsInput,
+): Promise<SalesplaySyncResult> {
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-csv/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return parseCatalogResponse<SalesplaySyncResult>(res);
 }
 
 export type HomePopularConfig = {

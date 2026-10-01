@@ -1,6 +1,7 @@
 import {
   applySalesplaySyncPlan,
   buildSalesplaySyncPlan,
+  findSalesplayCodeConflict,
   normalizeProductName,
   splitSalesplayProductName,
   suggestProductForName,
@@ -589,5 +590,77 @@ describe('applySalesplaySyncPlan', () => {
       productId: 'caramel-espresso-gateau',
       via: 'manual',
     });
+  });
+});
+
+describe('one POS code, one product', () => {
+  const cake = {
+    id: 'cake',
+    name: 'Caramel Cake',
+    salesplayProductCode: null,
+    salesplayVariantCodes: { '6 inch': '30003-105', '8 inch': '30003-106' },
+  };
+  const loaf = {
+    id: 'loaf',
+    name: 'Banana Loaf',
+    salesplayProductCode: '20001',
+    salesplayVariantCodes: undefined,
+  };
+
+  it('allows codes nobody else uses', () => {
+    expect(
+      findSalesplayCodeConflict(
+        { ...loaf, salesplayProductCode: '20002' },
+        [cake, loaf],
+        loaf,
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a code that is another product's — product-level or per size, any case", () => {
+    expect(
+      findSalesplayCodeConflict(
+        { ...loaf, salesplayProductCode: '30003-105' },
+        [cake, loaf],
+        loaf,
+      ),
+    ).toMatch(/already belongs to "Caramel Cake"/);
+    expect(
+      findSalesplayCodeConflict(
+        { ...cake, salesplayVariantCodes: { '6 inch': '20001' } },
+        [cake, loaf],
+        cake,
+      ),
+    ).toMatch(/already belongs to "Banana Loaf"/);
+    expect(
+      findSalesplayCodeConflict(
+        { id: 'new', name: 'New', salesplayProductCode: 'ABC' },
+        [{ ...loaf, salesplayProductCode: 'abc' }],
+      ),
+    ).toMatch(/already belongs/);
+  });
+
+  it('refuses the same code twice on one product', () => {
+    expect(
+      findSalesplayCodeConflict(
+        {
+          ...cake,
+          salesplayVariantCodes: { '6 inch': 'X1', '8 inch': 'x1' },
+        },
+        [cake],
+        cake,
+      ),
+    ).toMatch(/more than once/);
+  });
+
+  it('still lets a product that already carries a clash be edited', () => {
+    const clashing = { ...loaf, salesplayProductCode: '30003-105' };
+    expect(
+      findSalesplayCodeConflict(clashing, [cake, clashing], clashing),
+    ).toBeNull();
+  });
+
+  it('does not clash with itself', () => {
+    expect(findSalesplayCodeConflict(cake, [cake, loaf], undefined)).toBeNull();
   });
 });

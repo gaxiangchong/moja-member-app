@@ -765,7 +765,7 @@ export function buildSalesplaySyncPlan(
 // Turning the plan into products
 // ---------------------------------------------------------------------------
 
-function slugifyId(name: string): string {
+export function slugifyId(name: string): string {
   return (
     name
       .toLowerCase()
@@ -963,4 +963,66 @@ export function applySalesplaySyncPlan(
     hidden: updated.filter((p) => hiddenIds.has(p.id)),
     deleted: [...deletedIds].map((id) => byId.get(id)!),
   };
+}
+
+/** Every SalesPlay code a product carries: its own, plus one per size. */
+export function salesplayCodesOf(
+  p: Pick<ShopCatalogProduct, 'salesplayProductCode' | 'salesplayVariantCodes'>,
+): string[] {
+  return [
+    p.salesplayProductCode ?? '',
+    ...Object.values(p.salesplayVariantCodes ?? {}),
+  ]
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+/**
+ * A SalesPlay code identifies exactly one thing on the till, so it may only
+ * sit on one product (or one size of it). Returns a message describing the
+ * first clash, or null when the codes are free.
+ *
+ * Only codes the admin is adding or changing are checked (`before` is the
+ * stored version), so a product that already carries a duplicate from the past
+ * can still be edited and fixed.
+ */
+export function findSalesplayCodeConflict(
+  next: Pick<
+    ShopCatalogProduct,
+    'id' | 'name' | 'salesplayProductCode' | 'salesplayVariantCodes'
+  >,
+  others: Pick<
+    ShopCatalogProduct,
+    'id' | 'name' | 'salesplayProductCode' | 'salesplayVariantCodes'
+  >[],
+  before?: Pick<
+    ShopCatalogProduct,
+    'salesplayProductCode' | 'salesplayVariantCodes'
+  >,
+): string | null {
+  const key = (c: string) => c.trim().toLowerCase();
+  const already = new Set((before ? salesplayCodesOf(before) : []).map(key));
+
+  const mine = salesplayCodesOf(next);
+  const seen = new Set<string>();
+  for (const code of mine) {
+    if (seen.has(key(code))) {
+      return `SalesPlay code "${code}" is used more than once on this product.`;
+    }
+    seen.add(key(code));
+  }
+
+  const owner = new Map<string, string>();
+  for (const o of others) {
+    if (o.id === next.id) continue;
+    for (const code of salesplayCodesOf(o)) owner.set(key(code), o.name);
+  }
+  for (const code of mine) {
+    if (already.has(key(code))) continue;
+    const name = owner.get(key(code));
+    if (name) {
+      return `SalesPlay code "${code}" already belongs to "${name}". Each POS code can only be linked to one product.`;
+    }
+  }
+  return null;
 }

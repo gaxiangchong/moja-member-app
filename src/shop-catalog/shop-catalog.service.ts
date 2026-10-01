@@ -26,6 +26,8 @@ import {
   applySalesplaySyncPlan,
   buildSalesplaySyncPlan,
   toSalesplayCsvRows,
+  findSalesplayCodeConflict,
+  slugifyId,
 } from './salesplay-catalog-sync';
 import type {
   SalesplayCsvParseResult,
@@ -780,15 +782,42 @@ export class ShopCatalogService implements OnModuleInit {
     );
   }
 
+  /** One POS code, one product — see {@link findSalesplayCodeConflict}. */
+  private assertSalesplayCodesFree(
+    next: ShopCatalogProduct,
+    all: ShopCatalogProduct[],
+    before?: ShopCatalogProduct,
+  ): void {
+    const conflict = findSalesplayCodeConflict(next, all, before);
+    if (conflict) {
+      throw new BadRequestException({
+        code: 'SALESPLAY_CODE_IN_USE',
+        message: conflict,
+      });
+    }
+  }
+
   async createProduct(
     input: ShopCatalogProductInput,
   ): Promise<ShopCatalogProduct> {
-    const next = this.normalizeProduct(input);
-    if (await this.loadOne(next.id)) {
+    // No id given: use a readable slug of the name (like synced products),
+    // not a random UUID, and keep it unique.
+    const all = await this.loadAll();
+    let withId = input;
+    if (!input.id?.trim()) {
+      const taken = new Set(all.map((p) => p.id));
+      const base = slugifyId(String(input.name ?? ''));
+      let id = base;
+      for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+      withId = { ...input, id };
+    }
+    const next = this.normalizeProduct(withId);
+    if (all.some((p) => p.id === next.id)) {
       throw new BadRequestException(
         `A product with id "${next.id}" already exists.`,
       );
     }
+    this.assertSalesplayCodesFree(next, all);
     return this.saveProduct(next, { includeStock: true });
   }
 
@@ -798,6 +827,7 @@ export class ShopCatalogService implements OnModuleInit {
   ): Promise<ShopCatalogProduct> {
     const before = await this.requireOne(id);
     const next = this.normalizeProduct(input, before);
+    this.assertSalesplayCodesFree(next, await this.loadAll(), before);
     const changed = detectChangedFields(before, next);
     if (changed.length > 0) {
       next.syncOverrides = mergeSyncOverrides(before.syncOverrides, changed);
