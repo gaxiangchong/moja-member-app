@@ -9,6 +9,8 @@ import { fetchDeliverySettings, updateDeliverySettings } from '../api';
 export function DeliverySettings() {
   const [enabled, setEnabled] = useState(true);
   const [whatsapp, setWhatsapp] = useState('');
+  /** The number as the server stored it (digits with country code) — what members' button really opens. */
+  const [savedNumber, setSavedNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -22,6 +24,7 @@ export function DeliverySettings() {
         if (!alive) return;
         setEnabled(s.enabled);
         setWhatsapp(s.whatsappNumber);
+        setSavedNumber(s.whatsappNumber);
       })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : 'Failed to load delivery settings');
@@ -42,6 +45,7 @@ export function DeliverySettings() {
       const saved = await updateDeliverySettings({ enabled, whatsappNumber: whatsapp });
       setEnabled(saved.enabled);
       setWhatsapp(saved.whatsappNumber);
+      setSavedNumber(saved.whatsappNumber);
       setSavedAt(Date.now());
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save');
@@ -112,8 +116,23 @@ export function DeliverySettings() {
           </p>
         ) : (
           <p className="dataTableMuted">
-            The button opens a chat to this number with the order, address and contact already typed in. A number
-            starting with 0 is treated as Malaysian (+60).
+            When a member chooses <em>Moja Maison helps me choose a delivery partner</em>, a green{' '}
+            <strong>Chat with Moja Maison on WhatsApp</strong> button opens a chat to this number with the order,
+            address and contact already typed in. A number starting with 0 is treated as Malaysian (+60).
+            {savedNumber ? (
+              <>
+                {' '}
+                <a
+                  href={`https://wa.me/${savedNumber}?text=${encodeURIComponent('Test message from the Moja Maison admin — delivery help button.')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open a test chat with +{savedNumber}
+                </a>
+              </>
+            ) : (
+              ' Save to get a link to test it.'
+            )}
           </p>
         )}
         {saveError ? <p className="viewError">{saveError}</p> : null}
