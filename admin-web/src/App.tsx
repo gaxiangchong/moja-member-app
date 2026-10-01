@@ -23,6 +23,7 @@ import { BentoVouchers } from './views/BentoVouchers';
 import { GiftRewards } from './views/GiftRewards';
 import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
+import { DeliverySettings } from './views/DeliverySettings';
 import { MemberOrdersSettings } from './views/MemberOrdersSettings';
 import { PickupRules } from './views/PickupRules';
 import { TopUpSettings } from './views/TopUpSettings';
@@ -258,6 +259,8 @@ function renderView(viewId: string) {
       return <HomeAds />;
     case 'sales-pickup-rules':
       return <PickupRules />;
+    case 'sales-delivery':
+      return <DeliverySettings />;
     case 'sales-member-orders':
       return <MemberOrdersSettings />;
     default:

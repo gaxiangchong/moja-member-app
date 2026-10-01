@@ -1522,6 +1522,31 @@ export async function updateMemberOrdersSettings(
   return data;
 }
 
+/** Delivery at checkout: on/off and Moja Maison's WhatsApp number for courier help. */
+export type DeliverySettings = {
+  enabled: boolean;
+  /** Digits with country code; empty = not set. */
+  whatsappNumber: string;
+};
+
+export async function fetchDeliverySettings(): Promise<DeliverySettings> {
+  const res = await authorizedFetch('/admin/shop/delivery-settings');
+  const data = await parseJson<DeliverySettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+export async function updateDeliverySettings(settings: DeliverySettings): Promise<DeliverySettings> {
+  const res = await authorizedFetch('/admin/shop/delivery-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await parseJson<DeliverySettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
 /** Credit top-ups: on/off, the allowed range, and the bonus members earn. Amounts are in sen. */
 export type TopUpSettings = {
   enabled: boolean;

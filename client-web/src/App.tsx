@@ -2122,6 +2122,8 @@ function App() {
                 onRequireAuth={() => openAuthOverlay('checkout')}
                 authResumeSignal={authResumeSignal}
                 creditsBalanceCents={profile?.storedWallet?.currentWalletBalance ?? 0}
+                memberName={profile?.displayName}
+                memberPhone={profile?.phoneE164}
                 onCreditsChanged={() => void loadMemberData().catch(() => undefined)}
               />
             )}

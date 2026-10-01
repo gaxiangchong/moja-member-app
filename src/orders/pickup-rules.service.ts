@@ -88,13 +88,6 @@ export class PickupRulesService {
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const now = input.now ?? new Date();
-    if (input.fulfilmentType === 'DELIVERY') {
-      throw new BadRequestException({
-        code: 'DELIVERY_UNAVAILABLE',
-        message: "We don't offer delivery yet. Choose self pickup or in store.",
-      });
-    }
-
     const rules = await this.getRules();
     if (input.fulfilmentType === 'IN_STORE') {
       const store = evaluateStoreNow(rules, now);
@@ -160,7 +153,10 @@ export class PickupRulesService {
     const rows = await tx.customerOrder.groupBy({
       by: ['scheduledSlot'],
       where: {
-        fulfilmentType: OrderFulfilmentType.PICKUP,
+        // A courier collecting a delivery takes the same kitchen slot as a customer.
+        fulfilmentType: {
+          in: [OrderFulfilmentType.PICKUP, OrderFulfilmentType.DELIVERY],
+        },
         scheduledDate: parseBusinessDate(date),
         scheduledSlot: { not: null },
         status: {

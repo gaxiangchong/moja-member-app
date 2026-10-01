@@ -4,6 +4,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -40,6 +41,24 @@ export class MemberOrderLineDto {
   @IsString()
   @MaxLength(2000)
   imageUrl?: string | null;
+}
+
+/** Where a delivery goes and who arranges the courier. Validated in `delivery.ts`. */
+export class DeliveryDetailsDto {
+  @IsString()
+  @MaxLength(600)
+  address!: string;
+
+  @IsString()
+  @MaxLength(160)
+  contactName!: string;
+
+  @IsString()
+  @MaxLength(40)
+  contactPhone!: string;
+
+  @IsIn(['SELF', 'MOJA'])
+  arrangement!: 'SELF' | 'MOJA';
 }
 
 export class SubmitMemberOrderDto {
@@ -81,6 +100,13 @@ export class SubmitMemberOrderDto {
     message: 'scheduledSlot must be HH:mm (24h)',
   })
   scheduledSlot?: string | null;
+
+  /** Required when `fulfilmentType` is DELIVERY. */
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => DeliveryDetailsDto)
+  delivery?: DeliveryDetailsDto;
 
   @IsArray()
   @ArrayMinSize(1)

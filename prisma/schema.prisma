@@ -573,6 +573,12 @@ model CustomerOrder {
   /// Delivery charged to the customer, already included in `totalCents`.
   /// Excluded from loyalty points — see `finalizeShopOrderAfterPayment`.
   deliveryFeeCents        Int       @default(0) @map("delivery_fee_cents")
+  /// Delivery orders: where to, who to contact, and who books the courier.
+  deliveryAddress         String?   @map("delivery_address")
+  deliveryContactName     String?   @map("delivery_contact_name") @db.VarChar(120)
+  deliveryContactPhone    String?   @map("delivery_contact_phone") @db.VarChar(32)
+  /// SELF = the member books their own courier; MOJA = Moja Maison helps arrange one.
+  deliveryArrangement     String?   @map("delivery_arrangement") @db.VarChar(8)
   /// Part of `totalCents` paid from the member's wallet credits (sen). Zero when paid by card/e-wallet.
   paidWithCreditsCents    Int       @default(0) @map("paid_with_credits_cents")
   /// Set once those credits have been returned to the wallet (cancel / refund), so it happens at most once.

@@ -23,6 +23,12 @@ export type PastOrder = {
   scheduledDate?: string | null;
   scheduledSlot?: string | null;
   deliveryFeeCents?: number;
+  delivery?: {
+    address: string;
+    contactName: string | null;
+    contactPhone: string | null;
+    arrangement: 'SELF' | 'MOJA' | null;
+  } | null;
   cancellable?: boolean;
   status?: string;
   totalCents: number;

@@ -25,6 +25,8 @@ import {
   completeDemoShopOrder,
   createXenditCardTokenSession,
   createShopOrderCheckout,
+  fetchDeliveryInfo,
+  type DeliveryInfo,
   fetchPickupSlots,
   fetchShopAvailability,
   fetchShopCatalogProducts,
@@ -34,6 +36,11 @@ import {
   isShopProductSoldOut,
 } from '../api';
 import { HIDDEN_PAYMENT_CHANNELS } from '../payments/channels';
+import {
+  DELIVERY_CHARGE_NOTICE,
+  deliveryWhatsappMessage,
+  whatsappUrl,
+} from '../lib/whatsapp';
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
@@ -138,6 +145,8 @@ export function ShopFlow({
   authResumeSignal,
   creditsBalanceCents = 0,
   onCreditsChanged,
+  memberName,
+  memberPhone,
 }: {
   pointsBalance: number;
   memberRewards?: MemberRewardsPayload | null;
@@ -156,6 +165,9 @@ export function ShopFlow({
   creditsBalanceCents?: number;
   /** Called after credits were spent so the app can refresh the balance. */
   onCreditsChanged?: () => void;
+  /** Pre-fill the delivery contact. */
+  memberName?: string | null;
+  memberPhone?: string | null;
 }) {
   const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
@@ -172,6 +184,7 @@ export function ShopFlow({
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelCode, setSelectedChannelCode] = useState('');
+  const [deliveryInfo, setDeliveryInfo] = useState<DeliveryInfo | null>(null);
   const [paymentMethodMode, setPaymentMethodMode] =
     useState<PaymentMethodMode>('channel');
   const [cardPaymentTokenId, setCardPaymentTokenId] = useState('');
@@ -208,6 +221,8 @@ export function ShopFlow({
   const removeLine = useShopStore((s) => s.removeLine);
   const fulfillmentMethod = useShopStore((s) => s.fulfillmentMethod);
   const setFulfillmentMethod = useShopStore((s) => s.setFulfillmentMethod);
+  const delivery = useShopStore((s) => s.delivery);
+  const setDelivery = useShopStore((s) => s.setDelivery);
   const pickupDate = useShopStore((s) => s.pickupDate);
   const setPickupDate = useShopStore((s) => s.setPickupDate);
   const pickupTime = useShopStore((s) => s.pickupTime);
@@ -240,6 +255,10 @@ export function ShopFlow({
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
   const total = getTotalCents();
+  const isDelivery = fulfillmentMethod === 'delivery';
+  // Self pickup and delivery both go out on a chosen day and time slot.
+  const isScheduled = fulfillmentMethod === 'pickup' || isDelivery;
+  const deliveryOffered = deliveryInfo?.enabled !== false;
   const creditsCoverTotal = total > 0 && creditsBalanceCents >= total;
   useEffect(() => {
     if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
@@ -265,7 +284,7 @@ export function ShopFlow({
   useEffect(() => {
     if (screen !== 'checkout') return;
     const date =
-      fulfillmentMethod === 'pickup' && pickupDate ? pickupDate : undefined;
+      isScheduled && pickupDate ? pickupDate : undefined;
     let alive = true;
     void fetchPickupSlots(date)
       .then((day) => {
@@ -277,19 +296,19 @@ export function ShopFlow({
     return () => {
       alive = false;
     };
-  }, [screen, fulfillmentMethod, pickupDate]);
+  }, [screen, isScheduled, pickupDate]);
 
   useEffect(() => {
     if (!pickupDay || !pickupTime) return;
-    if (fulfillmentMethod !== 'pickup' || pickupDay.date !== pickupDate) return;
+    if (!isScheduled || pickupDay.date !== pickupDate) return;
     const chosen = pickupDay.slots.find((slot) => slot.start === pickupTime);
     if (!chosen?.available) setPickupTime(null);
-  }, [pickupDay, pickupTime, pickupDate, fulfillmentMethod, setPickupTime]);
+  }, [pickupDay, pickupTime, pickupDate, isScheduled, setPickupTime]);
 
   // Availability is per collection day, so re-check whenever the member picks
   // a different date or changes the cart.
   useEffect(() => {
-    if (fulfillmentMethod !== 'pickup' || !pickupDate || cart.length === 0) {
+    if (!isScheduled || !pickupDate || cart.length === 0) {
       setDateAvailability([]);
       return;
     }
@@ -322,7 +341,37 @@ export function ShopFlow({
     return () => {
       alive = false;
     };
-  }, [fulfillmentMethod, pickupDate, cart]);
+  }, [isScheduled, pickupDate, cart]);
+
+  // Whether delivery is on, and the WhatsApp number for courier help.
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    let alive = true;
+    fetchDeliveryInfo()
+      .then((info) => {
+        if (alive) setDeliveryInfo(info);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [screen]);
+
+  // The shop turned delivery off while this cart was waiting.
+  useEffect(() => {
+    if (deliveryInfo && !deliveryInfo.enabled && fulfillmentMethod === 'delivery') {
+      setFulfillmentMethod('pickup');
+    }
+  }, [deliveryInfo, fulfillmentMethod, setFulfillmentMethod]);
+
+  // Start the delivery contact from the member's own details.
+  useEffect(() => {
+    if (!isDelivery) return;
+    const patch: { contactName?: string; contactPhone?: string } = {};
+    if (!delivery.contactName.trim() && memberName?.trim()) patch.contactName = memberName.trim();
+    if (!delivery.contactPhone.trim() && memberPhone?.trim()) patch.contactPhone = memberPhone.trim();
+    if (patch.contactName || patch.contactPhone) setDelivery(patch);
+  }, [isDelivery, delivery.contactName, delivery.contactPhone, memberName, memberPhone, setDelivery]);
 
   useEffect(() => {
     if (!initialScreen) return;
@@ -691,6 +740,12 @@ export function ShopFlow({
     applyVoucher(match);
   };
 
+  /** Appended to the "order placed" pop-ups when the order is a delivery. */
+  const deliveryAlertNote = (summary: string[]) =>
+    summary[0] === 'Delivery'
+      ? `\n\n${DELIVERY_CHARGE_NOTICE} Open Orders to message us on WhatsApp.`
+      : '';
+
   const handlePlaceOrder = async () => {
     // Safety net: covers a session expiring while already on the checkout
     // screen. The normal path never reaches here signed out, since
@@ -704,6 +759,7 @@ export function ShopFlow({
       fulfillmentMethod,
       pickupDate,
       pickupTime,
+      delivery,
     };
     const { valid, errors } = validateCheckout(draft);
     if (!valid) {
@@ -711,16 +767,8 @@ export function ShopFlow({
       return;
     }
     if (
-      draft.fulfillmentMethod === 'in_store' &&
-      pickupDay &&
-      !pickupDay.storeOpen &&
-      pickupDay.storeClosedReason
-    ) {
-      setCheckoutErrors([pickupDay.storeClosedReason]);
-      return;
-    }
-    if (
-      draft.fulfillmentMethod === 'pickup' &&
+      (draft.fulfillmentMethod === 'pickup' ||
+        draft.fulfillmentMethod === 'delivery') &&
       pickupDay &&
       draft.pickupDate === pickupDay.date
     ) {
@@ -769,6 +817,7 @@ export function ShopFlow({
       draft.fulfillmentMethod,
       draft.pickupDate,
       draft.pickupTime,
+      draft.delivery,
     );
     const linePayload = cart.map((l) => ({
       productId: l.productId,
@@ -802,11 +851,19 @@ export function ShopFlow({
           discountCents: discount,
           fulfillmentSummary: lines,
           fulfilmentType:
-            draft.fulfillmentMethod === 'in_store' ? 'IN_STORE' : 'PICKUP',
-          scheduledDate:
-            draft.fulfillmentMethod === 'pickup' ? draft.pickupDate : null,
-          scheduledSlot:
-            draft.fulfillmentMethod === 'pickup' ? draft.pickupTime : null,
+            draft.fulfillmentMethod === 'delivery' ? 'DELIVERY' : 'PICKUP',
+          scheduledDate: draft.pickupDate,
+          scheduledSlot: draft.pickupTime,
+          ...(draft.fulfillmentMethod === 'delivery' && delivery.arrangement
+            ? {
+                delivery: {
+                  address: delivery.address.trim(),
+                  contactName: delivery.contactName.trim(),
+                  contactPhone: delivery.contactPhone.trim(),
+                  arrangement: delivery.arrangement,
+                },
+              }
+            : {}),
           lines: linePayload,
         },
       });
@@ -844,7 +901,7 @@ export function ShopFlow({
         });
         onCreditsChanged?.();
         window.alert(
-          `Order placed — paid with credits\n\nPickup code: ${o.orderNumber}\nPaid: ${formatRm(result.creditsSpentCents)}\nCredits left: ${formatRm(result.balanceCents)}\n${lines.join('\n')}`,
+          `Order placed — paid with credits\n\nPickup code: ${o.orderNumber}\nPaid: ${formatRm(result.creditsSpentCents)}\nCredits left: ${formatRm(result.balanceCents)}\n${lines.join('\n')}${deliveryAlertNote(lines)}`,
         );
         resetAfterOrder();
         goBrowse();
@@ -871,7 +928,7 @@ export function ShopFlow({
           fulfillmentSummary: lines,
         });
         window.alert(
-          `Order placed (no payment required)\n\nPickup code: ${o.orderNumber}\nTotal: ${formatRm(o.totalCents)}\n${lines.join('\n')}`,
+          `Order placed (no payment required)\n\nPickup code: ${o.orderNumber}\nTotal: ${formatRm(o.totalCents)}\n${lines.join('\n')}${deliveryAlertNote(lines)}`,
         );
         resetAfterOrder();
         goBrowse();
@@ -926,7 +983,7 @@ export function ShopFlow({
         })),
       });
       window.alert(
-        `Payment complete (test)\n\nPickup code: ${order.orderNumber}\nTotal: ${formatRm(order.totalCents)}\n${demoCheckout.fulfillmentSummary.join('\n')}`,
+        `Payment complete (test)\n\nPickup code: ${order.orderNumber}\nTotal: ${formatRm(order.totalCents)}\n${demoCheckout.fulfillmentSummary.join('\n')}${deliveryAlertNote(demoCheckout.fulfillmentSummary)}`,
       );
       setDemoCheckout(null);
       resetAfterOrder();
@@ -1113,17 +1170,6 @@ export function ShopFlow({
               <button
                 type="button"
                 className={
-                  fulfillmentMethod === 'in_store'
-                    ? 'chip active shopFulfillmentChip'
-                    : 'chip shopFulfillmentChip'
-                }
-                onClick={() => setFulfillmentMethod('in_store')}
-              >
-                In store · now
-              </button>
-              <button
-                type="button"
-                className={
                   fulfillmentMethod === 'pickup'
                     ? 'chip active shopFulfillmentChip'
                     : 'chip shopFulfillmentChip'
@@ -1132,17 +1178,63 @@ export function ShopFlow({
               >
                 Self pickup
               </button>
+              {deliveryOffered ? (
+                <button
+                  type="button"
+                  className={
+                    isDelivery
+                      ? 'chip active shopFulfillmentChip'
+                      : 'chip shopFulfillmentChip'
+                  }
+                  onClick={() => setFulfillmentMethod('delivery')}
+                >
+                  Delivery
+                </button>
+              ) : null}
             </div>
-            {fulfillmentMethod === 'in_store' ? (
-              <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-                {pickupDay && !pickupDay.storeOpen && pickupDay.storeClosedReason
-                  ? pickupDay.storeClosedReason
-                  : 'We will prepare this order right away at the counter. Show your order QR when you collect.'}
-              </p>
+            {isDelivery ? (
+              <div className="deliveryForm">
+                <div className="shopFieldGrid">
+                  <label htmlFor="deliveryAddress">Delivery address</label>
+                  <textarea
+                    id="deliveryAddress"
+                    rows={3}
+                    maxLength={400}
+                    placeholder="Unit / house no., street, area, postcode, city"
+                    value={delivery.address}
+                    onChange={(e) => setDelivery({ address: e.target.value })}
+                  />
+                  <label htmlFor="deliveryName">Contact name</label>
+                  <input
+                    id="deliveryName"
+                    type="text"
+                    maxLength={120}
+                    autoComplete="name"
+                    placeholder="Who will receive the order"
+                    value={delivery.contactName}
+                    onChange={(e) => setDelivery({ contactName: e.target.value })}
+                  />
+                  <label htmlFor="deliveryPhone">Contact phone</label>
+                  <input
+                    id="deliveryPhone"
+                    type="tel"
+                    maxLength={32}
+                    autoComplete="tel"
+                    placeholder="e.g. 012-345 6789"
+                    value={delivery.contactPhone}
+                    onChange={(e) => setDelivery({ contactPhone: e.target.value })}
+                  />
+                </div>
+                <p className="caption" style={{ margin: '4px 0 0' }}>
+                  Choose when the courier collects the order from our shop.
+                </p>
+              </div>
             ) : null}
-            {fulfillmentMethod === 'pickup' ? (
+            {isScheduled ? (
               <div className="shopFieldGrid">
-                <label htmlFor="pickupDate">Pickup date</label>
+                <label htmlFor="pickupDate">
+                  {isDelivery ? 'Courier pick-up date' : 'Pickup date'}
+                </label>
                 <input
                   id="pickupDate"
                   type="date"
@@ -1151,7 +1243,9 @@ export function ShopFlow({
                   value={pickupDate ?? ''}
                   onChange={(e) => setPickupDate(e.target.value || null)}
                 />
-                <label htmlFor="pickupTime">Pickup time</label>
+                <label htmlFor="pickupTime">
+                  {isDelivery ? 'Courier pick-up time' : 'Pickup time'}
+                </label>
                 <select
                   id="pickupTime"
                   value={pickupTime ?? ''}
@@ -1221,10 +1315,77 @@ export function ShopFlow({
                 ))}
               </div>
             ) : null}
-            <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-              We don&apos;t offer delivery at the moment — orders are collected
-              at our store.
-            </p>
+            {isDelivery ? (
+              <div className="deliveryArrange">
+                <p className="deliveryArrangeTitle">Who arranges the delivery?</p>
+                <label className="deliveryChoice">
+                  <input
+                    type="radio"
+                    name="deliveryArrangement"
+                    checked={delivery.arrangement === 'SELF'}
+                    onChange={() => setDelivery({ arrangement: 'SELF' })}
+                  />
+                  <span>
+                    <strong>I&apos;ll arrange my own courier</strong>
+                    <small>
+                      Book Grab, Lalamove or your own driver to collect from our
+                      shop at the time above.
+                    </small>
+                  </span>
+                </label>
+                <label className="deliveryChoice">
+                  <input
+                    type="radio"
+                    name="deliveryArrangement"
+                    checked={delivery.arrangement === 'MOJA'}
+                    onChange={() => setDelivery({ arrangement: 'MOJA' })}
+                  />
+                  <span>
+                    <strong>Moja Maison helps me choose a delivery partner</strong>
+                    <small>
+                      Message us on WhatsApp and we&apos;ll arrange a courier
+                      and tell you the charge.
+                    </small>
+                  </span>
+                </label>
+                {delivery.arrangement === 'MOJA' ? (
+                  deliveryInfo?.whatsappNumber ? (
+                    <a
+                      className="deliveryWhatsappBtn"
+                      href={whatsappUrl(
+                        deliveryInfo.whatsappNumber,
+                        deliveryWhatsappMessage({
+                          address: delivery.address.trim() || '(address to follow)',
+                          contactName: delivery.contactName.trim(),
+                          contactPhone: delivery.contactPhone.trim(),
+                          date: pickupDate,
+                          time: pickupTime,
+                        }),
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Chat with Moja Maison on WhatsApp
+                    </a>
+                  ) : (
+                    <p className="caption" style={{ margin: 0 }}>
+                      We&apos;ll contact you on the phone number above to
+                      arrange the delivery partner.
+                    </p>
+                  )
+                ) : null}
+                <p className="deliveryNotice" role="note">
+                  <strong>Please note:</strong> {DELIVERY_CHARGE_NOTICE}
+                  {delivery.arrangement === 'MOJA'
+                    ? ' After you place the order, message us on WhatsApp (the button also appears under Orders) and we\'ll confirm the charge.'
+                    : ' Your courier is paid directly by you.'}
+                </p>
+              </div>
+            ) : (
+              <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+                Collect your order from our store at the time you choose.
+              </p>
+            )}
           </section>
 
           {showPromoSection ? (

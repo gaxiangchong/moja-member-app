@@ -3489,3 +3489,96 @@ code {
 .topUpOutcome .topUpPay {
   width: 100%;
 }
+
+/* ---- Delivery at checkout ---- */
+.deliveryForm textarea,
+.deliveryForm input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid #d6dbe6;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.deliveryForm textarea {
+  resize: vertical;
+}
+
+.deliveryArrange {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.deliveryArrangeTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.deliveryChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d6dbe6;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.deliveryChoice input {
+  margin-top: 3px;
+}
+
+.deliveryChoice span {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.deliveryChoice small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.deliveryNotice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.deliveryWhatsappBtn {
+  display: block;
+  padding: 12px;
+  border-radius: 12px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.deliveryBlock {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.deliveryBlockTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+}

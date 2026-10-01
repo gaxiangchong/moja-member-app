@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { cartSubtotalCents, computeDiscountCents } from '../lib/pricing';
-import type { CartLine, FulfillmentMethod, MockReward, MockVoucher } from '../types';
+import type { CartLine, DeliveryDraft, FulfillmentMethod, MockReward, MockVoucher } from '../types';
 
 function newLineId(): string {
   return `L${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -13,6 +13,8 @@ type ShopState = {
   fulfillmentMethod: FulfillmentMethod | null;
   pickupDate: string | null;
   pickupTime: string | null;
+  /** Where a delivery goes. Kept after an order so the next one is quicker. */
+  delivery: DeliveryDraft;
   appliedVoucher: MockVoucher | null;
   appliedReward: MockReward | null;
 
@@ -42,6 +44,7 @@ type ShopState = {
   setFulfillmentMethod: (m: FulfillmentMethod | null) => void;
   setPickupDate: (isoDate: string | null) => void;
   setPickupTime: (timeHHmm: string | null) => void;
+  setDelivery: (patch: Partial<DeliveryDraft>) => void;
 
   applyVoucher: (v: MockVoucher | null) => void;
   applyReward: (r: MockReward | null) => void;
@@ -62,9 +65,11 @@ export const useShopStore = create<ShopState>()(
   persist(
     (set, get) => ({
   cart: [],
-  fulfillmentMethod: null,
+  // Self pickup is the default; the member can switch to delivery.
+  fulfillmentMethod: 'pickup',
   pickupDate: null,
   pickupTime: null,
+  delivery: { address: '', contactName: '', contactPhone: '', arrangement: null },
   appliedVoucher: null,
   appliedReward: null,
 
@@ -132,7 +137,7 @@ export const useShopStore = create<ShopState>()(
     }));
     set({
       cart,
-      fulfillmentMethod: null,
+      fulfillmentMethod: 'pickup',
       pickupDate: null,
       pickupTime: null,
       appliedVoucher: null,
@@ -140,21 +145,18 @@ export const useShopStore = create<ShopState>()(
     });
   },
 
-  setFulfillmentMethod: (m) =>
-    set({
-      fulfillmentMethod: m,
-      ...(m === 'in_store' ? { pickupDate: null, pickupTime: null } : {}),
-    }),
+  setFulfillmentMethod: (m) => set({ fulfillmentMethod: m }),
 
   setPickupDate: (d) => set({ pickupDate: d }),
   setPickupTime: (t) => set({ pickupTime: t }),
+  setDelivery: (patch) => set({ delivery: { ...get().delivery, ...patch } }),
 
   applyVoucher: (v) => set({ appliedVoucher: v, appliedReward: null }),
   applyReward: (r) => set({ appliedReward: r, appliedVoucher: null }),
 
   resetCheckoutFields: () =>
     set({
-      fulfillmentMethod: null,
+      fulfillmentMethod: 'pickup',
       pickupDate: null,
       pickupTime: null,
       appliedVoucher: null,
@@ -164,7 +166,7 @@ export const useShopStore = create<ShopState>()(
   resetAfterOrder: () =>
     set({
       cart: [],
-      fulfillmentMethod: null,
+      fulfillmentMethod: 'pickup',
       pickupDate: null,
       pickupTime: null,
       appliedVoucher: null,
@@ -194,7 +196,19 @@ export const useShopStore = create<ShopState>()(
         fulfillmentMethod: state.fulfillmentMethod,
         pickupDate: state.pickupDate,
         pickupTime: state.pickupTime,
+        delivery: state.delivery,
       }),
+      // A cart saved before delivery existed may say "in_store" (no longer
+      // offered); anything unknown falls back to self pickup.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ShopState>;
+        return {
+          ...current,
+          ...p,
+          fulfillmentMethod: p.fulfillmentMethod === 'delivery' ? 'delivery' : 'pickup',
+          delivery: { ...current.delivery, ...(p.delivery ?? {}) },
+        };
+      },
     },
   ),
 );

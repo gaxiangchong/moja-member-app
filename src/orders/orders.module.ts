@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
+import { DeliverySettingsService } from './delivery-settings.service';
 import { MemberOrdersSettingsService } from './member-orders-settings.service';
 import { OrdersMaintenanceService } from './orders-maintenance.service';
 import { PickupRulesService } from './pickup-rules.service';
@@ -16,12 +17,14 @@ import { ShopAvailabilityController } from './shop-availability.controller';
     OrdersMaintenanceService,
     PickupRulesService,
     MemberOrdersSettingsService,
+    DeliverySettingsService,
   ],
   exports: [
     ProductStockService,
     OrdersMaintenanceService,
     PickupRulesService,
     MemberOrdersSettingsService,
+    DeliverySettingsService,
   ],
 })
 export class OrdersModule {}

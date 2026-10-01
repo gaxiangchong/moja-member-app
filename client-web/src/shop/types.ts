@@ -34,7 +34,17 @@ export type CartLine = {
   notes?: string;
 };
 
-export type FulfillmentMethod = 'pickup' | 'in_store';
+export type FulfillmentMethod = 'pickup' | 'delivery';
+
+/** Who books the courier for a delivery. */
+export type DeliveryArrangement = 'SELF' | 'MOJA';
+
+export type DeliveryDraft = {
+  address: string;
+  contactName: string;
+  contactPhone: string;
+  arrangement: DeliveryArrangement | null;
+};
 
 export type MockVoucher = {
   id: string;

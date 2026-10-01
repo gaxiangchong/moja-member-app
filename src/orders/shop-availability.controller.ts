@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { DeliverySettingsService } from './delivery-settings.service';
 import { PickupRulesService } from './pickup-rules.service';
 import {
   ProductStockService,
@@ -23,6 +24,7 @@ export class ShopAvailabilityController {
     private readonly shopCatalog: ShopCatalogService,
     private readonly productStock: ProductStockService,
     private readonly pickupRules: PickupRulesService,
+    private readonly deliverySettings: DeliverySettingsService,
   ) {}
 
   /**
@@ -51,6 +53,16 @@ export class ShopAvailabilityController {
    * Which pickup windows are still open for a day: lead time, cut-off,
    * capacity, store hours, and closed days. `date` defaults to today.
    */
+  /**
+   * Whether delivery can be chosen at checkout, and the WhatsApp number to ask
+   * Moja Maison for help arranging a courier. Public: it is shown to anyone
+   * reaching checkout.
+   */
+  @Get('delivery-info')
+  deliveryInfo() {
+    return this.deliverySettings.getSettings();
+  }
+
   @Get('pickup-slots')
   pickupSlots(@Query() query: AvailabilityQueryDto) {
     return this.pickupRules.quoteDay(query.date ?? todayBusinessDate());

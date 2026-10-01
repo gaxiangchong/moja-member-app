@@ -17,6 +17,12 @@ import {
 } from './kitchen-pickup-code.util';
 import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import { WalletService } from '../wallet/wallet.service';
+import {
+  DeliveryDetailsError,
+  deliverySummaryLines,
+  validateDeliveryDetails,
+} from '../orders/delivery';
+import { DeliverySettingsService } from '../orders/delivery-settings.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { OrderNotificationService } from '../notifications/order-notification.service';
@@ -153,6 +159,7 @@ export class CustomersService {
     private readonly pickupRules: PickupRulesService,
     private readonly orderNotices: OrderNotificationService,
     private readonly memberOrdersSettings: MemberOrdersSettingsService,
+    private readonly deliverySettings: DeliverySettingsService,
   ) {}
 
   /**
@@ -863,6 +870,15 @@ export class CustomersService {
         scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
         scheduledSlot: o.scheduledSlot,
         deliveryFeeCents: o.deliveryFeeCents,
+        delivery:
+          o.fulfilmentType === 'DELIVERY' && o.deliveryAddress
+            ? {
+                address: o.deliveryAddress,
+                contactName: o.deliveryContactName,
+                contactPhone: o.deliveryContactPhone,
+                arrangement: o.deliveryArrangement,
+              }
+            : null,
         totalCents: o.totalCents,
         status: o.status,
         /** Member may still call it off — the kitchen has not started. */
@@ -1020,6 +1036,37 @@ export class CustomersService {
     this.validateMemberOrderTotals(dto);
 
     const fulfilmentType = dto.fulfilmentType ?? 'PICKUP';
+
+    // Delivery needs an address, someone to contact and a choice of who books
+    // the courier — checked here, on the server, whatever the app sent.
+    let delivery: ReturnType<typeof validateDeliveryDetails> | null = null;
+    if (fulfilmentType === 'DELIVERY') {
+      if (!(await this.deliverySettings.getSettings()).enabled) {
+        throw new BadRequestException({
+          code: 'DELIVERY_UNAVAILABLE',
+          message:
+            "Delivery isn't available right now. Please choose self pickup.",
+        });
+      }
+      try {
+        delivery = validateDeliveryDetails(dto.delivery);
+      } catch (err) {
+        if (err instanceof DeliveryDetailsError) {
+          throw new BadRequestException({
+            code: 'DELIVERY_DETAILS_INVALID',
+            message: err.message,
+          });
+        }
+        throw err;
+      }
+      // Staff and the member see the same lines everywhere; build them here.
+      dto.fulfillmentSummary = deliverySummaryLines(
+        delivery,
+        dto.scheduledDate ?? null,
+        dto.scheduledSlot ?? null,
+      );
+    }
+    const scheduled = fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY';
     // In-store "prepare now" orders come out of today's tray; a scheduled
     // pickup consumes the count for its own day.
     const businessDate =
@@ -1031,10 +1078,8 @@ export class CustomersService {
       await this.pickupRules.assertCanPlace(
         {
           fulfilmentType,
-          scheduledDate:
-            fulfilmentType === 'PICKUP' ? (dto.scheduledDate ?? null) : null,
-          scheduledSlot:
-            fulfilmentType === 'PICKUP' ? (dto.scheduledSlot ?? null) : null,
+          scheduledDate: scheduled ? (dto.scheduledDate ?? null) : null,
+          scheduledSlot: scheduled ? (dto.scheduledSlot ?? null) : null,
         },
         tx,
       );
@@ -1045,6 +1090,14 @@ export class CustomersService {
           totalCents: dto.totalCents,
           status: ORDER_STATUS.PENDING_PAYMENT,
           fulfilmentType,
+          ...(delivery
+            ? {
+                deliveryAddress: delivery.address,
+                deliveryContactName: delivery.contactName,
+                deliveryContactPhone: delivery.contactPhone,
+                deliveryArrangement: delivery.arrangement,
+              }
+            : {}),
           scheduledDate:
             fulfilmentType === 'IN_STORE' || !dto.scheduledDate
               ? null

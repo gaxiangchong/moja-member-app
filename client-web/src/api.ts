@@ -540,6 +540,13 @@ export async function createShopOrderCheckout(payload: {
     fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
     scheduledDate?: string | null;
     scheduledSlot?: string | null;
+    /** Required when `fulfilmentType` is DELIVERY. */
+    delivery?: {
+      address: string;
+      contactName: string;
+      contactPhone: string;
+      arrangement: 'SELF' | 'MOJA';
+    };
   };
 }): Promise<ShopOrderCheckoutResult> {
   const res = await authorizedFetch('/payments/xendit/shop-order', {
@@ -935,6 +942,13 @@ export type MemberOrderRow = {
   scheduledDate?: string | null;
   scheduledSlot?: string | null;
   deliveryFeeCents?: number;
+  /** Delivery orders: where it goes and who books the courier. */
+  delivery?: {
+    address: string;
+    contactName: string | null;
+    contactPhone: string | null;
+    arrangement: 'SELF' | 'MOJA' | null;
+  } | null;
   cancellable?: boolean;
   totalCents: number;
   status: string;
@@ -1124,6 +1138,23 @@ export type PickupSlotDay = {
   leadTimeMessage: string | null;
   slots: PickupSlotOffer[];
 };
+
+export type DeliveryInfo = {
+  /** Delivery can be chosen at checkout. */
+  enabled: boolean;
+  /** Moja Maison's WhatsApp number for courier help (digits, with country code); empty = not set. */
+  whatsappNumber: string;
+};
+
+/** Whether delivery is offered, and the WhatsApp number to ask for courier help. */
+export async function fetchDeliveryInfo(): Promise<DeliveryInfo> {
+  const res = await fetch(`${base}/shop/delivery-info`);
+  const data = await parseJson<Partial<DeliveryInfo> & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(typeof data.message === 'string' ? data.message : 'Failed to load delivery info');
+  }
+  return { enabled: data.enabled !== false, whatsappNumber: data.whatsappNumber ?? '' };
+}
 
 /** Open pickup windows for one day, including why a slot is closed. */
 export async function fetchPickupSlots(date?: string): Promise<PickupSlotDay> {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toDataURL } from 'qrcode';
 import {
   cancelMyOrder,
+  fetchDeliveryInfo,
   fetchMemberOrders,
   fetchMemberSavings,
   type MemberOrderRow,
@@ -9,6 +10,7 @@ import {
 } from '../api';
 import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
+import { DELIVERY_CHARGE_NOTICE, deliveryWhatsappMessage, whatsappUrl } from '../lib/whatsapp';
 import {
   useOrderHistoryStore,
   type PastOrder,
@@ -36,6 +38,7 @@ function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
     scheduledDate: row.scheduledDate,
     scheduledSlot: row.scheduledSlot,
     deliveryFeeCents: row.deliveryFeeCents,
+    delivery: row.delivery ?? null,
     cancellable: row.cancellable,
     status: row.status,
     totalCents: row.totalCents,
@@ -49,6 +52,61 @@ function mapRowToPastOrder(row: MemberOrderRow): PastOrder {
       variantLabel: l.variantLabel ?? undefined,
     })),
   };
+}
+
+/**
+ * Delivery orders: where it is going, who is booking the courier, and the
+ * reminder that the delivery charge has to be paid before delivery can be arranged.
+ */
+function DeliveryBlock({
+  order,
+  whatsappNumber,
+}: {
+  order: PastOrder;
+  whatsappNumber: string;
+}) {
+  const d = order.delivery;
+  if (order.fulfilmentType !== 'DELIVERY' || !d) return null;
+  const chatUrl = whatsappNumber
+    ? whatsappUrl(
+        whatsappNumber,
+        deliveryWhatsappMessage({
+          orderNumber: order.orderNumber,
+          address: d.address,
+          contactName: d.contactName ?? '',
+          contactPhone: d.contactPhone ?? '',
+          date: order.scheduledDate,
+          time: order.scheduledSlot,
+        }),
+      )
+    : null;
+  return (
+    <div className="deliveryBlock">
+      <p className="deliveryBlockTitle">Delivery</p>
+      <p className="caption" style={{ margin: 0 }}>
+        To: {d.address}
+        <br />
+        Contact: {d.contactName} · {d.contactPhone}
+      </p>
+      <p className="deliveryNotice">{DELIVERY_CHARGE_NOTICE}</p>
+      {d.arrangement === 'MOJA' ? (
+        chatUrl ? (
+          <a className="deliveryWhatsappBtn" href={chatUrl} target="_blank" rel="noopener noreferrer">
+            Message Moja Maison on WhatsApp
+          </a>
+        ) : (
+          <p className="caption" style={{ margin: 0 }}>
+            We&apos;ll contact you on {d.contactPhone} to arrange the delivery partner.
+          </p>
+        )
+      ) : (
+        <p className="caption" style={{ margin: 0 }}>
+          You&apos;re booking your own courier — they collect from our shop
+          {order.scheduledSlot ? ` at ${order.scheduledSlot}` : ''}. Give them order #{order.orderNumber}.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function OrderQrBlock({ orderNumber }: { orderNumber: number }) {
@@ -162,6 +220,7 @@ export function OrdersTab({
 }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [savings, setSavings] = useState<MemberSavings | null>(null);
   // How many days of finished orders to list; the shop sets it. Until the
@@ -196,6 +255,13 @@ export function OrdersTab({
       setLoading(false);
     }
   }, [setOrdersFromApi]);
+
+  useEffect(() => {
+    // Best-effort: without the number the WhatsApp button simply is not shown.
+    fetchDeliveryInfo()
+      .then((info) => setWhatsappNumber(info.whatsappNumber))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!active) return;
@@ -344,7 +410,9 @@ export function OrdersTab({
                     completedAt={order.completedAt}
                     cancelReason={order.cancelReason}
                   />
-                  {order.fulfillmentSummary.length ? (
+                  {order.fulfilmentType === 'DELIVERY' && order.delivery ? (
+                    <DeliveryBlock order={order} whatsappNumber={whatsappNumber} />
+                  ) : order.fulfillmentSummary.length ? (
                     <p className="caption orderHistoryFulfill">
                       {order.fulfillmentSummary.join(' · ')}
                     </p>
