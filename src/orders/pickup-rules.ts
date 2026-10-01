@@ -34,6 +34,12 @@ export type ShopPickupRules = {
   openTime: string;
   /** Store closes, HH:mm. Exclusive: a slot may not start at this time. */
   closeTime: string;
+  /**
+   * Opening hours for particular weekdays (0 = Sunday … 6 = Saturday). A day not
+   * listed here uses `openTime` – `closeTime` above. Pickup slots are only
+   * offered inside the hours of the day they fall on.
+   */
+  weekdayHours: Record<number, { open: string; close: string }>;
   /** 0 = Sunday … 6 = Saturday. The whole day is shut. */
   closedWeekdays: number[];
   /** Extra closures, yyyy-mm-dd in the shop timezone. */
@@ -48,6 +54,7 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
   openTime: '10:00',
   // 21:00 so the 7pm – 9pm collection slot starts inside the hours.
   closeTime: '21:00',
+  weekdayHours: {},
   closedWeekdays: [],
   closedDates: [],
   maxAdvanceDays: 30,
@@ -121,6 +128,35 @@ export class PickupRulesError extends Error {
   }
 }
 
+/** The opening hours on a weekday, or null when the shop is shut that day. */
+export function hoursForWeekday(
+  rules: Pick<
+    ShopPickupRules,
+    'openTime' | 'closeTime' | 'weekdayHours' | 'closedWeekdays'
+  >,
+  weekday: number,
+): { open: string; close: string } | null {
+  if (rules.closedWeekdays.includes(weekday)) return null;
+  return (
+    rules.weekdayHours?.[weekday] ?? {
+      open: rules.openTime,
+      close: rules.closeTime,
+    }
+  );
+}
+
+/** A slot must start inside the hours and, if it has an end, finish by closing. */
+export function slotFitsHours(
+  slot: { start: string; endTime?: string | null },
+  hours: { open: string; close: string },
+): boolean {
+  const start = minutesOf(slot.start);
+  if (start < minutesOf(hours.open) || start >= minutesOf(hours.close)) {
+    return false;
+  }
+  return !slot.endTime || minutesOf(slot.endTime) <= minutesOf(hours.close);
+}
+
 export type PickupSlotOffer = {
   start: string;
   label: string;
@@ -158,6 +194,7 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
     );
   }
   const closedWeekdays = uniqueWeekdays(raw.closedWeekdays, 'closedWeekdays');
+  const weekdayHours = normalizeWeekdayHours(raw.weekdayHours);
   const closedDates = uniqueDates(raw.closedDates);
   const maxRaw = Number(raw.maxAdvanceDays);
   const maxAdvanceDays =
@@ -171,13 +208,15 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
     throw new PickupRulesError('At most 12 pickup slots.');
   }
   const seen = new Set<string>();
+  const hoursContext = { openTime, closeTime, weekdayHours, closedWeekdays };
   const slots = raw.slots.map((slot, index) =>
-    normalizeSlot(slot, index, openTime, closeTime, seen),
+    normalizeSlot(slot, index, hoursContext, seen),
   );
   return {
     timeZone,
     openTime,
     closeTime,
+    weekdayHours,
     closedWeekdays,
     closedDates,
     maxAdvanceDays,
@@ -253,7 +292,15 @@ export function evaluatePickupDay(input: {
     };
   }
 
-  const offered = rules.slots.filter((slot) => slot.weekdays.includes(weekday));
+  // Only slots that sit inside the opening hours of this day are offered, so
+  // changing the hours changes the pickup times with it.
+  const hours = hoursForWeekday(rules, weekday) ?? {
+    open: rules.openTime,
+    close: rules.closeTime,
+  };
+  const offered = rules.slots.filter(
+    (slot) => slot.weekdays.includes(weekday) && slotFitsHours(slot, hours),
+  );
   const slots = offered.map((slot) =>
     offerSlot(rules, slot, date, now, booked[slot.start] ?? 0),
   );
@@ -270,6 +317,8 @@ export function evaluatePickupDay(input: {
     closed: false,
     closedReason: null,
     leadTimeMessage,
+    openTime: hours.open,
+    closeTime: hours.close,
     slots,
   };
 }
@@ -288,12 +337,16 @@ export function evaluateStoreNow(
       : `The store is closed on ${WEEKDAY_NAMES[parts.weekday]}s.`;
     return { open: false, reason: why, today: parts.ymd };
   }
-  const open = minutesOf(rules.openTime);
-  const close = minutesOf(rules.closeTime);
+  const hours = hoursForWeekday(rules, parts.weekday) ?? {
+    open: rules.openTime,
+    close: rules.closeTime,
+  };
+  const open = minutesOf(hours.open);
+  const close = minutesOf(hours.close);
   if (parts.minutes < open || parts.minutes >= close) {
     return {
       open: false,
-      reason: `In-store orders are accepted between ${formatClock(rules.openTime)} and ${formatClock(rules.closeTime)}.`,
+      reason: `In-store orders are accepted between ${formatClock(hours.open)} and ${formatClock(hours.close)}.`,
       today: parts.ymd,
     };
   }
@@ -358,11 +411,42 @@ function offerSlot(
   };
 }
 
+function normalizeWeekdayHours(
+  input: unknown,
+): Record<number, { open: string; close: string }> {
+  if (input == null) return {};
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new PickupRulesError('Weekday opening hours must be an object.');
+  }
+  const out: Record<number, { open: string; close: string }> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const day = Number(key);
+    if (!Number.isInteger(day) || day < 0 || day > 6) {
+      throw new PickupRulesError(
+        'Weekday opening hours must use 0 (Sunday) through 6 (Saturday).',
+      );
+    }
+    if (value == null) continue;
+    const v = value as { open?: unknown; close?: unknown };
+    const open = requireHhmm(v.open, `${WEEKDAY_NAMES[day]} opening time`);
+    const close = requireHhmm(v.close, `${WEEKDAY_NAMES[day]} closing time`);
+    if (minutesOf(open) >= minutesOf(close)) {
+      throw new PickupRulesError(
+        `${WEEKDAY_NAMES[day]}: opening time must be before closing time.`,
+      );
+    }
+    out[day] = { open, close };
+  }
+  return out;
+}
+
 function normalizeSlot(
   input: unknown,
   index: number,
-  openTime: string,
-  closeTime: string,
+  hoursContext: Pick<
+    ShopPickupRules,
+    'openTime' | 'closeTime' | 'weekdayHours' | 'closedWeekdays'
+  >,
   seen: Set<string>,
 ): PickupSlotConfig {
   const raw = (input ?? {}) as Partial<PickupSlotConfig>;
@@ -372,14 +456,8 @@ function normalizeSlot(
     throw new PickupRulesError(`${labelAt} repeats ${start}.`);
   }
   seen.add(start);
-  if (
-    minutesOf(start) < minutesOf(openTime) ||
-    minutesOf(start) >= minutesOf(closeTime)
-  ) {
-    throw new PickupRulesError(
-      `${labelAt} (${start}) is outside store hours ${openTime}–${closeTime}.`,
-    );
-  }
+  // Checked against the opening hours of every day the slot is offered on, once
+  // its end time is known (below).
   const label = String(raw.label ?? '').trim();
   if (!label || label.length > 80) {
     throw new PickupRulesError(`${labelAt} needs a label.`);
@@ -418,11 +496,22 @@ function normalizeSlot(
     if (minutesOf(endTime) <= minutesOf(start)) {
       throw new PickupRulesError(`${labelAt} must end after it starts.`);
     }
-    if (minutesOf(endTime) > minutesOf(closeTime)) {
-      throw new PickupRulesError(
-        `${labelAt} ends at ${endTime}, after closing time ${closeTime}.`,
-      );
-    }
+  }
+  // A slot is only offered on the days it fits the opening hours, so shortening
+  // one day's hours quietly drops the later slots from that day. It is an error
+  // only when it fits none of the days it is meant for.
+  const openDays = weekdays.filter((d) => hoursForWeekday(hoursContext, d));
+  if (
+    openDays.length > 0 &&
+    !openDays.some((d) =>
+      slotFitsHours({ start, endTime }, hoursForWeekday(hoursContext, d)!),
+    )
+  ) {
+    const d = openDays[0];
+    const hours = hoursForWeekday(hoursContext, d)!;
+    throw new PickupRulesError(
+      `${labelAt} (${start}${endTime ? '–' + endTime : ''}) is outside the opening hours on ${WEEKDAY_NAMES[d]} (${hours.open}–${hours.close})${openDays.length > 1 ? ' and the other days it is offered' : ''}.`,
+    );
   }
   return {
     start,

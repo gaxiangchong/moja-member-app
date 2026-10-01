@@ -1527,6 +1527,8 @@ export type PickupRules = {
   timeZone: string;
   openTime: string;
   closeTime: string;
+  /** Opening hours for particular weekdays (keys 0 = Sunday … 6); other days use openTime–closeTime. */
+  weekdayHours?: Record<string, { open: string; close: string }>;
   closedWeekdays: number[];
   closedDates: string[];
   maxAdvanceDays: number;
