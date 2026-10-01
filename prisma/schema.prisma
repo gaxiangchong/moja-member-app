@@ -527,6 +527,7 @@ model Customer {
   @@index([signupSource])
   @@index([memberTier])
   @@index([referredByCustomerId])
+  counterRedemptions CounterRedemption[]
   @@map("customers")
 }
 
@@ -812,6 +813,41 @@ model LoyaltyWallet {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("loyalty_wallets")
+}
+
+/// Points a cashier redeemed for a member at the counter. The discount is keyed
+/// into the till (SalesPlay) by hand; this row is the record of what was
+/// redeemed, by whom, and whether it was undone (points go back when it is).
+model CounterRedemption {
+  id                  String    @id @default(uuid()) @db.Uuid
+  customerId          String    @map("customer_id") @db.Uuid
+  customer            Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rewardCatalogId     String?   @map("reward_catalog_id") @db.Uuid
+  rewardTitle         String    @map("reward_title") @db.VarChar(200)
+  pointsSpent         Int       @map("points_spent")
+  /// RM-off in sen for a cash voucher; null for a percentage one.
+  discountCents       Int?      @map("discount_cents")
+  percentageOff       Int?      @map("percentage_off")
+  minSpendCents       Int?      @map("min_spend_cents")
+  voucherId           String?   @map("voucher_id") @db.Uuid
+  voucherCode         String    @map("voucher_code") @db.VarChar(64)
+  /// ACTIVE, or UNDONE once the points were given back.
+  status              String    @default("ACTIVE") @db.VarChar(12)
+  /// How the cashier identified the member: QR (scanned) or PHONE (typed).
+  verification        String    @db.VarChar(8)
+  staffCode           String    @map("staff_code") @db.VarChar(32)
+  staffName           String?   @map("staff_name") @db.VarChar(120)
+  idempotencyKey      String    @unique @map("idempotency_key") @db.VarChar(128)
+  /// Optional: the SalesPlay receipt this was used on, for reconciling at close.
+  salesplayReceiptRef String?   @map("salesplay_receipt_ref") @db.VarChar(60)
+  undoneAt            DateTime? @map("undone_at")
+  undoneByStaff       String?   @map("undone_by_staff") @db.VarChar(32)
+  undoReason          String?   @map("undo_reason") @db.VarChar(200)
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([createdAt])
+  @@map("counter_redemptions")
 }
 
 model LoyaltyLedgerEntry {

@@ -62,6 +62,7 @@ export const MENU: MenuGroup[] = [
       { id: 'rewards-topup', label: 'Top-up & bonus' },
       { id: 'rewards-voucher-campaigns', label: 'Voucher campaigns' },
       { id: 'rewards-voucher-redeem', label: 'Redeem voucher' },
+      { id: 'rewards-counter', label: 'Counter redemptions' },
       { id: 'rewards-bento-vouchers', label: 'Bento vouchers' },
       { id: 'rewards-gift-rewards', label: 'Gift rewards' },
     ],
@@ -115,6 +116,7 @@ export const IMPLEMENTED_VIEWS = new Set([
   'rewards-topup',
   'rewards-voucher-campaigns',
   'rewards-voucher-redeem',
+  'rewards-counter',
   'rewards-bento-vouchers',
   'rewards-gift-rewards',
 ]);

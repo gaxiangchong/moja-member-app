@@ -1163,6 +1163,42 @@ export async function issueMemberVoucher(
   return parseCatalogResponse<MemberVouchersPayload>(res);
 }
 
+/** One day of points redeemed by cashiers at the counter. */
+export type CounterRedemptionsDay = {
+  date: string;
+  totals: {
+    count: number;
+    undone: number;
+    pointsSpent: number;
+    cashDiscountCents: number;
+    withoutReceipt: number;
+  };
+  items: Array<{
+    id: string;
+    createdAt: string;
+    status: 'ACTIVE' | 'UNDONE';
+    member: { id: string; displayName: string | null; phoneE164: string };
+    rewardTitle: string;
+    pointsSpent: number;
+    discountCents: number | null;
+    percentageOff: number | null;
+    voucherCode: string;
+    verification: 'QR' | 'PHONE';
+    staffCode: string;
+    staffName: string | null;
+    salesplayReceiptRef: string | null;
+    undoneAt: string | null;
+    undoneByStaff: string | null;
+    undoReason: string | null;
+  }>;
+};
+
+export async function fetchCounterRedemptions(date?: string): Promise<CounterRedemptionsDay> {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  const res = await authorizedFetch(`/admin/counter-redemptions${qs}`);
+  return parseCatalogResponse<CounterRedemptionsDay>(res);
+}
+
 export type CampaignSummary = {
   id: string;
   code: string;

@@ -737,7 +737,11 @@ export class CustomersService {
         pointsSpent: u.rewardCatalog.pointsCost,
         redeemedAt: (u.redeemedAt ?? u.createdAt).toISOString(),
         orderNumber: null as number | null,
-        status: 'redeemed' as const,
+        // A redemption undone at the counter has its points back.
+        status:
+          u.voucher?.status === 'VOID'
+            ? ('returned' as const)
+            : ('redeemed' as const),
         // The code generated for this redemption, and whether it is still usable.
         code: u.voucher?.code ?? null,
         voucherStatus: u.voucher

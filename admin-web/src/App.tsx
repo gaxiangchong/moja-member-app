@@ -24,6 +24,7 @@ import { BentoVouchers } from './views/BentoVouchers';
 import { GiftRewards } from './views/GiftRewards';
 import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
+import { CounterRedemptions } from './views/CounterRedemptions';
 import { DeliverySettings } from './views/DeliverySettings';
 import { MemberOrdersSettings } from './views/MemberOrdersSettings';
 import { PickupRules } from './views/PickupRules';
@@ -244,6 +245,8 @@ function renderView(viewId: string) {
       return <ShopLayout />;
     case 'rewards-wallet':
       return <RewardsWallet />;
+    case 'rewards-counter':
+      return <CounterRedemptions />;
     case 'rewards-topup':
       return <TopUpSettings />;
     case 'rewards-voucher-campaigns':

@@ -293,13 +293,15 @@ export class OpsQueueService {
     }
 
     if (next === ORDER_STATUS.CANCELLED || next === ORDER_STATUS.REFUNDED) {
-      await this.loyalty.refundRewardForOrder(id).catch((err) =>
-        this.logger.error(
-          `Reward points refund failed for order ${id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
+      await this.loyalty
+        .refundRewardForOrder(id)
+        .catch((err) =>
+          this.logger.error(
+            `Reward points refund failed for order ${id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
     }
 
     if (next === ORDER_STATUS.READY) {

@@ -391,6 +391,117 @@ export async function registerMember(
   return data as OpsMemberCreateResult;
 }
 
+// --- Counter redemptions: a cashier redeems a member's points for a discount to key into the till
+
+export type CounterReward = {
+  id: string;
+  title: string;
+  pointsCost: number;
+  discountLabel: string;
+  minSpendCents: number | null;
+};
+
+export type CounterRedemption = {
+  id: string;
+  createdAt: string;
+  status: 'ACTIVE' | 'UNDONE';
+  rewardTitle: string;
+  pointsSpent: number;
+  discountCents: number | null;
+  percentageOff: number | null;
+  discountLabel: string;
+  minSpendCents: number | null;
+  voucherCode: string;
+  verification: 'QR' | 'PHONE';
+  staffCode: string;
+  staffName: string | null;
+  salesplayReceiptRef: string | null;
+  undoneAt: string | null;
+  undoReason: string | null;
+  /** Can still be undone (points returned). */
+  undoable: boolean;
+};
+
+export type CounterRedeemResult = {
+  repeat: boolean;
+  redemption: CounterRedemption;
+  pointsBalance: number;
+  member: { id: string; displayName: string | null; phoneE164: string };
+};
+
+export type TodayRedemption = CounterRedemption & {
+  member: { displayName: string | null; phoneMasked: string };
+};
+
+async function opsJson<T>(
+  apiKey: string,
+  baseUrl: string,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
+    method: init.method ?? 'GET',
+    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  const data = await parseJson<T & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as T;
+}
+
+export function fetchCounterRewards(apiKey: string, baseUrl: string = defaultBase) {
+  return opsJson<CounterReward[]>(apiKey, baseUrl, '/ops/redemptions/rewards');
+}
+
+export function redeemAtCounter(
+  apiKey: string,
+  input: {
+    phone: string;
+    rewardId: string;
+    staffCode: string;
+    idempotencyKey: string;
+    verification: 'QR' | 'PHONE';
+  },
+  baseUrl: string = defaultBase,
+) {
+  return opsJson<CounterRedeemResult>(apiKey, baseUrl, '/ops/redemptions', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function fetchTodayRedemptions(apiKey: string, baseUrl: string = defaultBase) {
+  return opsJson<TodayRedemption[]>(apiKey, baseUrl, '/ops/redemptions/today');
+}
+
+export function undoCounterRedemption(
+  apiKey: string,
+  id: string,
+  input: { staffCode: string; reason?: string },
+  baseUrl: string = defaultBase,
+) {
+  return opsJson<{ redemption: CounterRedemption }>(
+    apiKey,
+    baseUrl,
+    `/ops/redemptions/${encodeURIComponent(id)}/undo`,
+    { method: 'POST', body: input },
+  );
+}
+
+export function attachRedemptionReceipt(
+  apiKey: string,
+  id: string,
+  input: { staffCode: string; receiptRef: string },
+  baseUrl: string = defaultBase,
+) {
+  return opsJson<{ redemption: CounterRedemption }>(
+    apiKey,
+    baseUrl,
+    `/ops/redemptions/${encodeURIComponent(id)}/receipt`,
+    { method: 'PATCH', body: input },
+  );
+}
+
 /** Move an order along the kitchen lifecycle. */
 export async function setQueueOrderStatus(
   apiKey: string,

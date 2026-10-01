@@ -5,7 +5,10 @@ import {
   type MemberNextStep,
   type OpsMemberProfile,
 } from './api';
+import { CounterRedeemPanel } from './CounterRedeemPanel';
+import { MemberQrScanModal } from './MemberQrScanModal';
 import { OpsLoginScreen } from './OpsLoginScreen';
+import { TodayRedemptions } from './TodayRedemptions';
 import { defaultBase } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
 
@@ -74,7 +77,7 @@ function nextStepAdvice(
  * unactivated and the member sets their own PIN later on their own phone.
  */
 export function MemberWindowApp() {
-  const { state: authState, signIn } = useOpsAuth();
+  const { state: authState, signIn, devKeyPrefill } = useOpsAuth();
   const [phone, setPhone] = useState('');
   const [staffCode, setStaffCode] = useState(
     () => localStorage.getItem(STAFF_CODE_KEY) ?? '',
@@ -95,6 +98,10 @@ export function MemberWindowApp() {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** How the member was identified: scanned from their QR, or typed in. */
+  const [verification, setVerification] = useState<'QR' | 'PHONE'>('PHONE');
+  const [scanOpen, setScanOpen] = useState(false);
+  const [redeemTick, setRedeemTick] = useState(0);
   const phoneRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -114,15 +121,17 @@ export function MemberWindowApp() {
     setConsent(false);
     setResult({ kind: 'none' });
     setErr(null);
+    setVerification('PHONE');
     phoneRef.current?.focus();
   }, []);
 
-  const doLookup = useCallback(async () => {
-    if (!apiKey || !phone.trim()) return;
+  const doLookup = useCallback(async (phoneOverride?: string) => {
+    const value = phoneOverride ?? phone;
+    if (!apiKey || !value.trim()) return;
     setBusy(true);
     setErr(null);
     try {
-      const res = await lookupMember(apiKey, phone, staffCode, base);
+      const res = await lookupMember(apiKey, value, staffCode, base);
       if (res.found) {
         setResult({
           kind: 'found',
@@ -176,6 +185,7 @@ export function MemberWindowApp() {
         title="Member desk"
         lead="Sign in with OPS_QUEUE_API_KEY to look up or register members."
         checking={authState.status === 'checking'}
+        devKeyPrefill={devKeyPrefill}
         onSubmit={signIn}
       />
     );
@@ -212,6 +222,7 @@ export function MemberWindowApp() {
             value={phone}
             onChange={(e) => {
               setPhone(e.target.value);
+              setVerification('PHONE');
               setResult({ kind: 'none' });
             }}
             placeholder="012-345 6789"
@@ -223,6 +234,9 @@ export function MemberWindowApp() {
             {busy ? '…' : 'Check'}
           </button>
         </div>
+        <button type="button" className="memberScanBtn" onClick={() => setScanOpen(true)}>
+          Scan member QR
+        </button>
         <p className="memberHint">
           Read the number back to the customer before saving — points follow the
           phone number, and a typo cannot be undone by the customer.
@@ -284,8 +298,25 @@ export function MemberWindowApp() {
           nextStep={result.nextStep}
           justCreated={result.justCreated}
           onDone={reset}
+          apiKey={apiKey}
+          base={base}
+          staffCode={staffCode}
+          verification={verification}
+          onRedeemChanged={() => setRedeemTick((n) => n + 1)}
         />
       )}
+
+      <TodayRedemptions apiKey={apiKey} base={base} staffCode={staffCode} refreshKey={redeemTick} />
+
+      <MemberQrScanModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onScan={(digits) => {
+          setPhone(digits);
+          setVerification('QR');
+          void doLookup(digits);
+        }}
+      />
     </div>
   );
 }
@@ -296,14 +327,26 @@ function MemberResultCard({
   nextStep,
   justCreated,
   onDone,
+  apiKey,
+  base,
+  staffCode,
+  verification,
+  onRedeemChanged,
 }: {
   phoneE164: string;
   member: OpsMemberProfile;
   nextStep: MemberNextStep;
   justCreated?: boolean;
   onDone: () => void;
+  apiKey: string;
+  base: string;
+  staffCode: string;
+  verification: 'QR' | 'PHONE';
+  onRedeemChanged: () => void;
 }) {
   const advice = nextStepAdvice(nextStep, member.activated);
+  // Redeeming changes the balance, so the card keeps its own copy.
+  const [points, setPoints] = useState(member.pointsBalance ?? 0);
   return (
     <section className="memberCard">
       {justCreated && (
@@ -316,7 +359,7 @@ function MemberResultCard({
 
       <div className="memberStats">
         <div>
-          <span className="memberStatValue">{member.pointsBalance ?? 0}</span>
+          <span className="memberStatValue">{points}</span>
           <span className="memberStatLabel">points</span>
         </div>
         <div>
@@ -334,6 +377,21 @@ function MemberResultCard({
           <span className="memberStatLabel">orders</span>
         </div>
       </div>
+
+      <CounterRedeemPanel
+        apiKey={apiKey}
+        base={base}
+        staffCode={staffCode}
+        phone={phoneE164}
+        memberName={member.displayName}
+        pointsBalance={points}
+        activated={member.activated}
+        verification={verification}
+        onPointsChanged={(balance) => {
+          setPoints(balance);
+          onRedeemChanged();
+        }}
+      />
 
       <div className={`memberAdvice memberAdvice--${advice.tone}`}>
         <strong>{advice.title}</strong>

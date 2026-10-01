@@ -24,6 +24,7 @@ import { MemberOrdersSettingsAdminController } from './member-orders-settings.ad
 import { DeliverySettingsAdminController } from './delivery-settings.admin.controller';
 import { PickupRulesAdminController } from './pickup-rules.admin.controller';
 import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admin.controller';
+import { CounterRedemptionsAdminController } from './counter-redemptions.admin.controller';
 import { MemberVouchersAdminController } from './member-vouchers.admin.controller';
 import { MemberVouchersAdminService } from './member-vouchers.admin.service';
 import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
@@ -56,6 +57,7 @@ import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.modu
     MemberOrdersSettingsAdminController,
     WalletTopUpSettingsAdminController,
     MemberVouchersAdminController,
+    CounterRedemptionsAdminController,
   ],
   providers: [
     AdminService,
