@@ -17,6 +17,7 @@ import { CustomerOrders } from './views/CustomerOrders';
 import { SalesCatalog } from './views/SalesCatalog';
 import { ShopLayout } from './views/ShopLayout';
 import { RewardsWallet } from './views/RewardsWallet';
+import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { VoucherCampaigns } from './views/VoucherCampaigns';
 import { RedeemVoucher } from './views/RedeemVoucher';
 import { BentoVouchers } from './views/BentoVouchers';
@@ -491,7 +492,9 @@ function App() {
           </div>
         </header>
         <main className="content">
-          {IMPLEMENTED_VIEWS.has(activeView) ? renderView(activeView) : <ComingSoon label={activeLabel} />}
+          <ViewErrorBoundary resetKey={activeView}>
+            {IMPLEMENTED_VIEWS.has(activeView) ? renderView(activeView) : <ComingSoon label={activeLabel} />}
+          </ViewErrorBoundary>
         </main>
       </div>
     </div>

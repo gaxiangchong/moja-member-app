@@ -354,6 +354,13 @@ export function VoucherCampaigns() {
     }
   }
 
+  /** Re-reads the open campaign and the list from the server after a change. */
+  async function reloadCampaign(id: string) {
+    const [fresh, list] = await Promise.all([fetchCampaignDetail(id), fetchCampaigns()]);
+    setDetail(fresh);
+    setCampaigns(list);
+  }
+
   async function handleSaveEdit() {
     if (!detail || !editForm) return;
     setSaveError(null);
@@ -383,8 +390,8 @@ export function VoucherCampaigns() {
         qualifyingMinSpendRM:
           trigger === 'REFERRAL_PURCHASE' ? Number(editForm.qualifyingMinSpendRM || 0) : undefined,
       });
-      setDetail(updated);
-      setCampaigns((prev) => prev?.map((c) => (c.id === updated.id ? { ...c, name: updated.name } : c)) ?? prev);
+      // The save reply has no voucher stats or list, so reload what the panel shows.
+      await reloadCampaign(updated.id);
       setSavedAt(Date.now());
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save campaign');
@@ -399,7 +406,7 @@ export function VoucherCampaigns() {
     setSaveError(null);
     try {
       const updated = await updateCampaign(detail.id, { isActive: !detail.isActive });
-      setDetail(updated);
+      await reloadCampaign(updated.id);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to update campaign');
     } finally {
@@ -410,8 +417,9 @@ export function VoucherCampaigns() {
   async function handleDelete() {
     if (!detail) return;
     // Used or mid-checkout vouchers record what a member was given, so they block deletion.
-    const inUse = (detail.stats.USED ?? 0) + (detail.stats.LOCKED ?? 0);
-    const unused = (detail.stats.ACTIVE ?? 0) + (detail.stats.EXPIRED ?? 0) + (detail.stats.VOID ?? 0);
+    const stats = detail.stats ?? {};
+    const inUse = (stats.USED ?? 0) + (stats.LOCKED ?? 0);
+    const unused = (stats.ACTIVE ?? 0) + (stats.EXPIRED ?? 0) + (stats.VOID ?? 0);
     if (inUse > 0) {
       setSaveError(
         `${inUse} voucher(s) from this campaign have been used, so it can't be deleted. Switch it off with the Active toggle instead.`,
@@ -436,7 +444,7 @@ export function VoucherCampaigns() {
     if (!detail) return;
     try {
       const voucher = await issueCampaignVoucherToCustomer(detail.id, customerId);
-      setDetail((d) => (d ? { ...d, vouchers: [voucher, ...d.vouchers] } : d));
+      setDetail((d) => (d ? { ...d, vouchers: [voucher, ...(d.vouchers ?? [])] } : d));
       setCampaigns((prev) => prev?.map((c) => (c.id === detail.id ? { ...c, vouchersIssued: (c.vouchersIssued ?? 0) + 1 } : c)) ?? prev);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Failed to issue voucher');
@@ -469,7 +477,7 @@ export function VoucherCampaigns() {
     if (reason == null) return;
     try {
       await revokeCampaignVoucher(voucherId, reason.trim() || undefined);
-      setDetail((d) => (d ? { ...d, vouchers: d.vouchers.map((v) => (v.id === voucherId ? { ...v, status: 'VOID' } : v)) } : d));
+      setDetail((d) => (d ? { ...d, vouchers: (d.vouchers ?? []).map((v) => (v.id === voucherId ? { ...v, status: 'VOID' } : v)) } : d));
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Failed to withdraw voucher');
     }
@@ -671,7 +679,7 @@ export function VoucherCampaigns() {
                           </label>
                         </div>
                         <div className="hbarPanel" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                          {(Object.keys(detail.stats) as VoucherLifecycleStatus[]).map((s) => (
+                          {(Object.keys(detail.stats ?? {}) as VoucherLifecycleStatus[]).map((s) => (
                             <span key={s} className={`badge badge--${VOUCHER_STATUS_TONE[s]}`}>{s}: {detail.stats[s]}</span>
                           ))}
                         </div>
@@ -774,7 +782,7 @@ export function VoucherCampaigns() {
                         <table className="dataTable dataTable--mini">
                           <thead><tr><th>Code</th><th>Member</th><th>Status</th><th>Expires</th><th></th></tr></thead>
                           <tbody>
-                            {detail.vouchers.map((v) => (
+                            {(detail.vouchers ?? []).map((v) => (
                               <tr key={v.id}>
                                 <td className="dataTableMuted">{v.code}</td>
                                 <td>{v.customer?.displayName || v.customer?.phoneE164 || '—'}</td>
@@ -787,7 +795,7 @@ export function VoucherCampaigns() {
                                 </td>
                               </tr>
                             ))}
-                            {detail.vouchers.length === 0 ? (
+                            {(detail.vouchers ?? []).length === 0 ? (
                               <tr><td colSpan={5} className="dataTableEmpty">No vouchers issued yet.</td></tr>
                             ) : null}
                           </tbody>
