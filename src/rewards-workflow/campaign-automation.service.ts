@@ -279,12 +279,32 @@ export class CampaignAutomationService {
         'birthday:',
         onlyMemberIds,
       );
+      // Vouchers from this campaign handed out by hand (no key) still count: a
+      // member who was given one for this birthday must not get a second.
+      const lastCover = await this.latestVoucherExpiry(
+        campaign.id,
+        onlyMemberIds,
+      );
       for (const member of members) {
         if (!member.birthday) continue;
         const next = nextBirthday(member.birthday);
         if (next.daysUntil > leadDays) continue;
         const key = `birthday:${next.year}`;
         if (have.has(`${member.id}|${key}`)) continue;
+        // The window for this birthday opens lead-days before it; a voucher
+        // that is still good from then on already covers it.
+        const windowStart = Date.UTC(
+          next.year,
+          next.month,
+          next.day - leadDays,
+        );
+        const covered = lastCover.get(member.id);
+        if (
+          covered === null ||
+          (covered !== undefined && covered >= windowStart)
+        ) {
+          continue;
+        }
         if (await this.issueOne(campaign, member.id, 'auto_birthday', key)) {
           issued++;
         }
@@ -396,6 +416,33 @@ export class CampaignAutomationService {
       where: { voucherCampaignId: campaign.id },
     });
     return issued < campaign.totalRedemptionCap;
+  }
+
+  /**
+   * For each member, when their most recent live (not withdrawn) voucher from a
+   * campaign stops being valid: a timestamp, or `null` when it never expires.
+   * Members with none are absent from the map.
+   */
+  private async latestVoucherExpiry(
+    campaignId: string,
+    memberIds?: string[],
+  ): Promise<Map<string, number | null>> {
+    const rows = await this.prisma.voucher.findMany({
+      where: {
+        voucherCampaignId: campaignId,
+        status: { not: 'VOID' },
+        ...(memberIds ? { customerId: { in: memberIds } } : {}),
+      },
+      select: { customerId: true, expiresAt: true },
+    });
+    const out = new Map<string, number | null>();
+    for (const r of rows) {
+      const at = r.expiresAt ? r.expiresAt.getTime() : null;
+      const cur = out.get(r.customerId);
+      if (cur === null) continue; // already known to never expire
+      out.set(r.customerId, at === null ? null : Math.max(cur ?? 0, at));
+    }
+    return out;
   }
 
   /** `memberId|issueKey` for vouchers already issued, to skip needless work. */
