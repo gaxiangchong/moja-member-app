@@ -273,8 +273,9 @@ export function ShopFlow({
     () => checkoutCatalogRewards(memberRewards),
     [memberRewards],
   );
-  const showPromoSection =
-    issuedVouchers.length > 0 || catalogRewards.length > 0;
+  // The code box is always there: a member can paste a redemption code from
+  // Rewards even before their wallet has refreshed.
+  const showPromoSection = isAuthenticated;
 
   useEffect(() => {
     if (!appliedVoucher) setVoucherCodeInput('');
@@ -719,7 +720,9 @@ export function ShopFlow({
     }
     const match = findIssuedVoucherByCode(memberRewards, code);
     if (!match) {
-      setVoucherCodeError('This code is not in your wallet or has expired.');
+      setVoucherCodeError(
+        'We could not find this code in your wallet. It may have expired, already been used, or been mistyped.',
+      );
       applyVoucher(null);
       return;
     }
@@ -1387,19 +1390,20 @@ export function ShopFlow({
 
           {showPromoSection ? (
             <section className="pmCard">
-              <h3 className="shopSectionTitle">Voucher or reward</h3>
+              <h3 className="shopSectionTitle">Voucher or redemption code</h3>
               <p className="caption" style={{ marginTop: 0 }}>
-                Apply one voucher or one points reward — not both.
+                One voucher or code per order.
               </p>
               <div className="shopPromoGrid">
-                {issuedVouchers.length > 0 ? (
+                {isAuthenticated ? (
                   <div>
-                    <p className="caption">Voucher code</p>
+                    <p className="caption">Redemption / voucher code</p>
                     <p
                       className="caption"
                       style={{ marginTop: 0, marginBottom: 8 }}
                     >
-                      Enter a code from your wallet (Perks → Vouchers).
+                      Paste the code you got from Rewards → Redeem voucher, or
+                      pick a voucher from your wallet below.
                     </p>
                     <div className="shopVoucherCodeRow">
                       <input
@@ -1407,7 +1411,7 @@ export function ShopFlow({
                         type="text"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder="e.g. WELCOME10"
+                        placeholder="Paste your code, e.g. PROMO-12345"
                         value={voucherCodeInput}
                         onChange={(e) => {
                           setVoucherCodeInput(e.target.value);

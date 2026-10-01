@@ -49,6 +49,9 @@ export function findIssuedVoucherByCode(
 export function checkoutCatalogRewards(data: MemberRewardsPayload | null | undefined): MockReward[] {
   if (!data?.rewards?.length) return [];
   return data.rewards
+    // Rewards redeemed for a code are redeemed in the Rewards tab; their code is
+    // pasted into the voucher box. Only rewards with no code are applied here.
+    .filter((r) => r.redeemVia !== 'code')
     .filter((r) => r.isActive && r.pointsCost != null && r.pointsCost > 0)
     .map((r) => ({
       id: r.id,

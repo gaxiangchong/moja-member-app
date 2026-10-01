@@ -16,6 +16,7 @@ import {
   fetchMe,
   fetchMeRewards,
   fetchMyLoyaltyHistory,
+  redeemRewardForCode,
   fetchPaymentIntentStatus,
   fetchPopularProducts,
   getToken,
@@ -33,6 +34,7 @@ import {
   type MemberProfile,
   type MemberRewardsPayload,
   type PopularProduct,
+  type RewardCodeResult,
   type RewardRedemption,
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
@@ -628,6 +630,16 @@ function RewardHistoryCard({ items }: { items: RewardRedemption[] }) {
                     {formatLoyaltyDate(r.redeemedAt)}
                     {r.orderNumber != null ? ` · Order #${r.orderNumber}` : ''}
                   </span>
+                  {r.code ? (
+                    <span className="caption" style={{ margin: 0 }}>
+                      Code <strong>{r.code}</strong> ·{' '}
+                      {r.voucherStatus === 'used'
+                        ? 'Used'
+                        : r.voucherStatus === 'expired'
+                          ? 'Expired'
+                          : 'Not used yet'}
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <strong style={{ fontSize: 14, color: r.status === 'returned' ? '#64748b' : '#b45309' }}>
@@ -639,7 +651,9 @@ function RewardHistoryCard({ items }: { items: RewardRedemption[] }) {
                       ? 'Order cancelled — points returned'
                       : r.status === 'pending'
                         ? 'Waiting for payment'
-                        : 'Redeemed'}
+                        : r.code
+                          ? 'Code issued'
+                          : 'Redeemed'}
                   </div>
                 </div>
               </li>
@@ -660,13 +674,22 @@ function RewardCard({
   title,
   code,
   points,
+  viaCode,
+  pointsBalance,
+  minSpendSen,
   onRedeem,
 }: {
   title: string;
   code: string;
   points: number;
+  /** Redeemed for a freshly generated code (so no fixed code is shown). */
+  viaCode: boolean;
+  pointsBalance: number;
+  /** This reward's own minimum spend (sen); null/undefined = none. */
+  minSpendSen?: number | null;
   onRedeem: () => void;
 }) {
+  const short = Math.max(0, points - pointsBalance);
   return (
     <article className="rewardCard rewardTicket">
       <div className="rewardTicketStub" aria-hidden="true">
@@ -675,13 +698,22 @@ function RewardCard({
       </div>
       <div className="rewardTicketBody">
         <h3 className="rewardTicketTitle">{title}</h3>
-        {code ? <span className="rewardCode">{code}</span> : null}
+        {!viaCode && code ? <span className="rewardCode">{code}</span> : null}
         <p className="rewardTerms">
-          <span className="rewardTermsLabel">Terms:</span> Min. spend{' '}
-          {formatRmCents(VOUCHER_MIN_SPEND_CENTS)} to use this voucher.
+          <span className="rewardTermsLabel">Terms:</span>{' '}
+          {viaCode
+            ? minSpendSen
+              ? `Min. spend ${formatRmCents(minSpendSen)} to use this voucher.`
+              : 'No minimum spend.'
+            : `Min. spend ${formatRmCents(VOUCHER_MIN_SPEND_CENTS)} to use this voucher.`}
         </p>
-        <button type="button" className="rewardRedeemBtn" onClick={onRedeem}>
-          Redeem voucher
+        <button
+          type="button"
+          className="rewardRedeemBtn"
+          onClick={onRedeem}
+          disabled={viaCode && short > 0}
+        >
+          {viaCode && short > 0 ? `Need ${short.toLocaleString()} more pts` : 'Redeem voucher'}
         </button>
       </div>
     </article>
@@ -742,6 +774,12 @@ function App() {
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
   const [shopInitialQuery, setShopInitialQuery] = useState<string | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
+  // Redeeming a reward for a code: confirm → spend points → show the new code.
+  const [redeemTarget, setRedeemTarget] = useState<{ id: string; title: string; points: number } | null>(null);
+  const [redeemBusy, setRedeemBusy] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [redeemedCode, setRedeemedCode] = useState<RewardCodeResult | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1413,6 +1451,37 @@ function App() {
     if (Number.isNaN(d.getTime())) return null;
     return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }, [profile?.createdAt]);
+
+  const confirmRedeem = async () => {
+    if (!redeemTarget || redeemBusy) return;
+    setRedeemBusy(true);
+    setRedeemError(null);
+    try {
+      const result = await redeemRewardForCode(redeemTarget.id);
+      // Name it after the reward the member picked, not the voucher campaign behind it.
+      result.title = redeemTarget.title;
+      setRedeemTarget(null);
+      setCodeCopied(false);
+      setRedeemedCode(result);
+      // New balance, and the new voucher in the wallet.
+      await loadMemberData().catch(() => undefined);
+    } catch (err) {
+      setRedeemError(err instanceof Error ? err.message : 'Could not redeem this reward.');
+    } finally {
+      setRedeemBusy(false);
+    }
+  };
+
+  const copyRedeemedCode = async () => {
+    if (!redeemedCode) return;
+    try {
+      await navigator.clipboard.writeText(redeemedCode.code);
+      setCodeCopied(true);
+    } catch {
+      // Clipboard can be blocked; the code is on screen to copy by hand.
+      setCodeCopied(false);
+    }
+  };
 
   const voucherItems = rewardsData?.vouchers ?? [];
   const visibleVouchers = voucherItems.filter((v) => {
@@ -2161,7 +2230,17 @@ function App() {
                           title={r.title}
                           code={r.code}
                           points={r.pointsCost ?? 0}
-                          onRedeem={() => setRedeemCheckoutNoticeOpen(true)}
+                          viaCode={r.redeemVia === 'code'}
+                          pointsBalance={pointsBalance}
+                          minSpendSen={r.minSpendSen}
+                          onRedeem={() => {
+                            if (r.redeemVia === 'code') {
+                              setRedeemError(null);
+                              setRedeemTarget({ id: r.id, title: r.title, points: r.pointsCost ?? 0 });
+                            } else {
+                              setRedeemCheckoutNoticeOpen(true);
+                            }
+                          }}
                         />
                       ))}
                       {!filteredRewards.length && (
@@ -2698,6 +2777,85 @@ function App() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {redeemTarget && (
+            <div className="shareOverlay" role="dialog" aria-modal="true" aria-labelledby="redeemConfirmTitle">
+              <div className="shareSheet">
+                <h3 id="redeemConfirmTitle" className="shareSheetTitle">Redeem {redeemTarget.title}?</h3>
+                <p className="caption">
+                  This uses <strong>{redeemTarget.points.toLocaleString()} points</strong> (you have{' '}
+                  {pointsBalance.toLocaleString()}). You&apos;ll get a one-time redemption code to paste into the
+                  voucher box at checkout.
+                </p>
+                {redeemError ? <p className="err">{redeemError}</p> : null}
+                <div className="shareActions">
+                  <button type="button" onClick={() => void confirmRedeem()} disabled={redeemBusy}>
+                    {redeemBusy ? 'Redeeming…' : `Redeem for ${redeemTarget.points.toLocaleString()} pts`}
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setRedeemTarget(null)} disabled={redeemBusy}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {redeemedCode && (
+            <div className="shareOverlay" role="dialog" aria-modal="true" aria-labelledby="redeemedCodeTitle">
+              <div className="shareSheet">
+                <h3 id="redeemedCodeTitle" className="shareSheetTitle">
+                  {redeemedCode.repeat ? 'Your redemption code' : 'Redeemed!'}
+                </h3>
+                <p className="caption" style={{ marginTop: 0 }}>
+                  {redeemedCode.title}
+                  {redeemedCode.repeat
+                    ? ' — you already redeemed this a moment ago, so no more points were used.'
+                    : ` — ${redeemedCode.pointsSpent.toLocaleString()} points used, ${redeemedCode.pointsBalance.toLocaleString()} left.`}
+                </p>
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '14px 12px',
+                    border: '1px dashed #94a3b8',
+                    borderRadius: 12,
+                    background: '#f8fafc',
+                    textAlign: 'center',
+                    fontSize: 24,
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    userSelect: 'all',
+                  }}
+                  aria-label={`Redemption code ${redeemedCode.code}`}
+                >
+                  {redeemedCode.code}
+                </div>
+                <p className="caption">
+                  Copy this code and paste it into the voucher box at checkout. One use only
+                  {redeemedCode.expiresAt ? ` · valid until ${redeemedCode.expiresAt.slice(0, 10)}` : ''}. It&apos;s
+                  also saved under Rewards → Vouchers.
+                </p>
+                <div className="shareActions">
+                  <button type="button" onClick={() => void copyRedeemedCode()}>
+                    {codeCopied ? 'Copied ✓' : 'Copy code'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setRedeemedCode(null);
+                      setTab('shop');
+                      setShopInitialScreen('browse');
+                    }}
+                  >
+                    Go to Shop
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setRedeemedCode(null)}>
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           )}

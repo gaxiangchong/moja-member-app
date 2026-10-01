@@ -605,78 +605,83 @@ export class CustomersService {
       redeemedOrders,
       redeemedRewards,
     ] = await this.prisma.$transaction([
-        this.prisma.loyaltyWallet.findUnique({
-          where: { customerId },
-        }),
-        this.prisma.customerVoucher.findMany({
-          where: { customerId, status: 'ISSUED' },
-          include: {
-            definition: {
-              select: {
-                id: true,
-                code: true,
-                title: true,
-                description: true,
-                pointsCost: true,
-              },
+      this.prisma.loyaltyWallet.findUnique({
+        where: { customerId },
+      }),
+      this.prisma.customerVoucher.findMany({
+        where: { customerId, status: 'ISSUED' },
+        include: {
+          definition: {
+            select: {
+              id: true,
+              code: true,
+              title: true,
+              description: true,
+              pointsCost: true,
             },
           },
-          orderBy: { issuedAt: 'desc' },
-        }),
-        this.prisma.voucherDefinition.findMany({
-          where: memberRewardsCatalogWhere(),
-          select: {
-            id: true,
-            code: true,
-            title: true,
-            description: true,
-            pointsCost: true,
-            isActive: true,
-            imageUrl: true,
-            rewardCategory: true,
+        },
+        orderBy: { issuedAt: 'desc' },
+      }),
+      this.prisma.voucherDefinition.findMany({
+        where: memberRewardsCatalogWhere(),
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          description: true,
+          pointsCost: true,
+          isActive: true,
+          imageUrl: true,
+          rewardCategory: true,
+        },
+        orderBy: [{ rewardSortOrder: 'asc' }, { createdAt: 'desc' }],
+      }),
+      // New campaign model: vouchers issued to this member's wallet.
+      this.prisma.voucher.findMany({
+        where: { customerId, visibleInWallet: true },
+        include: { voucherCampaign: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      // New campaign model: points-catalog rewards (linked to a campaign).
+      this.prisma.rewardCatalog.findMany({
+        where: {
+          isActive: true,
+          visibleInRewardsWallet: true,
+          voucherCampaignId: { not: null },
+        },
+        include: { voucherCampaign: true },
+        orderBy: [{ createdAt: 'desc' }],
+      }),
+      // Rewards redeemed at checkout: newest first.
+      this.prisma.customerOrder.findMany({
+        where: { customerId, rewardPointsSpent: { gt: 0 } },
+        orderBy: { placedAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          orderNumber: true,
+          placedAt: true,
+          status: true,
+          rewardId: true,
+          rewardTitle: true,
+          rewardPointsSpent: true,
+          rewardPointsRefundedAt: true,
+        },
+      }),
+      // Rewards redeemed straight from the points catalog.
+      this.prisma.userReward.findMany({
+        where: { customerId, status: 'REDEEMED' },
+        orderBy: { redeemedAt: 'desc' },
+        take: 50,
+        include: {
+          rewardCatalog: { select: { name: true, pointsCost: true } },
+          voucher: {
+            select: { code: true, status: true, expiresAt: true },
           },
-          orderBy: [{ rewardSortOrder: 'asc' }, { createdAt: 'desc' }],
-        }),
-        // New campaign model: vouchers issued to this member's wallet.
-        this.prisma.voucher.findMany({
-          where: { customerId, visibleInWallet: true },
-          include: { voucherCampaign: true },
-          orderBy: { createdAt: 'desc' },
-        }),
-        // New campaign model: points-catalog rewards (linked to a campaign).
-        this.prisma.rewardCatalog.findMany({
-          where: {
-            isActive: true,
-            visibleInRewardsWallet: true,
-            voucherCampaignId: { not: null },
-          },
-          include: { voucherCampaign: true },
-          orderBy: [{ createdAt: 'desc' }],
-        }),
-        // Rewards redeemed at checkout: newest first.
-        this.prisma.customerOrder.findMany({
-          where: { customerId, rewardPointsSpent: { gt: 0 } },
-          orderBy: { placedAt: 'desc' },
-          take: 50,
-          select: {
-            id: true,
-            orderNumber: true,
-            placedAt: true,
-            status: true,
-            rewardId: true,
-            rewardTitle: true,
-            rewardPointsSpent: true,
-            rewardPointsRefundedAt: true,
-          },
-        }),
-        // Rewards redeemed straight from the points catalog.
-        this.prisma.userReward.findMany({
-          where: { customerId, status: 'REDEEMED' },
-          orderBy: { redeemedAt: 'desc' },
-          take: 50,
-          include: { rewardCatalog: { select: { name: true, pointsCost: true } } },
-        }),
-      ]);
+        },
+      }),
+    ]);
 
     const definitionIds = [
       ...vouchers.map((v) => v.definition.id),
@@ -716,6 +721,8 @@ export class CustomersService {
         pointsSpent: o.rewardPointsSpent,
         redeemedAt: o.placedAt.toISOString(),
         orderNumber: o.orderNumber,
+        code: null as string | null,
+        voucherStatus: null as 'active' | 'used' | 'expired' | null,
         // returned: cancelled / refunded / never paid, so the points came back.
         status: o.rewardPointsRefundedAt
           ? ('returned' as const)
@@ -731,6 +738,17 @@ export class CustomersService {
         redeemedAt: (u.redeemedAt ?? u.createdAt).toISOString(),
         orderNumber: null as number | null,
         status: 'redeemed' as const,
+        // The code generated for this redemption, and whether it is still usable.
+        code: u.voucher?.code ?? null,
+        voucherStatus: u.voucher
+          ? u.voucher.status === 'USED'
+            ? ('used' as const)
+            : u.voucher.status === 'EXPIRED' ||
+                (u.voucher.expiresAt &&
+                  u.voucher.expiresAt.getTime() <= Date.now())
+              ? ('expired' as const)
+              : ('active' as const)
+          : null,
       })),
     ].sort((a, b) => b.redeemedAt.localeCompare(a.redeemedAt));
 
@@ -797,9 +815,12 @@ export class CustomersService {
           }),
       ],
       rewards: [
+        // Legacy catalog rewards have no code of their own: they are applied
+        // at checkout. (`redeemVia` tells the app which way a reward works.)
         ...rewardCatalog.map((r) => ({
           ...r,
           ...withDiscount(r.id),
+          redeemVia: 'checkout' as const,
         })),
         // Only surface new rewards that resolve to a fixed cash discount so
         // every listed reward is redeemable at checkout.
@@ -817,6 +838,8 @@ export class CustomersService {
             rebateValueSen: r.voucherCampaign?.fixedAmountOff ?? null,
             minSpendSen: r.voucherCampaign?.minSpend ?? null,
             percentageOff: null as number | null,
+            // Redeeming spends the points and generates a code to paste at checkout.
+            redeemVia: 'code' as const,
           })),
       ],
     };
@@ -1138,7 +1161,8 @@ export class CustomersService {
         dto.scheduledSlot ?? null,
       );
     }
-    const scheduled = fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY';
+    const scheduled =
+      fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY';
     // In-store "prepare now" orders come out of today's tray; a scheduled
     // pickup consumes the count for its own day.
     const businessDate =

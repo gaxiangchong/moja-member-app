@@ -747,7 +747,53 @@ export type RewardRedemption = {
   orderNumber: number | null;
   /** `returned`: the order was cancelled or never paid, so the points came back. */
   status: 'redeemed' | 'pending' | 'returned';
+  /** The code generated when the reward was redeemed, to paste at checkout. */
+  code?: string | null;
+  /** Whether that code can still be used. */
+  voucherStatus?: 'active' | 'used' | 'expired' | null;
 };
+
+/** What the member gets when they redeem a reward with points. */
+export type RewardCodeResult = {
+  code: string;
+  title: string;
+  expiresAt: string | null;
+  pointsSpent: number;
+  pointsBalance: number;
+  /** True when this was a repeat tap and the earlier code was returned (nothing more charged). */
+  repeat: boolean;
+};
+
+/** Spends the reward's points and returns a freshly generated one-time code for checkout. */
+export async function redeemRewardForCode(rewardId: string): Promise<RewardCodeResult> {
+  const res = await authorizedFetch(`/rewards-wallet/me/redeem-reward/${encodeURIComponent(rewardId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+  });
+  const data = await parseJson<{
+    idempotent?: boolean;
+    voucher?: { code: string; name: string; expiresAt: string | null } | null;
+    pointsSpent?: number;
+    pointsBalance?: number;
+    message?: string | string[];
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    throw new Error(
+      typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join(', ') : 'Could not redeem this reward',
+    );
+  }
+  if (!data.voucher?.code) throw new Error('No code was generated. Please try again.');
+  return {
+    code: data.voucher.code,
+    title: data.voucher.name,
+    expiresAt: data.voucher.expiresAt,
+    pointsSpent: data.pointsSpent ?? 0,
+    pointsBalance: data.pointsBalance ?? 0,
+    repeat: data.idempotent === true,
+  };
+}
 
 export type MemberRewardsPayload = {
   wallet: { pointsBalance: number };
@@ -770,6 +816,8 @@ export type MemberRewardsPayload = {
     };
   }>;
   rewards: Array<{
+    /** `code`: redeem for a generated code to paste at checkout. `checkout`: applied at checkout. */
+    redeemVia?: 'code' | 'checkout';
     id: string;
     code: string;
     title: string;

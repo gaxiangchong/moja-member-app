@@ -152,7 +152,25 @@ export class RewardsWorkflowService {
       orderBy: { createdAt: 'desc' },
     });
     if (recentDuplicate) {
-      return { idempotent: true as const, userReward: recentDuplicate };
+      // A double tap: hand back the code they already got, charge nothing more.
+      const existing = recentDuplicate.voucherId
+        ? await this.prisma.voucher.findUnique({
+            where: { id: recentDuplicate.voucherId },
+            select: { id: true, code: true, name: true, expiresAt: true },
+          })
+        : null;
+      const reward = await this.prisma.rewardCatalog.findUnique({
+        where: { id: rewardCatalogId },
+        select: { pointsCost: true },
+      });
+      const wallet = await this.loyalty.getWalletSummary(customerId);
+      return {
+        idempotent: true as const,
+        userReward: recentDuplicate,
+        voucher: existing,
+        pointsSpent: reward?.pointsCost ?? 0,
+        pointsBalance: wallet.pointsBalance,
+      };
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -170,33 +188,56 @@ export class RewardsWorkflowService {
         throw new BadRequestException('Reward has ended.');
       }
 
+      // The reward is a voucher: redeeming it must produce one, with its own
+      // code, otherwise the points would be spent for nothing.
+      if (!reward.voucherCampaignId) {
+        throw new BadRequestException(
+          'This reward cannot be redeemed for a code.',
+        );
+      }
+
       const summary = await this.loyalty.getWalletSummary(customerId);
       if (summary.pointsBalance < reward.pointsCost) {
-        throw new BadRequestException('Not enough points to redeem this reward.');
+        throw new BadRequestException(
+          'Not enough points to redeem this reward.',
+        );
       }
 
-      await this.loyalty.appendLedgerEntry(
-        {
-          customerId,
-          deltaPoints: -reward.pointsCost,
-          reason: `redeem_${reward.code}`,
-          referenceType: 'reward_redeem',
-          referenceId: reward.id,
-        },
+      let balanceAfter: number;
+      try {
+        ({ balanceAfter } = await this.loyalty.appendLedgerEntry(
+          {
+            customerId,
+            deltaPoints: -reward.pointsCost,
+            reason: `redeem_${reward.code}`,
+            referenceType: 'reward_redeem',
+            referenceId: reward.id,
+          },
+          tx,
+        ));
+      } catch (err) {
+        // Someone else spent the points between the check and now.
+        if (
+          err instanceof BadRequestException &&
+          (err.getResponse() as { code?: string })?.code ===
+            'LOYALTY_INSUFFICIENT_POINTS'
+        ) {
+          throw new BadRequestException(
+            'Not enough points to redeem this reward.',
+          );
+        }
+        throw err;
+      }
+
+      // A fresh, unique code for this redemption (never the reward's own code).
+      const voucher = await this.campaignBuilder.issueVoucherToCustomer(
+        customerId,
+        reward.voucherCampaignId,
+        null,
+        `reward_redeem:${reward.code}`,
         tx,
       );
-
-      let voucherId: string | null = null;
-      if (reward.voucherCampaignId) {
-        const voucher = await this.campaignBuilder.issueVoucherToCustomer(
-          customerId,
-          reward.voucherCampaignId,
-          null,
-          `reward_redeem:${reward.code}`,
-          tx,
-        );
-        voucherId = voucher.id;
-      }
+      const voucherId = voucher.id;
 
       const userReward = await tx.userReward.create({
         data: {
@@ -208,7 +249,18 @@ export class RewardsWorkflowService {
         },
       });
 
-      return { idempotent: false as const, userReward };
+      return {
+        idempotent: false as const,
+        userReward,
+        voucher: {
+          id: voucher.id,
+          code: voucher.code,
+          name: voucher.name,
+          expiresAt: voucher.expiresAt,
+        },
+        pointsSpent: reward.pointsCost,
+        pointsBalance: balanceAfter,
+      };
     });
   }
 
