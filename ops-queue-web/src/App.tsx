@@ -374,6 +374,17 @@ function openKitchenPopup(): void {
   );
 }
 
+/** Member desk: look up a member, register a walk-in, redeem points. */
+function openMemberPopup(): void {
+  const u = new URL(window.location.href);
+  u.hash = '#/member';
+  window.open(
+    u.toString(),
+    'mojaOpsMember',
+    'width=560,height=860,scrollbars=yes,resizable=yes',
+  );
+}
+
 /** Short labels for the queue card chip. */
 const QUEUE_STATUS_LABEL: Record<string, string> = {
   placed: 'New',
@@ -659,6 +670,9 @@ export function App() {
               </button>
               <button type="button" className="btnGhost" onClick={() => openKitchenPopup()}>
                 Kitchen stock
+              </button>
+              <button type="button" className="btnGhost" onClick={() => openMemberPopup()}>
+                Member desk
               </button>
               <button type="button" className="btnGhost" onClick={() => void poll()}>
                 Refresh now
