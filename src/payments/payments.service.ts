@@ -20,6 +20,8 @@ import {
   discountCentsFromRebate,
   loadDefinitionDiscountMap,
 } from '../rewards/voucher-definition-discount.util';
+import { bonusForTopUp } from '../wallet/topup-settings';
+import { WalletTopUpSettingsService } from '../wallet/topup-settings.service';
 import { WalletService } from '../wallet/wallet.service';
 import { PaymentsSettingsService } from './payments-settings.service';
 import type { XenditPaymentRequestResponse } from './xendit-api.service';
@@ -50,6 +52,7 @@ export class PaymentsService {
     private readonly receiptEmail: ReceiptEmailService,
     private readonly bentoVoucher: BentoVoucherService,
     private readonly paymentsSettings: PaymentsSettingsService,
+    private readonly walletTopUpSettings: WalletTopUpSettingsService,
   ) {}
 
   private memberPublicBase(): string {
@@ -266,6 +269,15 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * What the member's top-up screen offers: whether top-ups are open, the
+   * allowed range, the bonus tiers, and whether payments are in demo mode.
+   */
+  async getWalletTopUpOptions() {
+    const settings = await this.walletTopUpSettings.getSettings();
+    return { ...settings, demoMode: this.isDemoMode() };
+  }
+
   async createWalletTopUpSession(
     customerId: string,
     amountCents: number,
@@ -277,6 +289,55 @@ export class PaymentsService {
         message:
           'amountCents must be at least 100 (minimum 1.00 in major currency units).',
       });
+    }
+
+    const settings = await this.walletTopUpSettings.getSettings();
+    if (!settings.enabled) {
+      throw new BadRequestException({
+        code: 'WALLET_TOPUP_DISABLED',
+        message: 'Credit top-ups are not available right now.',
+      });
+    }
+    if (
+      amountCents < settings.minTopUpCents ||
+      amountCents > settings.maxTopUpCents
+    ) {
+      throw new BadRequestException({
+        code: 'WALLET_TOPUP_OUT_OF_RANGE',
+        message: `Top up between RM${(settings.minTopUpCents / 100).toFixed(2)} and RM${(settings.maxTopUpCents / 100).toFixed(2)}.`,
+      });
+    }
+    // Decided now and stored on the payment, so a later change to the offer
+    // cannot change what this payment earns — it is what the member was shown.
+    const bonusCents = bonusForTopUp(amountCents, settings.tiers);
+
+    if (this.isDemoMode()) {
+      const demoReference = randomUUID();
+      await this.prisma.paymentIntent.create({
+        data: {
+          customerId,
+          referenceId: demoReference,
+          purpose: 'wallet_topup',
+          amountCents,
+          bonusCents,
+          currency: 'MYR',
+          country: 'MY',
+          channelCode: 'DEMO',
+          status: 'PENDING',
+        },
+      });
+      return {
+        demoMode: true as const,
+        referenceId: demoReference,
+        paymentRequestId: null,
+        status: 'PENDING',
+        redirectUrl: null,
+        channelCode: 'DEMO',
+        country: 'MY',
+        currency: 'MYR',
+        amountCents,
+        bonusCents,
+      };
     }
 
     const country =
@@ -327,6 +388,7 @@ export class PaymentsService {
         referenceId,
         purpose: 'wallet_topup',
         amountCents,
+        bonusCents,
         currency,
         country,
         channelCode,
@@ -343,6 +405,7 @@ export class PaymentsService {
     const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
 
     return {
+      demoMode: false as const,
       referenceId,
       paymentRequestId,
       status: apiStatus,
@@ -351,6 +414,48 @@ export class PaymentsService {
       country,
       currency,
       amountCents,
+      bonusCents,
+    };
+  }
+
+  /**
+   * Demo mode only: completes a top-up the way a successful payment would, so
+   * the whole flow — credit, bonus, receipt — can be tried without Xendit.
+   */
+  async completeDemoWalletTopUp(customerId: string, referenceId: string) {
+    if (!this.isDemoMode()) {
+      throw new BadRequestException({
+        code: 'DEMO_NOT_ENABLED',
+        message:
+          'Demo payment completion is disabled when PAYMENTS_DEMO_MODE is not true.',
+      });
+    }
+    const intent = await this.prisma.paymentIntent.findUnique({
+      where: { referenceId },
+    });
+    if (
+      !intent ||
+      intent.customerId !== customerId ||
+      intent.purpose !== 'wallet_topup'
+    ) {
+      throw new NotFoundException({
+        code: 'PAYMENT_INTENT_NOT_FOUND',
+        message: 'Payment intent not found.',
+      });
+    }
+    await this.creditWalletIfNeeded(
+      intent.id,
+      referenceId,
+      {} as XenditPaymentRequestResponse,
+    );
+    const done = await this.prisma.paymentIntent.findUniqueOrThrow({
+      where: { id: intent.id },
+    });
+    return {
+      referenceId,
+      status: done.status,
+      amountCents: done.amountCents,
+      bonusCents: done.bonusCents,
     };
   }
 
@@ -937,6 +1042,8 @@ export class PaymentsService {
       channelCode: intent.channelCode,
       currency: intent.currency,
       amountCents: intent.amountCents,
+      /** Top-ups: the bonus credit that comes with it, so the app can say so. */
+      bonusCents: intent.bonusCents,
       orderId,
       orderNumber,
       updatedAt: intent.updatedAt.toISOString(),
@@ -1277,26 +1384,45 @@ export class PaymentsService {
         : undefined;
 
     try {
-      await this.wallet.appendTransaction({
-        customerId: intent.customerId,
-        type: WalletTxnType.TOPUP,
-        amountCents: intent.amountCents,
-        reason: 'xendit_wallet_topup',
-        createdByType: 'system',
-        metadata: {
-          paymentIntentId: intent.id,
-          referenceId: intent.referenceId,
-          xenditPaymentRequestId: intent.xenditPaymentRequestId,
-          xenditPaymentId: paymentId,
-        },
-      });
-
-      await this.prisma.paymentIntent.update({
-        where: { id: intent.id },
-        data: {
-          status: 'SUCCEEDED',
-          metadata: _xenditData as object,
-        },
+      // The top-up, its bonus and the payment's status commit together. If any
+      // part fails nothing is credited and the payment goes back to PENDING, so
+      // a retry cannot credit the top-up twice or leave a bonus without it.
+      await this.prisma.$transaction(async (tx) => {
+        await this.wallet.appendTransactionWithin(tx, {
+          customerId: intent.customerId,
+          type: WalletTxnType.TOPUP,
+          amountCents: intent.amountCents,
+          reason: 'xendit_wallet_topup',
+          createdByType: 'system',
+          metadata: {
+            paymentIntentId: intent.id,
+            referenceId: intent.referenceId,
+            xenditPaymentRequestId: intent.xenditPaymentRequestId,
+            xenditPaymentId: paymentId,
+          },
+        });
+        // The bonus fixed when the payment started, not whatever the offer is now.
+        if (intent.bonusCents > 0) {
+          await this.wallet.appendTransactionWithin(tx, {
+            customerId: intent.customerId,
+            type: WalletTxnType.PROMOTIONAL_BONUS,
+            amountCents: intent.bonusCents,
+            reason: 'wallet_topup_bonus',
+            createdByType: 'system',
+            metadata: {
+              paymentIntentId: intent.id,
+              referenceId: intent.referenceId,
+              topUpCents: intent.amountCents,
+            },
+          });
+        }
+        await tx.paymentIntent.update({
+          where: { id: intent.id },
+          data: {
+            status: 'SUCCEEDED',
+            metadata: _xenditData as object,
+          },
+        });
       });
       // Fire-and-forget transactional receipt.
       void this.receiptEmail.sendWalletTopUpReceipt({

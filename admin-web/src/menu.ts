@@ -58,6 +58,7 @@ export const MENU: MenuGroup[] = [
     label: 'Rewards & Loyalty',
     views: [
       { id: 'rewards-wallet', label: 'Points & wallet' },
+      { id: 'rewards-topup', label: 'Top-up & bonus' },
       { id: 'rewards-voucher-campaigns', label: 'Voucher campaigns' },
       { id: 'rewards-voucher-redeem', label: 'Redeem voucher' },
       { id: 'rewards-bento-vouchers', label: 'Bento vouchers' },
@@ -109,6 +110,7 @@ export const IMPLEMENTED_VIEWS = new Set([
   'sales-pickup-rules',
   'sales-member-orders',
   'rewards-wallet',
+  'rewards-topup',
   'rewards-voucher-campaigns',
   'rewards-voucher-redeem',
   'rewards-bento-vouchers',

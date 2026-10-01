@@ -22,6 +22,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
 import { MemberOrdersSettingsAdminController } from './member-orders-settings.admin.controller';
 import { PickupRulesAdminController } from './pickup-rules.admin.controller';
+import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admin.controller';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { PickupRulesAdminController } from './pickup-rules.admin.controller';
     AdminEmployeesController,
     PickupRulesAdminController,
     MemberOrdersSettingsAdminController,
+    WalletTopUpSettingsAdminController,
   ],
   providers: [AdminService, ApprovalsService, FinanceReportService],
 })

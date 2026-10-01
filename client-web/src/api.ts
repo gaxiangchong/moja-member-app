@@ -392,6 +392,8 @@ export type PaymentIntentStatus = {
   channelCode: string;
   currency: string;
   amountCents: number;
+  /** Wallet top-ups: the bonus credit that came with the payment. */
+  bonusCents: number;
   orderId: string | null;
   orderNumber: number | null;
   updatedAt: string;
@@ -415,6 +417,7 @@ export async function fetchPaymentIntentStatus(
     channelCode?: string;
     currency?: string;
     amountCents?: number;
+    bonusCents?: number;
     orderId?: string | null;
     orderNumber?: number | null;
     updatedAt?: string;
@@ -436,6 +439,7 @@ export async function fetchPaymentIntentStatus(
     channelCode: data.channelCode ?? '',
     currency: data.currency ?? '',
     amountCents: typeof data.amountCents === 'number' ? data.amountCents : 0,
+    bonusCents: typeof data.bonusCents === 'number' ? data.bonusCents : 0,
     orderId: typeof data.orderId === 'string' ? data.orderId : null,
     orderNumber: typeof data.orderNumber === 'number' ? data.orderNumber : null,
     updatedAt: data.updatedAt ?? new Date().toISOString(),
@@ -601,6 +605,8 @@ export async function createWalletTopUpSession(
   amountCents: number,
   channelCode?: string,
 ): Promise<{
+  /** True when payments are in demo mode: no redirect, finish with completeDemoWalletTopUp. */
+  demoMode: boolean;
   referenceId: string;
   paymentRequestId: string | null;
   status: string;
@@ -609,6 +615,8 @@ export async function createWalletTopUpSession(
   country: string;
   currency: string;
   amountCents: number;
+  /** Bonus credit this top-up earns, fixed when the payment starts. */
+  bonusCents: number;
 }> {
   const res = await authorizedFetch('/payments/xendit/wallet-topup', {
     method: 'POST',
@@ -628,6 +636,8 @@ export async function createWalletTopUpSession(
     country?: string;
     currency?: string;
     amountCents?: number;
+    bonusCents?: number;
+    demoMode?: boolean;
   }>(res);
   if (!res.ok) {
     const msg =
@@ -639,6 +649,8 @@ export async function createWalletTopUpSession(
     throw new Error(msg || `Payment session failed (${res.status})`);
   }
   return {
+    demoMode: data.demoMode === true,
+    bonusCents: typeof data.bonusCents === 'number' ? data.bonusCents : 0,
     referenceId: data.referenceId!,
     paymentRequestId: data.paymentRequestId ?? null,
     status: data.status ?? '',
@@ -1110,4 +1122,64 @@ export async function fetchShopAvailability(date?: string): Promise<ShopAvailabi
     );
   }
   return data;
+}
+
+/** What the top-up screen offers; set by the shop in the admin. */
+export type TopUpOptions = {
+  /** Members can only top up while this is on. */
+  enabled: boolean;
+  minTopUpCents: number;
+  maxTopUpCents: number;
+  /** Top up at least `topUpCents`, get `bonusCents` extra. Ascending. */
+  tiers: Array<{ topUpCents: number; bonusCents: number }>;
+  /** Payments are in demo mode: no redirect to a payment page. */
+  demoMode: boolean;
+};
+
+export async function fetchTopUpOptions(): Promise<TopUpOptions> {
+  const res = await authorizedFetch('/payments/xendit/wallet-topup/options');
+  const data = await parseJson<Partial<TopUpOptions> & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    throw new Error(
+      (Array.isArray(raw) ? raw.join(', ') : raw) || `Top-up options failed (${res.status})`,
+    );
+  }
+  return {
+    enabled: data.enabled === true,
+    minTopUpCents: data.minTopUpCents ?? 1000,
+    maxTopUpCents: data.maxTopUpCents ?? 100000,
+    tiers: Array.isArray(data.tiers) ? data.tiers : [],
+    demoMode: data.demoMode === true,
+  };
+}
+
+/** Demo mode only: finishes a top-up as if the payment had succeeded. */
+export async function completeDemoWalletTopUp(
+  referenceId: string,
+): Promise<{ referenceId: string; status: string; amountCents: number; bonusCents: number }> {
+  const res = await authorizedFetch('/payments/demo/complete-wallet-topup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ referenceId }),
+  });
+  const data = await parseJson<{
+    message?: string | string[];
+    referenceId?: string;
+    status?: string;
+    amountCents?: number;
+    bonusCents?: number;
+  }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    throw new Error(
+      (Array.isArray(raw) ? raw.join(', ') : raw) || `Top-up failed (${res.status})`,
+    );
+  }
+  return {
+    referenceId: data.referenceId ?? referenceId,
+    status: data.status ?? '',
+    amountCents: data.amountCents ?? 0,
+    bonusCents: data.bonusCents ?? 0,
+  };
 }

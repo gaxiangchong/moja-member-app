@@ -36,6 +36,7 @@ import {
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { OrdersTab } from './orders/OrdersTab';
+import { TopUpScreen, type TopUpResult } from './wallet/TopUpScreen';
 import { InstallBanner } from './components/InstallBanner';
 import {
   clearPendingPayment,
@@ -670,6 +671,9 @@ function App() {
   const [adSlides, setAdSlides] = useState<HomeAdSlide[]>([]);
   const [popularItems, setPopularItems] = useState<PopularProduct[]>([]);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  // The credit top-up screen. Non-null while it is open; `result` is set when the
+  // member returns from the payment page, so it opens on the outcome.
+  const [topUp, setTopUp] = useState<{ result: TopUpResult | null } | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
   const [shopInitialQuery, setShopInitialQuery] = useState<string | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
@@ -867,6 +871,7 @@ function App() {
     try {
       const u = new URL(window.location.href);
       const shopPay = u.searchParams.get('shopPayment');
+      const walletTopUp = u.searchParams.get('walletTopup');
       const orderNumber = u.searchParams.get('orderNumber');
       const t = u.searchParams.get('tab');
       if (t === 'account' || t === 'home' || t === 'perks' || t === 'shop' || t === 'orders') {
@@ -880,7 +885,16 @@ function App() {
         clearPendingPayment();
         setPaymentResult({ status: 'failed' });
       }
-      if (shopPay || t || orderNumber) {
+      if (walletTopUp === 'failed') {
+        clearPendingPayment();
+        setTopUp({ result: { status: 'failed' } });
+      } else if (walletTopUp === 'success') {
+        // The amounts arrive from the payment-status check below, which keeps
+        // watching until the payment is confirmed; just make sure the balance is fresh.
+        void loadMemberData();
+      }
+      if (shopPay || walletTopUp || t || orderNumber) {
+        u.searchParams.delete('walletTopup');
         u.searchParams.delete('shopPayment');
         u.searchParams.delete('orderNumber');
         u.searchParams.delete('tab');
@@ -927,16 +941,30 @@ function App() {
         if (cancelled) return;
         if (res.status === 'SUCCEEDED') {
           clearPendingPayment();
-          const orderNumber =
-            res.orderNumber != null
-              ? String(res.orderNumber)
-              : pending.orderNumber;
-          setPaymentResult({ status: 'success', orderNumber });
+          if (pending.purpose === 'wallet_topup') {
+            setTopUp({
+              result: {
+                status: 'success',
+                amountCents: res.amountCents,
+                bonusCents: res.bonusCents,
+              },
+            });
+          } else {
+            const orderNumber =
+              res.orderNumber != null
+                ? String(res.orderNumber)
+                : pending.orderNumber;
+            setPaymentResult({ status: 'success', orderNumber });
+          }
           void loadMemberData();
           stop();
         } else if (res.status === 'FAILED') {
           clearPendingPayment();
-          setPaymentResult({ status: 'failed' });
+          if (pending.purpose === 'wallet_topup') {
+            setTopUp({ result: { status: 'failed' } });
+          } else {
+            setPaymentResult({ status: 'failed' });
+          }
           stop();
         }
       } catch {
@@ -1817,8 +1845,8 @@ function App() {
                     <button
                       type="button"
                       className="pmCard homeSummaryCard"
-                      onClick={() => setTab('account')}
-                      aria-label={`Credits ${walletCreditsLabel}`}
+                      onClick={() => setTopUp({ result: null })}
+                      aria-label={`Credits ${walletCreditsLabel}. Top up`}
                     >
                       <span className="homeSummaryIcon homeSummaryIcon--credit" aria-hidden>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2247,8 +2275,8 @@ function App() {
                   <button
                     type="button"
                     className="pmCard homeSummaryCard"
-                    onClick={() => setTab('home')}
-                    aria-label={`Credits ${walletCreditsLabel}`}
+                    onClick={() => setTopUp({ result: null })}
+                    aria-label={`Credits ${walletCreditsLabel}. Top up`}
                   >
                     <span className="homeSummaryIcon homeSummaryIcon--credit" aria-hidden>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2618,6 +2646,17 @@ function App() {
                 </div>
               </div>
             </div>
+          )}
+
+          {topUp && profile && (
+            <TopUpScreen
+              // Re-mount when the outcome arrives so the screen opens on it.
+              key={topUp.result ? topUp.result.status : 'pick'}
+              balanceCents={profile.storedWallet?.currentWalletBalance ?? 0}
+              result={topUp.result}
+              onClose={() => setTopUp(null)}
+              onToppedUp={() => void loadMemberData()}
+            />
           )}
 
           {memberQrOpen && profile && (

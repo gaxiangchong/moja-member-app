@@ -544,6 +544,9 @@ model PaymentIntent {
   channelCode            String   @map("channel_code") @db.VarChar(64)
   idempotencyKey         String?  @unique @map("idempotency_key")
   xenditPaymentRequestId String?  @map("xendit_payment_request_id") @db.VarChar(128)
+  /// Wallet top-ups: the bonus credit promised when the payment started (sen),
+  /// fixed then so a later change to the offer cannot change what this payment earns.
+  bonusCents             Int      @default(0) @map("bonus_cents")
   metadata               Json?
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")

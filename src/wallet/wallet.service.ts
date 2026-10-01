@@ -150,6 +150,17 @@ export class WalletService {
     });
   }
 
+  /**
+   * Same as {@link appendTransaction}, but inside the caller's transaction, so
+   * several entries (a top-up and its bonus) commit together or not at all.
+   */
+  appendTransactionWithin(
+    tx: Prisma.TransactionClient,
+    params: Parameters<WalletService['appendTransaction']>[0],
+  ) {
+    return this.appendTransactionInTx(tx, params);
+  }
+
   async reverseTransaction(params: {
     customerId: string;
     transactionId: string;

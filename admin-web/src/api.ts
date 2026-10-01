@@ -1356,3 +1356,30 @@ export async function updateMemberOrdersSettings(
   if (!res.ok) throw new Error(extractMessage(data, res));
   return data;
 }
+
+/** Credit top-ups: on/off, the allowed range, and the bonus members earn. Amounts are in sen. */
+export type TopUpSettings = {
+  enabled: boolean;
+  minTopUpCents: number;
+  maxTopUpCents: number;
+  /** Top up at least `topUpCents`, get `bonusCents` extra. The server keeps these ascending. */
+  tiers: { topUpCents: number; bonusCents: number }[];
+};
+
+export async function fetchTopUpSettings(): Promise<TopUpSettings> {
+  const res = await authorizedFetch('/admin/wallet/topup-settings');
+  const data = await parseJson<TopUpSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+export async function updateTopUpSettings(settings: TopUpSettings): Promise<TopUpSettings> {
+  const res = await authorizedFetch('/admin/wallet/topup-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await parseJson<TopUpSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}

@@ -3200,3 +3200,292 @@ code {
   font-size: 12px;
   opacity: 0.85;
 }
+
+/* Credit top-up screen (opened from the Credits tile) */
+.topUpOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(15, 23, 42, 0.62);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.topUpSheet {
+  position: relative;
+  width: min(480px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px 28px;
+  display: grid;
+  gap: 10px;
+  box-shadow: 0 -16px 40px -12px rgba(0, 52, 141, 0.35);
+}
+
+@media (min-width: 560px) {
+  .topUpOverlay {
+    align-items: center;
+  }
+  .topUpSheet {
+    border-radius: 24px;
+    max-height: 88vh;
+  }
+}
+
+.topUpClose {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.topUpTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.topUpBalance {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.topUpBalance strong {
+  color: #00348d;
+}
+
+.topUpSection {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.topUpUnavailable {
+  margin: 8px 0 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.topUpTiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.topUpTier {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 12px 8px;
+  border: 1.5px solid #dde8fb;
+  border-radius: 16px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.topUpTier--active {
+  border-color: #00348d;
+  background: #eef4ff;
+  box-shadow: 0 0 0 2px rgba(0, 52, 141, 0.15);
+}
+
+.topUpTierPay {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.topUpTierBonus {
+  font-size: 12px;
+  font-weight: 700;
+  color: #047857;
+}
+
+.topUpTierGet {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.topUpAmount {
+  display: grid;
+  gap: 6px;
+}
+
+.topUpAmountField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1.5px solid #dde8fb;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.topUpAmountField:focus-within {
+  border-color: #00348d;
+}
+
+.topUpAmountField input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  color: #0f172a;
+  background: transparent;
+}
+
+.topUpRange {
+  margin: 0;
+}
+
+.topUpRange--bad {
+  color: #b91c1c;
+}
+
+.topUpSummary {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.topUpSummaryRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #475569;
+}
+
+.topUpSummaryRow--bonus {
+  color: #047857;
+}
+
+.topUpSummaryRow--total {
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.topUpChannels {
+  display: grid;
+  gap: 8px;
+}
+
+.topUpChannel {
+  padding: 11px 14px;
+  border: 1.5px solid #dde8fb;
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.topUpChannel--active {
+  border-color: #00348d;
+  background: #eef4ff;
+}
+
+.topUpPay {
+  margin-top: 6px;
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #00348d;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.topUpPay:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.topUpGhost {
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: #00348d;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.topUpDemo {
+  display: grid;
+  gap: 10px;
+}
+
+.topUpDemoNote {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.topUpOutcome {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 10px 0 4px;
+  text-align: center;
+}
+
+.topUpOutcomeIcon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 30px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.topUpOutcomeIcon--ok {
+  background: #059669;
+}
+
+.topUpOutcomeIcon--bad {
+  background: #dc2626;
+}
+
+.topUpOutcomeTotal {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #065f46;
+}
+
+.topUpOutcome .topUpPay {
+  width: 100%;
+}

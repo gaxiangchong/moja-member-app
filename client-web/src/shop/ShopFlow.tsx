@@ -33,6 +33,7 @@ import {
   getXenditCardTokenSessionStatus,
   isShopProductSoldOut,
 } from '../api';
+import { HIDDEN_PAYMENT_CHANNELS } from '../payments/channels';
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
@@ -65,7 +66,6 @@ function todayIsoDate(): string {
 // Channels intentionally hidden from the checkout UI even if returned by the
 // backend's XENDIT_SHOP_CHANNEL_CODES list — e.g. removed by product without
 // requiring an env redeploy.
-const HIDDEN_PAYMENT_CHANNELS = new Set<string>(['SHOPEEPAY', 'SHOPEEPAY_MY']);
 
 const CHANNEL_LOGOS: Record<string, string> = {
   TOUCHNGO: '/images/payments/touchngo.png',

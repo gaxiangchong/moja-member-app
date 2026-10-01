@@ -25,6 +25,7 @@ import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
 import { MemberOrdersSettings } from './views/MemberOrdersSettings';
 import { PickupRules } from './views/PickupRules';
+import { TopUpSettings } from './views/TopUpSettings';
 
 function identityLabel(identity: AdminIdentity): string {
   return identity.kind === 'user' ? identity.displayName || identity.email : identity.actorLabel;
@@ -241,6 +242,8 @@ function renderView(viewId: string) {
       return <ShopLayout />;
     case 'rewards-wallet':
       return <RewardsWallet />;
+    case 'rewards-topup':
+      return <TopUpSettings />;
     case 'rewards-voucher-campaigns':
       return <VoucherCampaigns />;
     case 'rewards-voucher-redeem':

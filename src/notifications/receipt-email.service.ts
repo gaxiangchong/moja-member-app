@@ -219,6 +219,12 @@ export class ReceiptEmailService {
         intent.customer.displayName?.trim() || 'there';
       const subject = `${this.email.getSubjectPrefix()} Wallet top-up confirmed`;
       const amountStr = formatMoney(intent.amountCents, currency);
+      const bonusStr =
+        intent.bonusCents > 0 ? formatMoney(intent.bonusCents, currency) : null;
+      const totalStr = formatMoney(
+        intent.amountCents + intent.bonusCents,
+        currency,
+      );
       const placedAtStr = formatDateTime(intent.updatedAt);
 
       const html = `
@@ -232,6 +238,7 @@ export class ReceiptEmailService {
 
         <div style="background:#f9fafb;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;">
           <div style="font-size:28px;font-weight:700;color:#111827;margin-bottom:8px;">${amountStr}</div>
+          ${bonusStr ? `<div style="color:#047857;"><strong>Bonus credit:</strong> +${bonusStr} — ${totalStr} added to your wallet in total</div>` : ''}
           <div><strong>Completed:</strong> ${escapeHtml(placedAtStr)}</div>
           ${channelLabel ? `<div><strong>Paid with:</strong> ${escapeHtml(channelLabel)}</div>` : ''}
           <div><strong>Reference:</strong> <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;">${escapeHtml(intent.referenceId)}</span></div>
@@ -255,6 +262,9 @@ export class ReceiptEmailService {
         `Hi ${greetingName}, your wallet has been topped up.`,
         ``,
         `Amount:    ${amountStr}`,
+        bonusStr
+          ? `Bonus:     +${bonusStr} (${totalStr} added to your wallet in total)`
+          : null,
         `Completed: ${placedAtStr}`,
         channelLabel ? `Paid with: ${channelLabel}` : null,
         `Reference: ${intent.referenceId}`,

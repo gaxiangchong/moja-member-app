@@ -1738,7 +1738,8 @@ export class AdminDashboardController {
           <div class="sheet">
             <div class="sheet-head"><h2>Top-up bonus rules</h2></div>
             <div class="coming-soon">
-              Configure wallet bonus rules via <code>GET/PATCH /admin/master/rules</code> (business rules) when exposed in the UI. This screen is reserved for finance-owned top-up incentives.
+              Top-up and bonus settings (for example top up RM100, get RM20 extra) are managed in the new admin under
+              <strong>Rewards &amp; Loyalty → Top-up &amp; bonus</strong>.
             </div>
           </div>
         </section>

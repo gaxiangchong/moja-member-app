@@ -15,6 +15,7 @@ import type { AuthUser } from '../auth/types/auth-user.type';
 import { DemoCompleteShopOrderDto } from './dto/demo-complete-shop-order.dto';
 import { DemoCompleteBentoSubscriptionDto } from './dto/demo-complete-bento-subscription.dto';
 import { ShopOrderCheckoutDto } from './dto/shop-order-checkout.dto';
+import { DemoCompleteWalletTopUpDto } from './dto/demo-complete-wallet-topup.dto';
 import { WalletTopUpSessionDto } from './dto/wallet-topup-session.dto';
 import { PaymentsService } from './payments.service';
 
@@ -93,6 +94,34 @@ export class PaymentsController {
       user.customerId,
       dto.amountCents,
       dto.channelCode,
+    );
+  }
+
+  /**
+   * What the top-up screen offers: whether top-ups are open, the allowed range,
+   * the bonus tiers ("top up RM100, get RM20 extra"), and whether payments are
+   * in demo mode. Members only — nothing here is useful to a guest.
+   */
+  @Get('xendit/wallet-topup/options')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  getWalletTopUpOptions() {
+    return this.payments.getWalletTopUpOptions();
+  }
+
+  /**
+   * Simulates a successful wallet top-up (PAYMENTS_DEMO_MODE=true) only.
+   */
+  @Post('demo/complete-wallet-topup')
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  completeDemoWalletTopUp(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DemoCompleteWalletTopUpDto,
+  ) {
+    return this.payments.completeDemoWalletTopUp(
+      user.customerId,
+      dto.referenceId,
     );
   }
 
