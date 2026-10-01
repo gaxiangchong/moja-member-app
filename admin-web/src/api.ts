@@ -702,7 +702,13 @@ export type SalesplaySyncOptionsInput = {
   createMissingProducts: boolean;
   createMissingVariants: boolean;
   missingAction: 'keep' | 'hide' | 'delete';
-  assignments: { code: string; productId: string; variantLabel: string | null }[];
+  assignments: {
+    code: string;
+    productId: string;
+    variantLabel: string | null;
+    /** Set to add the POS item to `productId` as a new size with this name. */
+    newSizeLabel?: string;
+  }[];
 };
 
 export type SalesplayMatch = {
@@ -719,6 +725,19 @@ export type SalesplayMatch = {
   codeAction: 'set' | 'replace' | 'unchanged';
   currentPriceCents: number;
   priceAction: 'set' | 'unchanged' | 'locked';
+};
+
+export type SalesplaySizeAddition = {
+  code: string;
+  csvName: string;
+  category: string;
+  csvPriceCents: number;
+  enabled: boolean;
+  productId: string;
+  productName: string;
+  sizeLabel: string;
+  /** The product has no sizes yet: its current item becomes "Regular". */
+  convertsPlain: boolean;
 };
 
 export type SalesplayCsvOnly = {
@@ -760,6 +779,7 @@ export type SalesplaySyncPlan = {
     pricesLocked: number;
     productsToCreate: number;
     variantsToCreate: number;
+    sizesToAdd: number;
     toHide: number;
     toDelete: number;
     removalBlocked: number;
@@ -767,6 +787,7 @@ export type SalesplaySyncPlan = {
     catalogOnly: number;
   };
   matched: SalesplayMatch[];
+  sizeAdditions: SalesplaySizeAddition[];
   csvOnly: SalesplayCsvOnly[];
   catalogOnly: SalesplayCatalogOnly[];
   skipped: { line: number; name: string; reason: string }[];

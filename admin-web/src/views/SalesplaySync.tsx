@@ -5,6 +5,7 @@ import {
   previewSalesplaySync,
   uploadSalesplayCsv,
   type SalesplayCsvInfo,
+  type SalesplayCsvOnly,
   type SalesplaySyncOptionsInput,
   type SalesplaySyncPlan,
   type ShopCatalogProduct,
@@ -28,6 +29,26 @@ function unitsOf(products: ShopCatalogProduct[]): Unit[] {
     }
   }
   return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+type Assignment = {
+  productId: string;
+  /** Existing size to map onto (plain mapping). */
+  variantLabel: string | null;
+  /** Set when adding the POS item as a NEW size of `productId`. */
+  newSizeLabel?: string;
+};
+
+/** A sensible first guess for the new size's name. */
+function defaultSizeLabel(csvName: string, variantLabel: string | null, productName: string): string {
+  if (variantLabel) return variantLabel;
+  const name = csvName.trim();
+  const base = productName.trim();
+  if (name.toLowerCase().startsWith(base.toLowerCase()) && name.length > base.length) {
+    const rest = name.slice(base.length).trim().replace(/^[-–:·\s]+/, '').replace(/^\((.*)\)$/, '$1').trim();
+    if (rest) return rest;
+  }
+  return name;
 }
 
 function Tag({ tone, children }: { tone: 'success' | 'warning' | 'danger' | 'neutral'; children: React.ReactNode }) {
@@ -70,7 +91,7 @@ export function SalesplaySync({
   const [createVariants, setCreateVariants] = useState(false);
   const [createProducts, setCreateProducts] = useState(false);
   const [missingAction, setMissingAction] = useState<'keep' | 'hide' | 'delete'>('keep');
-  const [assignments, setAssignments] = useState<Record<string, { productId: string; variantLabel: string | null }>>({});
+  const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
 
   const [plan, setPlan] = useState<SalesplaySyncPlan | null>(null);
   const [busy, setBusy] = useState<'upload' | 'preview' | 'apply' | null>(null);
@@ -78,6 +99,10 @@ export function SalesplaySync({
   const [error, setError] = useState<string | null>(null);
 
   const units = useMemo(() => unitsOf(products), [products]);
+  const productChoices = useMemo(
+    () => [...products].sort((a, b) => a.name.localeCompare(b.name)),
+    [products],
+  );
 
   const refreshInfo = useCallback(async () => {
     try {
@@ -101,7 +126,10 @@ export function SalesplaySync({
       createMissingVariants: createVariants,
       createMissingProducts: createProducts,
       missingAction,
-      assignments: Object.entries(assignments).map(([code, a]) => ({ code, ...a })),
+      assignments: Object.entries(assignments)
+        // An "add as new size" row with no name yet is not ready to send.
+        .filter(([, a]) => a.newSizeLabel === undefined || a.newSizeLabel.trim() !== '')
+        .map(([code, a]) => ({ code, ...a })),
     };
   }
 
@@ -157,7 +185,8 @@ export function SalesplaySync({
       return;
     }
     const s = plan.summary;
-    const work = s.codesToWrite + s.pricesToWrite + s.productsToCreate + s.variantsToCreate + s.toHide + s.toDelete;
+    const work =
+      s.codesToWrite + s.pricesToWrite + s.productsToCreate + s.variantsToCreate + s.sizesToAdd + s.toHide + s.toDelete;
     if (!work) {
       setMessage('Nothing to apply — the catalog already matches SalesPlay.');
       return;
@@ -165,7 +194,7 @@ export function SalesplaySync({
     const parts: string[] = [];
     if (s.codesToWrite) parts.push(`set ${s.codesToWrite} POS code(s)`);
     if (s.pricesToWrite) parts.push(`change ${s.pricesToWrite} price(s)`);
-    if (s.variantsToCreate) parts.push(`add ${s.variantsToCreate} size(s)`);
+    if (s.variantsToCreate + s.sizesToAdd) parts.push(`add ${s.variantsToCreate + s.sizesToAdd} size(s)`);
     if (s.productsToCreate) parts.push(`create ${s.productsToCreate} hidden product(s)`);
     if (s.toHide) parts.push(`hide ${s.toHide} product(s)`);
     if (s.toDelete) parts.push(`DELETE ${s.toDelete} product(s)`);
@@ -208,14 +237,36 @@ export function SalesplaySync({
     }
   }
 
-  function setAssignment(code: string, key: string) {
+  /** `choice` is "" (unmapped), "map:<productId>::<size>" or "add:<productId>". */
+  function setAssignment(row: SalesplayCsvOnly, choice: string) {
     setAssignments((prev) => {
       const next = { ...prev };
-      const unit = units.find((u) => u.key === key);
-      if (unit) next[code] = { productId: unit.productId, variantLabel: unit.variantLabel };
-      else delete next[code];
+      if (choice.startsWith('map:')) {
+        const unit = units.find((u) => `map:${u.key}` === choice);
+        if (unit) next[row.code] = { productId: unit.productId, variantLabel: unit.variantLabel };
+        else delete next[row.code];
+      } else if (choice.startsWith('add:')) {
+        const productId = choice.slice(4);
+        const product = products.find((p) => p.id === productId);
+        if (product) {
+          next[row.code] = {
+            productId,
+            variantLabel: null,
+            // Keep what the admin already typed if they only switched product.
+            newSizeLabel: prev[row.code]?.newSizeLabel ?? defaultSizeLabel(row.csvName, row.variantLabel, product.name),
+          };
+        } else delete next[row.code];
+      } else {
+        delete next[row.code];
+      }
       return next;
     });
+  }
+
+  function assignmentChoice(code: string): string {
+    const a = assignments[code];
+    if (!a) return '';
+    return a.newSizeLabel !== undefined ? `add:${a.productId}` : `map:${a.productId}::${a.variantLabel ?? ''}`;
   }
 
   const s = plan?.summary;
@@ -372,7 +423,7 @@ export function SalesplaySync({
               {s.pricesToWrite ? <> · <strong>{s.pricesToWrite}</strong> price(s) to update</> : null}
               {s.pricesLocked ? <> · <span style={{ color: '#92400e' }}>{s.pricesLocked} price(s) kept (edited by hand)</span></> : null}
               {s.productsToCreate ? <> · <strong>{s.productsToCreate}</strong> product(s) to create</> : null}
-              {s.variantsToCreate ? <> · <strong>{s.variantsToCreate}</strong> size(s) to add</> : null}
+              {s.variantsToCreate + s.sizesToAdd ? <> · <strong>{s.variantsToCreate + s.sizesToAdd}</strong> size(s) to add</> : null}
               {s.toHide ? <> · <span style={{ color: '#b91c1c' }}>{s.toHide} product(s) to hide</span></> : null}
               {s.toDelete ? <> · <strong style={{ color: '#b91c1c' }}>{s.toDelete} product(s) to DELETE</strong></> : null}
               {s.removalBlocked ? <> · <span style={{ color: '#92400e' }}>{s.removalBlocked} kept for safety</span></> : null}
@@ -437,6 +488,51 @@ export function SalesplaySync({
             </table>
           </section>
 
+          {plan.sizeAdditions.length > 0 ? (
+            <section className="panel">
+              <h3 className="panelTitle">
+                New sizes to add to existing products <span className="viewMuted">({plan.sizeAdditions.length})</span>
+              </h3>
+              <p className="viewMuted" style={{ marginTop: 0 }}>
+                POS items you chose to add to a product you already have. Each becomes a new size with its SalesPlay
+                price and code when you apply.
+              </p>
+              <table className="dataTable">
+                <thead>
+                  <tr>
+                    <th>SalesPlay item</th>
+                    <th>Code</th>
+                    <th>Added to</th>
+                    <th>New size</th>
+                    <th>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plan.sizeAdditions.map((a) => (
+                    <tr key={a.code}>
+                      <td>{a.csvName} {a.enabled ? null : <Tag tone="danger">Disabled in POS</Tag>}</td>
+                      <td><code>{a.code}</code></td>
+                      <td>
+                        <ProductLabel name={a.productName} variant={null} id={a.productId} />
+                        {a.convertsPlain ? (
+                          <>
+                            <br />
+                            <span style={{ color: '#b45309' }}>
+                              This product has no sizes yet — its current item becomes the size "Regular", keeping its
+                              price and POS code.
+                            </span>
+                          </>
+                        ) : null}
+                      </td>
+                      <td><Tag tone="success">Add size</Tag> <strong>{a.sizeLabel}</strong></td>
+                      <td>{money(a.csvPriceCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
+
           <section className="panel">
             <h3 className="panelTitle">In SalesPlay, not in the app <span className="viewMuted">({s.csvOnly})</span></h3>
             <p className="viewMuted" style={{ marginTop: 0 }}>
@@ -498,15 +594,38 @@ export function SalesplaySync({
                     </td>
                     <td>
                       <select
-                        value={assignments[r.code] ? `${assignments[r.code].productId}::${assignments[r.code].variantLabel ?? ''}` : ''}
-                        onChange={(e) => setAssignment(r.code, e.target.value)}
+                        value={assignmentChoice(r.code)}
+                        onChange={(e) => setAssignment(r, e.target.value)}
                         style={{ maxWidth: 260 }}
                       >
                         <option value="">— not mapped —</option>
-                        {units.map((u) => (
-                          <option key={u.key} value={u.key}>{u.label}</option>
-                        ))}
+                        <optgroup label="Same as an existing item">
+                          {units.map((u) => (
+                            <option key={u.key} value={`map:${u.key}`}>{u.label}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Add as a new size of…">
+                          {productChoices.map((p) => (
+                            <option key={p.id} value={`add:${p.id}`}>{p.name}</option>
+                          ))}
+                        </optgroup>
                       </select>
+                      {assignments[r.code]?.newSizeLabel !== undefined ? (
+                        <label className="filterField" style={{ marginTop: 6 }}>
+                          Name of the new size
+                          <input
+                            type="text"
+                            maxLength={80}
+                            value={assignments[r.code].newSizeLabel}
+                            onChange={(e) =>
+                              setAssignments((prev) => ({
+                                ...prev,
+                                [r.code]: { ...prev[r.code], newSizeLabel: e.target.value },
+                              }))
+                            }
+                          />
+                        </label>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

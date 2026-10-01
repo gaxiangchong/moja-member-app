@@ -354,6 +354,27 @@ export type SalesplayCsvOnly = {
   skipReason: string | null;
 };
 
+/**
+ * A POS item the admin chose to add to an existing product as a new size,
+ * because it could not be matched to anything already there.
+ */
+export type SalesplaySizeAddition = {
+  code: string;
+  csvName: string;
+  category: string;
+  csvPriceCents: number;
+  enabled: boolean;
+  productId: string;
+  productName: string;
+  /** Name of the new size, as the storefront will show it. */
+  sizeLabel: string;
+  /**
+   * True when the product has no sizes yet: its current item becomes the size
+   * "Regular" (keeping its price and code) so the new size has a sibling.
+   */
+  convertsPlain: boolean;
+};
+
 /** A sellable unit the app offers that the SalesPlay export does not list. */
 export type SalesplayCatalogOnly = {
   productId: string;
@@ -400,11 +421,16 @@ export type SalesplaySyncOptions = {
    * never hidden or deleted — the kitchen is still working on them.
    */
   productIdsWithOpenOrders?: string[];
-  /** Admin overrides: SalesPlay code → the catalog unit it belongs to. */
+  /**
+   * Admin overrides: SalesPlay code → the catalog unit it belongs to. When
+   * `newSizeLabel` is set instead, the POS item is added to `productId` as a
+   * new size with that name (`variantLabel` is ignored).
+   */
   assignments?: {
     code: string;
     productId: string;
     variantLabel?: string | null;
+    newSizeLabel?: string | null;
   }[];
 };
 
@@ -426,6 +452,8 @@ export type SalesplaySyncPlan = {
     pricesLocked: number;
     productsToCreate: number;
     variantsToCreate: number;
+    /** POS items the admin chose to add to an existing product as a new size. */
+    sizesToAdd: number;
     /** Distinct products, not units. */
     toHide: number;
     toDelete: number;
@@ -435,6 +463,7 @@ export type SalesplaySyncPlan = {
     catalogOnly: number;
   };
   matched: SalesplayMatch[];
+  sizeAdditions: SalesplaySizeAddition[];
   csvOnly: SalesplayCsvOnly[];
   catalogOnly: SalesplayCatalogOnly[];
   skipped: SalesplayCsvSkippedRow[];
@@ -543,6 +572,9 @@ export function buildSalesplaySyncPlan(
   );
 
   const matched: SalesplayMatch[] = [];
+  const sizeAdditions: SalesplaySizeAddition[] = [];
+  /** `productId::size` already taken by an addition in this run. */
+  const addedSizeKeys = new Set<string>();
   const csvOnly: SalesplayCsvOnly[] = [];
   const claimed = new Set<string>();
   /** Codes seen anywhere in the export, so `catalogOnly` can tell missing from disabled. */
@@ -559,7 +591,54 @@ export function buildSalesplaySyncPlan(
     let via: SalesplayMatch['via'] = 'code';
 
     const assignment = assignmentByCode.get(row.code.toLowerCase());
-    if (assignment) {
+    /** Why an "add as a new size" request could not be honoured. */
+    let additionSkip: string | null = null;
+    const newSize = assignment?.newSizeLabel?.trim().slice(0, 80) || '';
+    if (assignment && newSize) {
+      const target = productById.get(assignment.productId);
+      // "6 INCH" and "6 inch" are the same size.
+      const existingLabel = (target?.variants ?? []).find(
+        (v) => v.label.toLowerCase() === newSize.toLowerCase(),
+      )?.label;
+      const sameSize = existingLabel
+        ? unitByKey.get(unitKey(assignment.productId, existingLabel))
+        : undefined;
+      const takenKey = `${assignment.productId}::${newSize.toLowerCase()}`;
+      if (!target) {
+        additionSkip = 'The product you chose no longer exists';
+      } else if (sameSize) {
+        // The size is already there — this is really a plain mapping.
+        unit = sameSize;
+        via = 'manual';
+      } else if (
+        (target.variants ?? []).some(
+          (v) => v.label.toLowerCase() === newSize.toLowerCase(),
+        )
+      ) {
+        additionSkip = `"${target.name}" already has a size called "${newSize}"`;
+      } else if (addedSizeKeys.has(takenKey)) {
+        additionSkip = `Another item in this sync is already being added as "${newSize}"`;
+      } else if (row.priceCents <= 0) {
+        additionSkip = 'No price in SalesPlay';
+      } else {
+        addedSizeKeys.add(takenKey);
+        const hasSizes =
+          (target.variants ?? []).length > 0 ||
+          sizeAdditions.some((a) => a.productId === target.id);
+        sizeAdditions.push({
+          code: row.code,
+          csvName: row.name,
+          category: row.category,
+          csvPriceCents: row.priceCents,
+          enabled: row.enabled,
+          productId: target.id,
+          productName: target.name,
+          sizeLabel: newSize,
+          convertsPlain: !hasSizes,
+        });
+        continue;
+      }
+    } else if (assignment) {
       unit = unitByKey.get(
         unitKey(assignment.productId, assignment.variantLabel ?? null),
       );
@@ -639,20 +718,25 @@ export function buildSalesplaySyncPlan(
       suggestedProductName: suggestedId
         ? (productById.get(suggestedId)?.name ?? null)
         : null,
-      willCreate: wanted && sellable,
-      skipReason: !wanted
-        ? null
-        : !row.enabled
-          ? 'Disabled in SalesPlay'
-          : row.priceCents <= 0
-            ? 'No price in SalesPlay'
-            : null,
+      willCreate: !additionSkip && wanted && sellable,
+      skipReason: additionSkip
+        ? additionSkip
+        : !wanted
+          ? null
+          : !row.enabled
+            ? 'Disabled in SalesPlay'
+            : row.priceCents <= 0
+              ? 'No price in SalesPlay'
+              : null,
     });
   }
 
   // A product whose 6" still sells in store must stay in the app even if its
   // 8" has gone, so removal is decided per product, not per unit.
-  const stillSold = new Set(matched.map((m) => m.productId));
+  const stillSold = new Set([
+    ...matched.map((m) => m.productId),
+    ...sizeAdditions.map((a) => a.productId),
+  ]);
   const openOrders = new Set(opts.productIdsWithOpenOrders);
   /**
    * Products an unmatched CSV row thinks it is, by name. `Citron Basque` and
@@ -740,6 +824,7 @@ export function buildSalesplaySyncPlan(
       variantsToCreate: csvOnly.filter(
         (r) => r.willCreate && r.kind === 'new-variant',
       ).length,
+      sizesToAdd: sizeAdditions.length,
       toHide: new Set(
         catalogOnly.filter((r) => r.action === 'hide').map((r) => r.productId),
       ).size,
@@ -755,6 +840,7 @@ export function buildSalesplaySyncPlan(
       catalogOnly: catalogOnly.length,
     },
     matched,
+    sizeAdditions,
     csvOnly,
     catalogOnly,
     skipped: parsed.skipped,
@@ -876,6 +962,53 @@ export function applySalesplaySyncPlan(
       ...(p.salesplayVariantCodes ?? {}),
       [row.variantLabel]: row.code,
     };
+    touched.add(p.id);
+  }
+
+  // POS items the admin chose to add to an existing product as a new size.
+  for (const a of plan.sizeAdditions ?? []) {
+    const p = byId.get(a.productId);
+    if (!p) continue;
+    const variants = [...(p.variants ?? [])];
+    if (
+      variants.some((v) => v.label.toLowerCase() === a.sizeLabel.toLowerCase())
+    ) {
+      continue;
+    }
+    const codes = { ...(p.salesplayVariantCodes ?? {}) };
+    const usedIds = new Set(variants.map((v) => v.id));
+    if (variants.length === 0) {
+      // The product was a single item; it becomes the first size so the new
+      // one has something to sit beside. Price and POS code move with it.
+      const existing =
+        a.sizeLabel.toLowerCase() === 'regular' ? 'Standard' : 'Regular';
+      const id = `${p.id}__${slugifyVariantLabel(existing)}`;
+      usedIds.add(id);
+      variants.push({
+        id,
+        label: existing,
+        priceCents: p.basePriceCents,
+        available: true,
+        priceDisplay: formatRm(p.basePriceCents),
+      });
+      if (p.salesplayProductCode?.trim()) {
+        codes[existing] = p.salesplayProductCode.trim();
+        p.salesplayProductCode = undefined;
+      }
+    }
+    const base = `${p.id}__${slugifyVariantLabel(a.sizeLabel) || 'size'}`;
+    let id = base;
+    for (let n = 2; usedIds.has(id); n++) id = `${base}-${n}`;
+    variants.push({
+      id,
+      label: a.sizeLabel,
+      priceCents: a.csvPriceCents,
+      available: a.enabled,
+      priceDisplay: formatRm(a.csvPriceCents),
+    });
+    codes[a.sizeLabel] = a.code;
+    p.variants = variants;
+    p.salesplayVariantCodes = codes;
     touched.add(p.id);
   }
 

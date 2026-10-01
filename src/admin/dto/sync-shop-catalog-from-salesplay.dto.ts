@@ -23,6 +23,15 @@ export class SalesplaySyncAssignmentDto {
   @IsString()
   @MaxLength(120)
   variantLabel?: string | null;
+
+  /**
+   * Add the POS item to `productId` as a NEW size with this name, instead of
+   * matching it to an existing size.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  newSizeLabel?: string | null;
 }
 
 export class SyncShopCatalogFromSalesplayDto {

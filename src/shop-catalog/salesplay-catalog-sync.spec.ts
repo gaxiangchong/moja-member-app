@@ -664,3 +664,166 @@ describe('one POS code, one product', () => {
     expect(findSalesplayCodeConflict(cake, [cake, loaf], undefined)).toBeNull();
   });
 });
+
+describe('adding an unmatched POS item to an existing product as a new size', () => {
+  const sized = product({
+    id: 'matcha-marmalade',
+    name: 'Matcha Marmalade',
+    basePriceCents: 15900,
+    variants: [{ id: 'm6', label: '6 inch', priceCents: 15900 }],
+    salesplayVariantCodes: { '6 inch': '30001-105' },
+  });
+  const plain = product({
+    id: 'americano',
+    name: 'Americano',
+    category: 'drinks',
+    basePriceCents: 900,
+    salesplayProductCode: 'D-1',
+  });
+  const rows = toSalesplayCsvRows([
+    csvRecord(
+      '30001-105',
+      'Matcha Marmalade Gateau (6in)',
+      'Creamcake',
+      '159.00',
+    ),
+    csvRecord(
+      '30001-109',
+      'Matcha Marmalade Special Cut',
+      'Creamcake',
+      '28.00',
+    ),
+    csvRecord('D-2', 'Americano Large', 'Drinks', '12.00'),
+    csvRecord('D-3', 'Americano XL', 'Drinks', '14.00'),
+    csvRecord('D-9', 'Free Sample', 'Drinks', '0.00'),
+  ]);
+  const plan = (
+    assignments: {
+      code: string;
+      productId: string;
+      newSizeLabel?: string;
+      variantLabel?: string | null;
+    }[],
+    products = [sized, plain],
+  ) => buildSalesplaySyncPlan(products, rows, { assignments });
+
+  it('plans the new size instead of leaving the row unmatched', () => {
+    const p = plan([
+      {
+        code: '30001-109',
+        productId: 'matcha-marmalade',
+        newSizeLabel: 'Special Cut',
+      },
+    ]);
+    expect(p.sizeAdditions).toEqual([
+      expect.objectContaining({
+        code: '30001-109',
+        productId: 'matcha-marmalade',
+        sizeLabel: 'Special Cut',
+        csvPriceCents: 2800,
+        convertsPlain: false,
+      }),
+    ]);
+    expect(p.summary.sizesToAdd).toBe(1);
+    expect(p.csvOnly.map((r) => r.code)).not.toContain('30001-109');
+  });
+
+  it('adds the size, its price and its POS code to the product', () => {
+    const p = plan([
+      {
+        code: '30001-109',
+        productId: 'matcha-marmalade',
+        newSizeLabel: 'Special Cut',
+      },
+    ]);
+    const { updated } = applySalesplaySyncPlan([sized, plain], p);
+    const next = updated.find((x) => x.id === 'matcha-marmalade')!;
+    expect(next.variants?.map((v) => [v.label, v.priceCents])).toEqual([
+      ['6 inch', 15900],
+      ['Special Cut', 2800],
+    ]);
+    expect(next.salesplayVariantCodes).toEqual({
+      '6 inch': '30001-105',
+      'Special Cut': '30001-109',
+    });
+    expect(new Set(next.variants?.map((v) => v.id)).size).toBe(2);
+  });
+
+  it('turns a single-item product into a sized one, keeping its price and code', () => {
+    const p = plan([
+      { code: 'D-2', productId: 'americano', newSizeLabel: 'Large' },
+    ]);
+    expect(p.sizeAdditions[0].convertsPlain).toBe(true);
+    const { updated } = applySalesplaySyncPlan([sized, plain], p);
+    const next = updated.find((x) => x.id === 'americano')!;
+    expect(next.variants?.map((v) => [v.label, v.priceCents])).toEqual([
+      ['Regular', 900],
+      ['Large', 1200],
+    ]);
+    expect(next.salesplayVariantCodes).toEqual({
+      Regular: 'D-1',
+      Large: 'D-2',
+    });
+    expect(next.salesplayProductCode).toBeUndefined();
+  });
+
+  it('converts a single-item product only once when two sizes are added', () => {
+    const p = plan([
+      { code: 'D-2', productId: 'americano', newSizeLabel: 'Large' },
+      { code: 'D-3', productId: 'americano', newSizeLabel: 'XL' },
+    ]);
+    expect(p.sizeAdditions.map((a) => a.convertsPlain)).toEqual([true, false]);
+    const { updated } = applySalesplaySyncPlan([sized, plain], p);
+    const next = updated.find((x) => x.id === 'americano')!;
+    expect(next.variants?.map((v) => v.label)).toEqual([
+      'Regular',
+      'Large',
+      'XL',
+    ]);
+  });
+
+  it('refuses a size name that is already taken, and says why', () => {
+    const p = plan([
+      {
+        code: '30001-109',
+        productId: 'matcha-marmalade',
+        newSizeLabel: '6 INCH',
+      },
+    ]);
+    // Same size already exists → treated as a plain mapping onto it.
+    expect(p.sizeAdditions).toHaveLength(0);
+    expect(p.matched.find((m) => m.code === '30001-109')?.via).toBe('manual');
+
+    const dup = plan([
+      { code: 'D-2', productId: 'americano', newSizeLabel: 'Large' },
+      { code: 'D-3', productId: 'americano', newSizeLabel: 'large' },
+    ]);
+    expect(dup.sizeAdditions).toHaveLength(1);
+    expect(dup.csvOnly.find((r) => r.code === 'D-3')?.skipReason).toMatch(
+      /already being added/,
+    );
+  });
+
+  it('will not add an item with no price', () => {
+    const p = plan([
+      { code: 'D-9', productId: 'americano', newSizeLabel: 'Sample' },
+    ]);
+    expect(p.sizeAdditions).toHaveLength(0);
+    expect(p.csvOnly.find((r) => r.code === 'D-9')?.skipReason).toBe(
+      'No price in SalesPlay',
+    );
+  });
+
+  it('keeps the product it was added to from being hidden or deleted', () => {
+    const only = [product({ id: 'solo', name: 'Solo', basePriceCents: 500 })];
+    const p = buildSalesplaySyncPlan(
+      only,
+      toSalesplayCsvRows([csvRecord('X-1', 'Solo Big', 'Drinks', '9.00')]),
+      {
+        missingAction: 'delete',
+        assignments: [{ code: 'X-1', productId: 'solo', newSizeLabel: 'Big' }],
+      },
+    );
+    expect(applySalesplaySyncPlan(only, p).deleted).toHaveLength(0);
+  });
+});
