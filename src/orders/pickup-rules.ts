@@ -40,7 +40,8 @@ export type ShopPickupRules = {
 export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
   timeZone: SHOP_TIME_ZONE,
   openTime: '10:00',
-  closeTime: '18:00',
+  // 21:00 so the 7pm – 9pm collection slot starts inside the hours.
+  closeTime: '21:00',
   closedWeekdays: [],
   closedDates: [],
   maxAdvanceDays: 30,
@@ -64,6 +65,14 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
     {
       start: '16:00',
       label: '4pm – 6pm',
+      weekdays: [1, 2, 3, 4, 5, 6],
+      leadMinutes: 120,
+      cutoffTime: null,
+      capacity: null,
+    },
+    {
+      start: '19:00',
+      label: '7pm – 9pm',
       weekdays: [1, 2, 3, 4, 5, 6],
       leadMinutes: 120,
       cutoffTime: null,

@@ -32,6 +32,7 @@ describe('evaluatePickupDay', () => {
       '11:00',
       '14:00',
       '16:00',
+      '19:00',
     ]);
     expect(quote.slots.every((slot) => slot.available)).toBe(true);
     expect(quote.leadTimeMessage).toContain('2 hours');
@@ -134,7 +135,7 @@ describe('normalizePickupRules', () => {
         slots: [
           {
             ...DEFAULT_PICKUP_RULES.slots[0],
-            start: '20:00',
+            start: '21:30',
           },
         ],
       }),

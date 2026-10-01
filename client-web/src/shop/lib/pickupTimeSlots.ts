@@ -8,6 +8,7 @@ export const PICKUP_TIME_SLOTS: PickupTimeSlot[] = [
   { value: '11:00', label: '11am – 1pm (Mon – Sat)' },
   { value: '14:00', label: '2pm – 4pm (Mon – Sat)' },
   { value: '16:00', label: '4pm – 6pm (Mon – Sat)' },
+  { value: '19:00', label: '7pm – 9pm (Mon – Sat)' },
   { value: '10:00', label: '10am – 12:30pm (Sun)' },
 ];
 
