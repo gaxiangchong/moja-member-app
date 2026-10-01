@@ -804,7 +804,11 @@ model LoyaltyWallet {
   id           String   @id @default(uuid()) @db.Uuid
   customerId   String   @unique @map("customer_id") @db.Uuid
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// Points the member can spend. Goes down when they redeem.
   pointsCached Int      @default(0) @map("points_cached")
+  /// Everything the member has ever earned (purchases and bonuses). Never goes down
+  /// when points are spent, so the membership tier is judged on this.
+  lifetimeEarnedPoints Int @default(0) @map("lifetime_earned_points")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("loyalty_wallets")

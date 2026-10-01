@@ -1,5 +1,6 @@
 /**
- * Membership tier from the current points balance.
+ * Membership tier from the points a member has EARNED over their lifetime
+ * (not their spendable balance, so redeeming points never lowers a tier).
  *
  * - Silver: below 1,000 points. 500 and below is always Silver.
  * - Gold: 1,000 and above, until Platinum. Earns 1.5× purchase points.

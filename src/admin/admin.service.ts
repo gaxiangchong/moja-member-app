@@ -372,7 +372,7 @@ export class AdminService {
       const range = tierPointsRange(q.memberTier.trim().toLowerCase());
       parts.push(
         range
-          ? { wallet: { pointsCached: range } }
+          ? { wallet: { lifetimeEarnedPoints: range } }
           : { memberTier: q.memberTier },
       );
     }
@@ -519,7 +519,7 @@ export class AdminService {
         gender: c.gender,
         preferredStore: c.preferredStore,
         signupSource: c.signupSource,
-        memberTier: tierForPoints(c.wallet?.pointsCached ?? 0),
+        memberTier: tierForPoints(c.wallet?.lifetimeEarnedPoints ?? 0),
         marketingConsent: c.marketingConsent,
         tags: c.tags,
         lastLoginAt: c.lastLoginAt,
@@ -621,7 +621,9 @@ export class AdminService {
       orderBy,
       take: 50_000,
       include: {
-        wallet: { select: { pointsCached: true } },
+        wallet: {
+          select: { pointsCached: true, lifetimeEarnedPoints: true },
+        },
         storedWallet: { select: { lifetimeSpentCents: true } },
         _count: { select: { referredMembers: true } },
       },
@@ -646,7 +648,7 @@ export class AdminService {
       referral_vouchers_earned:
         engagement.get(c.id)?.awards.referral.earned ?? 0,
       referral_vouchers_used: engagement.get(c.id)?.awards.referral.used ?? 0,
-      member_tier: tierForPoints(c.wallet?.pointsCached ?? 0),
+      member_tier: tierForPoints(c.wallet?.lifetimeEarnedPoints ?? 0),
       signup_source: c.signupSource,
       marketing_consent: c.marketingConsent ? 'yes' : 'no',
       points_balance: c.wallet?.pointsCached ?? 0,

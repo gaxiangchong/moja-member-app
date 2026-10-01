@@ -16,16 +16,23 @@ export class LoyaltyService {
   }
 
   async getWalletSummary(customerId: string): Promise<{
+    /** Spendable points. */
     pointsBalance: number;
+    /** Everything ever earned; the membership tier is judged on this. */
+    lifetimeEarnedPoints: number;
     walletId: string;
   }> {
     const wallet = await this.prisma.loyaltyWallet.findUnique({
       where: { customerId },
     });
     if (!wallet) {
-      return { pointsBalance: 0, walletId: '' };
+      return { pointsBalance: 0, lifetimeEarnedPoints: 0, walletId: '' };
     }
-    return { pointsBalance: wallet.pointsCached, walletId: wallet.id };
+    return {
+      pointsBalance: wallet.pointsCached,
+      lifetimeEarnedPoints: wallet.lifetimeEarnedPoints,
+      walletId: wallet.id,
+    };
   }
 
   /**
@@ -67,7 +74,7 @@ export class LoyaltyService {
       referenceType?: string | null;
       referenceId?: string | null;
     },
-  ): Promise<{ balanceAfter: number }> {
+  ): Promise<{ balanceAfter: number; lifetimeEarnedAfter: number }> {
     await this.ensureWalletInTx(tx, params.customerId);
     // One change to a balance at a time: without the lock two simultaneous
     // redemptions both read the same balance and both succeed.
@@ -94,19 +101,28 @@ export class LoyaltyService {
       },
     });
 
+    // Only genuinely earned points count towards the tier: a returned reward
+    // (refund_...) is the member's own points coming back, not new earnings.
+    const earned =
+      params.deltaPoints > 0 && !params.reason.startsWith('refund_')
+        ? params.deltaPoints
+        : 0;
+    const lifetimeEarnedAfter = (wallet.lifetimeEarnedPoints ?? 0) + earned;
     await tx.loyaltyWallet.update({
       where: { customerId: params.customerId },
-      data: { pointsCached: balanceAfter },
+      data: {
+        pointsCached: balanceAfter,
+        ...(earned > 0 ? { lifetimeEarnedPoints: lifetimeEarnedAfter } : {}),
+      },
     });
 
-    // Tier follows the balance, so every earn, redemption, and adjustment
-    // keeps `member_tier` current for admin filters, mailers, and segments.
+    // Tier follows lifetime earnings, so every earn keeps `member_tier` current for admin filters, mailers, and segments.
     await tx.customer.update({
       where: { id: params.customerId },
-      data: { memberTier: tierForPoints(balanceAfter) },
+      data: { memberTier: tierForPoints(lifetimeEarnedAfter) },
     });
 
-    return { balanceAfter };
+    return { balanceAfter, lifetimeEarnedAfter };
   }
 
   /**

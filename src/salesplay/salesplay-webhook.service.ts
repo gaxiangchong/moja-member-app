@@ -283,9 +283,10 @@ export class SalesplayWebhookService {
     }
     if (parsed.netCents <= 0) return;
 
-    // Floor RM, then the tier multiplier — same formula as online checkout.
+    // Floor RM, then the tier multiplier (from lifetime earnings) — same formula
+    // as online checkout.
     const balanceBefore = (await this.loyalty.getWalletSummary(customerId))
-      .pointsBalance;
+      .lifetimeEarnedPoints;
     const amountRm = Math.floor(parsed.netCents / 100);
     const earned = purchasePoints({
       amountRm,

@@ -796,7 +796,12 @@ export async function redeemRewardForCode(rewardId: string): Promise<RewardCodeR
 }
 
 export type MemberRewardsPayload = {
-  wallet: { pointsBalance: number };
+  wallet: {
+    /** Points the member can spend. */
+    pointsBalance: number;
+    /** Everything ever earned. The membership tier is judged on this, so spending points never lowers it. */
+    lifetimePoints?: number;
+  };
   /** Newest first. */
   redemptions?: RewardRedemption[];
   vouchers: Array<{

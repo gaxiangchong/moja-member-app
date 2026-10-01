@@ -11,8 +11,13 @@ type Order = {
 };
 
 /** In-memory stand-in for the order and the points wallet. */
-function setup(points: number) {
-  const wallet = { customerId: 'm1', pointsCached: points };
+function setup(points: number, lifetime = points) {
+  const wallet = {
+    customerId: 'm1',
+    pointsCached: points,
+    lifetimeEarnedPoints: lifetime,
+  };
+  const tiers: string[] = [];
   const order: Order = {
     id: 'o1',
     customerId: 'm1',
@@ -35,10 +40,17 @@ function setup(points: number) {
         .mockImplementation(() => Promise.resolve({ ...wallet })),
       update: jest
         .fn()
-        .mockImplementation((a: { data: { pointsCached: number } }) => {
-          wallet.pointsCached = a.data.pointsCached;
-          return Promise.resolve({});
-        }),
+        .mockImplementation(
+          (a: {
+            data: { pointsCached: number; lifetimeEarnedPoints?: number };
+          }) => {
+            wallet.pointsCached = a.data.pointsCached;
+            if (a.data.lifetimeEarnedPoints !== undefined) {
+              wallet.lifetimeEarnedPoints = a.data.lifetimeEarnedPoints;
+            }
+            return Promise.resolve({});
+          },
+        ),
     },
     loyaltyLedgerEntry: {
       create: jest.fn().mockImplementation(
@@ -58,7 +70,14 @@ function setup(points: number) {
         },
       ),
     },
-    customer: { update: jest.fn().mockResolvedValue({}) },
+    customer: {
+      update: jest
+        .fn()
+        .mockImplementation((a: { data: { memberTier: string } }) => {
+          tiers.push(a.data.memberTier);
+          return Promise.resolve({});
+        }),
+    },
     customerOrder: {
       updateMany: jest
         .fn()
@@ -100,6 +119,7 @@ function setup(points: number) {
     order,
     ledger,
     locks,
+    tiers,
   };
 }
 
@@ -163,5 +183,45 @@ describe('giving the points back', () => {
     expect(await service.refundRewardForOrder('o1')).toBe(0);
     expect(wallet.pointsCached).toBe(120);
     expect(ledger).toHaveLength(0);
+  });
+});
+
+describe('membership tier follows what was earned, not what is left', () => {
+  const earn = (
+    service: LoyaltyService,
+    pts: number,
+    reason = 'shop_order_purchase',
+  ) =>
+    service.appendLedgerEntry({ customerId: 'm1', deltaPoints: pts, reason });
+
+  it('earning raises lifetime points and the tier', async () => {
+    const { service, wallet, tiers } = setup(900);
+    await earn(service, 150);
+    expect(wallet.pointsCached).toBe(1050);
+    expect(wallet.lifetimeEarnedPoints).toBe(1050);
+    expect(tiers.at(-1)).toBe('gold');
+  });
+
+  it('redeeming points does not lower the tier', async () => {
+    // 1,200 earned in total, most already spent, 120 left to spend.
+    const { service, wallet } = setup(120, 1200);
+    await redeem(service, 50);
+    expect(wallet.pointsCached).toBe(70);
+    expect(wallet.lifetimeEarnedPoints).toBe(1200);
+  });
+
+  it('points returned from a cancelled reward are not new earnings', async () => {
+    const { service, wallet } = setup(120, 1200);
+    await redeem(service, 50);
+    await service.refundRewardForOrder('o1');
+    expect(wallet.pointsCached).toBe(120);
+    expect(wallet.lifetimeEarnedPoints).toBe(1200);
+  });
+
+  it('a bonus counts as earned', async () => {
+    const { service, wallet, tiers } = setup(0, 0);
+    await earn(service, 2000, 'campaign_points_bonus');
+    expect(wallet.lifetimeEarnedPoints).toBe(2000);
+    expect(tiers.at(-1)).toBe('platinum');
   });
 });

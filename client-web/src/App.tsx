@@ -1479,9 +1479,12 @@ function App() {
   const referralCount = profile?.referralCount ?? 0;
 
   const pointsBalance = rewardsData?.wallet.pointsBalance ?? 0;
+  // The tier is judged on everything the member has earned, not on what is left
+  // to spend — so redeeming points never moves them down a tier.
+  const lifetimePoints = Math.max(rewardsData?.wallet.lifetimePoints ?? 0, pointsBalance);
   const tierProgress = useMemo(
-    () => pointsTierProgress(pointsBalance),
-    [pointsBalance],
+    () => pointsTierProgress(lifetimePoints),
+    [lifetimePoints],
   );
   const { pointsToNext, progressPct } = tierProgress;
 
@@ -2415,7 +2418,7 @@ function App() {
                     <span className="accountPointsValue">
                       {pointsBalance.toLocaleString()}
                     </span>
-                    <span className="accountPointsUnit">pts</span>
+                    <span className="accountPointsUnit">pts to spend</span>
                   </div>
                   <div
                     className="progressWrap"
@@ -2449,8 +2452,12 @@ function App() {
                   <p className="accountTierHint">
                     {tierProgress.earnLabel}
                     {pointsToNext > 0 && tierProgress.nextTierLabel
-                      ? ` · ${pointsToNext.toLocaleString()} pts to ${tierProgress.nextTierLabel}`
+                      ? ` · earn ${pointsToNext.toLocaleString()} more points to reach ${tierProgress.nextTierLabel}`
                       : ' · Top tier'}
+                  </p>
+                  <p className="caption" style={{ margin: '4px 0 0' }}>
+                    {lifetimePoints.toLocaleString()} points earned in total. Your tier is based on
+                    what you&apos;ve earned, so spending points on rewards never lowers it.
                   </p>
                 </Card>
 

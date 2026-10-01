@@ -504,7 +504,7 @@ export class CustomersService {
     await this.maybeGrantBirthdayReward(customerId);
     const loyaltyAfter = await this.loyalty.getWalletSummary(customerId);
 
-    const memberTier = tierForPoints(loyaltyAfter.pointsBalance);
+    const memberTier = tierForPoints(loyaltyAfter.lifetimeEarnedPoints);
     if (customer.memberTier !== memberTier) {
       await this.prisma.customer.update({
         where: { id: customerId },
@@ -755,6 +755,8 @@ export class CustomersService {
     return {
       wallet: {
         pointsBalance: wallet?.pointsCached ?? 0,
+        // What the tier is judged on: everything ever earned.
+        lifetimePoints: wallet?.lifetimeEarnedPoints ?? 0,
       },
       redemptions,
       vouchers: [
@@ -859,6 +861,7 @@ export class CustomersService {
     rawLimit?: number,
   ): Promise<{
     pointsBalance: number;
+    lifetimePoints: number;
     entries: Array<{
       id: string;
       deltaPoints: number;
@@ -900,6 +903,7 @@ export class CustomersService {
 
     return {
       pointsBalance: wallet?.pointsCached ?? 0,
+      lifetimePoints: wallet?.lifetimeEarnedPoints ?? 0,
       entries: entries.map((e) => ({
         id: e.id,
         deltaPoints: e.deltaPoints,
@@ -1309,16 +1313,16 @@ export class CustomersService {
         },
       });
 
-      // Floor RM, then apply the tier multiplier from the balance *before*
-      // this purchase. Gold 1.5×, platinum 2×, silver 1×. Same formula as
-      // in-store SalesPlay receipts.
+      // Floor RM, then apply the tier multiplier from what the member had
+      // earned *before* this purchase (not their spendable balance). Gold 1.5×,
+      // platinum 2×, silver 1×. Same formula as in-store SalesPlay receipts.
       const balanceBefore =
         (
           await tx.loyaltyWallet.findUnique({
             where: { customerId: order.customerId },
-            select: { pointsCached: true },
+            select: { lifetimeEarnedPoints: true },
           })
-        )?.pointsCached ?? 0;
+        )?.lifetimeEarnedPoints ?? 0;
       const amountRm = Math.floor(order.totalCents / 100);
       const earned = purchasePoints({
         amountRm,
