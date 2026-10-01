@@ -823,6 +823,7 @@ function App() {
   // member returns from the payment page, so it opens on the outcome.
   const [topUp, setTopUp] = useState<{ result: TopUpResult | null } | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
+  const cartItemCount = useShopStore((st) => st.cart.reduce((n, l) => n + l.qty, 0));
   const [shopInitialQuery, setShopInitialQuery] = useState<string | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
   // Redeeming a reward for a code: confirm → spend points → show the new code.
@@ -1934,14 +1935,24 @@ function App() {
                           <path d="M18 18h.01" />
                         </svg>
                       </button>
-                      <button type="button" className="iconBtn" onClick={() => setShareOpen(true)} aria-label="Invite friends and earn an RM5 voucher">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="8" width="18" height="4" rx="1" />
-                          <path d="M12 8v13" />
-                          <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
-                          <path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8" />
-                          <path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8" />
+                      <button
+                        type="button"
+                        className="iconBtn"
+                        style={{ position: 'relative' }}
+                        onClick={() => {
+                          setShopInitialScreen('cart');
+                          setTab('shop');
+                        }}
+                        aria-label={cartItemCount > 0 ? `Shopping cart, ${cartItemCount} item${cartItemCount === 1 ? '' : 's'}` : 'Shopping cart'}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                          <path d="M6 2h12l1.5 4H4.5z" />
+                          <path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                          <path d="M9 11h6" />
                         </svg>
+                        {cartItemCount > 0 ? (
+                          <span className="shopCartBadge">{cartItemCount > 99 ? '99+' : cartItemCount}</span>
+                        ) : null}
                       </button>
                     </>
                   ) : (
