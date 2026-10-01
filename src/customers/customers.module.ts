@@ -10,6 +10,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
+import { MemberSavingsService } from './member-savings.service';
 import { PhoneNormalizerService } from './phone-normalizer.service';
 
 @Module({
@@ -25,7 +26,7 @@ import { PhoneNormalizerService } from './phone-normalizer.service';
     NotificationsModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, PhoneNormalizerService],
+  providers: [CustomersService, PhoneNormalizerService, MemberSavingsService],
   exports: [CustomersService, PhoneNormalizerService],
 })
 export class CustomersModule {}

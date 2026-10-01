@@ -15,13 +15,33 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
+import { MemberOrdersSettingsService } from '../orders/member-orders-settings.service';
 import { CustomersService } from './customers.service';
+import { MemberSavingsService } from './member-savings.service';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { WalletTopUpDto } from './dto/wallet-topup.dto';
 
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+  constructor(
+    private readonly customers: CustomersService,
+    private readonly savings: MemberSavingsService,
+    private readonly memberOrdersSettings: MemberOrdersSettingsService,
+  ) {}
+
+  /**
+   * How much the member has saved with Moja so far, for the Orders page. Also
+   * says how many days of past orders that page lists, so the app can say so.
+   */
+  @Get('me/savings')
+  @UseGuards(JwtAuthGuard)
+  async meSavings(@CurrentUser() user: AuthUser) {
+    const [savings, settings] = await Promise.all([
+      this.savings.getSavings(user.customerId),
+      this.memberOrdersSettings.getSettings(),
+    ]);
+    return { ...savings, historyDays: settings.historyDays };
+  }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)

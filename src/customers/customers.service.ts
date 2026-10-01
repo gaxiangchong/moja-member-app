@@ -27,6 +27,8 @@ import {
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
+import { visibleOrdersWhere } from '../orders/member-orders-settings';
+import { MemberOrdersSettingsService } from '../orders/member-orders-settings.service';
 import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
@@ -150,6 +152,7 @@ export class CustomersService {
     private readonly productStock: ProductStockService,
     private readonly pickupRules: PickupRulesService,
     private readonly orderNotices: OrderNotificationService,
+    private readonly memberOrdersSettings: MemberOrdersSettingsService,
   ) {}
 
   /**
@@ -836,13 +839,17 @@ export class CustomersService {
 
   async listMemberOrders(customerId: string, limit = 40) {
     const take = Math.min(Math.max(limit, 1), 100);
+    // Open orders always; finished ones only for the number of days the admin
+    // has set. Older orders are hidden from the member, never deleted.
+    const { historyDays } = await this.memberOrdersSettings.getSettings();
     const rows = await this.prisma.customerOrder.findMany({
-      where: { customerId },
+      where: visibleOrdersWhere(customerId, historyDays),
       orderBy: { placedAt: 'desc' },
       take,
       include: { lines: { orderBy: { id: 'asc' } } },
     });
     return {
+      historyDays,
       orders: rows.map((o) => ({
         id: o.id,
         orderNumber: o.orderNumber,

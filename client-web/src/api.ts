@@ -923,9 +923,16 @@ export type MemberOrderRow = {
   }>;
 };
 
-export async function fetchMemberOrders(limit = 40): Promise<{ orders: MemberOrderRow[] }> {
+/** `historyDays` is how many days of finished orders the shop keeps on this list (set by the admin). */
+export async function fetchMemberOrders(
+  limit = 40,
+): Promise<{ orders: MemberOrderRow[]; historyDays: number | null }> {
   const res = await authorizedFetch(`/customers/me/orders?limit=${encodeURIComponent(String(limit))}`);
-  const data = await parseJson<{ orders?: MemberOrderRow[]; message?: string | string[] }>(res);
+  const data = await parseJson<{
+    orders?: MemberOrderRow[];
+    historyDays?: number;
+    message?: string | string[];
+  }>(res);
   if (!res.ok) {
     const raw = data.message;
     const msg =
@@ -936,7 +943,40 @@ export async function fetchMemberOrders(limit = 40): Promise<{ orders: MemberOrd
           : JSON.stringify(data);
     throw new Error(msg || `Orders failed (${res.status})`);
   }
-  return { orders: Array.isArray(data.orders) ? data.orders : [] };
+  return {
+    orders: Array.isArray(data.orders) ? data.orders : [],
+    historyDays: typeof data.historyDays === 'number' ? data.historyDays : null,
+  };
+}
+
+/** What the member has saved by being a member, in sen. */
+export type MemberSavings = {
+  totalSavedCents: number;
+  /** Vouchers and points rewards used on app orders. */
+  onlineSavedCents: number;
+  /** Discounts on in-store receipts matched to the member. */
+  inStoreSavedCents: number;
+  ordersCounted: number;
+  memberSince: string | null;
+  /** How many days of finished orders the Orders page lists. */
+  historyDays: number;
+};
+
+export async function fetchMemberSavings(): Promise<MemberSavings> {
+  const res = await authorizedFetch('/customers/me/savings');
+  const data = await parseJson<Partial<MemberSavings> & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = data.message;
+    throw new Error((Array.isArray(raw) ? raw.join(', ') : raw) || `Savings failed (${res.status})`);
+  }
+  return {
+    totalSavedCents: data.totalSavedCents ?? 0,
+    onlineSavedCents: data.onlineSavedCents ?? 0,
+    inStoreSavedCents: data.inStoreSavedCents ?? 0,
+    ordersCounted: data.ordersCounted ?? 0,
+    memberSince: data.memberSince ?? null,
+    historyDays: data.historyDays ?? 7,
+  };
 }
 
 export async function fetchShopCatalogProducts(): Promise<ShopCatalogProduct[]> {

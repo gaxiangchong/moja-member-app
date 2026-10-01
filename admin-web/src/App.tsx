@@ -23,6 +23,7 @@ import { BentoVouchers } from './views/BentoVouchers';
 import { GiftRewards } from './views/GiftRewards';
 import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
+import { MemberOrdersSettings } from './views/MemberOrdersSettings';
 import { PickupRules } from './views/PickupRules';
 
 function identityLabel(identity: AdminIdentity): string {
@@ -254,6 +255,8 @@ function renderView(viewId: string) {
       return <HomeAds />;
     case 'sales-pickup-rules':
       return <PickupRules />;
+    case 'sales-member-orders':
+      return <MemberOrdersSettings />;
     default:
       return null;
   }

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toDataURL } from 'qrcode';
-import { cancelMyOrder, fetchMemberOrders, type MemberOrderRow } from '../api';
+import {
+  cancelMyOrder,
+  fetchMemberOrders,
+  fetchMemberSavings,
+  type MemberOrderRow,
+  type MemberSavings,
+} from '../api';
 import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
 import {
@@ -89,6 +95,55 @@ function OrderQrBlock({ orderNumber }: { orderNumber: number }) {
   );
 }
 
+/**
+ * What the member has saved by being a member — vouchers and rewards on app
+ * orders, plus discounts on in-store receipts — since they joined.
+ */
+function SavingsCard({ savings }: { savings: MemberSavings | null }) {
+  if (!savings) {
+    return (
+      <section className="pmCard savingsCard" aria-busy="true">
+        <p className="savingsLabel">Your savings</p>
+        <p className="caption" style={{ margin: 0 }}>
+          Adding up your savings…
+        </p>
+      </section>
+    );
+  }
+  const since = savings.memberSince ? new Date(savings.memberSince) : null;
+  const sinceLabel =
+    since && !Number.isNaN(since.getTime())
+      ? since.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+      : null;
+  const saved = savings.totalSavedCents > 0;
+  const splitKnown =
+    savings.onlineSavedCents > 0 && savings.inStoreSavedCents > 0;
+  return (
+    <section className="pmCard savingsCard">
+      <p className="savingsLabel">Your savings</p>
+      <p
+        className="savingsValue"
+        aria-label={`You have saved ${formatRm(savings.totalSavedCents)}`}
+      >
+        {formatRm(savings.totalSavedCents)}
+      </p>
+      <p className="caption savingsCaption">
+        {saved
+          ? sinceLabel
+            ? `Saved with Moja since you joined in ${sinceLabel}`
+            : 'Saved with Moja since you joined'
+          : 'Use a voucher or reward on your next order and your savings will add up here.'}
+      </p>
+      {splitKnown ? (
+        <p className="caption savingsSplit">
+          Online orders {formatRm(savings.onlineSavedCents)} · In store{' '}
+          {formatRm(savings.inStoreSavedCents)}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function isBenignOrdersError(message: string): boolean {
   return /unauthorized|not signed in|invalid.*token|session.*expired|401|403/i.test(
     message,
@@ -105,15 +160,26 @@ export function OrdersTab({
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [savings, setSavings] = useState<MemberSavings | null>(null);
+  // How many days of finished orders to list; the shop sets it. Until the
+  // server says, the list is whatever it sent (it already applies the limit).
+  const [historyDays, setHistoryDays] = useState<number | null>(null);
   const orders = useOrderHistoryStore((s) => s.orders);
   const setOrdersFromApi = useOrderHistoryStore((s) => s.setOrdersFromApi);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { orders: rows } = await fetchMemberOrders(60);
+      // Savings is a nicety: if it fails the orders still load, and the last
+      // figure stays on screen.
+      const savingsPromise = fetchMemberSavings()
+        .then((s) => setSavings(s))
+        .catch(() => undefined);
+      const { orders: rows, historyDays: days } = await fetchMemberOrders(60);
       setOrdersFromApi(rows.map(mapRowToPastOrder));
+      if (days != null) setHistoryDays(days);
       setErr(null);
+      await savingsPromise;
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Failed to load orders';
       if (isBenignOrdersError(message)) {
@@ -166,8 +232,19 @@ export function OrdersTab({
   };
 
   const activeOrders = orders.filter((o) => isOpenOrderStatus(o.status));
+  // The server already drops old orders; this also clears ones cached on the
+  // device from before, so a stale list never lingers when the app is offline.
+  const keepAfter =
+    historyDays != null ? Date.now() - historyDays * 86_400_000 : null;
   const historyOrders = orders
     .filter((o) => isHistoryOrderStatus(o.status))
+    .filter((o) => {
+      if (keepAfter == null) return true;
+      const finished = new Date(
+        o.completedAt || o.cancelledAt || o.placedAt,
+      ).getTime();
+      return Number.isNaN(finished) || finished >= keepAfter;
+    })
     .slice()
     .sort((a, b) => {
       const ta = new Date(a.completedAt || a.placedAt).getTime();
@@ -210,6 +287,8 @@ export function OrdersTab({
           </p>
         </section>
       ) : null}
+
+      <SavingsCard savings={savings} />
 
       <section className="pmCard">
         <h3 className="shopSectionTitle" style={{ marginTop: 0 }}>
@@ -282,11 +361,18 @@ export function OrdersTab({
 
       <section className="pmCard">
         <h3 className="shopSectionTitle" style={{ marginTop: 0 }}>
-          History
+          Recent orders
         </h3>
+        <p className="caption" style={{ margin: '0 0 10px' }}>
+          {historyDays != null
+            ? `Orders from the last ${historyDays} day${historyDays === 1 ? '' : 's'}.`
+            : 'Your most recent orders.'}
+        </p>
         {!historyOrders.length ? (
           <p className="caption" style={{ margin: 0 }}>
-            Past orders will appear here.
+            {historyDays != null
+              ? `No orders in the last ${historyDays} day${historyDays === 1 ? '' : 's'}.`
+              : 'No recent orders.'}
           </p>
         ) : (
           <div className="orderHistoryList">

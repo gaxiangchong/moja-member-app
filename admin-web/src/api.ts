@@ -1330,3 +1330,29 @@ export async function deleteRewardCatalogEntry(id: string): Promise<void> {
   }
 }
 
+
+/** What the member app's Orders page shows. */
+export type MemberOrdersSettings = {
+  /** Finished orders stay on a member's Orders page for this many days. */
+  historyDays: number;
+};
+
+export async function fetchMemberOrdersSettings(): Promise<MemberOrdersSettings> {
+  const res = await authorizedFetch('/admin/shop/member-orders-settings');
+  const data = await parseJson<MemberOrdersSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+export async function updateMemberOrdersSettings(
+  settings: MemberOrdersSettings,
+): Promise<MemberOrdersSettings> {
+  const res = await authorizedFetch('/admin/shop/member-orders-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await parseJson<MemberOrdersSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}

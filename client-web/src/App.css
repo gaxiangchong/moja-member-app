@@ -3165,3 +3165,38 @@ code {
   color: #b45309;
   font-weight: 600;
 }
+
+/* Orders page: what the member has saved by being a member */
+.savingsCard {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #a7f3d0;
+  box-shadow: 0 10px 24px rgba(5, 150, 105, 0.1);
+}
+
+.savingsLabel {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #047857;
+}
+
+.savingsValue {
+  margin: 4px 0 2px;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #065f46;
+}
+
+.savingsCaption,
+.savingsSplit {
+  margin: 2px 0 0;
+  color: #047857;
+}
+
+.savingsSplit {
+  font-size: 12px;
+  opacity: 0.85;
+}

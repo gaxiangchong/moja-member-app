@@ -20,6 +20,7 @@ import { BentoVoucherModule } from '../bento-vouchers/bento-voucher.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { OrdersModule } from '../orders/orders.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
+import { MemberOrdersSettingsAdminController } from './member-orders-settings.admin.controller';
 import { PickupRulesAdminController } from './pickup-rules.admin.controller';
 
 @Module({
@@ -45,6 +46,7 @@ import { PickupRulesAdminController } from './pickup-rules.admin.controller';
     AdminReportsController,
     AdminEmployeesController,
     PickupRulesAdminController,
+    MemberOrdersSettingsAdminController,
   ],
   providers: [AdminService, ApprovalsService, FinanceReportService],
 })
