@@ -810,6 +810,9 @@ export class CustomersService {
                 rebateValueSen: d.rebateValueSen,
                 minSpendSen: d.minSpendSen,
                 percentageOff: d.percentageOff,
+                // So the app can tell a cash / percentage voucher from a delivery or
+                // wallet-credit one, and only state a value for the former.
+                voucherType: v.voucherCampaign?.voucherType ?? null,
               },
             };
           }),

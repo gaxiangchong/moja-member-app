@@ -813,6 +813,8 @@ export type MemberRewardsPayload = {
       rebateValueSen?: number | null;
       minSpendSen?: number | null;
       percentageOff?: number | null;
+      /** PERCENTAGE, FIXED_AMOUNT, DELIVERY_DISCOUNT, WALLET_TOPUP_CODE, FREE_ITEM (null for older vouchers). */
+      voucherType?: string | null;
     };
   }>;
   rewards: Array<{

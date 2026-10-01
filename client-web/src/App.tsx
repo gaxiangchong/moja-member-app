@@ -555,7 +555,11 @@ function PointsHistoryCard({
 function voucherValueLabel(d: {
   rebateValueSen?: number | null;
   percentageOff?: number | null;
+  voucherType?: string | null;
 }): string | null {
+  // Only a cash or percentage discount has a value worth stating. A delivery
+  // discount, wallet credit or free item is left without one.
+  if (d.voucherType && d.voucherType !== 'PERCENTAGE' && d.voucherType !== 'FIXED_AMOUNT') return null;
   if (d.percentageOff && d.percentageOff > 0) return `${d.percentageOff}% off`;
   if (d.rebateValueSen && d.rebateValueSen > 0) return `RM ${(d.rebateValueSen / 100).toFixed(2)} off`;
   return null;
@@ -602,7 +606,7 @@ function VoucherCard({
       {value ? (
         <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 800, color: '#00348d' }}>{value}</p>
       ) : null}
-      <small style={{ display: 'block' }}>{minSpend}</small>
+      {minSpend ? <small style={{ display: 'block' }}>{minSpend}</small> : null}
       {conditions ? <p>{conditions}</p> : null}
       {code ? (
         <p style={{ margin: '4px 0' }}>
@@ -2233,7 +2237,10 @@ function App() {
                           minSpend={
                             v.definition.minSpendSen
                               ? `Min. spend ${formatRmCents(v.definition.minSpendSen)}`
-                              : 'No minimum spend'
+                              : // "No minimum" only reads right next to a stated value.
+                                voucherValueLabel(v.definition)
+                                ? 'No minimum spend'
+                                : ''
                           }
                           code={v.definition.code}
                           expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
