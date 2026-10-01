@@ -38,6 +38,7 @@ import {
   type RewardRedemption,
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
+import { copyText } from './lib/clipboard';
 import { OrdersTab } from './orders/OrdersTab';
 import { TopUpScreen, type TopUpResult } from './wallet/TopUpScreen';
 import { InstallBanner } from './components/InstallBanner';
@@ -553,14 +554,18 @@ function PointsHistoryCard({
 function VoucherCard({
   title,
   conditions,
+  code,
   expiry,
   status,
 }: {
   title: string;
   conditions: string;
+  /** The code to paste into the voucher box at checkout. */
+  code: string;
   expiry: string;
   status: string;
 }) {
+  const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
   const normalized = String(status || 'ACTIVE').toUpperCase();
   let isExpiring = false;
   if (normalized === 'ACTIVE' && expiry !== '-') {
@@ -579,10 +584,32 @@ function VoucherCard({
         <span className={`statusBadge ${isExpiring ? 'warning' : ''}`}>{badgeLabel}</span>
       </div>
       <p>{conditions}</p>
+      {code ? (
+        <p style={{ margin: '4px 0' }}>
+          Code: <strong style={{ letterSpacing: '0.04em', userSelect: 'all' }}>{code}</strong>
+        </p>
+      ) : null}
       <small>Expiry: {expiry}</small>
-      <button type="button" disabled={normalized !== 'ACTIVE'}>
-        Use Now
-      </button>
+      {normalized === 'ACTIVE' && code ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              void copyText(code).then((ok) => {
+                setCopied(ok ? 'yes' : 'no');
+                window.setTimeout(() => setCopied(null), 2500);
+              });
+            }}
+          >
+            {copied === 'yes' ? 'Copied ✓' : 'Copy code'}
+          </button>
+          <small style={{ display: 'block', marginTop: 6 }}>
+            {copied === 'no'
+              ? 'Could not copy automatically — press and hold the code above to copy it.'
+              : 'Paste it into the voucher box at checkout.'}
+          </small>
+        </>
+      ) : null}
     </article>
   );
 }
@@ -1474,13 +1501,8 @@ function App() {
 
   const copyRedeemedCode = async () => {
     if (!redeemedCode) return;
-    try {
-      await navigator.clipboard.writeText(redeemedCode.code);
-      setCodeCopied(true);
-    } catch {
-      // Clipboard can be blocked; the code is on screen to copy by hand.
-      setCodeCopied(false);
-    }
+    // Falls back to the old copy method where the clipboard API is blocked.
+    setCodeCopied(await copyText(redeemedCode.code));
   };
 
   const voucherItems = rewardsData?.vouchers ?? [];
@@ -2186,7 +2208,8 @@ function App() {
                         <VoucherCard
                           key={v.id}
                           title={v.definition.title}
-                          conditions={v.definition.description || v.definition.code}
+                          conditions={v.definition.description || ''}
+                          code={v.definition.code}
                           expiry={v.expiresAt ? v.expiresAt.slice(0, 10) : '-'}
                           status={v.status}
                         />

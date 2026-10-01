@@ -45,6 +45,13 @@ import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
+/**
+ * Show the points-reward buttons in the checkout voucher box. Hidden for now:
+ * members redeem in Rewards, copy the code, and paste it into the code box.
+ * Set to true to bring the buttons back.
+ */
+const SHOW_POINT_REWARDS_AT_CHECKOUT = false;
+
 type PaymentMethodMode = 'channel' | 'card_token' | 'credits';
 
 type DemoCheckoutSnapshot = {
@@ -270,7 +277,7 @@ export function ShopFlow({
     [memberRewards],
   );
   const catalogRewards = useMemo(
-    () => checkoutCatalogRewards(memberRewards),
+    () => (SHOW_POINT_REWARDS_AT_CHECKOUT ? checkoutCatalogRewards(memberRewards) : []),
     [memberRewards],
   );
   // The code box is always there: a member can paste a redemption code from
@@ -1402,7 +1409,7 @@ export function ShopFlow({
                       className="caption"
                       style={{ marginTop: 0, marginBottom: 8 }}
                     >
-                      Paste the code you got from Rewards → Redeem voucher, or
+                      Paste your code here (copy it from Rewards → Vouchers), or
                       pick a voucher from your wallet below.
                     </p>
                     <div className="shopVoucherCodeRow">
