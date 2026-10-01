@@ -350,3 +350,15 @@ describe('changing a birthday', () => {
     expect(builder.issueVoucherToCustomer).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('campaigns that back a points reward', () => {
+  it('are never picked up by the automatic sweeps', async () => {
+    const { service, prisma } = setup([RM30]);
+    await service.runReferralPurchaseTrigger('ref', 'friend', 5000);
+    const where = prisma.voucherCampaign.findMany.mock.calls[0][0].where as {
+      rewards?: unknown;
+    };
+    // Otherwise an "every member" reward campaign would give the reward away.
+    expect(where.rewards).toEqual({ none: {} });
+  });
+});

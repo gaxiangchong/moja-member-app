@@ -445,13 +445,20 @@ export class CampaignAutomationService {
   // Shared helpers
   // ---------------------------------------------------------------------
 
-  /** Active campaigns for a trigger whose window includes now. */
+  /**
+   * Active campaigns for a trigger whose window includes now. Campaigns linked
+   * to a points reward are never included (see below).
+   */
   private activeCampaigns(trigger: string): Promise<VoucherCampaign[]> {
     const now = new Date();
     return this.prisma.voucherCampaign.findMany({
       where: {
         autoCreditTrigger: trigger,
         isActive: true,
+        // A campaign that backs a points reward is only ever issued when a member
+        // redeems that reward. Pushing it to members automatically would hand
+        // out the reward for free, whatever trigger it was saved with.
+        rewards: { none: {} },
         AND: [
           { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
           { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },

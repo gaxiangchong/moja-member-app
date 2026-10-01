@@ -339,7 +339,13 @@ export function VoucherCampaigns() {
         usageLimitPerUser: createForm.usageLimitPerUser ? Number(createForm.usageLimitPerUser) : undefined,
         tncText: createForm.tncText.trim() || undefined,
       });
-      setCampaigns((prev) => (prev ? [created, ...prev] : [created]));
+      // The create response is not shaped like a list row (no issued count), so
+      // reload the list from the server rather than inserting it as it is.
+      try {
+        setCampaigns(await fetchCampaigns());
+      } catch {
+        /* the list refreshes next time it is opened */
+      }
       openManage(created.id);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create campaign');
@@ -431,7 +437,7 @@ export function VoucherCampaigns() {
     try {
       const voucher = await issueCampaignVoucherToCustomer(detail.id, customerId);
       setDetail((d) => (d ? { ...d, vouchers: [voucher, ...d.vouchers] } : d));
-      setCampaigns((prev) => prev?.map((c) => (c.id === detail.id ? { ...c, vouchersIssued: c.vouchersIssued + 1 } : c)) ?? prev);
+      setCampaigns((prev) => prev?.map((c) => (c.id === detail.id ? { ...c, vouchersIssued: (c.vouchersIssued ?? 0) + 1 } : c)) ?? prev);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Failed to issue voucher');
     }
@@ -513,7 +519,7 @@ export function VoucherCampaigns() {
                       <span className="dataTableMuted">Manual</span>
                     )}
                   </td>
-                  <td>{c.vouchersIssued.toLocaleString()}{c.totalRedemptionCap ? ` / ${c.totalRedemptionCap}` : ''}</td>
+                  <td>{(c.vouchersIssued ?? 0).toLocaleString()}{c.totalRedemptionCap ? ` / ${c.totalRedemptionCap}` : ''}</td>
                   <td><span className={`badge badge--${STATUS_TONE[c.status]}`}>{c.status}</span></td>
                   <td className="dataTableMuted">{formatDate(c.startsAt)} → {formatDate(c.endsAt)}</td>
                 </tr>
