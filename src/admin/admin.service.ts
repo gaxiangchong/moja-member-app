@@ -36,6 +36,7 @@ const VOUCHER_IMAGE_ALLOWED_MIME: Record<string, string> = {
 const VOUCHER_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 import { auditActorBase } from '../admin-auth/audit-context.util';
 import { daysUntilBirthdayUtc } from '../common/birthday.util';
+import { assertBirthdayVoucherUsable } from '../rewards-workflow/birthday-voucher.rule';
 import { P, hasPermission } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { AuditService } from '../audit/audit.service';
@@ -1851,6 +1852,10 @@ export class AdminService {
 
     const row = await this.prisma.voucher.findFirst({
       where: { id: voucherId, customerId },
+      include: {
+        voucherCampaign: true,
+        customer: { select: { birthday: true } },
+      },
     });
     if (!row) {
       throw new NotFoundException({
@@ -1858,6 +1863,9 @@ export class AdminService {
         message: 'Voucher not found for this member',
       });
     }
+    // Same rule as online checkout: a birthday voucher is only for the stretch
+    // around the member's birthday, whoever is redeeming it.
+    assertBirthdayVoucherUsable(row.voucherCampaign, row.customer.birthday);
     if (
       row.status === VoucherLifecycleStatus.USED ||
       row.status === VoucherLifecycleStatus.VOID ||

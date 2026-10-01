@@ -5,6 +5,7 @@ import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { nextBirthday } from '../common/birthday.util';
 import { NON_REVENUE_ORDER_STATUSES } from '../orders/order-status';
 import { PrismaService } from '../prisma/prisma.service';
+import { birthdayCampaignWindow } from './birthday-voucher.rule';
 import { CampaignBuilderService } from './campaign-builder.service';
 
 const NEW_MEMBER = 'NEW_MEMBER';
@@ -15,8 +16,6 @@ const INACTIVE_DAYS = 'INACTIVE_DAYS';
 const MIN_PURCHASE = 'MIN_PURCHASE';
 const ALL_MEMBERS = 'ALL_MEMBERS';
 
-/** How far ahead of the birthday the voucher appears when a campaign sets no value. */
-const BIRTHDAY_DEFAULT_LEAD_DAYS = 30;
 /** Days since the last purchase before a member counts as lapsed, absent a campaign value. */
 const WINBACK_DEFAULT_DAYS = 60;
 /** Most members one all-members campaign is issued to per sweep. */
@@ -274,10 +273,7 @@ export class CampaignAutomationService {
     let issued = 0;
     for (const campaign of campaigns) {
       if (!(await this.hasCapacity(campaign))) continue;
-      const leadDays =
-        campaign.autoCreditThreshold && campaign.autoCreditThreshold > 0
-          ? campaign.autoCreditThreshold
-          : BIRTHDAY_DEFAULT_LEAD_DAYS;
+      const { leadDays } = birthdayCampaignWindow(campaign);
       const have = await this.existingKeys(
         campaign.id,
         'birthday:',

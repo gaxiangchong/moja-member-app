@@ -1,4 +1,8 @@
-import { birthdayVoucherExpiry, nextBirthday } from './birthday.util';
+import {
+  birthdayVoucherExpiry,
+  birthdayWindow,
+  nextBirthday,
+} from './birthday.util';
 
 /** Stored birthdays are date-only columns, so they arrive as UTC midnight. */
 const bday = (month: number, day: number) =>
@@ -66,5 +70,51 @@ describe('birthdayVoucherExpiry', () => {
   it('expires after the next birthday for someone whose birthday just passed', () => {
     const expiry = birthdayVoucherExpiry(bday(9, 30), 7, now);
     expect(expiry.getUTCFullYear()).toBe(2027);
+  });
+});
+
+describe('birthdayWindow', () => {
+  // 2026-10-01 08:00 in Malaysia.
+  const now = new Date('2026-10-01T00:00:00Z');
+
+  it('is closed when the birthday is more than the lead time away', () => {
+    // 21 Dec is 81 days out: not claimable yet, and says when it opens.
+    expect(birthdayWindow(bday(12, 21), 30, 7, now)).toEqual({
+      open: false,
+      opensOn: '2026-11-21',
+    });
+  });
+
+  it('opens exactly lead-days before the birthday', () => {
+    // 31 Oct is 30 days out.
+    expect(birthdayWindow(bday(10, 31), 30, 7, now).open).toBe(true);
+    // 1 Nov is 31 days out.
+    expect(birthdayWindow(bday(11, 1), 30, 7, now).open).toBe(false);
+  });
+
+  it('is open on the birthday itself', () => {
+    expect(birthdayWindow(bday(10, 1), 30, 7, now).open).toBe(true);
+  });
+
+  it('stays open for the grace days after the birthday, then closes', () => {
+    // Birthday was 7 days ago (24 Sep): still inside a 7-day grace.
+    expect(birthdayWindow(bday(9, 24), 30, 7, now).open).toBe(true);
+    // 8 days ago: over, and it re-opens next year.
+    expect(birthdayWindow(bday(9, 23), 30, 7, now)).toEqual({
+      open: false,
+      opensOn: '2027-08-24',
+    });
+  });
+
+  it('opens across the new year for a January birthday', () => {
+    const december = new Date('2026-12-20T04:00:00Z');
+    expect(birthdayWindow(bday(1, 5), 30, 7, december).open).toBe(true);
+    expect(birthdayWindow(bday(2, 20), 30, 7, december).open).toBe(false);
+  });
+
+  it('honours a different lead time', () => {
+    // 10 days out: open for a 14-day lead, closed for a 7-day one.
+    expect(birthdayWindow(bday(10, 11), 14, 7, now).open).toBe(true);
+    expect(birthdayWindow(bday(10, 11), 7, 7, now).open).toBe(false);
   });
 });

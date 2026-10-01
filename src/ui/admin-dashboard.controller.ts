@@ -10381,7 +10381,7 @@ export class AdminDashboardController {
       if (out) out.textContent = 'Issuing…';
       try {
         var res = await apiPost('/admin/campaigns/' + encodeURIComponent(id) + '/issue-all', { reason: 'admin_issue_all' });
-        if (out) out.textContent = 'Issued ' + res.issued + ', skipped ' + res.skipped + ' (already had it), failed ' + res.failed + '.';
+        if (out) out.textContent = 'Issued ' + res.issued + ', skipped ' + res.skipped + ' (already had it)' + (res.skippedBirthday ? ', ' + res.skippedBirthday + ' not issued (birthday not close, or none on file — they get it automatically when it is)' : '') + ', failed ' + res.failed + '.';
         await loadVoucherCampaigns();
       } catch (e) {
         if (out) out.textContent = e.message || String(e);

@@ -56,6 +56,52 @@ export function nextBirthday(
 }
 
 /**
+ * Whether today falls inside a member's birthday window: from `leadDays` before
+ * the birthday until `afterDays` after it. When it does not, `opensOn` is the
+ * next day it opens (as a Malaysian `yyyy-mm-dd`).
+ *
+ * This is evaluated against the member's birthday *now*, not the date when the
+ * voucher was issued, so a voucher can never be used outside the window — even
+ * one that was issued to everyone by mistake.
+ */
+export function birthdayWindow(
+  birthday: Date,
+  leadDays: number,
+  afterDays: number,
+  now: Date = new Date(),
+): { open: boolean; opensOn: string } {
+  const next = nextBirthday(birthday, now);
+  const [ty, tm, td] = shopCalendarYmd(now)
+    .split('-')
+    .map((n) => Number(n));
+  const todayMs = Date.UTC(ty, tm - 1, td);
+
+  // Approaching: inside the lead-in before the coming birthday.
+  if (next.daysUntil <= leadDays) {
+    return {
+      open: true,
+      opensOn: ymd(Date.UTC(next.year, next.month, next.day - leadDays)),
+    };
+  }
+  // Just passed: inside the grace period after the most recent birthday.
+  const lastMs = Date.UTC(next.year - 1, next.month, next.day);
+  if (Math.round((todayMs - lastMs) / DAY_MS) <= afterDays) {
+    return {
+      open: true,
+      opensOn: ymd(Date.UTC(next.year - 1, next.month, next.day - leadDays)),
+    };
+  }
+  return {
+    open: false,
+    opensOn: ymd(Date.UTC(next.year, next.month, next.day - leadDays)),
+  };
+}
+
+function ymd(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
  * When a birthday voucher stops being usable: the end of the Malaysian day that
  * is `validDaysAfter` days after the member's next birthday. The voucher is
  * usable from the moment it appears (up to 30 days before) until then.

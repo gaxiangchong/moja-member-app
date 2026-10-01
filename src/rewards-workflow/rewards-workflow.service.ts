@@ -12,6 +12,10 @@ import {
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  assertBirthdayVoucherUsable,
+  isBirthdayCampaign,
+} from './birthday-voucher.rule';
 import { CampaignBuilderService } from './campaign-builder.service';
 
 type VoucherValidationInput = {
@@ -237,6 +241,19 @@ export class RewardsWorkflowService {
             `This voucher can be used from ${validFrom.toISOString().slice(0, 10)}.`,
           );
         }
+      }
+      // A birthday voucher is only for the stretch around the member's own
+      // birthday. Judged on their birthday today, so one issued early — or to
+      // everyone — still cannot be spent outside that window.
+      if (isBirthdayCampaign(voucher.voucherCampaign)) {
+        const member = await tx.customer.findUnique({
+          where: { id: input.customerId },
+          select: { birthday: true },
+        });
+        assertBirthdayVoucherUsable(
+          voucher.voucherCampaign,
+          member?.birthday ?? null,
+        );
       }
       if (
         voucher.status === VoucherLifecycleStatus.LOCKED &&

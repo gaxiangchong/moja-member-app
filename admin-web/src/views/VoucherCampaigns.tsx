@@ -444,7 +444,12 @@ export function VoucherCampaigns() {
     setBulkResult(null);
     try {
       const res = await issueCampaignToAllActive(detail.id);
-      setBulkResult(`Issued ${res.issued}, failed ${res.failed}, skipped ${res.skipped} already-holding, of ${res.eligible} eligible.`);
+      setBulkResult(
+        `Issued ${res.issued}, failed ${res.failed}, skipped ${res.skipped} already-holding, of ${res.eligible} eligible.` +
+          (res.skippedBirthday
+            ? ` ${res.skippedBirthday} not issued: their birthday isn’t close (or none on file) — they get it automatically when it is.`
+            : ''),
+      );
       openManage(detail.id);
     } catch (err) {
       setBulkResult(err instanceof Error ? err.message : 'Failed to issue to all active members');

@@ -135,6 +135,10 @@ function VoucherPushPanel({
         tone: 'ok',
         text: `Sent to ${r.issued.toLocaleString()} member${r.issued === 1 ? '' : 's'}${
           r.skippedHolding ? `; ${r.skippedHolding.toLocaleString()} already had one` : ''
+        }${
+          r.skippedBirthday
+            ? `; ${r.skippedBirthday.toLocaleString()} not sent because their birthday isn’t close`
+            : ''
         }${r.failed ? `; ${r.failed} failed` : ''}.`,
       });
     } catch (err) {

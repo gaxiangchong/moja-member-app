@@ -1094,13 +1094,13 @@ export async function issueCampaignVoucherToCustomer(
 export async function issueCampaignToAllActive(
   campaignId: string,
   reason?: string,
-): Promise<{ issued: number; failed: number; skipped: number; eligible: number }> {
+): Promise<{ issued: number; failed: number; skipped: number; skippedBirthday: number; eligible: number }> {
   const res = await authorizedFetch(`/admin/campaigns/${encodeURIComponent(campaignId)}/issue-all`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
   });
-  return parseCatalogResponse<{ issued: number; failed: number; skipped: number; eligible: number }>(res);
+  return parseCatalogResponse<{ issued: number; failed: number; skipped: number; skippedBirthday: number; eligible: number }>(res);
 }
 
 /** Push a campaign's voucher to a chosen set of members. Anyone already holding one is skipped. */
@@ -1108,13 +1108,13 @@ export async function issueCampaignToCustomers(
   campaignId: string,
   customerIds: string[],
   reason?: string,
-): Promise<{ issued: number; failed: number; skippedHolding: number }> {
+): Promise<{ issued: number; failed: number; skippedHolding: number; skippedBirthday: number }> {
   const res = await authorizedFetch(`/admin/campaigns/${encodeURIComponent(campaignId)}/bulk-issue`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ customerIds, reason }),
   });
-  return parseCatalogResponse<{ issued: number; failed: number; skippedHolding: number }>(res);
+  return parseCatalogResponse<{ issued: number; failed: number; skippedHolding: number; skippedBirthday: number }>(res);
 }
 
 /** Runs the birthday, win-back and all-members sweeps now instead of waiting for the schedule. */

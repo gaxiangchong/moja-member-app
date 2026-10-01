@@ -11,6 +11,11 @@ import {
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { birthdayVoucherExpiry } from '../common/birthday.util';
+import {
+  birthdayCampaignWindow,
+  birthdayVoucherBlock,
+  isBirthdayCampaign,
+} from './birthday-voucher.rule';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignFromTemplateDto } from './dto/create-campaign-from-template.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
@@ -384,9 +389,24 @@ export class CampaignBuilderService {
     const prefix = campaign.codePrefix ?? campaign.code.split('-')[0] ?? 'V';
     const code = `${prefix}-${this.generateShortId()}`.toUpperCase();
 
-    const isBirthday =
-      campaign.template === 'BIRTHDAY' ||
-      campaign.autoCreditTrigger === 'BIRTHDAY';
+    const isBirthday = isBirthdayCampaign(campaign);
+
+    // A birthday voucher only goes to someone whose birthday is close. This is
+    // what stops "Issue to all members" putting one in every wallet; the daily
+    // sweep (and saving a birthday) issues it at the right time instead. An
+    // explicit expiry from an admin is a deliberate override.
+    if (isBirthday && !expiresAt) {
+      const block = birthdayVoucherBlock(campaign, customer.birthday);
+      if (block) {
+        throw new BadRequestException({
+          code: block.code,
+          message:
+            block.code === 'BIRTHDAY_NOT_SET'
+              ? 'Not issued: no birthday on file. They get it automatically once they add one.'
+              : `Not issued: birthday is more than ${birthdayCampaignWindow(campaign).leadDays} days away. They get it automatically when it is close.`,
+        });
+      }
+    }
 
     let computedExpiry: Date | null = null;
     if (expiresAt) {
@@ -542,6 +562,10 @@ export class CampaignBuilderService {
       holders.has(id),
     ).length;
 
+    // Members a birthday campaign deliberately did not issue to (birthday far
+    // off, or none on file). Not a failure: they get it automatically later.
+    let skippedBirthday = 0;
+
     for (const customerId of new Set(customerIds)) {
       if (holders.has(customerId)) continue;
       try {
@@ -553,6 +577,14 @@ export class CampaignBuilderService {
         );
         results.push({ customerId, voucherCode: voucher.code });
       } catch (err) {
+        const code =
+          err instanceof BadRequestException
+            ? (err.getResponse() as { code?: string }).code
+            : undefined;
+        if (code === 'BIRTHDAY_NOT_SET' || code === 'BIRTHDAY_OUTSIDE_WINDOW') {
+          skippedBirthday++;
+          continue;
+        }
         errors.push({
           customerId,
           error: err instanceof Error ? err.message : 'Unknown error',
@@ -564,6 +596,7 @@ export class CampaignBuilderService {
       issued: results.length,
       failed: errors.length,
       skippedHolding,
+      skippedBirthday,
       results,
       errors,
     };

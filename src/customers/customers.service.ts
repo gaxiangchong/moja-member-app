@@ -20,6 +20,10 @@ import { WalletService } from '../wallet/wallet.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { OrderNotificationService } from '../notifications/order-notification.service';
+import {
+  birthdayVoucherBlock,
+  isBirthdayCampaign,
+} from '../rewards-workflow/birthday-voucher.rule';
 import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
@@ -651,6 +655,19 @@ export class CustomersService {
       };
     };
 
+    // Birthday vouchers are judged on the member's birthday today (the same rule
+    // checkout applies), so the wallet can say why one isn't usable yet.
+    const memberBirthday = newVouchers.some((v) =>
+      isBirthdayCampaign(v.voucherCampaign),
+    )
+      ? ((
+          await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { birthday: true },
+          })
+        )?.birthday ?? null)
+      : null;
+
     return {
       wallet: {
         pointsBalance: wallet?.pointsCached ?? 0,
@@ -669,6 +686,17 @@ export class CustomersService {
         ...newVouchers.map((v) => {
           const d = campaignVoucherDiscount(v.voucherCampaign);
           let description = v.voucherCampaign?.description ?? null;
+          const birthdayBlock =
+            v.status === 'ACTIVE'
+              ? birthdayVoucherBlock(v.voucherCampaign, memberBirthday)
+              : null;
+          if (birthdayBlock) {
+            description = `${
+              birthdayBlock.code === 'BIRTHDAY_NOT_SET'
+                ? 'Add your birthday to your profile to use this voucher.'
+                : `Usable from ${birthdayBlock.opensOn}.`
+            }${description ? ' ' + description : ''}`;
+          }
           // Surface a "usable from" note for birthday (and other future-dated)
           // vouchers so the member understands why they can't redeem it yet.
           const validFrom = (v.metadata as { validFrom?: string } | null)
