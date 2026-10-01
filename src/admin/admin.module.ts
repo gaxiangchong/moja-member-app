@@ -24,6 +24,9 @@ import { MemberOrdersSettingsAdminController } from './member-orders-settings.ad
 import { DeliverySettingsAdminController } from './delivery-settings.admin.controller';
 import { PickupRulesAdminController } from './pickup-rules.admin.controller';
 import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admin.controller';
+import { MemberVouchersAdminController } from './member-vouchers.admin.controller';
+import { MemberVouchersAdminService } from './member-vouchers.admin.service';
+import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
 
 @Module({
   imports: [
@@ -41,6 +44,7 @@ import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admi
     PaymentsModule,
     SalesplayModule,
     OrdersModule,
+    RewardsWorkflowModule,
   ],
   controllers: [
     AdminController,
@@ -51,7 +55,13 @@ import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admi
     DeliverySettingsAdminController,
     MemberOrdersSettingsAdminController,
     WalletTopUpSettingsAdminController,
+    MemberVouchersAdminController,
   ],
-  providers: [AdminService, ApprovalsService, FinanceReportService],
+  providers: [
+    AdminService,
+    ApprovalsService,
+    FinanceReportService,
+    MemberVouchersAdminService,
+  ],
 })
 export class AdminModule {}

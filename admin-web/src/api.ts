@@ -1099,6 +1099,70 @@ export async function fetchCampaignTemplates(): Promise<CampaignTemplatePreset[]
   return parseCatalogResponse<CampaignTemplatePreset[]>(res);
 }
 
+/** A campaign voucher in one member's wallet, as the admin sees it. */
+export type MemberVoucher = {
+  id: string;
+  code: string;
+  name: string;
+  status: VoucherLifecycleStatus;
+  /** ACTIVE with a date in the past counts as EXPIRED. */
+  effectiveStatus: VoucherLifecycleStatus;
+  expiresAt: string | null;
+  issuedAt: string;
+  usedAt: string | null;
+  campaign: { id: string; name: string; code: string; discount: string } | null;
+  withdrawnReason: string | null;
+  /** False once it has been used. */
+  canEdit: boolean;
+};
+
+export type MemberVouchersPayload = {
+  member: { id: string; displayName: string | null; phoneE164: string };
+  vouchers: MemberVoucher[];
+};
+
+export async function fetchMemberVouchers(customerId: string): Promise<MemberVouchersPayload> {
+  const res = await authorizedFetch(`/admin/customers/${encodeURIComponent(customerId)}/campaign-vouchers`);
+  return parseCatalogResponse<MemberVouchersPayload>(res);
+}
+
+/** `expiresAt`: a yyyy-mm-dd day, or null for no expiry. `reinstate` brings a withdrawn voucher back. */
+export async function updateMemberVoucher(
+  customerId: string,
+  voucherId: string,
+  patch: { name?: string; expiresAt?: string | null; reinstate?: boolean; reason?: string },
+): Promise<MemberVouchersPayload> {
+  const res = await authorizedFetch(
+    `/admin/customers/${encodeURIComponent(customerId)}/campaign-vouchers/${encodeURIComponent(voucherId)}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) },
+  );
+  return parseCatalogResponse<MemberVouchersPayload>(res);
+}
+
+export async function revokeMemberVoucher(
+  customerId: string,
+  voucherId: string,
+  reason?: string,
+): Promise<MemberVouchersPayload> {
+  const res = await authorizedFetch(
+    `/admin/customers/${encodeURIComponent(customerId)}/campaign-vouchers/${encodeURIComponent(voucherId)}/revoke`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) },
+  );
+  return parseCatalogResponse<MemberVouchersPayload>(res);
+}
+
+export async function issueMemberVoucher(
+  customerId: string,
+  input: { campaignId: string; expiresAt?: string; reason?: string },
+): Promise<MemberVouchersPayload> {
+  const res = await authorizedFetch(`/admin/customers/${encodeURIComponent(customerId)}/campaign-vouchers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return parseCatalogResponse<MemberVouchersPayload>(res);
+}
+
 export type CampaignSummary = {
   id: string;
   code: string;
