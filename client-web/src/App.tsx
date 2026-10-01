@@ -1768,12 +1768,7 @@ function App() {
                         </svg>
                       </span>
                       <span className="homeSummaryText">
-                        <span className="homeSummaryLabel">
-                          <span className={`homeTierTag homeTierTag--${normalizedTierKey}`}>
-                            {tierDisplayName}
-                          </span>{' '}
-                          Points
-                        </span>
+                        <span className="homeSummaryLabel">Points</span>
                         <span className="homeSummaryValue">{pointsBalance.toLocaleString()}</span>
                       </span>
                     </button>
