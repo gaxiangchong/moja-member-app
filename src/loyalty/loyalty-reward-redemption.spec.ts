@@ -27,6 +27,13 @@ function setup(points: number, lifetime = points) {
     rewardPointsRefundedAt: null,
   };
   const ledger: { delta: number; reason: string; ref: string | null }[] = [];
+  const rows: {
+    customerId: string;
+    deltaPoints: number;
+    reason: string;
+    referenceType: string | null;
+    referenceId: string | null;
+  }[] = [];
   const locks: string[] = [];
   const tx = {
     $queryRaw: jest.fn().mockImplementation(() => {
@@ -56,8 +63,10 @@ function setup(points: number, lifetime = points) {
       create: jest.fn().mockImplementation(
         (a: {
           data: {
+            customerId: string;
             deltaPoints: number;
             reason: string;
+            referenceType: string | null;
             referenceId: string | null;
           };
         }) => {
@@ -66,7 +75,50 @@ function setup(points: number, lifetime = points) {
             reason: a.data.reason,
             ref: a.data.referenceId,
           });
+          rows.push({
+            customerId: a.data.customerId,
+            deltaPoints: a.data.deltaPoints,
+            reason: a.data.reason,
+            referenceType: a.data.referenceType,
+            referenceId: a.data.referenceId,
+          });
           return Promise.resolve({});
+        },
+      ),
+      findFirst: jest.fn().mockImplementation(
+        (q: {
+          where: {
+            customerId?: string;
+            reason?: string;
+            referenceType?: string;
+            referenceId?: string;
+            deltaPoints?: { gt?: number };
+          };
+        }) => {
+          const w = q.where;
+          const found = rows.find((row) => {
+            if (w.customerId != null && row.customerId !== w.customerId) {
+              return false;
+            }
+            if (w.reason != null && row.reason !== w.reason) return false;
+            if (
+              w.referenceType != null &&
+              row.referenceType !== w.referenceType
+            ) {
+              return false;
+            }
+            if (w.referenceId != null && row.referenceId !== w.referenceId) {
+              return false;
+            }
+            if (
+              w.deltaPoints?.gt != null &&
+              !(row.deltaPoints > w.deltaPoints.gt)
+            ) {
+              return false;
+            }
+            return true;
+          });
+          return Promise.resolve(found ? { ...found } : null);
         },
       ),
     },
@@ -223,5 +275,58 @@ describe('membership tier follows what was earned, not what is left', () => {
     await earn(service, 2000, 'campaign_points_bonus');
     expect(wallet.lifetimeEarnedPoints).toBe(2000);
     expect(tiers.at(-1)).toBe('platinum');
+  });
+});
+
+describe('taking purchase points back when an order is cancelled', () => {
+  async function earnOnOrder(service: LoyaltyService, points: number) {
+    await service.appendLedgerEntry({
+      customerId: 'm1',
+      deltaPoints: points,
+      reason: 'shop_order_purchase',
+      referenceType: 'customer_order',
+      referenceId: 'o1',
+    });
+  }
+
+  it('returns the points and lowers the tier, once', async () => {
+    const { service, wallet, tiers } = setup(950, 950);
+    await earnOnOrder(service, 80);
+    expect(wallet.lifetimeEarnedPoints).toBe(1030);
+    expect(tiers.at(-1)).toBe('gold');
+
+    expect(await service.clawbackOrderPurchasePoints('o1')).toBe(80);
+    expect(await service.clawbackOrderPurchasePoints('o1')).toBe(0);
+    expect(wallet.pointsCached).toBe(950);
+    expect(wallet.lifetimeEarnedPoints).toBe(950);
+    expect(tiers.at(-1)).toBe('silver');
+  });
+
+  it('does nothing when the order earned no points', async () => {
+    const { service, wallet } = setup(40, 40);
+    expect(await service.clawbackOrderPurchasePoints('o1')).toBe(0);
+    expect(wallet.pointsCached).toBe(40);
+    expect(wallet.lifetimeEarnedPoints).toBe(40);
+  });
+
+  it('refuses when those points were already spent, and changes nothing', async () => {
+    const { service, wallet } = setup(0, 0);
+    await earnOnOrder(service, 80);
+    await service.appendLedgerEntry({
+      customerId: 'm1',
+      deltaPoints: -80,
+      reason: 'redeem_counter',
+      referenceType: 'counter_redeem',
+      referenceId: 'c1',
+    });
+    expect(wallet.pointsCached).toBe(0);
+
+    await expect(
+      service.clawbackOrderPurchasePoints('o1'),
+    ).rejects.toMatchObject({
+      response: { code: 'ORDER_POINTS_ALREADY_SPENT' },
+    });
+    expect(wallet.pointsCached).toBe(0);
+    expect(wallet.lifetimeEarnedPoints).toBe(80);
   });
 });

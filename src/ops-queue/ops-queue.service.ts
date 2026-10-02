@@ -243,16 +243,32 @@ export class OpsQueueService {
         : {}),
     };
 
-    const updated = await this.prisma.customerOrder.updateMany({
-      where: { id, status: existing.status },
-      data: timestamps,
-    });
-    if (updated.count === 0) {
-      throw new BadRequestException({
-        code: 'ORDER_ALREADY_MOVED',
-        message:
-          'Another device already updated this order. Refresh to see it.',
+    const applyStatus = async (
+      db: Prisma.TransactionClient | PrismaService,
+    ) => {
+      const updated = await db.customerOrder.updateMany({
+        where: { id, status: existing.status },
+        data: timestamps,
       });
+      if (updated.count === 0) {
+        throw new BadRequestException({
+          code: 'ORDER_ALREADY_MOVED',
+          message:
+            'Another device already updated this order. Refresh to see it.',
+        });
+      }
+    };
+
+    // Cancel and refund take back purchase points in the same transaction as
+    // the status change. A credit-paid order returns its money just below; if
+    // the points were left behind, cancelling and reordering mints points.
+    if (next === ORDER_STATUS.CANCELLED || next === ORDER_STATUS.REFUNDED) {
+      await this.prisma.$transaction(async (tx) => {
+        await applyStatus(tx);
+        await this.loyalty.clawbackOrderPurchasePoints(id, tx);
+      });
+    } else {
+      await applyStatus(this.prisma);
     }
 
     // Cancelling frees the day's reserved stock for someone else to buy.
