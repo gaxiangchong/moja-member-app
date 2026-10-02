@@ -1020,22 +1020,27 @@ export class CustomersService {
       });
     }
 
-    // Guarded by the expected status so a cancel racing the kitchen's
-    // "start preparing" cannot both win.
-    const updated = await this.prisma.customerOrder.updateMany({
-      where: { id: orderId, status: order.status },
-      data: {
-        status: ORDER_STATUS.CANCELLED,
-        cancelledAt: new Date(),
-        cancelReason: 'Cancelled by member',
-      },
-    });
-    if (updated.count === 0) {
-      throw new BadRequestException({
-        code: 'ORDER_NOT_CANCELLABLE',
-        message: 'This order has just moved on. Please contact us for help.',
+    // Status flip and purchase-point clawback commit together. If the points
+    // this order earned have already been spent, nothing is cancelled and the
+    // credits stay spent — otherwise paying with credits, earning points,
+    // spending them, and cancelling returns the money and keeps the discount.
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.customerOrder.updateMany({
+        where: { id: orderId, status: order.status },
+        data: {
+          status: ORDER_STATUS.CANCELLED,
+          cancelledAt: new Date(),
+          cancelReason: 'Cancelled by member',
+        },
       });
-    }
+      if (updated.count === 0) {
+        throw new BadRequestException({
+          code: 'ORDER_NOT_CANCELLABLE',
+          message: 'This order has just moved on. Please contact us for help.',
+        });
+      }
+      await this.loyalty.clawbackOrderPurchasePoints(orderId, tx);
+    });
 
     const day =
       order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();

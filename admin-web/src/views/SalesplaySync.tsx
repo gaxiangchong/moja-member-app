@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applySalesplaySync,
   fetchSalesplayCsvInfo,
@@ -94,6 +94,14 @@ export function SalesplaySync({
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
 
   const [plan, setPlan] = useState<SalesplaySyncPlan | null>(null);
+  /**
+   * The exact options the current `plan` was built from. Apply posts this,
+   * never a fresh read of the controls: changing "delete" or prices after
+   * preview must not run until a new preview confirms it.
+   */
+  const [previewRequest, setPreviewRequest] = useState<SalesplaySyncOptionsInput | null>(null);
+  /** Bumped when options change so a preview that left earlier cannot become the plan. */
+  const previewGen = useRef(0);
   const [busy, setBusy] = useState<'upload' | 'preview' | 'apply' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +125,12 @@ export function SalesplaySync({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch of the stored CSV status
     void refreshInfo();
   }, [refreshInfo]);
+
+  function dropPreview() {
+    previewGen.current += 1;
+    setPlan(null);
+    setPreviewRequest(null);
+  }
 
   function body(choice: Record<string, boolean> | null = categoryChoice): SalesplaySyncOptionsInput {
     return {
@@ -151,6 +165,7 @@ export function SalesplaySync({
       );
       // A new export can bring new categories; let the next preview re-seed them.
       setCategoryChoice(null);
+      dropPreview();
       await refreshInfo();
     } catch (err) {
       setUploadMsg(null);
@@ -161,27 +176,45 @@ export function SalesplaySync({
   }
 
   async function runPreview(choice: Record<string, boolean> | null = categoryChoice, note?: string) {
+    const request = body(choice);
+    const gen = ++previewGen.current;
+    // Drop whatever Apply was about to send. A late response from this call is
+    // ignored if the admin changes the options while it is in flight.
+    setPlan(null);
+    setPreviewRequest(null);
     setBusy('preview');
     setError(null);
     setMessage('Loading preview…');
     try {
-      const next = await previewSalesplaySync(body(choice));
-      setPlan(next);
+      const next = await previewSalesplaySync(request);
+      if (gen !== previewGen.current) return;
+      const stored = { ...request };
       if (choice == null) {
-        setCategoryChoice(Object.fromEntries(next.categories.map((c) => [c.name, c.included])));
+        const seeded = Object.fromEntries(next.categories.map((c) => [c.name, c.included]));
+        setCategoryChoice(seeded);
+        // The first preview omits categories and the server applies its
+        // defaults. Remember that same set, so Apply matches the next render.
+        stored.categories = next.categories.filter((c) => c.included).map((c) => c.name);
       }
+      setPlan(next);
+      setPreviewRequest(stored);
       setMessage(note ?? 'Preview ready. Review the three tables, then click Apply sync.');
     } catch (err) {
+      if (gen !== previewGen.current) return;
       setMessage(null);
       setError(err instanceof Error ? err.message : 'Preview failed');
     } finally {
-      setBusy(null);
+      if (gen === previewGen.current) setBusy(null);
     }
   }
 
   async function handleApply() {
-    if (!plan) {
+    if (!plan || !previewRequest) {
       setMessage('Run Preview sync first.');
+      return;
+    }
+    if (JSON.stringify(body()) !== JSON.stringify(previewRequest)) {
+      setMessage('Those options changed after the preview. Re-run preview, then apply.');
       return;
     }
     const s = plan.summary;
@@ -221,7 +254,7 @@ export function SalesplaySync({
     setError(null);
     setMessage('Applying sync…');
     try {
-      const result = await applySalesplaySync(body());
+      const result = await applySalesplaySync(previewRequest);
       await onCatalogChanged();
       // The returned plan describes the catalog as it was *before* applying,
       // so re-diff rather than leave stale work on screen.
@@ -346,7 +379,10 @@ export function SalesplaySync({
                 <input
                   type="checkbox"
                   checked={categoryChoice[c.name] ?? c.included}
-                  onChange={(e) => setCategoryChoice({ ...categoryChoice, [c.name]: e.target.checked })}
+                  onChange={(e) => {
+                    setCategoryChoice({ ...categoryChoice, [c.name]: e.target.checked });
+                    dropPreview();
+                  }}
                 />
                 {c.name} <span className="viewMuted">({c.rowCount})</span>
               </label>
@@ -360,14 +396,28 @@ export function SalesplaySync({
         <div style={{ display: 'grid', gap: 8 }}>
           <label className="switchRow">
             <span className="switch">
-              <input type="checkbox" checked={updateCodes} onChange={(e) => setUpdateCodes(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={updateCodes}
+                onChange={(e) => {
+                  setUpdateCodes(e.target.checked);
+                  dropPreview();
+                }}
+              />
               <span className="switchTrack" aria-hidden />
             </span>
             <span>Store the SalesPlay product code on every matched product</span>
           </label>
           <label className="switchRow">
             <span className="switch">
-              <input type="checkbox" checked={updatePrices} onChange={(e) => setUpdatePrices(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={updatePrices}
+                onChange={(e) => {
+                  setUpdatePrices(e.target.checked);
+                  dropPreview();
+                }}
+              />
               <span className="switchTrack" aria-hidden />
             </span>
             <span>
@@ -376,14 +426,28 @@ export function SalesplaySync({
           </label>
           <label className="switchRow">
             <span className="switch">
-              <input type="checkbox" checked={createVariants} onChange={(e) => setCreateVariants(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={createVariants}
+                onChange={(e) => {
+                  setCreateVariants(e.target.checked);
+                  dropPreview();
+                }}
+              />
               <span className="switchTrack" aria-hidden />
             </span>
             <span>Add sizes SalesPlay sells that this product is missing (e.g. a slice)</span>
           </label>
           <label className="switchRow">
             <span className="switch">
-              <input type="checkbox" checked={createProducts} onChange={(e) => setCreateProducts(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={createProducts}
+                onChange={(e) => {
+                  setCreateProducts(e.target.checked);
+                  dropPreview();
+                }}
+              />
               <span className="switchTrack" aria-hidden />
             </span>
             <span>
@@ -395,7 +459,13 @@ export function SalesplaySync({
 
         <label className="filterField" style={{ marginTop: 14, maxWidth: 420 }}>
           App products SalesPlay does not sell
-          <select value={missingAction} onChange={(e) => setMissingAction(e.target.value as typeof missingAction)}>
+          <select
+            value={missingAction}
+            onChange={(e) => {
+              setMissingAction(e.target.value as typeof missingAction);
+              dropPreview();
+            }}
+          >
             <option value="keep">Leave them alone</option>
             <option value="hide">Hide them from the storefront</option>
             <option value="delete">Delete them from the catalog</option>
