@@ -7545,6 +7545,17 @@ export class AdminDashboardController {
     // --- Sync with SalesPlay POS (product-list CSV) --------------------------
 
     var lastSpSyncPlan = null;
+    // The exact request that produced lastSpSyncPlan. Apply posts this, not a
+    // fresh read of the form: the confirmation dialog describes the preview, and
+    // the form can already say something else (for example "delete") while that
+    // preview is still in flight. window.confirm blocks the preview from
+    // landing, so reading the form again at apply time would skip the typed
+    // delete confirmation and remove products the dialog never named.
+    var lastSpSyncBody = null;
+    /** Bumped on every preview and whenever a preview must be discarded. */
+    var spPreviewGen = 0;
+    /** True once a preview has been requested, so later option edits re-preview. */
+    var spPreviewArmed = false;
     /** Category name -> included. Null until the first preview fills it in. */
     var spCategoryChoice = null;
     /** Category names in render order; the checkboxes carry an index into this. */
@@ -7810,21 +7821,39 @@ export class AdminDashboardController {
       }).join('') || '<tr><td colspan="4" style="color:#059669">Every app product maps to a SalesPlay item.</td></tr>';
     }
 
+    function spInvalidateSyncPreview() {
+      spPreviewGen++;
+      lastSpSyncPlan = null;
+      lastSpSyncBody = null;
+    }
+
     async function spSyncPreview() {
+      var gen = ++spPreviewGen;
+      spPreviewArmed = true;
+      // Drop the previous plan immediately. Apply must not confirm yesterday's
+      // summary while this request — which may delete or reprice — is still loading.
+      lastSpSyncPlan = null;
+      lastSpSyncBody = null;
+      var body = spCollectBody();
       var out = document.getElementById('spSyncResult');
       if (out) out.textContent = 'Loading preview…';
-      var plan = await apiPost('/admin/shop-catalog/salesplay-csv/preview', spCollectBody());
+      var plan = await apiPost('/admin/shop-catalog/salesplay-csv/preview', body);
+      // A newer preview, or a category change, superseded this response.
+      if (gen !== spPreviewGen) return;
+      lastSpSyncBody = body;
       spRenderPlan(plan);
       if (out) out.textContent = 'Preview ready. Review the three tables, then click Apply sync.';
     }
 
     async function spSyncApply() {
       var out = document.getElementById('spSyncResult');
-      if (!lastSpSyncPlan) {
+      var plan = lastSpSyncPlan;
+      var body = lastSpSyncBody;
+      if (!plan || !body) {
         if (out) out.textContent = 'Run Preview sync first.';
         return;
       }
-      var s = lastSpSyncPlan.summary || {};
+      var s = plan.summary || {};
       var work = (s.codesToWrite || 0) + (s.pricesToWrite || 0) + (s.productsToCreate || 0) +
         (s.variantsToCreate || 0) + (s.toHide || 0) + (s.toDelete || 0);
       if (!work) {
@@ -7845,7 +7874,7 @@ export class AdminDashboardController {
       if (s.toDelete) {
         var names = [];
         var seen = {};
-        (lastSpSyncPlan.catalogOnly || []).forEach(function (r) {
+        (plan.catalogOnly || []).forEach(function (r) {
           if (r.action === 'delete' && !seen[r.productId]) {
             seen[r.productId] = true;
             names.push('· ' + r.productName);
@@ -7861,12 +7890,12 @@ export class AdminDashboardController {
       }
 
       if (out) out.textContent = 'Applying sync…';
-      var result = await apiPost('/admin/shop-catalog/salesplay-csv/apply', spCollectBody());
+      var result = await apiPost('/admin/shop-catalog/salesplay-csv/apply', body);
       await loadShopCatalog();
       // The returned plan describes the catalog as it was before applying, so
       // re-diff against the new state rather than leaving stale work on screen.
       await spSyncPreview();
-      if (out) {
+      if (out && lastSpSyncPlan) {
         out.textContent = 'Sync applied. Updated ' + fmt(result.productsUpdated) +
           ', created ' + fmt(result.productsCreated) +
           ', hidden ' + fmt(result.productsHidden) +
@@ -11028,14 +11057,14 @@ export class AdminDashboardController {
       if (previewBtn) previewBtn.addEventListener('click', function () { spSyncPreview().catch(fail); });
       var applyBtn = document.getElementById('spSyncApplyBtn');
       if (applyBtn) applyBtn.addEventListener('click', function () { spSyncApply().catch(fail); });
-      // Apply recomputes the plan server-side from whatever is ticked, so a
-      // stale preview must not be what the confirmation dialog describes.
+      // Changing a tick starts a new preview and drops the old plan first, so
+      // Apply cannot confirm one action and post another.
       ['spOptCodes', 'spOptPrices', 'spOptNewVariants', 'spOptNewProducts', 'spOptMissing']
         .forEach(function (id) {
           var el = document.getElementById(id);
           if (el) {
             el.addEventListener('change', function () {
-              if (lastSpSyncPlan) spSyncPreview().catch(fail);
+              if (spPreviewArmed) spSyncPreview().catch(fail);
             });
           }
         });
@@ -11068,8 +11097,9 @@ export class AdminDashboardController {
           if (name === undefined || !spCategoryChoice) return;
           spCategoryChoice[name] = box.checked;
           // The scope changed, so the plan on screen no longer describes what
-          // Apply would do.
-          lastSpSyncPlan = null;
+          // Apply would do. Also discard an in-flight preview of the old scope,
+          // which would otherwise become the plan Apply confirms.
+          spInvalidateSyncPreview();
           var out = document.getElementById('spSyncResult');
           if (out) out.textContent = 'Categories changed — run Preview sync again.';
         });
