@@ -652,9 +652,9 @@ export class AdminService {
       signup_source: c.signupSource,
       marketing_consent: c.marketingConsent ? 'yes' : 'no',
       points_balance: c.wallet?.pointsCached ?? 0,
-      lifetime_spent_rm: ((c.storedWallet?.lifetimeSpentCents ?? 0) / 100).toFixed(
-        2,
-      ),
+      lifetime_spent_rm: (
+        (c.storedWallet?.lifetimeSpentCents ?? 0) / 100
+      ).toFixed(2),
       referrals_made: c._count.referredMembers,
       tags: (c.tags ?? []).join('; '),
       birthday: c.birthday ? c.birthday.toISOString().slice(0, 10) : '',
@@ -795,6 +795,41 @@ export class AdminService {
     });
 
     return { pin };
+  }
+
+  /**
+   * Admin-assisted login rescue, the other way: remove the member's login PIN.
+   * Nothing secret has to be read out. The member's next sign-in goes through
+   * the WhatsApp code, which lets them choose a new PIN themselves (the same
+   * path as a brand-new account, and as "Forgot PIN").
+   */
+  async clearCustomerLoginPin(
+    id: string,
+    auth: AdminAuthState,
+  ): Promise<{ cleared: boolean }> {
+    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'CUSTOMER_NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+    if (!customer.loginPinHash) return { cleared: false };
+
+    await this.prisma.customer.update({
+      where: { id },
+      data: { loginPinHash: null },
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'customer.login_pin_cleared_by_admin',
+      entityType: 'customer',
+      entityId: id,
+      metadata: { phoneE164: customer.phoneE164 },
+    });
+
+    return { cleared: true };
   }
 
   async listCustomerAuditLogs(customerId: string, limit = 50) {
@@ -1842,7 +1877,10 @@ export class AdminService {
         entityType: 'customer_voucher',
         entityId: voucherId,
         reason: dto.reason ?? null,
-        beforeValue: { status: row.status, voucherCode: row.definition.code } as object,
+        beforeValue: {
+          status: row.status,
+          voucherCode: row.definition.code,
+        } as object,
         afterValue: {
           status: updated.status,
           voucherCode: updated.definition.code,
@@ -1892,7 +1930,8 @@ export class AdminService {
     ) {
       throw new BadRequestException({
         code: 'VOUCHER_LOCKED',
-        message: 'Voucher is currently locked by an in-progress online checkout.',
+        message:
+          'Voucher is currently locked by an in-progress online checkout.',
       });
     }
 
@@ -1939,7 +1978,10 @@ export class AdminService {
       entityId: voucherId,
       reason: dto.reason ?? null,
       beforeValue: { status: row.status, voucherCode: row.code } as object,
-      afterValue: { status: updated?.status, voucherCode: updated?.code } as object,
+      afterValue: {
+        status: updated?.status,
+        voucherCode: updated?.code,
+      } as object,
       metadata: { customerId },
     });
     return updated;
@@ -2604,30 +2646,24 @@ export class AdminService {
       : Prisma.empty;
     const rangeFrom = this.clampFrom(from);
 
-    const [
-      totalMembers,
-      newMembers,
-      paidRow,
-      rangeRow,
-      regSeries,
-      paySeries,
-    ] = await Promise.all([
-      this.prisma.customer.count(),
-      this.prisma.customer.count({
-        where: { createdAt: { gte: from, lt: to } },
-      }),
-      this.prisma.$queryRaw<
-        { members: bigint; payments: bigint; gmv: bigint }[]
-      >`
+    const [totalMembers, newMembers, paidRow, rangeRow, regSeries, paySeries] =
+      await Promise.all([
+        this.prisma.customer.count(),
+        this.prisma.customer.count({
+          where: { createdAt: { gte: from, lt: to } },
+        }),
+        this.prisma.$queryRaw<
+          { members: bigint; payments: bigint; gmv: bigint }[]
+        >`
         SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
                COUNT(*)::bigint AS payments,
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
         FROM payment_intents pi
         WHERE ${bentoPaid} ${paidFloor}
       `,
-      this.prisma.$queryRaw<
-        { members: bigint; payments: bigint; gmv: bigint }[]
-      >`
+        this.prisma.$queryRaw<
+          { members: bigint; payments: bigint; gmv: bigint }[]
+        >`
         SELECT COUNT(DISTINCT pi.customer_id)::bigint AS members,
                COUNT(*)::bigint AS payments,
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
@@ -2636,7 +2672,7 @@ export class AdminService {
           AND pi.updated_at >= ${rangeFrom}
           AND pi.updated_at < ${to}
       `,
-      this.prisma.$queryRaw<{ period_start: Date; cnt: bigint }[]>`
+        this.prisma.$queryRaw<{ period_start: Date; cnt: bigint }[]>`
         SELECT date_trunc(${truncUnit}, (c.created_at AT TIME ZONE 'UTC')) AS period_start,
                COUNT(*)::bigint AS cnt
         FROM customers c
@@ -2645,9 +2681,9 @@ export class AdminService {
         GROUP BY 1
         ORDER BY 1 ASC
       `,
-      this.prisma.$queryRaw<
-        { period_start: Date; cnt: bigint; gmv: bigint }[]
-      >`
+        this.prisma.$queryRaw<
+          { period_start: Date; cnt: bigint; gmv: bigint }[]
+        >`
         SELECT date_trunc(${truncUnit}, (pi.updated_at AT TIME ZONE 'UTC')) AS period_start,
                COUNT(*)::bigint AS cnt,
                COALESCE(SUM(pi.amount_cents), 0)::bigint AS gmv
@@ -2658,7 +2694,7 @@ export class AdminService {
         GROUP BY 1
         ORDER BY 1 ASC
       `,
-    ]);
+      ]);
 
     const paidMembers = Number(paidRow[0]?.members ?? 0n);
     const payingTransactions = Number(paidRow[0]?.payments ?? 0n);
@@ -2950,7 +2986,11 @@ export class AdminService {
     bucket: 'day' | 'week' | 'month';
     category: 'cake' | 'bento';
     now: Date;
-    seriesRows: { period_start: Date; order_count: bigint; gmv_cents: bigint }[];
+    seriesRows: {
+      period_start: Date;
+      order_count: bigint;
+      gmv_cents: bigint;
+    }[];
     topProducts: {
       product_id: string;
       name: string;
@@ -3348,7 +3388,11 @@ export class AdminService {
       entityId: updated.id,
       metadata: { previousStatus: sub.status } as object,
     });
-    return { id: updated.id, status: updated.status, alreadyRefunded: false as const };
+    return {
+      id: updated.id,
+      status: updated.status,
+      alreadyRefunded: false as const,
+    };
   }
 
   /**

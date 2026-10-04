@@ -964,6 +964,32 @@ export async function fetchCustomerDetail(id: string): Promise<AdminCustomerDeta
   return parseCatalogResponse<AdminCustomerDetail>(res);
 }
 
+/** What the Login PIN panel needs to know about a member. */
+export type CustomerLoginStatus = {
+  id: string;
+  phoneE164: string;
+  displayName: string | null;
+  hasLoginPin: boolean;
+  lastLoginAt: string | null;
+};
+
+export async function fetchCustomerLoginStatus(id: string): Promise<CustomerLoginStatus> {
+  const res = await authorizedFetch(`/admin/customers/${encodeURIComponent(id)}`);
+  return parseCatalogResponse<CustomerLoginStatus>(res);
+}
+
+/** Sets a fresh random 6-digit login PIN. It is returned once and cannot be looked up again. */
+export async function generateCustomerLoginPin(id: string): Promise<{ pin: string }> {
+  const res = await authorizedFetch(`/admin/customers/${encodeURIComponent(id)}/login-pin`, { method: 'POST' });
+  return parseCatalogResponse<{ pin: string }>(res);
+}
+
+/** Removes the PIN; the member signs in with a WhatsApp code and chooses a new one. */
+export async function clearCustomerLoginPin(id: string): Promise<{ cleared: boolean }> {
+  const res = await authorizedFetch(`/admin/customers/${encodeURIComponent(id)}/login-pin`, { method: 'DELETE' });
+  return parseCatalogResponse<{ cleared: boolean }>(res);
+}
+
 export type LoyaltyLedgerEntry = {
   id: string;
   customerId: string;

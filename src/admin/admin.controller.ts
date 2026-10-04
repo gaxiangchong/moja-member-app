@@ -185,6 +185,17 @@ export class AdminController {
     return this.admin.setCustomerLoginPin(id, auth);
   }
 
+  // Admin-assisted login: remove the member's PIN so they sign in with a
+  // WhatsApp code and choose a new one themselves.
+  @Delete('customers/:id/login-pin')
+  @RequirePermissions(P.CUSTOMER_WRITE_IDENTITY)
+  clearCustomerLoginPin(
+    @Param('id') id: string,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.clearCustomerLoginPin(id, auth);
+  }
+
   @Post('customers/:id/loyalty/adjustments')
   @RequirePermissions(P.LOYALTY_ADJUST)
   adjustLoyalty(
@@ -533,7 +544,10 @@ export class AdminController {
 
   @Put('bento-menu')
   @RequirePermissions(P.VOUCHER_UPDATE)
-  updateBentoMenu(@Body() dto: UpdateBentoMenuDto, @Query('week') week?: string) {
+  updateBentoMenu(
+    @Body() dto: UpdateBentoMenuDto,
+    @Query('week') week?: string,
+  ) {
     const ctx = this.resolveBentoMenuWeek(week);
     if (!ctx) return this.bentoMenu.setConfig(dto);
     return { ...ctx, ...this.bentoMenu.setWeekConfig(ctx.weekStart, dto) };

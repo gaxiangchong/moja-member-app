@@ -15,6 +15,7 @@ import {
   type CustomerSortBy,
   type CustomersPage,
 } from '../api';
+import { MemberLoginPinDrawer } from './MemberLoginPinDrawer';
 import { MemberVouchersDrawer } from './MemberVouchersDrawer';
 
 const PAGE_SIZES = [20, 50, 100];
@@ -337,6 +338,8 @@ const SORTABLE: Partial<Record<string, CustomerSortBy>> = {
 export function CustomersList() {
   /** The member whose vouchers are open in the side panel. */
   const [voucherMemberId, setVoucherMemberId] = useState<string | null>(null);
+  /** The member whose login PIN panel is open. */
+  const [pinMemberId, setPinMemberId] = useState<string | null>(null);
   // `draft` is what the inputs show; `applied` is what the API is queried with.
   // They are separated so typing does not fire a request per keystroke.
   const [draft, setDraft] = useState<CustomerFilters>(EMPTY_FILTERS);
@@ -870,6 +873,14 @@ export function CustomersList() {
                       >
                         Vouchers
                       </button>
+                      <button
+                        type="button"
+                        className="toolbarButton"
+                        style={{ marginTop: 4, marginLeft: 6, padding: '2px 8px', fontSize: 12 }}
+                        onClick={() => setPinMemberId(c.id)}
+                      >
+                        Login PIN
+                      </button>
                     </div>
                   </td>
                   <td className="gridNumeric">{c.phoneE164}</td>
@@ -964,6 +975,9 @@ export function CustomersList() {
           </button>
         </div>
       </section>
+      {pinMemberId ? (
+        <MemberLoginPinDrawer customerId={pinMemberId} onClose={() => setPinMemberId(null)} />
+      ) : null}
       {voucherMemberId ? (
         <MemberVouchersDrawer customerId={voucherMemberId} onClose={() => setVoucherMemberId(null)} />
       ) : null}
