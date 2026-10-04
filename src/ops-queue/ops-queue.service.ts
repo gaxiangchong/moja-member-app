@@ -135,6 +135,7 @@ export class OpsQueueService {
       scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
       scheduledSlot: o.scheduledSlot,
       deliveryFeeCents: o.deliveryFeeCents,
+      deliveryMethod: o.deliveryMethod ?? 'LOCAL',
       totalCents: o.totalCents,
       status: o.status,
       fulfillmentSummary: fulfillmentLines(o.fulfillmentSummary),

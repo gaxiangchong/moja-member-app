@@ -21,7 +21,7 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   }
 
   if (!state.fulfillmentMethod) {
-    errors.push('Choose Self pickup or Delivery.');
+    errors.push('Choose Self pickup, Delivery or Ship to me.');
   }
 
   if (state.fulfillmentMethod === 'pickup') {
@@ -46,6 +46,18 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
     }
   }
 
+  if (state.fulfillmentMethod === 'shipping') {
+    const d = state.delivery;
+    if ((d?.address.trim().length ?? 0) < 10) {
+      errors.push('Enter the full address to ship to (unit, street, area, postcode and state).');
+    }
+    if (!d?.contactName.trim()) errors.push('Enter the name of the person receiving the parcel.');
+    const digits = (d?.contactPhone ?? '').replace(/D/g, '');
+    if (digits.length < 8 || digits.length > 15) {
+      errors.push('Enter a valid contact phone number.');
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -58,6 +70,14 @@ export function fulfillmentSummaryLines(
   if (!method) return ['Not selected'];
   const d = pickupDate ?? '—';
   const t = pickupTime ?? '—';
+  if (method === 'shipping') {
+    return [
+      'Shipping',
+      'Posted within 2-5 days',
+      `Ship to: ${delivery?.address.trim() ?? '—'}`,
+      `Contact: ${delivery?.contactName.trim() ?? '—'} · ${delivery?.contactPhone.trim() ?? '—'}`,
+    ];
+  }
   if (method === 'delivery') {
     return [
       'Delivery',

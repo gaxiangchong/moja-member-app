@@ -20,6 +20,7 @@ const SHOP_CATEGORIES = [
   'cake_slices',
   'drinks',
   'specials',
+  'cookies',
 ] as const;
 
 export class CreateShopCatalogProductDto {
@@ -102,6 +103,12 @@ export class CreateShopCatalogProductDto {
   @Type(() => Boolean)
   @IsBoolean()
   soldOut?: boolean;
+
+  /** Can be shipped nationwide (set per product, not by category). */
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  shippable?: boolean;
 
   @IsOptional()
   @IsArray()

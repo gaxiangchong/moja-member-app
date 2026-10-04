@@ -14,6 +14,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   cake_slices: 'Cake slices',
   drinks: 'Drinks',
   specials: 'Specials',
+  cookies: 'Cookies',
 };
 
 const MAX_FEATURED = 24;

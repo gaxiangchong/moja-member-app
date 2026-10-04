@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -16,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/types/auth-user.type';
 import { MemberOrdersSettingsService } from '../orders/member-orders-settings.service';
+import { CustomerAddressesService } from './customer-addresses.service';
 import { CustomersService } from './customers.service';
 import { MemberSavingsService } from './member-savings.service';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -27,6 +29,7 @@ export class CustomersController {
     private readonly customers: CustomersService,
     private readonly savings: MemberSavingsService,
     private readonly memberOrdersSettings: MemberOrdersSettingsService,
+    private readonly addresses: CustomerAddressesService,
   ) {}
 
   /**
@@ -53,6 +56,59 @@ export class CustomersController {
   @UseGuards(JwtAuthGuard)
   async updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateMeDto) {
     return this.customers.updateMe(user.customerId, dto);
+  }
+
+  /** The member's saved delivery / shipping addresses, default first. */
+  @Get('me/addresses')
+  @UseGuards(JwtAuthGuard)
+  listMyAddresses(@CurrentUser() user: AuthUser) {
+    return this.addresses.list(user.customerId);
+  }
+
+  @Post('me/addresses')
+  @UseGuards(JwtAuthGuard)
+  addMyAddress(
+    @CurrentUser() user: AuthUser,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.addresses.create(
+      user.customerId,
+      body,
+      body?.isDefault === true,
+    );
+  }
+
+  @Patch('me/addresses/:id')
+  @UseGuards(JwtAuthGuard)
+  updateMyAddress(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.addresses.update(
+      user.customerId,
+      id,
+      body,
+      body?.isDefault === true,
+    );
+  }
+
+  @Post('me/addresses/:id/default')
+  @UseGuards(JwtAuthGuard)
+  setMyDefaultAddress(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.addresses.setDefault(user.customerId, id);
+  }
+
+  @Delete('me/addresses/:id')
+  @UseGuards(JwtAuthGuard)
+  deleteMyAddress(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.addresses.remove(user.customerId, id);
   }
 
   @Get('me/rewards')

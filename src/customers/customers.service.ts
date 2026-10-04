@@ -19,9 +19,14 @@ import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discoun
 import { WalletService } from '../wallet/wallet.service';
 import {
   DeliveryDetailsError,
+  addressInLocalArea,
   deliverySummaryLines,
+  shippingFeeFor,
+  shippingSummaryLines,
   validateDeliveryDetails,
+  validateShippingDetails,
 } from '../orders/delivery';
+import { localOnlyProductIds } from '../orders/delivery-class';
 import { DeliverySettingsService } from '../orders/delivery-settings.service';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
@@ -961,6 +966,7 @@ export class CustomersService {
         scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
         scheduledSlot: o.scheduledSlot,
         deliveryFeeCents: o.deliveryFeeCents,
+        deliveryMethod: o.deliveryMethod ?? 'LOCAL',
         delivery:
           o.fulfilmentType === 'DELIVERY' && o.deliveryAddress
             ? {
@@ -1116,18 +1122,71 @@ export class CustomersService {
     await this.loyalty.refundRewardForOrder(orderId);
   }
 
-  private validateMemberOrderTotals(dto: SubmitMemberOrderDto) {
+  /** The flat parcel fee for this order: zero unless it is shipped. */
+  async shippingFeeCentsFor(
+    dto: SubmitMemberOrderDto,
+    goodsCents: number,
+  ): Promise<number> {
+    if (
+      dto.fulfilmentType !== 'DELIVERY' ||
+      dto.deliveryMethod !== 'SHIPPING'
+    ) {
+      return 0;
+    }
+    return shippingFeeFor(
+      await this.deliverySettings.getSettings(),
+      goodsCents,
+    );
+  }
+
+  private validateMemberOrderTotals(
+    dto: SubmitMemberOrderDto,
+    shippingFeeCents: number,
+  ) {
     const computed = dto.lines.reduce(
       (acc, l) => acc + l.unitPriceCents * l.qty,
       0,
     );
     const discountCents = Math.max(0, Math.floor(dto.discountCents ?? 0));
-    const expectedTotal = Math.max(0, computed - discountCents);
+    const expectedTotal =
+      Math.max(0, computed - discountCents) + shippingFeeCents;
     if (expectedTotal !== dto.totalCents) {
       throw new BadRequestException({
         code: 'ORDER_TOTAL_MISMATCH',
         message:
           'Order total does not match line items and discount calculation.',
+      });
+    }
+  }
+
+  /**
+   * A parcel can only carry nationwide products, and only while shipping is on.
+   * Checked on the server so a stale cart or a hand-built request cannot post a cake.
+   */
+  private async assertCanShip(dto: SubmitMemberOrderDto): Promise<void> {
+    if (!(await this.deliverySettings.getSettings()).shippingEnabled) {
+      throw new BadRequestException({
+        code: 'SHIPPING_UNAVAILABLE',
+        message:
+          "Nationwide shipping isn't available right now. Please choose pickup.",
+      });
+    }
+    const ids = [...new Set(dto.lines.map((l) => l.productId))];
+    const rows = await this.prisma.shopProduct.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, shippable: true, name: true },
+    });
+    const localOnly = localOnlyProductIds(
+      dto.lines,
+      new Map(rows.map((r) => [r.id, r.shippable])),
+    );
+    if (localOnly.length > 0) {
+      const names = localOnly.map(
+        (id) => rows.find((r) => r.id === id)?.name ?? id,
+      );
+      throw new BadRequestException({
+        code: 'SHIPPING_NOT_ALLOWED',
+        message: `${names.join(', ')} can't be shipped. Choose pickup or local delivery, or check out nationwide items on their own.`,
       });
     }
   }
@@ -1139,15 +1198,25 @@ export class CustomersService {
     customerId: string,
     dto: SubmitMemberOrderDto,
   ) {
-    this.validateMemberOrderTotals(dto);
-
     const fulfilmentType = dto.fulfilmentType ?? 'PICKUP';
+    const shipping =
+      fulfilmentType === 'DELIVERY' && dto.deliveryMethod === 'SHIPPING';
+    const goodsCents = Math.max(
+      0,
+      dto.lines.reduce((acc, l) => acc + l.unitPriceCents * l.qty, 0) -
+        Math.max(0, Math.floor(dto.discountCents ?? 0)),
+    );
+    const shippingFeeCents = await this.shippingFeeCentsFor(dto, goodsCents);
+    this.validateMemberOrderTotals(dto, shippingFeeCents);
+
+    if (shipping) await this.assertCanShip(dto);
 
     // Delivery needs an address, someone to contact and a choice of who books
     // the courier — checked here, on the server, whatever the app sent.
     let delivery: ReturnType<typeof validateDeliveryDetails> | null = null;
     if (fulfilmentType === 'DELIVERY') {
-      if (!(await this.deliverySettings.getSettings()).enabled) {
+      const deliveryRules = await this.deliverySettings.getSettings();
+      if (!deliveryRules.enabled) {
         throw new BadRequestException({
           code: 'DELIVERY_UNAVAILABLE',
           message:
@@ -1155,7 +1224,9 @@ export class CustomersService {
         });
       }
       try {
-        delivery = validateDeliveryDetails(dto.delivery);
+        delivery = shipping
+          ? validateShippingDetails(dto.delivery)
+          : validateDeliveryDetails(dto.delivery);
       } catch (err) {
         if (err instanceof DeliveryDetailsError) {
           throw new BadRequestException({
@@ -1165,19 +1236,36 @@ export class CustomersService {
         }
         throw err;
       }
+      // A courier only goes nearby; a parcel can go anywhere.
+      if (
+        !shipping &&
+        !addressInLocalArea(
+          delivery.address,
+          deliveryRules.localDeliveryPostcodes,
+        )
+      ) {
+        throw new BadRequestException({
+          code: 'DELIVERY_OUT_OF_AREA',
+          message: `Local delivery only covers postcodes starting ${deliveryRules.localDeliveryPostcodes.join(', ')}. Choose self pickup, or ship cookies nationwide.`,
+        });
+      }
       // Staff and the member see the same lines everywhere; build them here.
-      dto.fulfillmentSummary = deliverySummaryLines(
-        delivery,
-        dto.scheduledDate ?? null,
-        dto.scheduledSlot ?? null,
-      );
+      dto.fulfillmentSummary = shipping
+        ? shippingSummaryLines(delivery)
+        : deliverySummaryLines(
+            delivery,
+            dto.scheduledDate ?? null,
+            dto.scheduledSlot ?? null,
+          );
     }
+    // A parcel has no collection day or slot: it is posted within a few days.
     const scheduled =
-      fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY';
+      !shipping &&
+      (fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY');
     // In-store "prepare now" orders come out of today's tray; a scheduled
     // pickup consumes the count for its own day.
     const businessDate =
-      fulfilmentType === 'IN_STORE'
+      fulfilmentType === 'IN_STORE' || shipping
         ? todayBusinessDate()
         : (dto.scheduledDate ?? todayBusinessDate());
 
@@ -1197,8 +1285,10 @@ export class CustomersService {
           totalCents: dto.totalCents,
           status: ORDER_STATUS.PENDING_PAYMENT,
           fulfilmentType,
+          deliveryFeeCents: shippingFeeCents,
           ...(delivery
             ? {
+                deliveryMethod: shipping ? 'SHIPPING' : 'LOCAL',
                 deliveryAddress: delivery.address,
                 deliveryContactName: delivery.contactName,
                 deliveryContactPhone: delivery.contactPhone,
@@ -1206,10 +1296,10 @@ export class CustomersService {
               }
             : {}),
           scheduledDate:
-            fulfilmentType === 'IN_STORE' || !dto.scheduledDate
+            fulfilmentType === 'IN_STORE' || shipping || !dto.scheduledDate
               ? null
               : parseBusinessDate(dto.scheduledDate),
-          scheduledSlot: dto.scheduledSlot ?? null,
+          scheduledSlot: shipping ? null : (dto.scheduledSlot ?? null),
           fulfillmentSummary:
             dto.fulfillmentSummary == null
               ? Prisma.JsonNull

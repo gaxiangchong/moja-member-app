@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   cake_slices: 'Cake slices',
   drinks: 'Drinks',
   specials: 'Specials',
+  cookies: 'Cookies',
 };
 
 function formatRm(cents: number): string {

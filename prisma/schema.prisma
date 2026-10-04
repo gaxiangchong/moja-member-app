@@ -507,6 +507,7 @@ model Customer {
   otpChallenges             OtpChallenge[]
   shopHandoffJtis           ShopHandoffJti[]
   orders                    CustomerOrder[]
+  addresses                 CustomerAddress[]
   paymentIntents            PaymentIntent[]
   userWalletBalance         UserWalletBalance?
   walletTransactions        WalletTransaction[]
@@ -564,6 +565,28 @@ enum OrderFulfilmentType {
   DELIVERY
 }
 
+/// A saved delivery / shipping address in the member's address book.
+model CustomerAddress {
+  id            String   @id @default(uuid()) @db.Uuid
+  customerId    String   @map("customer_id") @db.Uuid
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// Optional tag such as Home or Office.
+  label         String?  @db.VarChar(40)
+  recipientName String   @map("recipient_name") @db.VarChar(120)
+  phone         String   @db.VarChar(32)
+  line1         String   @db.VarChar(300)
+  city          String   @db.VarChar(80)
+  state         String   @db.VarChar(60)
+  /// 5-digit Malaysian postcode; local delivery is matched against it.
+  postcode      String   @db.VarChar(5)
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
 model CustomerOrder {
   id                      String    @id @default(uuid()) @db.Uuid
   customerId              String    @map("customer_id") @db.Uuid
@@ -586,6 +609,9 @@ model CustomerOrder {
   deliveryContactPhone    String?   @map("delivery_contact_phone") @db.VarChar(32)
   /// SELF = the member books their own courier; MOJA = Moja Maison helps arrange one.
   deliveryArrangement     String?   @map("delivery_arrangement") @db.VarChar(8)
+  /// DELIVERY orders only: LOCAL = a courier from the shop, SHIPPING = a parcel
+  /// anywhere in the country (nationwide products only). Null reads as LOCAL.
+  deliveryMethod          String?   @map("delivery_method") @db.VarChar(8)
   /// Part of `totalCents` paid from the member's wallet credits (sen). Zero when paid by card/e-wallet.
   paidWithCreditsCents    Int       @default(0) @map("paid_with_credits_cents")
   /// Set once those credits have been returned to the wallet (cancel / refund), so it happens at most once.
@@ -1506,6 +1532,9 @@ model ShopProduct {
   isActive             Boolean  @default(true) @map("is_active")
   sortOrder            Int      @default(0) @map("sort_order")
   soldOut              Boolean  @default(false) @map("sold_out")
+  /// Can be posted anywhere in the country. Set by the admin per product (not by
+  /// category); a cart with any product that is not shippable cannot be shipped.
+  shippable            Boolean  @default(false)
   /// Kitchen-tracked count ready for sale; null = not stock-tracked.
   availableQty         Int?     @map("available_qty")
   salesplayProductCode String?  @map("salesplay_product_code") @db.VarChar(64)

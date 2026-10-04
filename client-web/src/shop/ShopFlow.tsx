@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CATEGORY_LABELS,
+  DELIVERY_CLASS_LABELS,
+  deliveryClassForProduct,
   type CartLine,
+  type DeliveryClass,
+  type FulfillmentMethod,
   type MockReward,
   type MockVoucher,
   type Product,
@@ -10,6 +14,7 @@ import {
 } from './types';
 import type { MemberRewardsPayload } from '../api';
 import { formatRm } from './data/mockCatalog';
+import { cartSubtotalCents, computeDiscountCents } from './lib/pricing';
 import {
   fulfillmentSummaryLines,
   validateCheckout,
@@ -20,14 +25,19 @@ import {
   findIssuedVoucherByCode,
 } from './lib/memberRewardsCheckout';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
-import { useShopStore } from './store/useShopStore';
+import { lineDeliveryClass, useShopStore } from './store/useShopStore';
+import { AddressPicker } from '../address/AddressPicker';
 import {
   completeDemoShopOrder,
   createXenditCardTokenSession,
   createShopOrderCheckout,
   fetchDeliveryInfo,
   fetchPaymentsTestMode,
+  shippingFeeFor,
   type DeliveryInfo,
+  type SavedAddress,
+  fetchMyAddresses,
+  addressInLocalArea,
   fetchPickupSlots,
   fetchShopAvailability,
   fetchShopCatalogProducts,
@@ -45,7 +55,7 @@ import {
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
 
-type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
+type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'addresses' | 'paymentDemo';
 /**
  * Show tap-to-apply promo buttons in the checkout voucher box: the member's wallet
  * vouchers (e.g. "Point Redemption RM5 · PROMO-… · −RM 5.00") and the points-reward
@@ -53,6 +63,8 @@ type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'paymentDemo';
  * from Rewards → Vouchers and paste it in. Set to true to bring the buttons back.
  */
 const SHOW_CHECKOUT_PROMO_BUTTONS = false;
+
+const NO_POSTCODES: string[] = [];
 
 type PaymentMethodMode = 'channel' | 'card_token' | 'credits';
 
@@ -227,6 +239,8 @@ export function ShopFlow({
   } | null>(null);
 
   const cart = useShopStore((s) => s.cart);
+  const selectedAddressId = useShopStore((s) => s.selectedAddressId);
+  const setSelectedAddressId = useShopStore((s) => s.setSelectedAddressId);
   const addToCart = useShopStore((s) => s.addToCart);
   const setLineQty = useShopStore((s) => s.setLineQty);
   const removeLine = useShopStore((s) => s.removeLine);
@@ -262,14 +276,51 @@ export function ShopFlow({
   const getCartItemCount = useShopStore((s) => s.getCartItemCount);
   const resetAfterOrder = useShopStore((s) => s.resetAfterOrder);
 
+  // One checkout for the whole cart. A line's class follows the catalog as it is now (the admin
+  // can change a product's shipping setting), falling back to what was saved with the line.
+  const classOfLine = useCallback(
+    (l: CartLine): DeliveryClass => {
+      const p = products.find((x) => x.id === l.productId);
+      return p ? deliveryClassForProduct(p) : lineDeliveryClass(l);
+    },
+    [products],
+  );
+  const checkoutCart = cart;
+  const cartGroups = useMemo(() => {
+    const groups: { cls: DeliveryClass; lines: CartLine[] }[] = [];
+    for (const cls of ['LOCAL_ONLY', 'NATIONWIDE'] as DeliveryClass[]) {
+      const lines = cart.filter((l) => classOfLine(l) === cls);
+      if (lines.length > 0) groups.push({ cls, lines });
+    }
+    return groups;
+  }, [cart, classOfLine]);
+  // Parcels carry nationwide products only, never when a cake is being checked out.
+  const canShip =
+    checkoutCart.length > 0 &&
+    checkoutCart.every((l) => classOfLine(l) === 'NATIONWIDE');
+  // Items that can't be posted. While any is in the cart, nothing in it can ship.
+  const unshippableNames = [
+    ...new Set(checkoutCart.filter((l) => classOfLine(l) === 'LOCAL_ONLY').map((l) => l.name)),
+  ];
+  const hasCake = unshippableNames.length > 0;
+  const deliveryOffered = deliveryInfo?.enabled !== false;
+  const shippingOffered = canShip && deliveryInfo?.shippingEnabled !== false;
   const itemCount = getCartItemCount();
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
-  const total = getTotalCents();
   const isDelivery = fulfillmentMethod === 'delivery';
-  // Self pickup and delivery both go out on a chosen day and time slot.
+  const isShipping = fulfillmentMethod === 'shipping';
+  // Self pickup and a local delivery go out on a chosen day and time slot; a parcel is just posted.
   const isScheduled = fulfillmentMethod === 'pickup' || isDelivery;
-  const deliveryOffered = deliveryInfo?.enabled !== false;
+  const goodsTotal = getTotalCents();
+  const shippingFee =
+    isShipping && deliveryInfo ? shippingFeeFor(deliveryInfo, goodsTotal) : 0;
+  const total = goodsTotal + shippingFee;
+  // How far the goods are from the free-shipping line (null = no such line, or already past it).
+  const freeShippingToGo =
+    deliveryInfo && deliveryInfo.freeShippingOverCents > 0 && goodsTotal <= deliveryInfo.freeShippingOverCents
+      ? deliveryInfo.freeShippingOverCents - goodsTotal
+      : null;
   const creditsCoverTotal = total > 0 && creditsBalanceCents >= total;
   useEffect(() => {
     if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
@@ -320,7 +371,7 @@ export function ShopFlow({
   // Availability is per collection day, so re-check whenever the member picks
   // a different date or changes the cart.
   useEffect(() => {
-    if (!isScheduled || !pickupDate || cart.length === 0) {
+    if (!isScheduled || !pickupDate || checkoutCart.length === 0) {
       setDateAvailability([]);
       return;
     }
@@ -330,7 +381,7 @@ export function ShopFlow({
         if (!alive) return;
         const byId = new Map(res.products.map((p) => [p.id, p.sellableQty]));
         setDateAvailability(
-          cart
+          checkoutCart
             .map((line) => {
               const qty = byId.get(line.productId);
               // null = not stock-tracked, so nothing useful to say.
@@ -353,11 +404,10 @@ export function ShopFlow({
     return () => {
       alive = false;
     };
-  }, [isScheduled, pickupDate, cart]);
+  }, [isScheduled, pickupDate, checkoutCart]);
 
   // Whether delivery is on, and the WhatsApp number for courier help.
   useEffect(() => {
-    if (screen !== 'checkout') return;
     let alive = true;
     fetchDeliveryInfo()
       .then((info) => {
@@ -367,7 +417,7 @@ export function ShopFlow({
     return () => {
       alive = false;
     };
-  }, [screen]);
+  }, []);
 
   useEffect(() => {
     if (screen !== 'checkout') return;
@@ -387,14 +437,60 @@ export function ShopFlow({
     }
   }, [deliveryInfo, fulfillmentMethod, setFulfillmentMethod]);
 
-  // Start the delivery contact from the member's own details.
+  // A parcel can't carry cakes, and shipping can be switched off. An empty cart is fine:
+  // the member may choose shipping on a product page before adding anything.
   useEffect(() => {
-    if (!isDelivery) return;
-    const patch: { contactName?: string; contactPhone?: string } = {};
-    if (!delivery.contactName.trim() && memberName?.trim()) patch.contactName = memberName.trim();
-    if (!delivery.contactPhone.trim() && memberPhone?.trim()) patch.contactPhone = memberPhone.trim();
-    if (patch.contactName || patch.contactPhone) setDelivery(patch);
-  }, [isDelivery, delivery.contactName, delivery.contactPhone, memberName, memberPhone, setDelivery]);
+    if (fulfillmentMethod !== 'shipping') return;
+    if (hasCake || (deliveryInfo && deliveryInfo.shippingEnabled === false)) {
+      setFulfillmentMethod('pickup');
+    }
+  }, [fulfillmentMethod, hasCake, deliveryInfo, setFulfillmentMethod]);
+
+  // Cookies ship nationwide instead of being couriered locally.
+  useEffect(() => {
+    if (shippingOffered && fulfillmentMethod === 'delivery') setFulfillmentMethod('shipping');
+  }, [shippingOffered, fulfillmentMethod, setFulfillmentMethod]);
+
+  // An emptied cart has nothing left to check out.
+  useEffect(() => {
+    if ((screen === 'checkout' || screen === 'addresses') && cart.length === 0) setScreen('cart');
+  }, [screen, cart.length]);
+
+  // At checkout, make sure the delivery address is one the member still has
+  // and that suits the chosen method (a courier only goes nearby).
+  const localPostcodes = deliveryInfo?.localDeliveryPostcodes ?? NO_POSTCODES;
+  useEffect(() => {
+    if (screen !== 'checkout' || !isAuthenticated) return;
+    if (fulfillmentMethod !== 'delivery' && fulfillmentMethod !== 'shipping') return;
+    let alive = true;
+    fetchMyAddresses()
+      .then((rows) => {
+        if (!alive) return;
+        const local = fulfillmentMethod === 'delivery';
+        const usable = (a: SavedAddress) => !local || addressInLocalArea(a.fullAddress, localPostcodes);
+        const chosen = rows.find((a) => a.id === selectedAddressId && usable(a));
+        const pick = chosen ?? rows.find((a) => a.isDefault && usable(a)) ?? rows.find(usable) ?? null;
+        handleSelectAddress(pick);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-check on entering checkout or switching method
+  }, [screen, fulfillmentMethod, localPostcodes, isAuthenticated]);
+
+  /** The address picked at checkout becomes the order's delivery details. */
+  const handleSelectAddress = useCallback(
+    (a: SavedAddress | null) => {
+      setSelectedAddressId(a?.id ?? null);
+      setDelivery({
+        address: a?.fullAddress ?? '',
+        contactName: a?.recipientName ?? '',
+        contactPhone: a?.phone ?? '',
+      });
+    },
+    [setSelectedAddressId, setDelivery],
+  );
 
   useEffect(() => {
     if (!initialScreen) return;
@@ -780,7 +876,7 @@ export function ShopFlow({
       return;
     }
     const draft = {
-      cart,
+      cart: checkoutCart,
       fulfillmentMethod,
       pickupDate,
       pickupTime,
@@ -844,7 +940,7 @@ export function ShopFlow({
       draft.pickupTime,
       draft.delivery,
     );
-    const linePayload = cart.map((l) => ({
+    const linePayload = checkoutCart.map((l) => ({
       productId: l.productId,
       name: l.name,
       imageUrl: l.imageUrl,
@@ -876,9 +972,23 @@ export function ShopFlow({
           discountCents: discount,
           fulfillmentSummary: lines,
           fulfilmentType:
-            draft.fulfillmentMethod === 'delivery' ? 'DELIVERY' : 'PICKUP',
-          scheduledDate: draft.pickupDate,
-          scheduledSlot: draft.pickupTime,
+            draft.fulfillmentMethod === 'delivery' ||
+            draft.fulfillmentMethod === 'shipping'
+              ? 'DELIVERY'
+              : 'PICKUP',
+          ...(draft.fulfillmentMethod === 'shipping'
+            ? {
+                deliveryMethod: 'SHIPPING' as const,
+                delivery: {
+                  address: delivery.address.trim(),
+                  contactName: delivery.contactName.trim(),
+                  contactPhone: delivery.contactPhone.trim(),
+                },
+              }
+            : {
+                scheduledDate: draft.pickupDate,
+                scheduledSlot: draft.pickupTime,
+              }),
           ...(draft.fulfillmentMethod === 'delivery' && delivery.arrangement
             ? {
                 delivery: {
@@ -1118,6 +1228,7 @@ export function ShopFlow({
                     {soldOut ? (
                       <span className="shopSoldOutBadge">Sold out</span>
                     ) : null}
+                    <ShippingBadge shippable={p.shippable === true} />
                   </div>
                   <div className="productBody">
                     <strong>{p.name}</strong>
@@ -1150,15 +1261,19 @@ export function ShopFlow({
           onOpenCart={openCart}
           itemCount={itemCount}
           addToCart={addToCart}
+          fulfillmentMethod={fulfillmentMethod}
+          onFulfillmentMethod={setFulfillmentMethod}
+          deliveryInfo={deliveryInfo}
+          unshippableNames={unshippableNames}
+          cartHasShippable={checkoutCart.some((l) => classOfLine(l) === 'NATIONWIDE')}
         />
       )}
 
       {screen === 'cart' && (
         <CartScreen
           cart={cart}
-          subtotal={subtotal}
-          discount={discount}
-          total={total}
+          groups={cartGroups}
+          fulfillmentMethod={fulfillmentMethod}
           appliedVoucher={appliedVoucher}
           appliedReward={appliedReward}
           onBack={goBrowse}
@@ -1192,73 +1307,123 @@ export function ShopFlow({
           ) : null}
 
           <section className="pmCard">
-            <h3 className="shopSectionTitle">Fulfillment</h3>
+            <div className="addressBookHead">
+              <h3 className="shopSectionTitle" style={{ margin: 0 }}>
+                Your items
+              </h3>
+              <button type="button" className="textAction" onClick={goBrowse}>
+                + Add items
+              </button>
+            </div>
+            <div className="shopCartList" style={{ marginTop: 10 }}>
+              {cart.map((l) => (
+                <CartLineRow key={l.lineId} line={l} setLineQty={setLineQty} removeLine={removeLine} />
+              ))}
+            </div>
+          </section>
+
+          <section className="pmCard">
+            <h3 className="shopSectionTitle">Delivery method</h3>
             <div className="shopFulfillmentRow">
               <button
                 type="button"
-                className={
-                  fulfillmentMethod === 'pickup'
-                    ? 'chip active shopFulfillmentChip'
-                    : 'chip shopFulfillmentChip'
-                }
+                className={`chip shopFulfillmentChip shopFulfillOption${fulfillmentMethod === 'pickup' ? ' active' : ''}`}
                 onClick={() => setFulfillmentMethod('pickup')}
               >
-                Self pickup
+                <strong>Self pickup</strong>
+                <small>Collect at our shop</small>
               </button>
-              {deliveryOffered ? (
+              {deliveryOffered && !shippingOffered ? (
                 <button
                   type="button"
-                  className={
-                    isDelivery
-                      ? 'chip active shopFulfillmentChip'
-                      : 'chip shopFulfillmentChip'
-                  }
+                  className={`chip shopFulfillmentChip shopFulfillOption${isDelivery ? ' active' : ''}`}
                   onClick={() => setFulfillmentMethod('delivery')}
                 >
-                  Delivery
+                  <strong>Local delivery</strong>
+                  <small>Nearby areas only</small>
+                </button>
+              ) : null}
+              {shippingOffered ? (
+                <button
+                  type="button"
+                  className={`chip shopFulfillmentChip shopFulfillOption shopFulfillOptionShip${isShipping ? ' active' : ''}`}
+                  onClick={() => setFulfillmentMethod('shipping')}
+                >
+                  <strong>Ship nationwide</strong>
+                  <small>
+                    {deliveryInfo
+                      ? shippingFeeFor(deliveryInfo, goodsTotal) === 0
+                        ? 'Free shipping'
+                        : `+ ${formatRm(shippingFeeFor(deliveryInfo, goodsTotal))} shipping`
+                      : 'Posted anywhere in Malaysia'}
+                  </small>
                 </button>
               ) : null}
             </div>
-            {isDelivery ? (
-              <div className="deliveryForm">
-                <div className="shopFieldGrid">
-                  <label htmlFor="deliveryAddress">Delivery address</label>
-                  <textarea
-                    id="deliveryAddress"
-                    rows={3}
-                    maxLength={400}
-                    placeholder="Unit / house no., street, area, postcode, city"
-                    value={delivery.address}
-                    onChange={(e) => setDelivery({ address: e.target.value })}
-                  />
-                  <label htmlFor="deliveryName">Contact name</label>
-                  <input
-                    id="deliveryName"
-                    type="text"
-                    maxLength={120}
-                    autoComplete="name"
-                    placeholder="Who will receive the order"
-                    value={delivery.contactName}
-                    onChange={(e) => setDelivery({ contactName: e.target.value })}
-                  />
-                  <label htmlFor="deliveryPhone">Contact phone</label>
-                  <input
-                    id="deliveryPhone"
-                    type="tel"
-                    maxLength={32}
-                    autoComplete="tel"
-                    placeholder="e.g. 012-345 6789"
-                    value={delivery.contactPhone}
-                    onChange={(e) => setDelivery({ contactPhone: e.target.value })}
-                  />
+            {hasCake && checkoutCart.some((l) => classOfLine(l) === 'NATIONWIDE') ? (
+              <p className="caption" style={{ margin: '6px 0 0' }}>
+                Shipping isn&apos;t available while {unshippableNames.join(', ')} {unshippableNames.length === 1 ? 'is' : 'are'} in your cart, because {unshippableNames.length === 1 ? 'it' : 'they'} can&apos;t be posted. Remove {unshippableNames.length === 1 ? 'it' : 'them'} above to ship the cookies.
+              </p>
+            ) : !canShip ? (
+              <p className="caption" style={{ margin: '6px 0 0' }}>
+                Cakes and drinks are collected or delivered to the nearby area only.
+              </p>
+            ) : null}
+            {isDelivery || isShipping ? (
+              <div className="addressSummary">
+                <div className="addressBookHead">
+                  <strong>{isShipping ? 'Ship to' : 'Deliver to'}</strong>
+                  <button
+                    type="button"
+                    className="textAction"
+                    onClick={() => {
+                      setCheckoutErrors(null);
+                      setScreen('addresses');
+                    }}
+                  >
+                    {delivery.address.trim() ? 'Change address' : 'Add address'}
+                  </button>
                 </div>
-                <p className="caption" style={{ margin: '4px 0 0' }}>
-                  Choose when the courier collects the order from our shop.
+                {delivery.address.trim() ? (
+                  <p className="caption" style={{ margin: '4px 0 0' }}>
+                    <strong>{delivery.contactName.trim()}</strong> · {delivery.contactPhone.trim()}
+                    <br />
+                    {delivery.address.trim()}
+                  </p>
+                ) : (
+                  <p className="caption" style={{ margin: '4px 0 0' }}>
+                    {isDelivery && localPostcodes.length > 0
+                      ? `No saved address in our delivery area yet (postcodes starting ${localPostcodes.join(', ')}).`
+                      : 'You have no saved address yet.'}
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {isShipping ? (
+              <div className="shippingFeeBox">
+                <div className="shippingFeeRow">
+                  <span>Shipping</span>
+                  <strong>{shippingFee === 0 ? 'Free' : formatRm(shippingFee)}</strong>
+                </div>
+                {shippingFee === 0 && deliveryInfo && deliveryInfo.shippingFeeCents > 0 ? (
+                  <p className="shippingFeeHint shippingFeeHintOk">
+                    Free shipping applied: your order is over{' '}
+                    {formatRm(deliveryInfo.freeShippingOverCents)}.
+                  </p>
+                ) : freeShippingToGo != null ? (
+                  <p className="shippingFeeHint">
+                    Spend over {formatRm(deliveryInfo?.freeShippingOverCents ?? 0)} for free
+                    shipping — {formatRm(freeShippingToGo)} to go.
+                  </p>
+                ) : null}
+                <p className="caption" style={{ margin: '6px 0 0' }}>
+                  Packed and posted within 2-5 days. No pickup date or time is needed.
                 </p>
               </div>
             ) : null}
             {isScheduled ? (
-              <div className="shopFieldGrid">
+              <div className="shopFieldGrid pickupGrid">
+                <div className="pickupField">
                 <label htmlFor="pickupDate">
                   {isDelivery ? 'Courier pick-up date' : 'Pickup date'}
                 </label>
@@ -1270,6 +1435,8 @@ export function ShopFlow({
                   value={pickupDate ?? ''}
                   onChange={(e) => setPickupDate(e.target.value || null)}
                 />
+                </div>
+                <div className="pickupField">
                 <label htmlFor="pickupTime">
                   {isDelivery ? 'Courier pick-up time' : 'Pickup time'}
                 </label>
@@ -1299,6 +1466,7 @@ export function ShopFlow({
                       </option>
                     ))}
                 </select>
+                </div>
                 {pickupDay && pickupDate === pickupDay.date && pickupDay.closedReason ? (
                   <p className="pickupAvailShort">{pickupDay.closedReason}</p>
                 ) : null}
@@ -1393,7 +1561,7 @@ export function ShopFlow({
                     </a>
                   ) : (
                     <p className="caption" style={{ margin: 0 }}>
-                      We&apos;ll contact you on the phone number above to
+                      We&apos;ll contact you on the phone number in your delivery address to
                       arrange the delivery partner.
                     </p>
                   )
@@ -1405,11 +1573,7 @@ export function ShopFlow({
                     : ' Your courier is paid directly by you.'}
                 </p>
               </div>
-            ) : (
-              <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
-                Collect your order from our store at the time you choose.
-              </p>
-            )}
+            ) : null}
           </section>
 
           {showPromoSection ? (
@@ -1715,7 +1879,7 @@ export function ShopFlow({
           <section className="pmCard shopSummaryCard">
             <h3 className="shopSectionTitle">Order summary</h3>
             <ul className="shopSummaryList">
-              {cart.map((l) => (
+              {checkoutCart.map((l) => (
                 <li key={l.lineId}>
                   <span>
                     {l.name}
@@ -1734,6 +1898,12 @@ export function ShopFlow({
                 <div className="discountLine">
                   <span>Discount</span>
                   <span>−{formatRm(discount)}</span>
+                </div>
+              ) : null}
+              {isShipping ? (
+                <div>
+                  <span>Shipping</span>
+                  <span>{formatRm(shippingFee)}</span>
                 </div>
               ) : null}
               <div className="totalLine">
@@ -1769,6 +1939,44 @@ export function ShopFlow({
                   : paymentMethodMode === 'credits'
                     ? `Pay ${formatRm(total)} with credits`
                     : `Pay ${formatRm(total)}`}
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+
+      {screen === 'addresses' && (
+        <>
+          <header className="shopTopBar pmTopBar">
+            <button
+              type="button"
+              className="textAction shopBackLink"
+              onClick={() => setScreen('checkout')}
+            >
+              ← Checkout
+            </button>
+            <h2 className="shopTitleCenter">{isShipping ? 'Shipping address' : 'Delivery address'}</h2>
+            <span className="shopTopSpacer" />
+          </header>
+          <section className="pmCard">
+            <AddressPicker
+              selectedId={selectedAddressId}
+              mode={isShipping ? 'shipping' : 'delivery'}
+              localPostcodes={localPostcodes}
+              memberName={memberName}
+              memberPhone={memberPhone}
+              onSelect={handleSelectAddress}
+            />
+            <p className="caption" style={{ margin: '10px 0 0' }}>
+              You can also manage your saved addresses any time under Account → My addresses.
+            </p>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                disabled={!delivery.address.trim()}
+                onClick={() => setScreen('checkout')}
+              >
+                Use this address
               </button>
             </div>
           </section>
@@ -1822,6 +2030,7 @@ type AddToCartInput = {
   qty: number;
   variantLabel?: string;
   notes?: string;
+  deliveryClass?: DeliveryClass;
 };
 
 function ProductDetailScreen({
@@ -1830,13 +2039,33 @@ function ProductDetailScreen({
   onOpenCart,
   itemCount,
   addToCart,
+  fulfillmentMethod,
+  onFulfillmentMethod,
+  deliveryInfo,
+  unshippableNames,
+  cartHasShippable,
 }: {
   product: Product;
   onBack: () => void;
   onOpenCart: () => void;
   itemCount: number;
   addToCart: (input: AddToCartInput) => void;
+  fulfillmentMethod: FulfillmentMethod | null;
+  onFulfillmentMethod: (m: FulfillmentMethod) => void;
+  deliveryInfo: DeliveryInfo | null;
+  /** Items already in the cart that can't be posted (cakes and the like); a parcel is off the table while they are there. */
+  unshippableNames: string[];
+  /** The cart already holds products that can be shipped. */
+  cartHasShippable: boolean;
 }) {
+  const cartHasCake = unshippableNames.length > 0;
+  const shippingOn = deliveryInfo?.shippingEnabled !== false;
+  const nationwide = deliveryClassForProduct(product) === 'NATIONWIDE';
+  // Shipping chosen on a cookie page doesn't carry over to a product that can't be posted.
+  const shownMethod = fulfillmentMethod === 'shipping' && !nationwide ? 'pickup' : fulfillmentMethod;
+  const canShipThis = nationwide && !cartHasCake && deliveryInfo?.shippingEnabled !== false;
+  const shipFee = deliveryInfo?.shippingFeeCents ?? 0;
+  const freeOver = deliveryInfo?.freeShippingOverCents ?? 0;
   const variants = product.variants;
   const [variantId, setVariantId] = useState<string | null>(
     variants?.[0]?.id ?? null,
@@ -1888,6 +2117,7 @@ function ProductDetailScreen({
 
       <article className="pmCard shopDetailCard">
         <div className="shopDetailHero">
+          <ShippingBadge shippable={nationwide} />
           {product.imageUrl ? (
             <img
               src={product.imageUrl}
@@ -1927,6 +2157,53 @@ function ProductDetailScreen({
               </div>
             </div>
           ) : null}
+          {!soldOut ? (
+            <div className="shopFieldGrid">
+              <span className="caption">How would you like to receive it?</span>
+              <div className="shopFulfillmentRow">
+                <button
+                  type="button"
+                  className={`chip shopFulfillmentChip shopFulfillOption${shownMethod === 'pickup' ? ' active' : ''}`}
+                  onClick={() => onFulfillmentMethod('pickup')}
+                >
+                  <strong>Self pickup</strong>
+                  <small>Collect at our shop</small>
+                </button>
+                {deliveryInfo?.enabled !== false && !canShipThis ? (
+                  <button
+                    type="button"
+                    className={`chip shopFulfillmentChip shopFulfillOption${shownMethod === 'delivery' ? ' active' : ''}`}
+                    onClick={() => onFulfillmentMethod('delivery')}
+                  >
+                    <strong>Local delivery</strong>
+                    <small>Nearby areas only</small>
+                  </button>
+                ) : null}
+                {nationwide && shippingOn ? (
+                  <button
+                    type="button"
+                    disabled={!canShipThis}
+                    title={canShipThis ? undefined : `Can't ship while ${unshippableNames.join(', ')} is in your cart`}
+                    className={`chip shopFulfillmentChip shopFulfillOption shopFulfillOptionShip${shownMethod === 'shipping' ? ' active' : ''}`}
+                    onClick={() => onFulfillmentMethod('shipping')}
+                  >
+                    <strong>Ship nationwide</strong>
+                    <small>{canShipThis ? `+ ${formatRm(shipFee)} shipping` : 'Not with items in your cart'}</small>
+                  </button>
+                ) : null}
+              </div>
+              {nationwide && deliveryInfo?.shippingEnabled !== false ? (
+                <p className="groupFulfilNote">
+                  {cartHasCake
+                    ? `Shipping isn't available while ${unshippableNames.join(', ')} ${unshippableNames.length === 1 ? 'is' : 'are'} in your cart, because ${unshippableNames.length === 1 ? 'it' : 'they'} can't be posted. Remove ${unshippableNames.length === 1 ? 'it' : 'them'} to ship these cookies, or order the cookies on their own.`
+                    : `Shipping adds ${formatRm(shipFee)}${freeOver > 0 ? `, free when your order is over ${formatRm(freeOver)}` : ''}.`}
+                </p>
+              ) : !nationwide ? (
+                <p className="groupFulfilNote">Cakes are fresh, so delivery is for the nearby area only.</p>
+              ) : null}
+              <p className="groupFulfilNote">You can change this again at checkout.</p>
+            </div>
+          ) : null}
           <div className="shopQtyRow">
             <span className="caption">Quantity</span>
             <div className="shopStepper">
@@ -1953,6 +2230,18 @@ function ProductDetailScreen({
             type="button"
             disabled={soldOut}
             onClick={() => {
+              // Cakes and cookies in one order can't be shipped: say so before it happens.
+              const mixes = nationwide ? cartHasCake : cartHasShippable;
+              if (
+                mixes &&
+                !window.confirm(
+                  nationwide
+                    ? "Your cart has items that can't be shipped (" + unshippableNames.join(', ') + ").\n\nWith these cookies in the same order, nationwide shipping isn't available. The whole order will be Self pickup or Local delivery only.\n\nAdd to cart anyway?"
+                    : "Your cart has items that can be shipped nationwide.\n\n" + product.name + " is for pickup or local delivery only, so with it in the same order nationwide shipping isn't available. The whole order will be Self pickup or Local delivery only.\n\nAdd to cart anyway?",
+                )
+              ) {
+                return;
+              }
               addToCart({
                 productId: product.id,
                 name: product.name,
@@ -1960,6 +2249,7 @@ function ProductDetailScreen({
                 unitPriceCents: unitCents,
                 qty,
                 variantLabel,
+                deliveryClass: deliveryClassForProduct(product),
               });
               onOpenCart();
             }}
@@ -1976,9 +2266,8 @@ function ProductDetailScreen({
 
 function CartScreen({
   cart,
-  subtotal,
-  discount,
-  total,
+  groups,
+  fulfillmentMethod,
   appliedVoucher,
   appliedReward,
   onBack,
@@ -1988,9 +2277,10 @@ function CartScreen({
   removeLine,
 }: {
   cart: CartLine[];
-  subtotal: number;
-  discount: number;
-  total: number;
+  /** The cart split by where each product can go; empty groups are left out. */
+  groups: { cls: DeliveryClass; lines: CartLine[] }[];
+  /** Chosen on the product page; can be changed again at checkout. */
+  fulfillmentMethod: FulfillmentMethod | null;
   appliedVoucher: MockVoucher | null;
   appliedReward: MockReward | null;
   onBack: () => void;
@@ -1999,6 +2289,20 @@ function CartScreen({
   setLineQty: (lineId: string, qty: number) => void;
   removeLine: (lineId: string) => void;
 }) {
+  const subtotal = cartSubtotalCents(cart);
+  const discount = computeDiscountCents(subtotal, appliedVoucher, appliedReward);
+  const mixed = groups.length > 1;
+  const methodLabel =
+    fulfillmentMethod === 'delivery'
+      ? 'Local delivery'
+      : fulfillmentMethod === 'shipping'
+        ? 'Ship nationwide'
+        : 'Self pickup';
+
+  const renderLine = (l: CartLine) => (
+    <CartLineRow key={l.lineId} line={l} setLineQty={setLineQty} removeLine={removeLine} />
+  );
+
   return (
     <>
       <header className="shopTopBar pmTopBar">
@@ -2022,51 +2326,28 @@ function CartScreen({
         </section>
       ) : (
         <>
-          <div className="shopCartList">
-            {cart.map((l) => (
-              <div key={l.lineId} className="pmCard shopCartLine">
-                <div
-                  className="shopCartThumb"
-                  style={{ backgroundImage: `url("${l.imageUrl}")` }}
-                />
-                <div className="shopCartLineBody">
-                  <strong>{l.name}</strong>
-                  {l.variantLabel ? (
-                    <span className="caption">{l.variantLabel}</span>
-                  ) : null}
-                  <div className="shopCartLineFoot">
-                    <div className="shopStepper">
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => setLineQty(l.lineId, l.qty - 1)}
-                      >
-                        −
-                      </button>
-                      <span>{l.qty}</span>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => setLineQty(l.lineId, l.qty + 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                    <span className="shopLineTotal">
-                      {formatRm(l.unitPriceCents * l.qty)}
+          {groups.map((g) => {
+            const label = DELIVERY_CLASS_LABELS[g.cls];
+            return (
+              <section key={g.cls} className="shopCartGroup">
+                {mixed ? (
+                  <div className="shopCartGroupHead">
+                    <h3 className="shopSectionTitle">{label.title}</h3>
+                    <span
+                      className={
+                        g.cls === 'NATIONWIDE'
+                          ? 'shopCartGroupTag shopCartGroupTagOk'
+                          : 'shopCartGroupTag'
+                      }
+                    >
+                      {label.tag}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className="textAction shopRemoveLine"
-                    onClick={() => removeLine(l.lineId)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                ) : null}
+                <div className="shopCartList">{g.lines.map(renderLine)}</div>
+              </section>
+            );
+          })}
 
           <section className="pmCard shopSummaryCard">
             {appliedVoucher ? (
@@ -2078,6 +2359,20 @@ function CartScreen({
               <p className="caption">
                 Reward: <strong>{appliedReward.title}</strong>
               </p>
+            ) : null}
+            <p className="caption" style={{ marginTop: 0 }}>
+              Receive by: <strong>{methodLabel}</strong> · you can change this at
+              checkout.
+            </p>
+            {mixed ? (
+              <div className="shopNotice" role="note">
+                <strong>Pickup or local delivery only</strong>
+                <span>
+                  Your cart has both cakes and cookies, so nationwide shipping
+                  isn&apos;t available for this order. To ship cookies, order them
+                  on their own.
+                </span>
+              </div>
             ) : null}
             <div className="shopSummaryTotals">
               <div>
@@ -2092,7 +2387,7 @@ function CartScreen({
               ) : null}
               <div className="totalLine">
                 <span>Total</span>
-                <span>{formatRm(total)}</span>
+                <span>{formatRm(subtotal - discount)}</span>
               </div>
             </div>
             <div className="row shopCartActions">
@@ -2111,5 +2406,75 @@ function CartScreen({
         </>
       )}
     </>
+  );
+}
+
+/** One cart item with its quantity stepper and Remove, in the cart and at checkout. */
+function CartLineRow({
+  line: l,
+  setLineQty,
+  removeLine,
+}: {
+  line: CartLine;
+  setLineQty: (lineId: string, qty: number) => void;
+  removeLine: (lineId: string) => void;
+}) {
+  return (
+    <div className="pmCard shopCartLine">
+      <div
+        className="shopCartThumb"
+        style={{ backgroundImage: `url("${l.imageUrl}")` }}
+      />
+      <div className="shopCartLineBody">
+        <strong>{l.name}</strong>
+        {l.variantLabel ? <span className="caption">{l.variantLabel}</span> : null}
+        <div className="shopCartLineFoot">
+          <div className="shopStepper">
+            <button type="button" className="ghost" onClick={() => setLineQty(l.lineId, l.qty - 1)}>
+              −
+            </button>
+            <span>{l.qty}</span>
+            <button type="button" className="ghost" onClick={() => setLineQty(l.lineId, l.qty + 1)}>
+              +
+            </button>
+          </div>
+          <span className="shopLineTotal">{formatRm(l.unitPriceCents * l.qty)}</span>
+        </div>
+        <button type="button" className="textAction shopRemoveLine" onClick={() => removeLine(l.lineId)}>
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Top-right tag on a product photo: can it be posted anywhere, or is it for pickup / nearby delivery only? */
+function ShippingBadge({ shippable }: { shippable: boolean }) {
+  return (
+    <span
+      className={shippable ? 'shipBadge shipBadgeOk' : 'shipBadge'}
+      title={
+        shippable
+          ? 'Can be shipped anywhere in Malaysia'
+          : 'Pickup or local delivery only'
+      }
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {shippable ? (
+          <>
+            <path d="M3 7h11v9H3z" />
+            <path d="M14 10h4l3 3v3h-7z" />
+            <circle cx="7" cy="18" r="1.6" />
+            <circle cx="17" cy="18" r="1.6" />
+          </>
+        ) : (
+          <>
+            <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+            <circle cx="12" cy="10" r="2.4" />
+          </>
+        )}
+      </svg>
+      {shippable ? 'Ships nationwide' : 'Local only'}
+    </span>
   );
 }

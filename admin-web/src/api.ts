@@ -545,6 +545,7 @@ export const SHOP_CATALOG_CATEGORIES = [
   'cake_slices',
   'drinks',
   'specials',
+  'cookies',
 ] as const;
 export type ShopCatalogCategory = (typeof SHOP_CATALOG_CATEGORIES)[number];
 
@@ -571,6 +572,8 @@ export type ShopCatalogProduct = {
   variants?: ShopCatalogVariant[];
   badge?: string;
   soldOut?: boolean;
+  /** Can be posted anywhere in the country. Set per product, whatever the category. */
+  shippable?: boolean;
   isActive: boolean;
   sortOrder: number;
   /** SalesPlay POS product code for this product (the POS is the master for it). */
@@ -597,6 +600,7 @@ export type ShopCatalogProductInput = {
   priceDisplay?: string;
   badge?: string;
   soldOut?: boolean;
+  shippable?: boolean;
   variants?: ShopCatalogVariant[];
   salesplayProductCode?: string;
   salesplayVariantCodes?: Record<string, string>;
@@ -1631,6 +1635,14 @@ export type DeliverySettings = {
   enabled: boolean;
   /** Digits with country code; empty = not set. */
   whatsappNumber: string;
+  /** Members can choose "Ship to me" for nationwide products (cookies). */
+  shippingEnabled: boolean;
+  /** Flat parcel fee in sen. */
+  shippingFeeCents: number;
+  /** Shipping is free when the goods come to more than this many sen; 0 = never. */
+  freeShippingOverCents: number;
+  /** Postcode prefixes local (courier) delivery covers; empty = anywhere. */
+  localDeliveryPostcodes: string[];
 };
 
 export async function fetchDeliverySettings(): Promise<DeliverySettings> {

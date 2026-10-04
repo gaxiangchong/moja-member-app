@@ -2,7 +2,19 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { cartSubtotalCents, computeDiscountCents } from '../lib/pricing';
-import type { CartLine, DeliveryDraft, FulfillmentMethod, MockReward, MockVoucher } from '../types';
+import type {
+  CartLine,
+  DeliveryClass,
+  DeliveryDraft,
+  FulfillmentMethod,
+  MockReward,
+  MockVoucher,
+} from '../types';
+
+/** A line's delivery class. Carts saved before shipping existed have none: local, the safe default. */
+export function lineDeliveryClass(line: CartLine): DeliveryClass {
+  return line.deliveryClass ?? 'LOCAL_ONLY';
+}
 
 function newLineId(): string {
   return `L${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -10,6 +22,9 @@ function newLineId(): string {
 
 type ShopState = {
   cart: CartLine[];
+  /** The saved address (from the Account address book) chosen for delivery or shipping. */
+  selectedAddressId: string | null;
+  setSelectedAddressId: (id: string | null) => void;
   fulfillmentMethod: FulfillmentMethod | null;
   pickupDate: string | null;
   pickupTime: string | null;
@@ -26,6 +41,7 @@ type ShopState = {
     qty: number;
     variantLabel?: string;
     notes?: string;
+    deliveryClass?: DeliveryClass;
   }) => void;
   setLineQty: (lineId: string, qty: number) => void;
   removeLine: (lineId: string) => void;
@@ -65,6 +81,8 @@ export const useShopStore = create<ShopState>()(
   persist(
     (set, get) => ({
   cart: [],
+  selectedAddressId: null,
+  setSelectedAddressId: (id) => set({ selectedAddressId: id }),
   // Self pickup is the default; the member can switch to delivery.
   fulfillmentMethod: 'pickup',
   pickupDate: null,
@@ -103,8 +121,16 @@ export const useShopStore = create<ShopState>()(
       qty: input.qty,
       variantLabel: variant,
       notes,
+      deliveryClass: input.deliveryClass,
     };
-    set({ cart: [...cart, line] });
+    // A cake can't be posted: a shipping choice made for cookies falls back to pickup.
+    const method = get().fulfillmentMethod;
+    set({
+      cart: [...cart, line],
+      ...(method === 'shipping' && input.deliveryClass !== 'NATIONWIDE'
+        ? { fulfillmentMethod: 'pickup' as const }
+        : {}),
+    });
   },
 
   setLineQty: (lineId, qty) => {
@@ -197,6 +223,7 @@ export const useShopStore = create<ShopState>()(
         pickupDate: state.pickupDate,
         pickupTime: state.pickupTime,
         delivery: state.delivery,
+        selectedAddressId: state.selectedAddressId,
       }),
       // A cart saved before delivery existed may say "in_store" (no longer
       // offered); anything unknown falls back to self pickup.

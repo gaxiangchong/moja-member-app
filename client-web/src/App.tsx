@@ -40,6 +40,8 @@ import {
 import { OtpBoxes } from './components/OtpBoxes';
 import { copyText } from './lib/clipboard';
 import { OrdersTab } from './orders/OrdersTab';
+import { AddressBookCard } from './address/AddressBookCard';
+import { SavingsCard } from './account/SavingsCard';
 import { TopUpScreen, type TopUpResult } from './wallet/TopUpScreen';
 import { InstallBanner } from './components/InstallBanner';
 import {
@@ -2549,7 +2551,11 @@ function App() {
                   </button>
                 </div>
 
+                <SavingsCard active={tab === 'account'} />
+
                 <PointsHistoryCard active={tab === 'account'} />
+
+                <AddressBookCard memberName={profile.displayName} memberPhone={profile.phoneE164} />
 
                 <Card>
                   <SectionHeader

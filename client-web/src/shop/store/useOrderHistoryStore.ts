@@ -23,6 +23,7 @@ export type PastOrder = {
   scheduledDate?: string | null;
   scheduledSlot?: string | null;
   deliveryFeeCents?: number;
+  deliveryMethod?: 'LOCAL' | 'SHIPPING';
   delivery?: {
     address: string;
     contactName: string | null;

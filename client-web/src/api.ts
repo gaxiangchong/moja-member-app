@@ -540,12 +540,14 @@ export async function createShopOrderCheckout(payload: {
     fulfilmentType?: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
     scheduledDate?: string | null;
     scheduledSlot?: string | null;
-    /** Required when `fulfilmentType` is DELIVERY. */
+    /** With DELIVERY: a local courier (default) or a nationwide parcel. */
+    deliveryMethod?: 'LOCAL' | 'SHIPPING';
+    /** Required when `fulfilmentType` is DELIVERY. Shipping needs no arrangement. */
     delivery?: {
       address: string;
       contactName: string;
       contactPhone: string;
-      arrangement: 'SELF' | 'MOJA';
+      arrangement?: 'SELF' | 'MOJA';
     };
   };
 }): Promise<ShopOrderCheckoutResult> {
@@ -841,7 +843,7 @@ export type MemberRewardsPayload = {
 
 export type ShopCatalogProduct = {
   id: string;
-  category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials';
+  category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials' | 'cookies';
   categoryLabel?: string;
   name: string;
   shortDescription: string;
@@ -860,6 +862,8 @@ export type ShopCatalogProduct = {
     priceDisplay?: string | null;
   }>;
   soldOut?: boolean;
+  /** The admin marked this product as postable anywhere in the country. */
+  shippable?: boolean;
   /** Kitchen-tracked count of this cake currently ready. `undefined` = not stock-tracked. */
   availableQty?: number;
 };
@@ -1011,6 +1015,8 @@ export type MemberOrderRow = {
   scheduledDate?: string | null;
   scheduledSlot?: string | null;
   deliveryFeeCents?: number;
+  /** DELIVERY orders: a local courier or a nationwide parcel. */
+  deliveryMethod?: 'LOCAL' | 'SHIPPING';
   /** Delivery orders: where it goes and who books the courier. */
   delivery?: {
     address: string;
@@ -1220,7 +1226,32 @@ export type DeliveryInfo = {
   enabled: boolean;
   /** Moja Maison's WhatsApp number for courier help (digits, with country code); empty = not set. */
   whatsappNumber: string;
+  /** "Ship to me" can be chosen for nationwide products. */
+  shippingEnabled: boolean;
+  /** Flat parcel fee in sen. */
+  shippingFeeCents: number;
+  /** Shipping is free when the goods come to more than this many sen; 0 = never. */
+  freeShippingOverCents: number;
+  /** Postcode prefixes local (courier) delivery covers; empty = anywhere. */
+  localDeliveryPostcodes: string[];
 };
+
+/** Mirrors `addressInLocalArea` on the server, which is what enforces it. */
+export function addressInLocalArea(address: string, prefixes: string[]): boolean {
+  if (prefixes.length === 0) return true;
+  const postcodes = address.match(/\b\d{5}\b/g) ?? [];
+  return postcodes.some((pc) => prefixes.some((p) => pc.startsWith(p)));
+}
+
+/** The parcel fee for goods worth `goodsCents`. Mirrors `shippingFeeFor` on the server, which is what charges it. */
+export function shippingFeeFor(
+  info: Pick<DeliveryInfo, 'shippingFeeCents' | 'freeShippingOverCents'>,
+  goodsCents: number,
+): number {
+  return info.freeShippingOverCents > 0 && goodsCents > info.freeShippingOverCents
+    ? 0
+    : info.shippingFeeCents;
+}
 
 /** Whether delivery is offered, and the WhatsApp number to ask for courier help. */
 export async function fetchDeliveryInfo(): Promise<DeliveryInfo> {
@@ -1229,7 +1260,17 @@ export async function fetchDeliveryInfo(): Promise<DeliveryInfo> {
   if (!res.ok) {
     throw new Error(typeof data.message === 'string' ? data.message : 'Failed to load delivery info');
   }
-  return { enabled: data.enabled !== false, whatsappNumber: data.whatsappNumber ?? '' };
+  return {
+    enabled: data.enabled !== false,
+    whatsappNumber: data.whatsappNumber ?? '',
+    shippingEnabled: data.shippingEnabled !== false,
+    shippingFeeCents: typeof data.shippingFeeCents === 'number' ? data.shippingFeeCents : 0,
+    freeShippingOverCents:
+      typeof data.freeShippingOverCents === 'number' ? data.freeShippingOverCents : 0,
+    localDeliveryPostcodes: Array.isArray(data.localDeliveryPostcodes)
+      ? data.localDeliveryPostcodes
+      : [],
+  };
 }
 
 /** Open pickup windows for one day, including why a slot is closed. */
@@ -1328,3 +1369,58 @@ export async function completeDemoWalletTopUp(
     bonusCents: data.bonusCents ?? 0,
   };
 }
+
+/** A saved delivery / shipping address from the member's address book. */
+export type SavedAddress = {
+  id: string;
+  label: string | null;
+  recipientName: string;
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  postcode: string;
+  isDefault: boolean;
+  /** The single line sent with an order. */
+  fullAddress: string;
+};
+
+export type SavedAddressInput = {
+  label?: string;
+  recipientName: string;
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  postcode: string;
+  isDefault?: boolean;
+};
+
+async function addressRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await authorizedFetch(`/customers/me/addresses${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const data = await parseJson<T & { message?: string | string[] }>(res);
+  if (!res.ok) {
+    const raw = (data as { message?: string | string[] }).message;
+    throw new Error(
+      typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join(', ') : `Address request failed (${res.status})`,
+    );
+  }
+  return data as T;
+}
+
+export const fetchMyAddresses = () => addressRequest<SavedAddress[]>('');
+
+export const addMyAddress = (input: SavedAddressInput) =>
+  addressRequest<SavedAddress>('', { method: 'POST', body: JSON.stringify(input) });
+
+export const updateMyAddress = (id: string, input: SavedAddressInput) =>
+  addressRequest<SavedAddress>(`/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+
+export const setMyDefaultAddress = (id: string) =>
+  addressRequest<SavedAddress[]>(`/${id}/default`, { method: 'POST' });
+
+export const deleteMyAddress = (id: string) =>
+  addressRequest<SavedAddress[]>(`/${id}`, { method: 'DELETE' });

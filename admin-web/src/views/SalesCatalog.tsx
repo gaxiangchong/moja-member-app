@@ -20,6 +20,7 @@ const CATEGORY_LABELS: Record<ShopCatalogCategory, string> = {
   cake_slices: 'Cake slices',
   drinks: 'Drinks',
   specials: 'Specials',
+  cookies: 'Cookies',
 };
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']);
@@ -80,6 +81,7 @@ type EditorForm = {
   sortOrder: string;
   isActive: boolean;
   soldOut: boolean;
+  shippable: boolean;
   imageOffsetX: number;
   imageOffsetY: number;
   imageScale: number;
@@ -101,6 +103,7 @@ function emptyForm(nextSortOrder: number): EditorForm {
     sortOrder: String(nextSortOrder),
     isActive: true,
     soldOut: false,
+    shippable: false,
     imageOffsetX: 50,
     imageOffsetY: 50,
     imageScale: 1,
@@ -123,6 +126,7 @@ function formFromProduct(p: ShopCatalogProduct): EditorForm {
     sortOrder: String(p.sortOrder ?? 0),
     isActive: p.isActive !== false,
     soldOut: Boolean(p.soldOut),
+    shippable: Boolean(p.shippable),
     imageOffsetX: p.imageOffsetX ?? 50,
     imageOffsetY: p.imageOffsetY ?? 50,
     imageScale: p.imageScale ?? 1,
@@ -163,7 +167,7 @@ export function SalesCatalog() {
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ShopCatalogCategory | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'soldout' | 'nocode'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'soldout' | 'nocode' | 'shippable' | 'localonly'>('all');
   const [section, setSection] = useState<'products' | 'sync'>('products');
   const [codeSuggestions, setCodeSuggestions] = useState<string[]>([]);
 
@@ -211,6 +215,8 @@ export function SalesCatalog() {
         if (statusFilter === 'active') return p.isActive !== false;
         if (statusFilter === 'inactive') return p.isActive === false;
         if (statusFilter === 'soldout') return Boolean(p.soldOut);
+        if (statusFilter === 'shippable') return Boolean(p.shippable);
+        if (statusFilter === 'localonly') return !p.shippable;
         if (statusFilter === 'nocode') return posCodeStatus(p).missing > 0;
         return true;
       })
@@ -299,6 +305,7 @@ export function SalesCatalog() {
       sortOrder: Number.isFinite(Number(form.sortOrder)) ? Number(form.sortOrder) : 0,
       isActive: form.isActive,
       soldOut: form.soldOut,
+      shippable: form.shippable,
       variants: form.variants.map((v) => ({
         id: v.id,
         label: v.label.trim(),
@@ -325,6 +332,18 @@ export function SalesCatalog() {
       setFormError(err instanceof Error ? err.message : 'Failed to save product');
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Quick switch from the list: flips one product's shipping flag without opening the editor. */
+  async function setShippable(p: ShopCatalogProduct, value: boolean) {
+    setProducts((prev) => (prev ? prev.map((x) => (x.id === p.id ? { ...x, shippable: value } : x)) : prev));
+    try {
+      const saved = await updateShopCatalogProduct(p.id, { shippable: value });
+      setProducts((prev) => (prev ? prev.map((x) => (x.id === saved.id ? saved : x)) : prev));
+    } catch (err) {
+      setProducts((prev) => (prev ? prev.map((x) => (x.id === p.id ? { ...x, shippable: !value } : x)) : prev));
+      setError(err instanceof Error ? err.message : 'Could not update shipping for this product');
     }
   }
 
@@ -458,6 +477,8 @@ export function SalesCatalog() {
             <option value="inactive">Inactive</option>
             <option value="soldout">Sold out</option>
             <option value="nocode">No SalesPlay code</option>
+            <option value="shippable">Ships nationwide</option>
+            <option value="localonly">Local only (no shipping)</option>
           </select>
         </label>
         <button type="button" className="toolbarButton toolbarButton--primary filterSubmit" onClick={openCreate}>
@@ -479,6 +500,7 @@ export function SalesCatalog() {
                 <th>Price</th>
                 <th>SalesPlay code</th>
                 <th>Status</th>
+                <th title="Can be posted anywhere in the country">Ships nationwide</th>
                 <th>Sort</th>
               </tr>
             </thead>
@@ -526,12 +548,25 @@ export function SalesCatalog() {
                     </span>
                     {p.soldOut ? <span className="badge badge--danger" style={{ marginLeft: 6 }}>Sold out</span> : null}
                   </td>
+                  <td>
+                    <label className="switchRow" title="Members can have this product posted anywhere in the country">
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(p.shippable)}
+                          onChange={(e) => void setShippable(p, e.target.checked)}
+                          aria-label={`${p.name} ships nationwide`}
+                        />
+                        <span className="switchTrack" aria-hidden />
+                      </span>
+                    </label>
+                  </td>
                   <td>{p.sortOrder}</td>
                 </tr>
               ))}
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="dataTableEmpty">No products match these filters.</td>
+                  <td colSpan={8} className="dataTableEmpty">No products match these filters.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -782,6 +817,17 @@ export function SalesCatalog() {
                   <Toggle checked={form.isActive} onChange={(v) => setForm((f) => ({ ...f, isActive: v }))} label="Show in shop" />
                   <Toggle checked={form.soldOut} onChange={(v) => setForm((f) => ({ ...f, soldOut: v }))} label="Sold out" />
                 </div>
+                <div className="drawerRowActions" style={{ marginTop: 10 }}>
+                  <Toggle
+                    checked={form.shippable}
+                    onChange={(v) => setForm((f) => ({ ...f, shippable: v }))}
+                    label="Can be shipped nationwide"
+                  />
+                </div>
+                <p className="viewMuted" style={{ marginTop: 4 }}>
+                  Members can have this posted anywhere in Malaysia (shipping fee applies). Leave it off for fresh
+                  items such as cakes. A cart with any item that is not shippable cannot be shipped.
+                </p>
               </section>
             </div>
 

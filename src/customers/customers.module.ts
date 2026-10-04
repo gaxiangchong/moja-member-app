@@ -8,6 +8,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
+import { CustomerAddressesService } from './customer-addresses.service';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { MemberSavingsService } from './member-savings.service';
@@ -26,7 +27,12 @@ import { PhoneNormalizerService } from './phone-normalizer.service';
     NotificationsModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, PhoneNormalizerService, MemberSavingsService],
+  providers: [
+    CustomersService,
+    CustomerAddressesService,
+    PhoneNormalizerService,
+    MemberSavingsService,
+  ],
   exports: [CustomersService, PhoneNormalizerService],
 })
 export class CustomersModule {}

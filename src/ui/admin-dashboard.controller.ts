@@ -3149,6 +3149,7 @@ export class AdminDashboardController {
                     <option value="cake_slices">cake_slices</option>
                     <option value="drinks">drinks</option>
                     <option value="specials">specials</option>
+                    <option value="cookies">cookies</option>
                   </select>
                 </div>
               </div>

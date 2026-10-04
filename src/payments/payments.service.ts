@@ -520,10 +520,12 @@ export class PaymentsService {
           idempotencyKey,
         });
         voucherLockToken = lock.lockToken;
-        discountCents = await this.rewardsWorkflow.computeLockedVoucherDiscount({
-          lockToken: voucherLockToken,
-          subtotalCents,
-        });
+        discountCents = await this.rewardsWorkflow.computeLockedVoucherDiscount(
+          {
+            lockToken: voucherLockToken,
+            subtotalCents,
+          },
+        );
       } catch (err) {
         if (!(err instanceof NotFoundException)) throw err;
         const cv = await this.resolveCustomerVoucherDiscount(
@@ -537,7 +539,9 @@ export class PaymentsService {
     }
 
     dto.discountCents = discountCents;
-    dto.totalCents = Math.max(0, subtotalCents - discountCents);
+    const goodsCents = Math.max(0, subtotalCents - discountCents);
+    dto.totalCents =
+      goodsCents + (await this.customers.shippingFeeCentsFor(dto, goodsCents));
 
     /**
      * Takes the reward's points as soon as the order exists, so the same points
@@ -677,7 +681,8 @@ export class PaymentsService {
     };
     if (voucherLockToken) paymentMetadata.voucherLockToken = voucherLockToken;
     if (voucherId) paymentMetadata.voucherId = voucherId;
-    if (customerVoucherId) paymentMetadata.customerVoucherId = customerVoucherId;
+    if (customerVoucherId)
+      paymentMetadata.customerVoucherId = customerVoucherId;
     if (rewardDefinitionId) {
       paymentMetadata.rewardDefinitionId = rewardDefinitionId;
       if (rewardPointsCost != null) {
@@ -685,29 +690,31 @@ export class PaymentsService {
       }
     }
 
-    const xenditResponse = await this.xendit.createPaymentRequest({
-      referenceId,
-      country,
-      currency,
-      requestAmount,
-      ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
-      description: `Moja shop order #${order.orderNumber}`,
-      successReturnUrl: successUrl,
-      failureReturnUrl: failureUrl,
-      metadata: paymentMetadata,
-    }).catch(async (err: unknown) => {
-      // The payment never started: drop the order so its stock, voucher lock
-      // and reward points are given back now rather than after the timeout.
-      await this.customers
-        .abandonPendingOrder(order.id, 'Payment could not be started')
-        .catch(() => undefined);
-      if (voucherLockToken) {
-        await this.rewardsWorkflow
-          .releaseVoucherLock(voucherLockToken)
+    const xenditResponse = await this.xendit
+      .createPaymentRequest({
+        referenceId,
+        country,
+        currency,
+        requestAmount,
+        ...(paymentTokenId ? { paymentTokenId } : { channelCode }),
+        description: `Moja shop order #${order.orderNumber}`,
+        successReturnUrl: successUrl,
+        failureReturnUrl: failureUrl,
+        metadata: paymentMetadata,
+      })
+      .catch(async (err: unknown) => {
+        // The payment never started: drop the order so its stock, voucher lock
+        // and reward points are given back now rather than after the timeout.
+        await this.customers
+          .abandonPendingOrder(order.id, 'Payment could not be started')
           .catch(() => undefined);
-      }
-      throw err;
-    });
+        if (voucherLockToken) {
+          await this.rewardsWorkflow
+            .releaseVoucherLock(voucherLockToken)
+            .catch(() => undefined);
+        }
+        throw err;
+      });
 
     const paymentRequestId =
       typeof xenditResponse.payment_request_id === 'string'
@@ -925,7 +932,9 @@ export class PaymentsService {
       });
     }
     if (
-      subscriptions.some((subscription) => subscription.status !== 'PENDING_PAYMENT')
+      subscriptions.some(
+        (subscription) => subscription.status !== 'PENDING_PAYMENT',
+      )
     ) {
       throw new BadRequestException({
         code: 'BENTO_NOT_PENDING',
@@ -1031,10 +1040,7 @@ export class PaymentsService {
     }
 
     if (apiStatus === 'SUCCEEDED') {
-      await this.applyBentoSubscriptionFromXendit(
-        referenceId,
-        xenditResponse,
-      );
+      await this.applyBentoSubscriptionFromXendit(referenceId, xenditResponse);
     }
 
     const redirectUrl = this.xendit.extractRedirectUrl(xenditResponse);
@@ -1198,7 +1204,10 @@ export class PaymentsService {
           } else if (intent.purpose === 'shop_order') {
             await this.applyShopOrderFromXendit(intent.referenceId, data);
           } else if (intent.purpose === 'bento_subscription') {
-            await this.applyBentoSubscriptionFromXendit(intent.referenceId, data);
+            await this.applyBentoSubscriptionFromXendit(
+              intent.referenceId,
+              data,
+            );
           }
           const refreshed = await this.prisma.paymentIntent.findUnique({
             where: { referenceId: trimmed },
@@ -1249,7 +1258,9 @@ export class PaymentsService {
    * latest status from Xendit and finalize it. Lets a member schedule pickups
    * right after paying even when the webhook hasn't arrived (test/local).
    */
-  async reconcileBentoSubscriptionPayment(subscriptionId: string): Promise<void> {
+  async reconcileBentoSubscriptionPayment(
+    subscriptionId: string,
+  ): Promise<void> {
     const sub = await this.prisma.bentoSubscription.findUnique({
       where: { id: subscriptionId },
       select: { paymentIntentId: true },
@@ -1315,7 +1326,9 @@ export class PaymentsService {
     } | null;
     const subscriptionIds =
       Array.isArray(meta?.subscriptionIds) && meta.subscriptionIds.length > 0
-        ? meta.subscriptionIds.filter((id): id is string => typeof id === 'string')
+        ? meta.subscriptionIds.filter(
+            (id): id is string => typeof id === 'string',
+          )
         : typeof meta?.subscriptionId === 'string'
           ? [meta.subscriptionId]
           : [];
@@ -1640,7 +1653,7 @@ export class PaymentsService {
       : null;
     if (!first) return undefined;
     const v = String(first).toLowerCase();
-    if (v.includes('delivery')) return 'DELIVERY';
+    if (v.includes('delivery') || v.includes('shipping')) return 'DELIVERY';
     if (v.includes('pickup')) return 'PICKUP';
     if (v.includes('in store')) return 'IN_STORE';
     return undefined;
@@ -1680,7 +1693,9 @@ export class PaymentsService {
         message: 'This voucher has expired.',
       });
     }
-    const map = await loadDefinitionDiscountMap(this.prisma, [row.definition.id]);
+    const map = await loadDefinitionDiscountMap(this.prisma, [
+      row.definition.id,
+    ]);
     const meta = map.get(row.definition.id);
     if (meta?.minSpendSen != null && subtotalCents < meta.minSpendSen) {
       throw new BadRequestException({

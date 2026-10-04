@@ -57,8 +57,10 @@ export class DeliveryDetailsDto {
   @MaxLength(40)
   contactPhone!: string;
 
+  /** Not needed for shipping, which Moja Maison always arranges. */
+  @IsOptional()
   @IsIn(['SELF', 'MOJA'])
-  arrangement!: 'SELF' | 'MOJA';
+  arrangement?: 'SELF' | 'MOJA';
 }
 
 export class SubmitMemberOrderDto {
@@ -100,6 +102,14 @@ export class SubmitMemberOrderDto {
     message: 'scheduledSlot must be HH:mm (24h)',
   })
   scheduledSlot?: string | null;
+
+  /**
+   * With DELIVERY: LOCAL (a courier, the default) or SHIPPING (a parcel,
+   * nationwide products only).
+   */
+  @IsOptional()
+  @IsIn(['LOCAL', 'SHIPPING'])
+  deliveryMethod?: 'LOCAL' | 'SHIPPING';
 
   /** Required when `fulfilmentType` is DELIVERY. */
   @IsOptional()

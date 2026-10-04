@@ -58,7 +58,7 @@ export type ShopCatalogProductVariant = {
 export type ShopCatalogProduct = {
   /** Canonical product id (same as storefront slug). */
   id: string;
-  category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials';
+  category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials' | 'cookies';
   /** Display category for the public shop site, e.g. "Premium Cake". */
   categoryLabel?: string;
   name: string;
@@ -78,6 +78,12 @@ export type ShopCatalogProduct = {
   variants?: ShopCatalogProductVariant[];
   badge?: string;
   soldOut?: boolean;
+  /**
+   * Can be posted anywhere in the country (cookies and the like). Chosen by the
+   * admin per product, whatever its category. Stored in the `shop_products`
+   * `shippable` column, not in `document`, so a catalog sync cannot reset it.
+   */
+  shippable?: boolean;
   /**
    * Kitchen-tracked count of this cake currently ready for sale. `undefined`
    * means this product isn't stock-tracked (unaffected by kitchen updates).
@@ -315,6 +321,7 @@ function rowToProduct(row: ShopProductRow): ShopCatalogProduct {
     isActive: row.isActive,
     sortOrder: row.sortOrder,
     soldOut: row.soldOut ? true : doc.soldOut,
+    shippable: row.shippable,
     salesplayProductCode: row.salesplayProductCode ?? undefined,
     availableQty: row.availableQty ?? undefined,
   };
@@ -330,7 +337,7 @@ function productToRow(
   p: ShopCatalogProduct,
   opts: { includeStock: boolean },
 ): Prisma.ShopProductUncheckedCreateInput {
-  const { availableQty, ...document } = p;
+  const { availableQty, shippable, ...document } = p;
   const row: Prisma.ShopProductUncheckedCreateInput = {
     id: p.id,
     category: p.category,
@@ -341,6 +348,8 @@ function productToRow(
     salesplayProductCode: p.salesplayProductCode?.trim() || null,
     document: toJsonDocument(document),
   };
+  // Left alone when unset, so a sync that rebuilds a product cannot switch it off.
+  if (shippable !== undefined) row.shippable = shippable === true;
   if (opts.includeStock) row.availableQty = availableQty ?? null;
   return row;
 }
@@ -746,6 +755,8 @@ export class ShopCatalogService implements OnModuleInit {
       variants,
       badge: raw.badge != null ? String(raw.badge).trim() : base.badge,
       soldOut: raw.soldOut != null ? Boolean(raw.soldOut) : base.soldOut,
+      shippable:
+        raw.shippable != null ? Boolean(raw.shippable) : base.shippable,
       availableQty:
         raw.availableQty !== undefined
           ? clampQty(raw.availableQty)
