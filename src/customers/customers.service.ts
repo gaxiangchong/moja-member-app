@@ -44,6 +44,7 @@ import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
   ProductStockService,
+  stockBusinessDateForOrder,
   todayBusinessDate,
 } from '../orders/product-stock.service';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
@@ -1009,6 +1010,7 @@ export class CustomersService {
         id: true,
         status: true,
         scheduledDate: true,
+        placedAt: true,
         lines: { select: { productId: true, qty: true } },
       },
     });
@@ -1043,8 +1045,7 @@ export class CustomersService {
       });
     }
 
-    const day =
-      order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();
+    const day = stockBusinessDateForOrder(order);
     await this.productStock
       .releaseForOrderLines(order.lines, day)
       .catch((err) =>
@@ -1270,14 +1271,19 @@ export class CustomersService {
         : (dto.scheduledDate ?? todayBusinessDate());
 
     const order = await this.prisma.$transaction(async (tx) => {
-      await this.pickupRules.assertCanPlace(
-        {
-          fulfilmentType,
-          scheduledDate: scheduled ? (dto.scheduledDate ?? null) : null,
-          scheduledSlot: scheduled ? (dto.scheduledSlot ?? null) : null,
-        },
-        tx,
-      );
+      // A parcel is posted over the next few days, so it does not take a
+      // collection slot. Pickup rules reject a missing date, which would
+      // refuse every shipped order.
+      if (!shipping) {
+        await this.pickupRules.assertCanPlace(
+          {
+            fulfilmentType,
+            scheduledDate: scheduled ? (dto.scheduledDate ?? null) : null,
+            scheduledSlot: scheduled ? (dto.scheduledSlot ?? null) : null,
+          },
+          tx,
+        );
+      }
 
       const created = await tx.customerOrder.create({
         data: {
