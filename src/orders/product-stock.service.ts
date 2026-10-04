@@ -34,6 +34,24 @@ export function todayBusinessDate(): string {
 }
 
 /**
+ * The shop day whose stock an order is holding.
+ *
+ * Pickup and local delivery store the collection date. In-store and nationwide
+ * shipping orders do not, so they hold the day they were placed. Cancelling
+ * later must use that day — `today` would leave the original reservation stuck
+ * and move a different day's count.
+ */
+export function stockBusinessDateForOrder(order: {
+  scheduledDate: Date | null;
+  placedAt: Date;
+}): string {
+  if (order.scheduledDate) {
+    return order.scheduledDate.toISOString().slice(0, 10);
+  }
+  return shopCalendarYmd(order.placedAt);
+}
+
+/**
  * Per-day kitchen availability.
  *
  * A product is sellable for a date when `qty - reservedQty > 0`. Products with
