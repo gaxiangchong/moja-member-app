@@ -59,6 +59,8 @@
     "bento-operations": true,
     "bento-orders": true,
     "bento-vouchers": true,
+    "loyalty-balances": true,
+    "loyalty-transactions": true,
     "voucher-campaigns": true,
     "gift-rewards": true,
     "settings-shopping-catalog": true,
