@@ -58,6 +58,7 @@ import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
 import type { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
+import type { AdminReverseLoyaltyEntryDto } from './dto/admin-reverse-loyalty-entry.dto';
 import type { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import type { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import type { AssignCustomerVoucherDto } from './dto/assign-customer-voucher.dto';
@@ -781,9 +782,22 @@ export class AdminService {
     });
   }
 
-  async listLoyaltyLedger(limit = 50) {
-    const take = Math.min(Math.max(limit, 1), 200);
+  async listLoyaltyLedger(
+    limit = 50,
+    filters: { search?: string; reason?: string; referenceType?: string } = {},
+  ) {
+    const take = Math.min(Math.max(limit, 1), 500);
+    const where: Prisma.LoyaltyLedgerEntryWhereInput = {};
+    const digits = (filters.search ?? '').replace(/\D/g, '');
+    if (digits) where.customer = { phoneE164: { contains: digits } };
+    if (filters.reason?.trim()) {
+      where.reason = { contains: filters.reason.trim(), mode: 'insensitive' };
+    }
+    if (filters.referenceType?.trim()) {
+      where.referenceType = filters.referenceType.trim();
+    }
     const entries = await this.prisma.loyaltyLedgerEntry.findMany({
+      where,
       take,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -791,19 +805,35 @@ export class AdminService {
           select: {
             id: true,
             phoneE164: true,
+            wallet: { select: { pointsCached: true } },
           },
         },
       },
     });
+
+    // An entry counts as reversed once a `reversal` entry points at it.
+    const reversals = entries.length
+      ? await this.prisma.loyaltyLedgerEntry.findMany({
+          where: {
+            referenceType: 'reversal',
+            referenceId: { in: entries.map((e) => e.id) },
+          },
+          select: { referenceId: true },
+        })
+      : [];
+    const reversedIds = new Set(reversals.map((r) => r.referenceId));
+
     return entries.map((entry) => ({
       id: entry.id,
       customerId: entry.customerId,
       customerPhone: entry.customer.phoneE164,
+      customerBalance: entry.customer.wallet?.pointsCached ?? 0,
       deltaPoints: entry.deltaPoints,
       balanceAfter: entry.balanceAfter,
       reason: entry.reason,
       referenceType: entry.referenceType,
       referenceId: entry.referenceId,
+      reversed: reversedIds.has(entry.id),
       createdAt: entry.createdAt,
     }));
   }
@@ -1824,12 +1854,68 @@ export class AdminService {
       });
     }
 
-    const { balanceAfter } = await this.loyalty.appendLedgerEntry({
-      customerId,
-      deltaPoints: dto.deltaPoints,
-      reason: dto.reason,
-      referenceType: 'backfill',
-      referenceId: null,
+    const legacyReference = dto.legacyReference?.trim() || null;
+    const reason = legacyReference
+      ? `${dto.reason} [ref: ${legacyReference}]`
+      : dto.reason;
+
+    // The wallet row is locked for the duration of the transaction so two
+    // concurrent submits for the same member (double click, retry) are
+    // serialised and the duplicate checks below see each other's writes.
+    const balanceAfter = await this.prisma.$transaction(async (tx) => {
+      await this.lockLoyaltyWallet(tx, customerId);
+
+      if (legacyReference) {
+        const sameRef = await tx.loyaltyLedgerEntry.findFirst({
+          where: {
+            customerId,
+            referenceType: 'backfill',
+            reason: {
+              contains: `[ref: ${legacyReference}]`,
+              mode: 'insensitive',
+            },
+          },
+          select: { createdAt: true },
+        });
+        if (sameRef) {
+          throw new ConflictException({
+            code: 'BACKFILL_REFERENCE_ALREADY_USED',
+            message: `Reference "${legacyReference}" was already backfilled for this member on ${sameRef.createdAt.toISOString().slice(0, 10)}.`,
+          });
+        }
+      }
+
+      if (!dto.confirmDuplicate) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recent = await tx.loyaltyLedgerEntry.findFirst({
+          where: {
+            customerId,
+            referenceType: 'backfill',
+            deltaPoints: dto.deltaPoints,
+            createdAt: { gte: since },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+        if (recent) {
+          throw new ConflictException({
+            code: 'BACKFILL_POSSIBLE_DUPLICATE',
+            message: `This member already received a backfill of ${dto.deltaPoints} points at ${recent.createdAt.toISOString()} (last 24h). Confirm to credit it again.`,
+          });
+        }
+      }
+
+      const { balanceAfter: after } = await this.loyalty.appendLedgerEntry(
+        {
+          customerId,
+          deltaPoints: dto.deltaPoints,
+          reason,
+          referenceType: 'backfill',
+          referenceId: null,
+        },
+        tx,
+      );
+      return after;
     });
 
     await this.audit.log({
@@ -1837,15 +1923,102 @@ export class AdminService {
       action: 'loyalty.backfilled_by_admin',
       entityType: 'customer',
       entityId: customerId,
-      reason: dto.reason,
+      reason,
       metadata: {
         deltaPoints: dto.deltaPoints,
         balanceAfter,
+        legacyReference,
+        confirmedDuplicate: dto.confirmDuplicate === true,
         passwordVerified: true,
       },
     });
 
     return { customerId, pointsBalance: balanceAfter };
+  }
+
+  /** Row-locks a member's loyalty wallet so concurrent point writes serialise. */
+  private async lockLoyaltyWallet(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    await tx.loyaltyWallet.upsert({
+      where: { customerId },
+      create: { customerId, pointsCached: 0 },
+      update: {},
+    });
+    await tx.$queryRaw`SELECT id FROM loyalty_wallets WHERE customer_id = ${customerId}::uuid FOR UPDATE`;
+  }
+
+  /**
+   * Reverses one ledger entry by appending an opposite entry (the original row
+   * is never edited or deleted, so the audit trail stays intact). An entry can
+   * be reversed once, and a reversal cannot itself be reversed.
+   */
+  async reverseLoyaltyEntry(
+    entryId: string,
+    dto: AdminReverseLoyaltyEntryDto,
+    auth: AdminAuthState,
+  ) {
+    const entry = await this.prisma.loyaltyLedgerEntry.findUnique({
+      where: { id: entryId },
+    });
+    if (!entry) {
+      throw new NotFoundException({
+        code: 'LEDGER_ENTRY_NOT_FOUND',
+        message: 'Ledger entry not found',
+      });
+    }
+    if (entry.referenceType === 'reversal') {
+      throw new BadRequestException({
+        code: 'LEDGER_ENTRY_IS_REVERSAL',
+        message: 'A reversal entry cannot be reversed.',
+      });
+    }
+
+    const balanceAfter = await this.prisma.$transaction(async (tx) => {
+      await this.lockLoyaltyWallet(tx, entry.customerId);
+      const already = await tx.loyaltyLedgerEntry.findFirst({
+        where: { referenceType: 'reversal', referenceId: entry.id },
+        select: { id: true },
+      });
+      if (already) {
+        throw new ConflictException({
+          code: 'LEDGER_ENTRY_ALREADY_REVERSED',
+          message: 'This entry has already been reversed.',
+        });
+      }
+      const { balanceAfter: after } = await this.loyalty.appendLedgerEntry(
+        {
+          customerId: entry.customerId,
+          deltaPoints: -entry.deltaPoints,
+          reason: `Reversal: ${dto.reason}`,
+          referenceType: 'reversal',
+          referenceId: entry.id,
+        },
+        tx,
+      );
+      return after;
+    });
+
+    await this.audit.log({
+      ...auditActorBase(auth),
+      action: 'loyalty.entry_reversed',
+      entityType: 'customer',
+      entityId: entry.customerId,
+      reason: dto.reason,
+      metadata: {
+        reversedEntryId: entry.id,
+        originalDeltaPoints: entry.deltaPoints,
+        originalReason: entry.reason,
+        balanceAfter,
+      },
+    });
+
+    return {
+      customerId: entry.customerId,
+      reversedEntryId: entry.id,
+      pointsBalance: balanceAfter,
+    };
   }
 
   async getReportingDashboard() {

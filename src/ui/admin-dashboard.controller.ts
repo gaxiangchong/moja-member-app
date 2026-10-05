@@ -1685,6 +1685,8 @@ export class AdminDashboardController {
                 <input type="text" id="wmBfPoints" inputmode="numeric" placeholder="e.g. 100" />
                 <label for="wmBfReason" style="margin-top:10px">Reason</label>
                 <input type="text" id="wmBfReason" placeholder="e.g. Purchases before joining, 2026-05 to 2026-07" />
+                <label for="wmBfRef" style="margin-top:10px">Legacy reference (invoice / receipt no.)</label>
+                <input type="text" id="wmBfRef" placeholder="Recommended — the same reference cannot be credited twice" />
                 <label for="wmBfPassword" style="margin-top:10px">Your admin password</label>
                 <input type="password" id="wmBfPassword" placeholder="Re-enter your password to confirm" />
                 <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1887,9 +1889,39 @@ export class AdminDashboardController {
         <section id="loyalty-transactions" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Loyalty transactions</h2><div class="sheet-actions"><button type="button" class="btn-outline" id="refreshLoyaltyBtn">Refresh</button></div></div>
+            <div style="padding:12px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label for="loyaltySearch">Member phone</label>
+                <input type="text" id="loyaltySearch" placeholder="e.g. 6588743153" />
+              </div>
+              <div>
+                <label for="loyaltyRefType">Type</label>
+                <select id="loyaltyRefType">
+                  <option value="">All</option>
+                  <option value="backfill">Backfill</option>
+                  <option value="pos_receipt">POS receipt</option>
+                  <option value="reversal">Reversal</option>
+                  <option value="customer_order">Online order</option>
+                </select>
+              </div>
+              <div>
+                <label for="loyaltyLimit">Rows</label>
+                <select id="loyaltyLimit">
+                  <option value="50">50</option>
+                  <option value="200" selected>200</option>
+                  <option value="500">500</option>
+                </select>
+              </div>
+              <button type="button" class="btn-primary" id="loyaltySearchBtn">Search</button>
+              <button type="button" class="btn-outline" id="loyaltyReverseSelectedBtn">Reverse selected</button>
+            </div>
+            <p class="field-hint" id="loyaltyResult" style="padding:0 20px"></p>
+            <p class="field-hint" style="padding:0 20px;margin-top:0">
+              Reversing adds an opposite entry with your reason; the original row is kept for the audit trail. Each entry can be reversed once.
+            </p>
             <div class="table-wrap">
               <table class="data">
-                <thead><tr><th>Customer</th><th>Delta</th><th>Balance after</th><th>Reference</th></tr></thead>
+                <thead><tr><th></th><th>Time</th><th>Phone</th><th>Type / reason</th><th>Delta</th><th>Balance after</th><th>Member balance now</th><th>Status</th><th></th></tr></thead>
                 <tbody id="loyaltyBody"></tbody>
               </table>
             </div>
@@ -5371,12 +5403,59 @@ export class AdminDashboardController {
       renderCustomerPager(data.page || customerPage, data.pageSize || pageSize, data.total || 0);
     }
 
+    function escHtml(value) {
+      var d = document.createElement('div');
+      d.textContent = value === null || value === undefined ? '' : String(value);
+      return d.innerHTML.replace(/"/g, '&quot;');
+    }
+
     async function loadLoyalty() {
-      const data = await api('/admin/loyalty-ledger?limit=50');
-      const rows = (data || []).map((r) =>
-        '<tr><td>' + fmt(r.customerPhone) + '</td><td>' + fmt(r.deltaPoints) + '</td><td>' + fmt(r.balanceAfter) + '</td><td>' + fmt(r.referenceType || r.reason) + '</td></tr>'
-      );
-      document.getElementById('loyaltyBody').innerHTML = rows.join('') || '<tr><td colspan="4">No data</td></tr>';
+      var q = new URLSearchParams();
+      q.set('limit', (document.getElementById('loyaltyLimit') || {}).value || '200');
+      var phone = String((document.getElementById('loyaltySearch') || {}).value || '').trim();
+      var refType = (document.getElementById('loyaltyRefType') || {}).value || '';
+      if (phone) q.set('search', phone);
+      if (refType) q.set('referenceType', refType);
+      const data = await api('/admin/loyalty-ledger?' + q.toString());
+      const rows = (data || []).map((r) => {
+        var canReverse = r.referenceType !== 'reversal' && !r.reversed;
+        var status = r.referenceType === 'reversal' ? 'Reversal' : (r.reversed ? 'Reversed' : '');
+        var when = r.createdAt ? new Date(r.createdAt).toLocaleString('en-MY') : '-';
+        return '<tr' + (r.reversed ? ' style="opacity:.55"' : '') + '>' +
+          '<td>' + (canReverse ? '<input type="checkbox" class="loyaltyPick" data-entry-id="' + escHtml(r.id) + '" />' : '') + '</td>' +
+          '<td>' + escHtml(when) + '</td>' +
+          '<td>' + escHtml(fmt(r.customerPhone)) + '</td>' +
+          '<td>' + escHtml(fmt(r.referenceType)) + '<div class="field-hint" style="margin:0">' + escHtml(r.reason) + '</div></td>' +
+          '<td>' + escHtml(r.deltaPoints > 0 ? '+' + r.deltaPoints : r.deltaPoints) + '</td>' +
+          '<td>' + escHtml(fmt(r.balanceAfter)) + '</td>' +
+          '<td>' + escHtml(fmt(r.customerBalance)) + '</td>' +
+          '<td>' + escHtml(status) + '</td>' +
+          '<td>' + (canReverse ? '<button type="button" class="btn-outline loyaltyReverseBtn" data-entry-id="' + escHtml(r.id) + '">Reverse</button>' : '') + '</td>' +
+          '</tr>';
+      });
+      document.getElementById('loyaltyBody').innerHTML = rows.join('') || '<tr><td colspan="9">No data</td></tr>';
+    }
+
+    async function loyaltyReverseEntries(ids) {
+      var out = document.getElementById('loyaltyResult');
+      if (!ids.length) { if (out) out.textContent = 'Select at least one entry.'; return; }
+      var reason = window.prompt('Reason for reversing ' + ids.length + ' entr' + (ids.length === 1 ? 'y' : 'ies') + ' (required, min 3 characters):', 'Duplicate backfill');
+      if (reason === null) return;
+      reason = reason.trim();
+      if (reason.length < 3) { if (out) out.textContent = 'A reason of at least 3 characters is required.'; return; }
+      if (!window.confirm('Reverse ' + ids.length + ' entr' + (ids.length === 1 ? 'y' : 'ies') + '? This subtracts the points from the member(s).')) return;
+      var done = 0;
+      try {
+        for (var i = 0; i < ids.length; i += 1) {
+          if (out) out.textContent = 'Reversing ' + (i + 1) + ' of ' + ids.length + '…';
+          await apiPost('/admin/loyalty-ledger/' + encodeURIComponent(ids[i]) + '/reverse', { reason: reason });
+          done += 1;
+        }
+        if (out) out.textContent = 'Reversed ' + done + ' entr' + (done === 1 ? 'y' : 'ies') + '.';
+      } catch (e) {
+        if (out) out.textContent = 'Reversed ' + done + ' of ' + ids.length + ', then stopped: ' + (e.message || String(e));
+      }
+      await loadLoyalty();
     }
 
     function formatRewardWindow(v) {
@@ -8869,6 +8948,18 @@ export class AdminDashboardController {
       });
     });
     document.getElementById('refreshLoyaltyBtn').addEventListener('click', () => loadLoyalty().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('loyaltySearchBtn').addEventListener('click', () => loadLoyalty().catch((e) => { statusPanel.textContent = e.message; }));
+    document.getElementById('loyaltySearch').addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') loadLoyalty().catch((e) => { statusPanel.textContent = e.message; });
+    });
+    document.getElementById('loyaltyReverseSelectedBtn').addEventListener('click', () => {
+      var ids = Array.prototype.map.call(document.querySelectorAll('.loyaltyPick:checked'), (el) => el.getAttribute('data-entry-id'));
+      loyaltyReverseEntries(ids);
+    });
+    document.getElementById('loyaltyBody').addEventListener('click', (ev) => {
+      var btn = ev.target.closest ? ev.target.closest('.loyaltyReverseBtn') : null;
+      if (btn) loyaltyReverseEntries([btn.getAttribute('data-entry-id')]);
+    });
     document.getElementById('refreshWalletLedgerBtn').addEventListener('click', () => loadWalletLedger().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAudit().catch((e) => { statusPanel.textContent = e.message; }));
     document.getElementById('refreshLoginAuditBtn').addEventListener('click', () => loadLoginAudit().catch((e) => { statusPanel.textContent = e.message; }));
@@ -10288,19 +10379,40 @@ export class AdminDashboardController {
       if (!points || points < 1) { if (out) out.textContent = 'Enter a positive number of points.'; return; }
       if (!reason) { if (out) out.textContent = 'Enter a reason.'; return; }
       if (!password) { if (out) out.textContent = 'Enter your admin password.'; return; }
-      if (!window.confirm('Credit ' + points + ' points now? This cannot be undone.')) return;
+      var legacyRef = String((document.getElementById('wmBfRef') || {}).value || '').trim();
+      var submitBtn = document.getElementById('wmBfSubmitBtn');
+      if (submitBtn && submitBtn.disabled) return;
+      if (!window.confirm('Credit ' + points + ' points now? This cannot be undone (it can only be reversed).')) return;
+      if (submitBtn) submitBtn.disabled = true;
       if (out) out.textContent = 'Submitting…';
+      var body = { deltaPoints: points, reason: reason, adminPassword: password };
+      if (legacyRef) body.legacyReference = legacyRef;
+      var path = '/admin/customers/' + encodeURIComponent(customerId) + '/loyalty/backfill';
       try {
-        var res = await apiPost('/admin/customers/' + encodeURIComponent(customerId) + '/loyalty/backfill', {
-          deltaPoints: points,
-          reason: reason,
-          adminPassword: password,
-        });
+        var res;
+        try {
+          res = await apiPost(path, body);
+        } catch (e1) {
+          var msg1 = e1.message || String(e1);
+          if (msg1.indexOf('BACKFILL_POSSIBLE_DUPLICATE') === -1) throw e1;
+          var friendly = msg1;
+          try { friendly = JSON.parse(msg1.slice(msg1.indexOf('): ') + 3)).message || msg1; } catch (_) {}
+          if (!window.confirm(friendly + ' Credit it again anyway?')) {
+            if (out) out.textContent = 'Cancelled — nothing was credited.';
+            return;
+          }
+          body.confirmDuplicate = true;
+          res = await apiPost(path, body);
+        }
         if (out) out.textContent = 'Credited ' + points + ' points. New balance: ' + res.pointsBalance + '.';
-        var pwEl = document.getElementById('wmBfPassword');
-        if (pwEl) pwEl.value = '';
+        ['wmBfPoints', 'wmBfReason', 'wmBfRef', 'wmBfPassword'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     }
     function grSyncType() {

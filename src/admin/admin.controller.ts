@@ -30,6 +30,7 @@ import { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
 import { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
 import { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
+import { AdminReverseLoyaltyEntryDto } from './dto/admin-reverse-loyalty-entry.dto';
 import { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
 import { AdminWalletAdjustmentDto } from './dto/admin-wallet-adjustment.dto';
 import { AdminWalletReversalDto } from './dto/admin-wallet-reversal.dto';
@@ -338,8 +339,25 @@ export class AdminController {
   @RequirePermissions(P.LOYALTY_READ)
   listLoyaltyLedger(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('reason') reason?: string,
+    @Query('referenceType') referenceType?: string,
   ) {
-    return this.admin.listLoyaltyLedger(limit);
+    return this.admin.listLoyaltyLedger(limit, {
+      search,
+      reason,
+      referenceType,
+    });
+  }
+
+  @Post('loyalty-ledger/:id/reverse')
+  @RequirePermissions(P.LOYALTY_ADJUST)
+  reverseLoyaltyEntry(
+    @Param('id') id: string,
+    @Body() dto: AdminReverseLoyaltyEntryDto,
+    @CurrentAdmin() auth: AdminAuthState,
+  ) {
+    return this.admin.reverseLoyaltyEntry(id, dto, auth);
   }
 
   @Get('wallet-ledger')
