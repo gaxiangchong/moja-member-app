@@ -2422,7 +2422,12 @@ function App() {
                     <span className="accountPointsValue">
                       {pointsBalance.toLocaleString()}
                     </span>
-                    <span className="accountPointsUnit">pts to spend</span>
+                    <span className="accountPointsUnit">
+                      pts balance
+                      <span className="accountPointsEarned">
+                        ({lifetimePoints.toLocaleString()} earned in total)
+                      </span>
+                    </span>
                   </div>
                   <div
                     className="progressWrap"
@@ -2454,14 +2459,10 @@ function App() {
                     </span>
                   </div>
                   <p className="accountTierHint">
-                    {tierProgress.earnLabel}
+                    Note: {tierProgress.earnLabel}
                     {pointsToNext > 0 && tierProgress.nextTierLabel
-                      ? ` · earn ${pointsToNext.toLocaleString()} more points to reach ${tierProgress.nextTierLabel}`
+                      ? ` · ${pointsToNext.toLocaleString()} more points to reach ${tierProgress.nextTierLabel}`
                       : ' · Top tier'}
-                  </p>
-                  <p className="caption" style={{ margin: '4px 0 0' }}>
-                    {lifetimePoints.toLocaleString()} points earned in total. Your tier is based on
-                    what you&apos;ve earned, so spending points on rewards never lowers it.
                   </p>
                 </Card>
 

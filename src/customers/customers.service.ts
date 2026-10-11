@@ -359,6 +359,8 @@ export class CustomersService {
       email?: string | null;
       /** Originating app ('bento' | 'cake'); seeds the interest tag at signup. */
       source?: string | null;
+      /** The caller pushes to SalesPlay itself once it has saved the name. */
+      skipSalesplaySync?: boolean;
     },
   ) {
     const normalizedEmail = opts?.email?.trim().toLowerCase() || null;
@@ -411,7 +413,7 @@ export class CustomersService {
     await this.loyalty.ensureWallet(customer.id);
     await this.wallet.ensureWallet(customer.id);
     await this.ensureKitchenPickupCode(customer.id);
-    this.syncToSalesplay(customer);
+    if (!opts?.skipSalesplaySync) this.syncToSalesplay(customer);
     return customer;
   }
 
@@ -440,6 +442,34 @@ export class CustomersService {
         }`,
       );
     }
+  }
+
+  /**
+   * Pushes the member to SalesPlay and waits for the answer, for staff who need
+   * to know the member is in the till before ringing up the sale.
+   */
+  async pushToSalesplayNow(
+    customerId: string,
+  ): Promise<'synced' | 'failed' | 'not_configured'> {
+    if (!this.salesplay.isConfigured()) return 'not_configured';
+    const customer = await this.findByIdOrThrow(customerId);
+    const { ok, customerId: salesplayCustomerId } =
+      await this.salesplay.pushCustomer({
+        id: customer.id,
+        displayName: customer.displayName,
+        phoneE164: customer.phoneE164,
+        email: customer.email,
+        code: customer.referralCode,
+        memberTier: customer.memberTier,
+      });
+    if (!ok) return 'failed';
+    if (salesplayCustomerId) {
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { salesplayCustomerId },
+      });
+    }
+    return 'synced';
   }
 
   /** Fire-and-forget SalesPlay upsert that also stores the returned customer id. */

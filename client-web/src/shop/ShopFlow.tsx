@@ -91,10 +91,13 @@ function todayIsoDate(): string {
 
 // Optional extras offered at checkout for cake orders. Their ids aren't catalog
 // products, so they're left out of the ship-nationwide checks.
+// `onePerCake`: free, and capped at the number of whole cakes in the cart.
 const CHECKOUT_ADDONS = [
-  { productId: 'addon-birthday-set', name: 'Birthday set', note: 'Candles & greeting card', priceCents: 0 },
-  { productId: 'addon-thermal-pack', name: 'Thermal pack', note: 'Keeps your cake cool on the way', priceCents: 500 },
+  { productId: 'addon-birthday-set', name: 'Birthday set', note: 'Candles & greeting card', priceCents: 0, onePerCake: true },
+  { productId: 'addon-thermal-bag', name: 'Thermal bag', note: 'Keeps your cake cool on the way', priceCents: 500, onePerCake: false },
 ] as const;
+type CheckoutAddon = (typeof CHECKOUT_ADDONS)[number];
+const MAX_ADDON_QTY = 99;
 
 function isAddonLine(l: { productId: string }): boolean {
   return CHECKOUT_ADDONS.some((a) => a.productId === l.productId);
@@ -204,6 +207,13 @@ export function ShopFlow({
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
+  const checkoutErrorsRef = useRef<HTMLDivElement>(null);
+  // Errors sit beside the Pay button; bring them on screen however they were raised.
+  useEffect(() => {
+    if (checkoutErrors?.length) {
+      checkoutErrorsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [checkoutErrors]);
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -315,11 +325,23 @@ export function ShopFlow({
   const hasCake = unshippableNames.length > 0;
   const [pickupBy, setPickupBy] = useState<PickupBy>('self');
 
-  // Extras only go with cakes: drop them once the last cake leaves the cart.
+  const wholeCakeCount = productLines
+    .filter((l) => products.find((p) => p.id === l.productId)?.category === 'whole_cakes')
+    .reduce((n, l) => n + l.qty, 0);
+  const addonLimit = (addon: CheckoutAddon) =>
+    !hasCake ? 0 : addon.onePerCake ? wholeCakeCount : MAX_ADDON_QTY;
+
+  // Extras only go with cakes, and birthday sets never outnumber the cakes:
+  // trim them whenever the cart shrinks.
   useEffect(() => {
-    if (hasCake) return;
-    cart.filter(isAddonLine).forEach((l) => removeLine(l.lineId));
-  }, [hasCake, cart, removeLine]);
+    for (const addon of CHECKOUT_ADDONS) {
+      const line = cart.find((l) => l.productId === addon.productId);
+      if (!line) continue;
+      const limit = addonLimit(addon);
+      if (line.qty > limit) setLineQty(line.lineId, limit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addonLimit derives from the deps listed
+  }, [cart, hasCake, wholeCakeCount, setLineQty]);
 
   // A date saved from an earlier visit may have passed; never offer one before today.
   const earliestPickupDate = pickupDay?.today ?? todayIsoDate();
@@ -329,7 +351,7 @@ export function ShopFlow({
     }
   }, [pickupDate, earliestPickupDate, setPickupDate]);
 
-  const toggleAddon = (addon: (typeof CHECKOUT_ADDONS)[number]) => {
+  const toggleAddon = (addon: CheckoutAddon) => {
     const line = cart.find((l) => l.productId === addon.productId);
     if (line) {
       removeLine(line.lineId);
@@ -340,7 +362,7 @@ export function ShopFlow({
       name: addon.name,
       imageUrl: '',
       unitPriceCents: addon.priceCents,
-      qty: 1,
+      qty: addon.onePerCake ? addonLimit(addon) : 1,
       deliveryClass: 'LOCAL_ONLY',
     });
   };
@@ -1309,13 +1331,6 @@ export function ShopFlow({
             <span className="shopTopSpacer" />
           </header>
 
-          {checkoutErrors?.length ? (
-            <div className="shopErrorBox" role="alert">
-              {checkoutErrors.map((e) => (
-                <p key={e}>{e}</p>
-              ))}
-            </div>
-          ) : null}
 
           <section className="pmCard">
             <div className="addressBookHead">
@@ -1334,22 +1349,57 @@ export function ShopFlow({
             {hasCake ? (
               <div className="checkoutAddons">
                 <p className="checkoutAddonsTitle">Add extras</p>
-                {CHECKOUT_ADDONS.map((addon) => (
-                  <label key={addon.productId} className="checkoutAddon">
-                    <input
-                      type="checkbox"
-                      checked={cart.some((l) => l.productId === addon.productId)}
-                      onChange={() => toggleAddon(addon)}
-                    />
-                    <span className="checkoutAddonText">
-                      <strong>{addon.name}</strong>
-                      <small>{addon.note}</small>
-                    </span>
-                    <span className="checkoutAddonPrice">
-                      {addon.priceCents === 0 ? 'FREE' : formatRm(addon.priceCents)}
-                    </span>
-                  </label>
-                ))}
+                {CHECKOUT_ADDONS.filter((addon) => addonLimit(addon) > 0).map((addon) => {
+                  const line = cart.find((l) => l.productId === addon.productId);
+                  const limit = addonLimit(addon);
+                  return (
+                    <div key={addon.productId} className="checkoutAddon">
+                      <label className="checkoutAddonPick">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(line)}
+                          onChange={() => toggleAddon(addon)}
+                        />
+                        <span className="checkoutAddonText">
+                          <strong>{addon.name}</strong>
+                          <small>
+                            {addon.onePerCake
+                              ? `${addon.note}`
+                              : `${addon.note}`}
+                          </small>
+                        </span>
+                      </label>
+                      {line ? (
+                        <div className="shopStepper checkoutAddonStepper">
+                          <button
+                            type="button"
+                            className="ghost"
+                            aria-label={`Fewer ${addon.name}`}
+                            disabled={line.qty <= 1}
+                            onClick={() => setLineQty(line.lineId, line.qty - 1)}
+                          >
+                            −
+                          </button>
+                          <span>{line.qty}</span>
+                          <button
+                            type="button"
+                            className="ghost"
+                            aria-label={`More ${addon.name}`}
+                            disabled={line.qty >= limit}
+                            onClick={() => setLineQty(line.lineId, line.qty + 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : null}
+                      <span className="checkoutAddonPrice">
+                        {addon.priceCents === 0
+                          ? 'FREE'
+                          : formatRm(addon.priceCents * (line?.qty ?? 1))}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </section>
@@ -1388,7 +1438,7 @@ export function ShopFlow({
               </p>
             ) : !canShip ? (
               <p className="caption" style={{ margin: '6px 0 0' }}>
-                Cakes and drinks are for pickup at our shop only.
+                Kindly show the QR code to our staff upon pickup.
               </p>
             ) : null}
             {isScheduled ? (
@@ -1917,6 +1967,13 @@ export function ShopFlow({
                 <span>{formatRm(total)}</span>
               </div>
             </div>
+            {checkoutErrors?.length ? (
+              <div ref={checkoutErrorsRef} className="shopErrorBox" role="alert">
+                {checkoutErrors.map((e) => (
+                  <p key={e}>{e}</p>
+                ))}
+              </div>
+            ) : null}
             <div className="shopPayActionRow">
               <button
                 type="button"

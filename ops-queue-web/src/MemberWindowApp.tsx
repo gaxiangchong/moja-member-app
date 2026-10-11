@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   lookupMember,
+  pushMemberToSalesplay,
   registerMember,
   type MemberNextStep,
   type OpsMemberProfile,
+  type SalesplayPushStatus,
 } from './api';
 import { CounterRedeemPanel } from './CounterRedeemPanel';
 import { MemberQrScanModal } from './MemberQrScanModal';
@@ -91,8 +93,13 @@ export function MemberWindowApp() {
         nextStep: MemberNextStep;
         member: OpsMemberProfile;
         justCreated?: boolean;
+        alreadyExisted?: boolean;
+        salesplay?: SalesplayPushStatus;
       }
   >({ kind: 'none' });
+  /** The "Register new member" form, opened by the cashier or by a lookup miss. */
+  const [newMemberOpen, setNewMemberOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [consent, setConsent] = useState(false);
@@ -116,6 +123,8 @@ export function MemberWindowApp() {
 
   const reset = useCallback(() => {
     setPhone('');
+    setNewPhone('');
+    setNewMemberOpen(false);
     setDisplayName('');
     setEmail('');
     setConsent(false);
@@ -133,6 +142,7 @@ export function MemberWindowApp() {
     try {
       const res = await lookupMember(apiKey, value, staffCode, base);
       if (res.found) {
+        setNewMemberOpen(false);
         setResult({
           kind: 'found',
           phoneE164: res.phoneE164,
@@ -141,6 +151,8 @@ export function MemberWindowApp() {
         });
       } else {
         setResult({ kind: 'not_found', phoneE164: res.phoneE164 });
+        setNewPhone(value);
+        setNewMemberOpen(true);
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Lookup failed');
@@ -150,34 +162,38 @@ export function MemberWindowApp() {
   }, [apiKey, phone, staffCode, base]);
 
   const doRegister = useCallback(async () => {
-    if (!apiKey || !phone.trim()) return;
+    if (!apiKey || !newPhone.trim() || !displayName.trim()) return;
     setBusy(true);
     setErr(null);
     try {
       const res = await registerMember(
         apiKey,
         {
-          phone,
-          displayName: displayName.trim() || undefined,
+          phone: newPhone,
+          displayName: displayName.trim(),
           email: email.trim() || undefined,
           marketingConsent: consent,
           staffCode: staffCode || undefined,
         },
         base,
       );
+      setNewMemberOpen(false);
+      setPhone(newPhone);
       setResult({
         kind: 'found',
         phoneE164: res.phoneE164,
         nextStep: res.nextStep,
         member: res.member,
         justCreated: !res.alreadyExisted,
+        alreadyExisted: res.alreadyExisted,
+        salesplay: res.salesplay,
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Registration failed');
     } finally {
       setBusy(false);
     }
-  }, [apiKey, phone, displayName, email, consent, staffCode, base]);
+  }, [apiKey, newPhone, displayName, email, consent, staffCode, base]);
 
   if (authState.status !== 'authenticated') {
     return (
@@ -237,6 +253,20 @@ export function MemberWindowApp() {
         <button type="button" className="memberScanBtn" onClick={() => setScanOpen(true)}>
           Scan member QR
         </button>
+        {!newMemberOpen ? (
+          <button
+            type="button"
+            className="memberScanBtn"
+            onClick={() => {
+              setNewPhone(phone);
+              setResult({ kind: 'none' });
+              setErr(null);
+              setNewMemberOpen(true);
+            }}
+          >
+            + Register new member
+          </button>
+        ) : null}
         <p className="memberHint">
           Read the number back to the customer before saving — points follow the
           phone number, and a typo cannot be undone by the customer.
@@ -249,18 +279,33 @@ export function MemberWindowApp() {
         </p>
       )}
 
-      {result.kind === 'not_found' && (
+      {newMemberOpen && result.kind !== 'found' && (
         <section className="memberCard">
-          <h2>New member</h2>
-          <p className="memberNormalized">
-            Saving as <strong>{result.phoneE164}</strong>
+          <h2>Register new member</h2>
+          {result.kind === 'not_found' ? (
+            <p className="memberNormalized">
+              No member yet with <strong>{result.phoneE164}</strong>
+            </p>
+          ) : null}
+          <p className="memberHint">
+            Once saved, the member is added to SalesPlay so you can attach them to
+            the sale and they start collecting points.
           </p>
+          <label htmlFor="newMemberPhone">Phone number</label>
+          <input
+            id="newMemberPhone"
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+            placeholder="012-345 6789"
+            inputMode="tel"
+            autoComplete="off"
+          />
           <label htmlFor="memberName">Name</label>
           <input
             id="memberName"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Name on receipt"
+            placeholder="Name shown in SalesPlay"
             autoComplete="off"
           />
           <label htmlFor="memberEmail">Email (optional)</label>
@@ -284,9 +329,12 @@ export function MemberWindowApp() {
             type="button"
             className="memberPrimary"
             onClick={() => void doRegister()}
-            disabled={busy}
+            disabled={busy || !newPhone.trim() || !displayName.trim()}
           >
             {busy ? 'Saving…' : 'Register member'}
+          </button>
+          <button type="button" className="memberScanBtn" onClick={reset}>
+            Cancel
           </button>
         </section>
       )}
@@ -297,6 +345,8 @@ export function MemberWindowApp() {
           member={result.member}
           nextStep={result.nextStep}
           justCreated={result.justCreated}
+          alreadyExisted={result.alreadyExisted}
+          salesplay={result.salesplay}
           onDone={reset}
           apiKey={apiKey}
           base={base}
@@ -326,6 +376,8 @@ function MemberResultCard({
   member,
   nextStep,
   justCreated,
+  alreadyExisted,
+  salesplay,
   onDone,
   apiKey,
   base,
@@ -337,6 +389,9 @@ function MemberResultCard({
   member: OpsMemberProfile;
   nextStep: MemberNextStep;
   justCreated?: boolean;
+  alreadyExisted?: boolean;
+  /** Set right after registering; absent for a plain lookup. */
+  salesplay?: SalesplayPushStatus;
   onDone: () => void;
   apiKey: string;
   base: string;
@@ -347,6 +402,18 @@ function MemberResultCard({
   const advice = nextStepAdvice(nextStep, member.activated);
   // Redeeming changes the balance, so the card keeps its own copy.
   const [points, setPoints] = useState(member.pointsBalance ?? 0);
+  const [salesplayStatus, setSalesplayStatus] = useState(salesplay);
+  const [salesplayBusy, setSalesplayBusy] = useState(false);
+  const retrySalesplay = async () => {
+    setSalesplayBusy(true);
+    try {
+      setSalesplayStatus(await pushMemberToSalesplay(apiKey, phoneE164, staffCode, base));
+    } catch {
+      setSalesplayStatus('failed');
+    } finally {
+      setSalesplayBusy(false);
+    }
+  };
   return (
     <section className="memberCard">
       {justCreated && (
@@ -354,6 +421,38 @@ function MemberResultCard({
           ✓ Member registered
         </p>
       )}
+      {alreadyExisted && (
+        <p className="memberCreated" role="status">
+          Already a member — nothing new was created.
+        </p>
+      )}
+      {salesplayStatus === 'synced' ? (
+        <div className="memberAdvice memberAdvice--ok">
+          <strong>In SalesPlay</strong>
+          <p>
+            Search <strong>{phoneE164.replace(/\D/g, '')}</strong> or their name in
+            SalesPlay&apos;s customers and add them to the sale to collect points.
+          </p>
+        </div>
+      ) : salesplayStatus === 'failed' ? (
+        <div className="memberAdvice memberAdvice--action">
+          <strong>Not added to SalesPlay</strong>
+          <p>SalesPlay didn&apos;t accept the member. Try again in a moment.</p>
+          <button
+            type="button"
+            className="memberScanBtn"
+            disabled={salesplayBusy}
+            onClick={() => void retrySalesplay()}
+          >
+            {salesplayBusy ? 'Sending…' : 'Retry SalesPlay'}
+          </button>
+        </div>
+      ) : salesplayStatus === 'not_configured' ? (
+        <div className="memberAdvice memberAdvice--action">
+          <strong>SalesPlay not connected</strong>
+          <p>Add this customer in SalesPlay by hand, using their phone number.</p>
+        </div>
+      ) : null}
       <h2>{member.displayName || 'Member'}</h2>
       <p className="memberNormalized">{phoneE164}</p>
 

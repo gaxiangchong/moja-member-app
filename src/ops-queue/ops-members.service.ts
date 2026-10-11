@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CustomerStatus, VoucherStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CustomersService } from '../customers/customers.service';
@@ -169,7 +174,7 @@ export class OpsMembersService {
 
     const existing = await this.prisma.customer.findUnique({
       where: { phoneE164 },
-      select: { id: true },
+      select: { id: true, salesplayCustomerId: true },
     });
 
     // Creates the DRAFT customer plus loyalty/stored wallets and referral code.
@@ -178,6 +183,7 @@ export class OpsMembersService {
     const customer = await this.customers.ensureCustomerForPhone(phoneE164, {
       email: dto.email?.trim() || undefined,
       source: 'cake',
+      skipSalesplaySync: true,
     });
 
     const displayName = dto.displayName?.trim();
@@ -221,8 +227,41 @@ export class OpsMembersService {
       );
     }
 
+    // Sent only now, with the name saved, so the till shows who they are.
+    // A member already linked to a SalesPlay customer is left as is.
+    const salesplay =
+      existing?.salesplayCustomerId
+        ? ('synced' as const)
+        : await this.customers.pushToSalesplayNow(customer.id);
+
     const result = await this.lookupById(customer.id, phoneE164);
-    return { ...result, alreadyExisted: Boolean(existing) };
+    return { ...result, alreadyExisted: Boolean(existing), salesplay };
+  }
+
+  /** Retries sending a member to SalesPlay when the push at registration failed. */
+  async pushToSalesplay(dto: OpsMemberLookupDto, ip?: string | null) {
+    const phoneE164 = this.normalizePhone(dto.phone);
+    const staffLabel = await this.resolveStaffLabel(dto.staffCode);
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'MEMBER_NOT_FOUND',
+        message: 'No member with this phone number.',
+      });
+    }
+    const salesplay = await this.customers.pushToSalesplayNow(customer.id);
+    await this.audit.log({
+      actorType: 'system',
+      action: 'ops.member_salesplay_push',
+      entityType: 'customer',
+      entityId: customer.id,
+      ipAddress: ip ?? null,
+      metadata: { phoneE164, staff: staffLabel, result: salesplay },
+    });
+    return { salesplay };
   }
 
   private async lookupById(customerId: string, phoneE164: string) {

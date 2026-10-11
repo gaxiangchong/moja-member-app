@@ -346,12 +346,32 @@ export type OpsMemberLookupResult =
       member: OpsMemberProfile;
     };
 
+/** Whether the member is now in the SalesPlay till's customer list. */
+export type SalesplayPushStatus = 'synced' | 'failed' | 'not_configured';
+
 export type OpsMemberCreateResult = {
   phoneE164: string;
   nextStep: MemberNextStep;
   member: OpsMemberProfile;
   alreadyExisted: boolean;
+  salesplay: SalesplayPushStatus;
 };
+
+export async function pushMemberToSalesplay(
+  apiKey: string,
+  phone: string,
+  staffCode: string | undefined,
+  baseUrl: string = defaultBase,
+): Promise<SalesplayPushStatus> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members/salesplay`, {
+    method: 'POST',
+    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, staffCode: staffCode || undefined }),
+  });
+  const data = await parseJson<{ salesplay?: SalesplayPushStatus; message?: string | string[] }>(res);
+  assertOk(res, data);
+  return data.salesplay ?? 'failed';
+}
 
 export async function lookupMember(
   apiKey: string,

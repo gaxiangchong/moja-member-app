@@ -24,4 +24,9 @@ export class OpsMembersController {
   create(@Body() dto: OpsCreateMemberDto, @Ip() ip: string) {
     return this.members.createMember(dto, ip);
   }
+
+  @Post('salesplay')
+  pushToSalesplay(@Body() dto: OpsMemberLookupDto, @Ip() ip: string) {
+    return this.members.pushToSalesplay(dto, ip);
+  }
 }

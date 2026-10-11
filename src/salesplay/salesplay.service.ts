@@ -483,14 +483,25 @@ export class SalesplayService {
    * Returns the SalesPlay customer id on success, otherwise null.
    */
   async syncCustomer(input: SalesplayCustomerInput): Promise<string | null> {
-    if (!this.isConfigured()) return null;
+    return (await this.pushCustomer(input)).customerId;
+  }
+
+  /**
+   * Like `syncCustomer`, but says whether SalesPlay accepted the member — a
+   * success response does not always carry a customer id.
+   */
+  async pushCustomer(
+    input: SalesplayCustomerInput,
+  ): Promise<{ ok: boolean; customerId: string | null }> {
+    const failed = { ok: false, customerId: null };
+    if (!this.isConfigured()) return failed;
 
     const token = await this.getAccessToken();
     if (!token) {
       this.logger.error(
         `SalesPlay customer sync skipped for ${input.id ?? input.phoneE164}: no usable access token.`,
       );
-      return null;
+      return failed;
     }
     const url = `${this.apiBase()}/customers`;
     const payload = this.buildPayload(input);
@@ -513,19 +524,19 @@ export class SalesplayService {
         this.logger.error(
           `SalesPlay customer sync failed (${res.status}) for ${input.id ?? input.phoneE164}: ${text}`,
         );
-        return null;
+        return failed;
       }
       this.logger.log(
         `SalesPlay customer synced for ${input.id ?? input.phoneE164}: ${text.slice(0, 500)}`,
       );
-      return this.parseCustomerId(text);
+      return { ok: true, customerId: this.parseCustomerId(text) };
     } catch (err) {
       this.logger.error(
         `SalesPlay customer sync error for ${input.id ?? input.phoneE164}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      return null;
+      return failed;
     }
   }
 
