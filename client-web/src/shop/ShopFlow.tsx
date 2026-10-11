@@ -1228,11 +1228,11 @@ export function ShopFlow({
                     {soldOut ? (
                       <span className="shopSoldOutBadge">Sold out</span>
                     ) : null}
-                    <ShippingBadge shippable={p.shippable === true} />
+                    {p.shippable === true ? <ShippingBadge shippable /> : null}
                   </div>
                   <div className="productBody">
                     <strong>{p.name}</strong>
-                    <p>{p.shortDescription}</p>
+                    <ClampedDescription text={p.shortDescription} />
                     <div className="productFoot">
                       <span className="shopFromLabel">from</span>
                       <span>
@@ -2449,6 +2449,28 @@ function CartLineRow({
 }
 
 /** Top-right tag on a product photo: can it be posted anywhere, or is it for pickup / nearby delivery only? */
+function ClampedDescription({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <div className="productDesc">
+      <p ref={ref}>{text}</p>
+      {overflowing ? <span className="productDescMore">more...</span> : null}
+    </div>
+  );
+}
+
 function ShippingBadge({ shippable }: { shippable: boolean }) {
   return (
     <span

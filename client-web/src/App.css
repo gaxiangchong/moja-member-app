@@ -1505,6 +1505,10 @@
 }
 
 .productCard {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px;
   background: #fff;
   border: 1px solid #dde8fb;
   border-radius: 18px;
@@ -1514,16 +1518,13 @@
 
 .productImage {
   position: relative;
-  height: 175px;
+  flex: 0 0 auto;
+  width: clamp(120px, 42%, 180px);
+  aspect-ratio: 1 / 1;
+  align-self: flex-start;
+  border-radius: 12px;
   background-color: #f1ece6;
   overflow: hidden;
-}
-.productImage::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(20, 16, 14, 0.06), rgba(20, 16, 14, 0.35));
-  pointer-events: none;
 }
 .productImageInner {
   width: 100%;
@@ -1533,26 +1534,56 @@
 }
 
 .productBody {
-  padding: 12px;
-  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  padding: 2px 8px 4px 0;
 }
 
 .productBody strong {
   font-size: 16px;
+  line-height: 1.25;
 }
 
-.productBody p {
+.productDesc p {
   margin: 0;
   color: #5f77a5;
   font-size: 13px;
+  line-height: 1.4;
+  max-height: calc(13px * 1.4 * 3);
+  overflow: hidden;
+}
+
+.productDescMore {
+  display: block;
+  color: #00348d;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.productImage .shipBadge {
+  top: 6px;
+  right: 6px;
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+.productImage .shopSoldOutBadge {
+  top: auto;
+  bottom: 6px;
+  left: 6px;
 }
 
 .productFoot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
 }
 
 .productFoot span {
