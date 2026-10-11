@@ -444,7 +444,11 @@ export class ShopCatalogService implements OnModuleInit {
   // Product storage
   // ---------------------------------------------------------------------
 
-  /** Fix imageUrl drift from moja-sites sync (spaces, wrong case, old filenames). */
+  /**
+   * Fix imageUrl drift from moja-sites sync (spaces, wrong case, old filenames).
+   * Skipped once an admin has uploaded/cleared the image (imageUrl lock), so
+   * admin replacements are not reverted to the canonical file.
+   */
   private async repairCanonicalProductImages(
     items: ShopCatalogProduct[],
   ): Promise<ShopCatalogProduct[]> {
@@ -452,6 +456,7 @@ export class ShopCatalogService implements OnModuleInit {
     const out = items.map((p) => {
       const canonical = CANONICAL_PRODUCT_IMAGE_URL[p.id];
       if (!canonical) return p;
+      if (p.syncOverrides?.includes('imageUrl')) return p;
       const cur = (p.imageUrl ?? '').trim();
       const needsFix =
         !cur ||
