@@ -1179,6 +1179,7 @@
 }
 
 .popularGridBody {
+  flex: 1 1 auto;
   padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
@@ -1193,6 +1194,7 @@
 }
 
 .popularGridPrice {
+  margin-top: auto;
   font-size: 13px;
   font-weight: 700;
   color: #00348d;
