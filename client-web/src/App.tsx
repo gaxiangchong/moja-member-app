@@ -235,10 +235,12 @@ function AdCarousel({ slides }: { slides: HomeAdSlide[] }) {
       aria-label="Promotions"
       style={style}
     >
-      <div className="adCarouselInner">
-        <div className="adCarouselTitle">{current.title}</div>
-        {current.body ? <div className="adCarouselBody">{current.body}</div> : null}
-      </div>
+      {hasImage ? null : (
+        <div className="adCarouselInner">
+          <div className="adCarouselTitle">{current.title}</div>
+          {current.body ? <div className="adCarouselBody">{current.body}</div> : null}
+        </div>
+      )}
       {list.length > 1 ? (
         <>
           <button
