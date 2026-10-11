@@ -225,14 +225,14 @@ export const useShopStore = create<ShopState>()(
         delivery: state.delivery,
         selectedAddressId: state.selectedAddressId,
       }),
-      // A cart saved before delivery existed may say "in_store" (no longer
-      // offered); anything unknown falls back to self pickup.
+      // A saved cart may say "in_store" or "delivery" (no longer offered);
+      // a restored cart always starts at self pickup.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ShopState>;
         return {
           ...current,
           ...p,
-          fulfillmentMethod: p.fulfillmentMethod === 'delivery' ? 'delivery' : 'pickup',
+          fulfillmentMethod: 'pickup',
           delivery: { ...current.delivery, ...(p.delivery ?? {}) },
         };
       },

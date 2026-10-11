@@ -9,6 +9,7 @@ import {
   type FulfillmentMethod,
   type MockReward,
   type MockVoucher,
+  type PickupBy,
   type Product,
   type ProductCategory,
 } from './types';
@@ -37,7 +38,6 @@ import {
   type DeliveryInfo,
   type SavedAddress,
   fetchMyAddresses,
-  addressInLocalArea,
   fetchPickupSlots,
   fetchShopAvailability,
   fetchShopCatalogProducts,
@@ -49,7 +49,7 @@ import {
 import { HIDDEN_PAYMENT_CHANNELS } from '../payments/channels';
 import {
   DELIVERY_CHARGE_NOTICE,
-  deliveryWhatsappMessage,
+  courierPickupWhatsappMessage,
   whatsappUrl,
 } from '../lib/whatsapp';
 import { savePendingPayment } from '../payments/pendingPayment';
@@ -63,8 +63,6 @@ type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'addresses' | 'paymen
  * from Rewards → Vouchers and paste it in. Set to true to bring the buttons back.
  */
 const SHOW_CHECKOUT_PROMO_BUTTONS = false;
-
-const NO_POSTCODES: string[] = [];
 
 type PaymentMethodMode = 'channel' | 'card_token' | 'credits';
 
@@ -89,6 +87,17 @@ function todayIsoDate(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+// Optional extras offered at checkout for cake orders. Their ids aren't catalog
+// products, so they're left out of the ship-nationwide checks.
+const CHECKOUT_ADDONS = [
+  { productId: 'addon-birthday-set', name: 'Birthday set', note: 'Candles & greeting card', priceCents: 0 },
+  { productId: 'addon-thermal-pack', name: 'Thermal pack', note: 'Keeps your cake cool on the way', priceCents: 500 },
+] as const;
+
+function isAddonLine(l: { productId: string }): boolean {
+  return CHECKOUT_ADDONS.some((a) => a.productId === l.productId);
 }
 
 // Channels intentionally hidden from the checkout UI even if returned by the
@@ -286,6 +295,7 @@ export function ShopFlow({
     [products],
   );
   const checkoutCart = cart;
+  const productLines = cart.filter((l) => !isAddonLine(l));
   const cartGroups = useMemo(() => {
     const groups: { cls: DeliveryClass; lines: CartLine[] }[] = [];
     for (const cls of ['LOCAL_ONLY', 'NATIONWIDE'] as DeliveryClass[]) {
@@ -296,22 +306,52 @@ export function ShopFlow({
   }, [cart, classOfLine]);
   // Parcels carry nationwide products only, never when a cake is being checked out.
   const canShip =
-    checkoutCart.length > 0 &&
-    checkoutCart.every((l) => classOfLine(l) === 'NATIONWIDE');
+    productLines.length > 0 &&
+    productLines.every((l) => classOfLine(l) === 'NATIONWIDE');
   // Items that can't be posted. While any is in the cart, nothing in it can ship.
   const unshippableNames = [
-    ...new Set(checkoutCart.filter((l) => classOfLine(l) === 'LOCAL_ONLY').map((l) => l.name)),
+    ...new Set(productLines.filter((l) => classOfLine(l) === 'LOCAL_ONLY').map((l) => l.name)),
   ];
   const hasCake = unshippableNames.length > 0;
-  const deliveryOffered = deliveryInfo?.enabled !== false;
+  const [pickupBy, setPickupBy] = useState<PickupBy>('self');
+
+  // Extras only go with cakes: drop them once the last cake leaves the cart.
+  useEffect(() => {
+    if (hasCake) return;
+    cart.filter(isAddonLine).forEach((l) => removeLine(l.lineId));
+  }, [hasCake, cart, removeLine]);
+
+  // A date saved from an earlier visit may have passed; never offer one before today.
+  const earliestPickupDate = pickupDay?.today ?? todayIsoDate();
+  useEffect(() => {
+    if (!pickupDate || pickupDate < earliestPickupDate) {
+      setPickupDate(earliestPickupDate);
+    }
+  }, [pickupDate, earliestPickupDate, setPickupDate]);
+
+  const toggleAddon = (addon: (typeof CHECKOUT_ADDONS)[number]) => {
+    const line = cart.find((l) => l.productId === addon.productId);
+    if (line) {
+      removeLine(line.lineId);
+      return;
+    }
+    addToCart({
+      productId: addon.productId,
+      name: addon.name,
+      imageUrl: '',
+      unitPriceCents: addon.priceCents,
+      qty: 1,
+      deliveryClass: 'LOCAL_ONLY',
+    });
+  };
   const shippingOffered = canShip && deliveryInfo?.shippingEnabled !== false;
   const itemCount = getCartItemCount();
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
-  const isDelivery = fulfillmentMethod === 'delivery';
   const isShipping = fulfillmentMethod === 'shipping';
-  // Self pickup and a local delivery go out on a chosen day and time slot; a parcel is just posted.
-  const isScheduled = fulfillmentMethod === 'pickup' || isDelivery;
+  // A pickup goes out on a chosen day and time slot; a parcel is just posted.
+  const isScheduled = fulfillmentMethod === 'pickup';
+  const byCourier = isScheduled && pickupBy === 'courier';
   const goodsTotal = getTotalCents();
   const shippingFee =
     isShipping && deliveryInfo ? shippingFeeFor(deliveryInfo, goodsTotal) : 0;
@@ -430,13 +470,6 @@ export function ShopFlow({
     };
   }, [screen]);
 
-  // The shop turned delivery off while this cart was waiting.
-  useEffect(() => {
-    if (deliveryInfo && !deliveryInfo.enabled && fulfillmentMethod === 'delivery') {
-      setFulfillmentMethod('pickup');
-    }
-  }, [deliveryInfo, fulfillmentMethod, setFulfillmentMethod]);
-
   // A parcel can't carry cakes, and shipping can be switched off. An empty cart is fine:
   // the member may choose shipping on a product page before adding anything.
   useEffect(() => {
@@ -446,30 +479,21 @@ export function ShopFlow({
     }
   }, [fulfillmentMethod, hasCake, deliveryInfo, setFulfillmentMethod]);
 
-  // Cookies ship nationwide instead of being couriered locally.
-  useEffect(() => {
-    if (shippingOffered && fulfillmentMethod === 'delivery') setFulfillmentMethod('shipping');
-  }, [shippingOffered, fulfillmentMethod, setFulfillmentMethod]);
-
   // An emptied cart has nothing left to check out.
   useEffect(() => {
     if ((screen === 'checkout' || screen === 'addresses') && cart.length === 0) setScreen('cart');
   }, [screen, cart.length]);
 
-  // At checkout, make sure the delivery address is one the member still has
-  // and that suits the chosen method (a courier only goes nearby).
-  const localPostcodes = deliveryInfo?.localDeliveryPostcodes ?? NO_POSTCODES;
+  // At checkout, make sure the shipping address is one the member still has.
   useEffect(() => {
     if (screen !== 'checkout' || !isAuthenticated) return;
-    if (fulfillmentMethod !== 'delivery' && fulfillmentMethod !== 'shipping') return;
+    if (fulfillmentMethod !== 'shipping') return;
     let alive = true;
     fetchMyAddresses()
       .then((rows) => {
         if (!alive) return;
-        const local = fulfillmentMethod === 'delivery';
-        const usable = (a: SavedAddress) => !local || addressInLocalArea(a.fullAddress, localPostcodes);
-        const chosen = rows.find((a) => a.id === selectedAddressId && usable(a));
-        const pick = chosen ?? rows.find((a) => a.isDefault && usable(a)) ?? rows.find(usable) ?? null;
+        const chosen = rows.find((a) => a.id === selectedAddressId);
+        const pick = chosen ?? rows.find((a) => a.isDefault) ?? rows[0] ?? null;
         handleSelectAddress(pick);
       })
       .catch(() => undefined);
@@ -477,7 +501,7 @@ export function ShopFlow({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-check on entering checkout or switching method
-  }, [screen, fulfillmentMethod, localPostcodes, isAuthenticated]);
+  }, [screen, fulfillmentMethod, isAuthenticated]);
 
   /** The address picked at checkout becomes the order's delivery details. */
   const handleSelectAddress = useCallback(
@@ -861,10 +885,10 @@ export function ShopFlow({
     applyVoucher(match);
   };
 
-  /** Appended to the "order placed" pop-ups when the order is a delivery. */
+  /** Appended to the "order placed" pop-ups when the member's own courier collects. */
   const deliveryAlertNote = (summary: string[]) =>
-    summary[0] === 'Delivery'
-      ? `\n\n${DELIVERY_CHARGE_NOTICE} Open Orders to message us on WhatsApp.`
+    summary.some((l) => l.startsWith('Collected by:'))
+      ? `\n\n${DELIVERY_CHARGE_NOTICE}`
       : '';
 
   const handlePlaceOrder = async () => {
@@ -888,8 +912,7 @@ export function ShopFlow({
       return;
     }
     if (
-      (draft.fulfillmentMethod === 'pickup' ||
-        draft.fulfillmentMethod === 'delivery') &&
+      draft.fulfillmentMethod === 'pickup' &&
       pickupDay &&
       draft.pickupDate === pickupDay.date
     ) {
@@ -939,6 +962,7 @@ export function ShopFlow({
       draft.pickupDate,
       draft.pickupTime,
       draft.delivery,
+      pickupBy,
     );
     const linePayload = checkoutCart.map((l) => ({
       productId: l.productId,
@@ -972,10 +996,7 @@ export function ShopFlow({
           discountCents: discount,
           fulfillmentSummary: lines,
           fulfilmentType:
-            draft.fulfillmentMethod === 'delivery' ||
-            draft.fulfillmentMethod === 'shipping'
-              ? 'DELIVERY'
-              : 'PICKUP',
+            draft.fulfillmentMethod === 'shipping' ? 'DELIVERY' : 'PICKUP',
           ...(draft.fulfillmentMethod === 'shipping'
             ? {
                 deliveryMethod: 'SHIPPING' as const,
@@ -989,16 +1010,6 @@ export function ShopFlow({
                 scheduledDate: draft.pickupDate,
                 scheduledSlot: draft.pickupTime,
               }),
-          ...(draft.fulfillmentMethod === 'delivery' && delivery.arrangement
-            ? {
-                delivery: {
-                  address: delivery.address.trim(),
-                  contactName: delivery.contactName.trim(),
-                  contactPhone: delivery.contactPhone.trim(),
-                  arrangement: delivery.arrangement,
-                },
-              }
-            : {}),
           lines: linePayload,
         },
       });
@@ -1316,10 +1327,31 @@ export function ShopFlow({
               </button>
             </div>
             <div className="shopCartList" style={{ marginTop: 10 }}>
-              {cart.map((l) => (
+              {productLines.map((l) => (
                 <CartLineRow key={l.lineId} line={l} setLineQty={setLineQty} removeLine={removeLine} />
               ))}
             </div>
+            {hasCake ? (
+              <div className="checkoutAddons">
+                <p className="checkoutAddonsTitle">Add extras</p>
+                {CHECKOUT_ADDONS.map((addon) => (
+                  <label key={addon.productId} className="checkoutAddon">
+                    <input
+                      type="checkbox"
+                      checked={cart.some((l) => l.productId === addon.productId)}
+                      onChange={() => toggleAddon(addon)}
+                    />
+                    <span className="checkoutAddonText">
+                      <strong>{addon.name}</strong>
+                      <small>{addon.note}</small>
+                    </span>
+                    <span className="checkoutAddonPrice">
+                      {addon.priceCents === 0 ? 'FREE' : formatRm(addon.priceCents)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <section className="pmCard">
@@ -1333,16 +1365,6 @@ export function ShopFlow({
                 <strong>Self pickup</strong>
                 <small>Collect at our shop</small>
               </button>
-              {deliveryOffered && !shippingOffered ? (
-                <button
-                  type="button"
-                  className={`chip shopFulfillmentChip shopFulfillOption${isDelivery ? ' active' : ''}`}
-                  onClick={() => setFulfillmentMethod('delivery')}
-                >
-                  <strong>Local delivery</strong>
-                  <small>Nearby areas only</small>
-                </button>
-              ) : null}
               {shippingOffered ? (
                 <button
                   type="button"
@@ -1366,13 +1388,45 @@ export function ShopFlow({
               </p>
             ) : !canShip ? (
               <p className="caption" style={{ margin: '6px 0 0' }}>
-                Cakes and drinks are collected or delivered to the nearby area only.
+                Cakes and drinks are for pickup at our shop only.
               </p>
             ) : null}
-            {isDelivery || isShipping ? (
+            {isScheduled ? (
+              <div className="deliveryArrange">
+                <p className="deliveryArrangeTitle">Who&apos;s collecting?</p>
+                <label className="deliveryChoice">
+                  <input
+                    type="radio"
+                    name="pickupBy"
+                    checked={pickupBy === 'self'}
+                    onChange={() => setPickupBy('self')}
+                  />
+                  <span>
+                    <strong>I&apos;ll collect it myself</strong>
+                    <small>Pick up at our shop at the time below.</small>
+                  </span>
+                </label>
+                <label className="deliveryChoice">
+                  <input
+                    type="radio"
+                    name="pickupBy"
+                    checked={pickupBy === 'courier'}
+                    onChange={() => setPickupBy('courier')}
+                  />
+                  <span>
+                    <strong>I&apos;ll arrange my own courier</strong>
+                    <small>
+                      Book Grab, Lalamove or your own driver to collect from our
+                      shop at the time below.
+                    </small>
+                  </span>
+                </label>
+              </div>
+            ) : null}
+            {isShipping ? (
               <div className="addressSummary">
                 <div className="addressBookHead">
-                  <strong>{isShipping ? 'Ship to' : 'Deliver to'}</strong>
+                  <strong>Ship to</strong>
                   <button
                     type="button"
                     className="textAction"
@@ -1392,9 +1446,7 @@ export function ShopFlow({
                   </p>
                 ) : (
                   <p className="caption" style={{ margin: '4px 0 0' }}>
-                    {isDelivery && localPostcodes.length > 0
-                      ? `No saved address in our delivery area yet (postcodes starting ${localPostcodes.join(', ')}).`
-                      : 'You have no saved address yet.'}
+                    You have no saved address yet.
                   </p>
                 )}
               </div>
@@ -1425,7 +1477,7 @@ export function ShopFlow({
               <div className="shopFieldGrid pickupGrid">
                 <div className="pickupField">
                 <label htmlFor="pickupDate">
-                  {isDelivery ? 'Courier pick-up date' : 'Pickup date'}
+                  {byCourier ? 'Courier pick-up date' : 'Pickup date'}
                 </label>
                 <input
                   id="pickupDate"
@@ -1438,7 +1490,7 @@ export function ShopFlow({
                 </div>
                 <div className="pickupField">
                 <label htmlFor="pickupTime">
-                  {isDelivery ? 'Courier pick-up time' : 'Pickup time'}
+                  {byCourier ? 'Courier pick-up time' : 'Pickup time'}
                 </label>
                 <select
                   id="pickupTime"
@@ -1507,71 +1559,26 @@ export function ShopFlow({
                 ))}
               </div>
             ) : null}
-            {isDelivery ? (
+            {byCourier ? (
               <div className="deliveryArrange">
-                <p className="deliveryArrangeTitle">Who arranges the delivery?</p>
-                <label className="deliveryChoice">
-                  <input
-                    type="radio"
-                    name="deliveryArrangement"
-                    checked={delivery.arrangement === 'SELF'}
-                    onChange={() => setDelivery({ arrangement: 'SELF' })}
-                  />
-                  <span>
-                    <strong>I&apos;ll arrange my own courier</strong>
-                    <small>
-                      Book Grab, Lalamove or your own driver to collect from our
-                      shop at the time above.
-                    </small>
-                  </span>
-                </label>
-                <label className="deliveryChoice">
-                  <input
-                    type="radio"
-                    name="deliveryArrangement"
-                    checked={delivery.arrangement === 'MOJA'}
-                    onChange={() => setDelivery({ arrangement: 'MOJA' })}
-                  />
-                  <span>
-                    <strong>Moja Maison helps me choose a delivery partner</strong>
-                    <small>
-                      Message us on WhatsApp and we&apos;ll arrange a courier
-                      and tell you the charge.
-                    </small>
-                  </span>
-                </label>
-                {delivery.arrangement === 'MOJA' ? (
-                  deliveryInfo?.whatsappNumber ? (
-                    <a
-                      className="deliveryWhatsappBtn"
-                      href={whatsappUrl(
-                        deliveryInfo.whatsappNumber,
-                        deliveryWhatsappMessage({
-                          address: delivery.address.trim() || '(address to follow)',
-                          contactName: delivery.contactName.trim(),
-                          contactPhone: delivery.contactPhone.trim(),
-                          date: pickupDate,
-                          time: pickupTime,
-                        }),
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Chat with Moja Maison on WhatsApp
-                    </a>
-                  ) : (
-                    <p className="caption" style={{ margin: 0 }}>
-                      We&apos;ll contact you on the phone number in your delivery address to
-                      arrange the delivery partner.
-                    </p>
-                  )
-                ) : null}
                 <p className="deliveryNotice" role="note">
                   <strong>Please note:</strong> {DELIVERY_CHARGE_NOTICE}
-                  {delivery.arrangement === 'MOJA'
-                    ? ' After you place the order, message us on WhatsApp (the button also appears under Orders) and we\'ll confirm the charge.'
-                    : ' Your courier is paid directly by you.'}
                 </p>
+                {deliveryInfo?.whatsappNumber ? (
+                  <a
+                    className="deliverySupportBtn"
+                    aria-label="Chat with Moja Maison on WhatsApp"
+                    href={whatsappUrl(
+                      deliveryInfo.whatsappNumber,
+                      courierPickupWhatsappMessage({ date: pickupDate, time: pickupTime }),
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <SupportIcon />
+                    Questions? Chat with us
+                  </a>
+                ) : null}
               </div>
             ) : null}
           </section>
@@ -1728,8 +1735,7 @@ export function ShopFlow({
                   </label>
                   {!creditsCoverTotal && total > 0 ? (
                     <p className="caption" style={{ margin: '0 0 4px 26px' }}>
-                      Not enough credits for this order. Top up from the
-                      Credits tile on Home, or pay another way.
+                      Not enough credits, top up now.
                     </p>
                   ) : null}
                 </>
@@ -1955,14 +1961,14 @@ export function ShopFlow({
             >
               ← Checkout
             </button>
-            <h2 className="shopTitleCenter">{isShipping ? 'Shipping address' : 'Delivery address'}</h2>
+            <h2 className="shopTitleCenter">Shipping address</h2>
             <span className="shopTopSpacer" />
           </header>
           <section className="pmCard">
             <AddressPicker
               selectedId={selectedAddressId}
-              mode={isShipping ? 'shipping' : 'delivery'}
-              localPostcodes={localPostcodes}
+              mode="shipping"
+              localPostcodes={[]}
               memberName={memberName}
               memberPhone={memberPhone}
               onSelect={handleSelectAddress}
@@ -2169,16 +2175,6 @@ function ProductDetailScreen({
                   <strong>Self pickup</strong>
                   <small>Collect at our shop</small>
                 </button>
-                {deliveryInfo?.enabled !== false && !canShipThis ? (
-                  <button
-                    type="button"
-                    className={`chip shopFulfillmentChip shopFulfillOption${shownMethod === 'delivery' ? ' active' : ''}`}
-                    onClick={() => onFulfillmentMethod('delivery')}
-                  >
-                    <strong>Local delivery</strong>
-                    <small>Nearby areas only</small>
-                  </button>
-                ) : null}
                 {nationwide && shippingOn ? (
                   <button
                     type="button"
@@ -2199,7 +2195,7 @@ function ProductDetailScreen({
                     : `Shipping adds ${formatRm(shipFee)}${freeOver > 0 ? `, free when your order is over ${formatRm(freeOver)}` : ''}.`}
                 </p>
               ) : !nationwide ? (
-                <p className="groupFulfilNote">Cakes are fresh, so delivery is for the nearby area only.</p>
+                <p className="groupFulfilNote">Cakes are fresh, so they are for pickup at our shop only. You can send your own courier to collect.</p>
               ) : null}
               <p className="groupFulfilNote">You can change this again at checkout.</p>
             </div>
@@ -2236,8 +2232,8 @@ function ProductDetailScreen({
                 mixes &&
                 !window.confirm(
                   nationwide
-                    ? "Your cart has items that can't be shipped (" + unshippableNames.join(', ') + ").\n\nWith these cookies in the same order, nationwide shipping isn't available. The whole order will be Self pickup or Local delivery only.\n\nAdd to cart anyway?"
-                    : "Your cart has items that can be shipped nationwide.\n\n" + product.name + " is for pickup or local delivery only, so with it in the same order nationwide shipping isn't available. The whole order will be Self pickup or Local delivery only.\n\nAdd to cart anyway?",
+                    ? "Your cart has items that can't be shipped (" + unshippableNames.join(', ') + ").\n\nWith these cookies in the same order, nationwide shipping isn't available. The whole order will be Self pickup only.\n\nAdd to cart anyway?"
+                    : "Your cart has items that can be shipped nationwide.\n\n" + product.name + " is for pickup only, so with it in the same order nationwide shipping isn't available. The whole order will be Self pickup only.\n\nAdd to cart anyway?",
                 )
               ) {
                 return;
@@ -2292,12 +2288,7 @@ function CartScreen({
   const subtotal = cartSubtotalCents(cart);
   const discount = computeDiscountCents(subtotal, appliedVoucher, appliedReward);
   const mixed = groups.length > 1;
-  const methodLabel =
-    fulfillmentMethod === 'delivery'
-      ? 'Local delivery'
-      : fulfillmentMethod === 'shipping'
-        ? 'Ship nationwide'
-        : 'Self pickup';
+  const methodLabel = fulfillmentMethod === 'shipping' ? 'Ship nationwide' : 'Self pickup';
 
   const renderLine = (l: CartLine) => (
     <CartLineRow key={l.lineId} line={l} setLineQty={setLineQty} removeLine={removeLine} />
@@ -2366,7 +2357,7 @@ function CartScreen({
             </p>
             {mixed ? (
               <div className="shopNotice" role="note">
-                <strong>Pickup or local delivery only</strong>
+                <strong>Self pickup only</strong>
                 <span>
                   Your cart has both cakes and cookies, so nationwide shipping
                   isn&apos;t available for this order. To ship cookies, order them
@@ -2448,7 +2439,17 @@ function CartLineRow({
   );
 }
 
-/** Top-right tag on a product photo: can it be posted anywhere, or is it for pickup / nearby delivery only? */
+export function SupportIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
+      <path d="M21 15a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2z" />
+      <path d="M3 15a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2z" />
+      <path d="M18 17v1a3 3 0 0 1-3 3h-3" />
+    </svg>
+  );
+}
+
 function ClampedDescription({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -2471,6 +2472,7 @@ function ClampedDescription({ text }: { text: string }) {
   );
 }
 
+/** Top-right tag on a product photo: can it be posted anywhere, or is it for pickup / nearby delivery only? */
 function ShippingBadge({ shippable }: { shippable: boolean }) {
   return (
     <span
@@ -2478,7 +2480,7 @@ function ShippingBadge({ shippable }: { shippable: boolean }) {
       title={
         shippable
           ? 'Can be shipped anywhere in Malaysia'
-          : 'Pickup or local delivery only'
+          : 'Pickup only'
       }
     >
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

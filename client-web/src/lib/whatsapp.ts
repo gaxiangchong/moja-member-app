@@ -14,11 +14,11 @@ export type DeliveryChatDetails = {
   time?: string | null;
 };
 
-/** The message the member sends Moja Maison to get a delivery partner arranged. */
+/** The message the member sends Moja Maison with a question about their delivery order. */
 export function deliveryWhatsappMessage(d: DeliveryChatDetails): string {
   const lines = [
-    'Hi Moja Maison, I would like help arranging a delivery partner' +
-      (d.orderNumber ? ` for my order #${d.orderNumber}.` : '.'),
+    'Hi Moja Maison, I have a question about my delivery order' +
+      (d.orderNumber ? ` #${d.orderNumber}.` : '.'),
     '',
     `Deliver to: ${d.address}`,
     `Contact: ${d.contactName} · ${d.contactPhone}`,
@@ -26,10 +26,26 @@ export function deliveryWhatsappMessage(d: DeliveryChatDetails): string {
   if (d.date || d.time) {
     lines.push(`Courier pick-up from the shop: ${[d.date, d.time].filter(Boolean).join(' ')}`);
   }
-  lines.push('', 'Please let me know the delivery charge so I can pay it before delivery is arranged.');
+  return lines.join('\n');
+}
+
+/** The message a member sends Moja Maison about a pickup their own courier will collect. */
+export function courierPickupWhatsappMessage(d: {
+  orderNumber?: number | null;
+  date?: string | null;
+  time?: string | null;
+}): string {
+  const lines = [
+    'Hi Moja Maison, I have a question about my order' +
+      (d.orderNumber ? ` #${d.orderNumber}` : '') +
+      '. My own courier will collect it from the shop.',
+  ];
+  if (d.date || d.time) {
+    lines.push(`Courier pick-up: ${[d.date, d.time].filter(Boolean).join(' ')}`);
+  }
   return lines.join('\n');
 }
 
 /** Shown wherever a member picks or reviews delivery. */
 export const DELIVERY_CHARGE_NOTICE =
-  'The delivery charge is not part of your order total. It has to be paid before we can arrange the delivery.';
+  'The courier fee is paid by you directly to the courier and is not part of your order total. If you have any questions about your delivery, please contact our team.';

@@ -55,7 +55,10 @@ export type CartLine = {
   deliveryClass?: DeliveryClass;
 };
 
-export type FulfillmentMethod = 'pickup' | 'delivery' | 'shipping';
+export type FulfillmentMethod = 'pickup' | 'shipping';
+
+/** Who collects a pickup order from the shop: the member, or a courier they book. */
+export type PickupBy = 'self' | 'courier';
 
 /** Who books the courier for a delivery. */
 export type DeliveryArrangement = 'SELF' | 'MOJA';

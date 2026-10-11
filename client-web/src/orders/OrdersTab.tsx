@@ -9,6 +9,7 @@ import {
 import { formatOrderPickupLabel } from '../lib/orderRef';
 import { formatRm } from '../shop/data/mockCatalog';
 import { DELIVERY_CHARGE_NOTICE, deliveryWhatsappMessage, whatsappUrl } from '../lib/whatsapp';
+import { SupportIcon } from '../shop/ShopFlow';
 import {
   useOrderHistoryStore,
   type PastOrder,
@@ -87,23 +88,25 @@ function DeliveryBlock({
         <br />
         Contact: {d.contactName} · {d.contactPhone}
       </p>
-      <p className="deliveryNotice">{DELIVERY_CHARGE_NOTICE}</p>
       {d.arrangement === 'MOJA' ? (
-        chatUrl ? (
-          <a className="deliveryWhatsappBtn" href={chatUrl} target="_blank" rel="noopener noreferrer">
-            Message Moja Maison on WhatsApp
-          </a>
-        ) : (
-          <p className="caption" style={{ margin: 0 }}>
-            We&apos;ll contact you on {d.contactPhone} to arrange the delivery partner.
-          </p>
-        )
-      ) : (
         <p className="caption" style={{ margin: 0 }}>
-          You&apos;re booking your own courier — they collect from our shop
-          {order.scheduledSlot ? ` at ${order.scheduledSlot}` : ''}. Give them order #{order.orderNumber}.
+          We&apos;ll contact you on {d.contactPhone} about this delivery.
         </p>
+      ) : (
+        <>
+          <p className="deliveryNotice">{DELIVERY_CHARGE_NOTICE}</p>
+          <p className="caption" style={{ margin: 0 }}>
+            You&apos;re booking your own courier — they collect from our shop
+            {order.scheduledSlot ? ` at ${order.scheduledSlot}` : ''}. Give them order #{order.orderNumber}.
+          </p>
+        </>
       )}
+      {chatUrl ? (
+        <a className="deliverySupportBtn" href={chatUrl} target="_blank" rel="noopener noreferrer">
+          <SupportIcon />
+          Questions? Chat with us
+        </a>
+      ) : null}
     </div>
   );
 }

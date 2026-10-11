@@ -1,4 +1,4 @@
-import type { CartLine, DeliveryDraft, FulfillmentMethod } from '../types';
+import type { CartLine, DeliveryDraft, FulfillmentMethod, PickupBy } from '../types';
 
 export type CheckoutDraft = {
   cart: CartLine[];
@@ -21,29 +21,12 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
   }
 
   if (!state.fulfillmentMethod) {
-    errors.push('Choose Self pickup, Delivery or Ship to me.');
+    errors.push('Choose Self pickup or Ship nationwide.');
   }
 
   if (state.fulfillmentMethod === 'pickup') {
     if (!state.pickupDate) errors.push('Select a pickup date.');
     if (!state.pickupTime) errors.push('Select a pickup time.');
-  }
-
-  if (state.fulfillmentMethod === 'delivery') {
-    const d = state.delivery;
-    if ((d?.address.trim().length ?? 0) < 10) {
-      errors.push('Enter the full delivery address (unit, street, area and postcode).');
-    }
-    if (!d?.contactName.trim()) errors.push('Enter the name of the person to contact.');
-    const digits = (d?.contactPhone ?? '').replace(/\D/g, '');
-    if (digits.length < 8 || digits.length > 15) {
-      errors.push('Enter a valid contact phone number.');
-    }
-    if (!state.pickupDate) errors.push('Select the date the courier collects the order.');
-    if (!state.pickupTime) errors.push('Select the time the courier collects the order.');
-    if (!d?.arrangement) {
-      errors.push('Choose who arranges the delivery: you, or Moja Maison.');
-    }
   }
 
   if (state.fulfillmentMethod === 'shipping') {
@@ -52,7 +35,7 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
       errors.push('Enter the full address to ship to (unit, street, area, postcode and state).');
     }
     if (!d?.contactName.trim()) errors.push('Enter the name of the person receiving the parcel.');
-    const digits = (d?.contactPhone ?? '').replace(/D/g, '');
+    const digits = (d?.contactPhone ?? '').replace(/\D/g, '');
     if (digits.length < 8 || digits.length > 15) {
       errors.push('Enter a valid contact phone number.');
     }
@@ -66,6 +49,7 @@ export function fulfillmentSummaryLines(
   pickupDate: string | null,
   pickupTime: string | null,
   delivery?: DeliveryDraft,
+  pickupBy: PickupBy = 'self',
 ): string[] {
   if (!method) return ['Not selected'];
   const d = pickupDate ?? '—';
@@ -78,14 +62,9 @@ export function fulfillmentSummaryLines(
       `Contact: ${delivery?.contactName.trim() ?? '—'} · ${delivery?.contactPhone.trim() ?? '—'}`,
     ];
   }
-  if (method === 'delivery') {
-    return [
-      'Delivery',
-      `Date: ${d}`,
-      `Time: ${t}`,
-      `Deliver to: ${delivery?.address.trim() ?? '—'}`,
-      `Contact: ${delivery?.contactName.trim() ?? '—'} · ${delivery?.contactPhone.trim() ?? '—'}`,
-    ];
+  const lines = ['Self pickup', `Date: ${d}`, `Time: ${t}`];
+  if (pickupBy === 'courier') {
+    lines.push("Collected by: customer's own courier");
   }
-  return ['Self pickup', `Date: ${d}`, `Time: ${t}`];
+  return lines;
 }

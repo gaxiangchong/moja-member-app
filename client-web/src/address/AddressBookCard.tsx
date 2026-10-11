@@ -62,7 +62,7 @@ export function AddressBookCard({
         ) : null}
       </div>
       <p className="caption" style={{ margin: '4px 0 10px' }}>
-        Saved here, you can pick one at checkout for delivery or shipping.
+        Saved here, you can pick one at checkout for shipping.
       </p>
       {error ? <p className="pickupAvailShort">{error}</p> : null}
       {addresses == null && !error ? <p className="caption">Loading…</p> : null}
