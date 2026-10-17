@@ -20,7 +20,23 @@ const COOKIES = {
 
 function makeService(settings = DEFAULT_DELIVERY_SETTINGS) {
   const created: Record<string, unknown>[] = [];
-  const assertCanPlace = jest.fn().mockResolvedValue(undefined);
+  // Mirrors PickupRulesService: a delivery with no collection slot is rejected.
+  // Shipping must not call this, or every parcel order fails.
+  const assertCanPlace = jest.fn(
+    async (input: {
+      fulfilmentType?: string;
+      scheduledDate?: string | null;
+      scheduledSlot?: string | null;
+    }) => {
+      if (input.fulfilmentType === 'IN_STORE') return;
+      if (!input.scheduledDate?.trim() || !input.scheduledSlot?.trim()) {
+        throw new BadRequestException({
+          code: 'PICKUP_SLOT_REQUIRED',
+          message: 'Select a pickup date and time.',
+        });
+      }
+    },
+  );
   const tx = {
     customerOrder: {
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
@@ -84,11 +100,8 @@ describe('createPendingMemberOrder: nationwide shipping', () => {
       scheduledDate: null,
       scheduledSlot: null,
     });
-    // A parcel has no pickup slot to check.
-    expect(assertCanPlace).toHaveBeenCalledWith(
-      expect.objectContaining({ scheduledDate: null, scheduledSlot: null }),
-      expect.anything(),
-    );
+    // A parcel has no collection slot, so the pickup rules are not applied.
+    expect(assertCanPlace).not.toHaveBeenCalled();
   });
 
   it('waives the fee once the goods are over RM100', async () => {
