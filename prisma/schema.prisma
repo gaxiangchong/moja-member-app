@@ -347,6 +347,9 @@ model VoucherCampaign {
   /// voucher. Null or 0 = no minimum. Admin-configurable per campaign.
   qualifyingMinSpend     Int?               @map("qualifying_min_spend")
   visibleInWallet        Boolean            @default(true) @map("visible_in_wallet")
+  /// Email members who agreed to marketing emails when they are issued this
+  /// voucher. The email describes the voucher but never contains its code.
+  emailOnIssue           Boolean            @default(false) @map("email_on_issue")
   tncText                String?            @map("tnc_text")
   isActive               Boolean            @default(true) @map("is_active")
   startsAt               DateTime?          @map("starts_at")
@@ -385,6 +388,10 @@ model Voucher {
   /// purchase date>". The unique index below is what makes that safe under
   /// concurrent sweeps and retries. Null for hand-issued vouchers.
   issueKey          String?                @map("issue_key") @db.VarChar(80)
+  /// "You've got a voucher" email: PENDING (queued at issue), SENDING, SENT,
+  /// FAILED or SKIPPED. Null = no email for this voucher.
+  issueEmailStatus  String?                @map("issue_email_status") @db.VarChar(16)
+  issueEmailAt      DateTime?              @map("issue_email_at")
   metadata          Json?
   createdAt         DateTime               @default(now()) @map("created_at")
   updatedAt         DateTime               @updatedAt @map("updated_at")
@@ -395,6 +402,7 @@ model Voucher {
   @@unique([voucherCampaignId, customerId, issueKey])
   @@index([customerId, status, expiresAt])
   @@index([voucherCampaignId])
+  @@index([issueEmailStatus])
   @@map("vouchers")
 }
 
@@ -603,6 +611,8 @@ model CustomerOrder {
   rewardTitle             String?   @map("reward_title") @db.VarChar(200)
   rewardPointsSpent       Int       @default(0) @map("reward_points_spent")
   rewardPointsRefundedAt  DateTime? @map("reward_points_refunded_at")
+  /// Early-order discount on whole cakes (sen), already taken off `totalCents`.
+  earlyOrderDiscountCents Int       @default(0) @map("early_order_discount_cents")
   /// Delivery orders: where to, who to contact, and who books the courier.
   deliveryAddress         String?   @map("delivery_address")
   deliveryContactName     String?   @map("delivery_contact_name") @db.VarChar(120)

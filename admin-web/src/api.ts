@@ -6,10 +6,10 @@ const AUTH_MODE_KEY = 'moja_admin_auth_mode';
 const IDENTITY_KEY = 'moja_admin_identity';
 
 /**
- * Mirrors the backend's two accepted credential modes (AdminAuthGuard):
- * a personal JWT from email/password login, or the shared `x-admin-api-key`
- * service key (legacy/full-access bypass, not tied to one admin's audit
- * trail — prefer email/password for normal use).
+ * Admin-web signs in with an admin email + password only (the same account as
+ * the admin dashboard and the ops screens). The backend still accepts the
+ * shared `x-admin-api-key` for scripts, but this app no longer offers it; an
+ * old saved key session is treated as signed out.
  */
 export type AdminIdentity =
   | { kind: 'user'; id: string; email: string; role: string; displayName: string | null }
@@ -23,10 +23,7 @@ function getAuthMode(): AuthMode | null {
 }
 
 export function hasSession(): boolean {
-  const mode = getAuthMode();
-  if (mode === 'jwt') return Boolean(localStorage.getItem(TOKEN_KEY));
-  if (mode === 'api_key') return Boolean(localStorage.getItem(API_KEY_KEY));
-  return false;
+  return getAuthMode() === 'jwt' && Boolean(localStorage.getItem(TOKEN_KEY));
 }
 
 export function getStoredIdentity(): AdminIdentity | null {
@@ -44,13 +41,6 @@ function setJwtSession(token: string, identity: AdminIdentity): void {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
   localStorage.removeItem(API_KEY_KEY);
-}
-
-function setApiKeySession(key: string, identity: AdminIdentity): void {
-  localStorage.setItem(AUTH_MODE_KEY, 'api_key');
-  localStorage.setItem(API_KEY_KEY, key);
-  localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
-  localStorage.removeItem(TOKEN_KEY);
 }
 
 export function clearSession(): void {
@@ -103,13 +93,7 @@ function extractMessage(
 }
 
 function authHeader(): Record<string, string> {
-  const mode = getAuthMode();
-  if (mode === 'api_key') {
-    const key = localStorage.getItem(API_KEY_KEY);
-    if (!key) throw new SessionExpiredError();
-    return { 'x-admin-api-key': key };
-  }
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getAuthMode() === 'jwt' ? localStorage.getItem(TOKEN_KEY) : null;
   if (!token) throw new SessionExpiredError();
   return { Authorization: `Bearer ${token}` };
 }
@@ -158,24 +142,6 @@ export async function login(
   const identity: AdminIdentity = { kind: 'user', ...data.user };
   setJwtSession(data.accessToken, identity);
   return identity;
-}
-
-/**
- * Service-key login: the backend has no dedicated endpoint for this mode —
- * the key is just sent as a header on every request — so this stores it
- * optimistically, then confirms it's valid via /admin/auth/me (which
- * returns { kind: 'api_key', actorLabel } for this credential type).
- */
-export async function loginWithApiKey(key: string): Promise<AdminIdentity> {
-  const res = await fetch(`${base}/admin/auth/me`, {
-    headers: { 'x-admin-api-key': key },
-  });
-  const data = await parseJson<AdminIdentity & { message?: string | string[] }>(res);
-  if (!res.ok || data.kind !== 'api_key') {
-    throw new Error(extractMessage(data as { message?: string | string[] }, res) || 'Invalid API key');
-  }
-  setApiKeySession(key, data);
-  return data;
 }
 
 export function logout(): void {
@@ -1283,6 +1249,8 @@ export type CampaignDetail = {
   fixedAmountOffRM: number | null;
   minSpendRM: number | null;
   isActive: boolean;
+  /** Email members who agreed to marketing emails when they are issued this voucher (no code in the email). */
+  emailOnIssue: boolean;
   startsAt: string | null;
   endsAt: string | null;
   voucherValidDays: number;
@@ -1325,6 +1293,7 @@ export type CreateCampaignInput = {
   maxTotalIssued?: number;
   usageLimitPerUser?: number;
   tncText?: string;
+  emailOnIssue?: boolean;
 };
 
 export async function createCampaign(input: CreateCampaignInput): Promise<CampaignSummary> {
@@ -1349,6 +1318,7 @@ export type UpdateCampaignInput = Partial<{
   usageLimitPerUser: number;
   tncText: string;
   isActive: boolean;
+  emailOnIssue: boolean;
   /** '' clears the trigger (manual issue only). */
   autoCreditTrigger: AutoCreditTrigger | '';
   autoCreditThresholdValue: number;
@@ -1652,6 +1622,33 @@ export async function updateMemberOrdersSettings(
     body: JSON.stringify(settings),
   });
   const data = await parseJson<MemberOrdersSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+/** Percent off whole cakes when the collection day is at least `minDaysAhead` days away. */
+export type EarlyOrderDiscountSettings = {
+  enabled: boolean;
+  percent: number;
+  minDaysAhead: number;
+};
+
+export async function fetchEarlyOrderDiscountSettings(): Promise<EarlyOrderDiscountSettings> {
+  const res = await authorizedFetch('/admin/shop/early-order-discount');
+  const data = await parseJson<EarlyOrderDiscountSettings & { message?: string | string[] }>(res);
+  if (!res.ok) throw new Error(extractMessage(data, res));
+  return data;
+}
+
+export async function updateEarlyOrderDiscountSettings(
+  settings: EarlyOrderDiscountSettings,
+): Promise<EarlyOrderDiscountSettings> {
+  const res = await authorizedFetch('/admin/shop/early-order-discount', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await parseJson<EarlyOrderDiscountSettings & { message?: string | string[] }>(res);
   if (!res.ok) throw new Error(extractMessage(data, res));
   return data;
 }

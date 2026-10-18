@@ -8,6 +8,7 @@ import {
   type SalesplayPushStatus,
 } from './api';
 import { CounterRedeemPanel } from './CounterRedeemPanel';
+import { MemberVouchersPanel } from './MemberVouchersPanel';
 import { MemberQrScanModal } from './MemberQrScanModal';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { TodayRedemptions } from './TodayRedemptions';
@@ -79,7 +80,7 @@ function nextStepAdvice(
  * unactivated and the member sets their own PIN later on their own phone.
  */
 export function MemberWindowApp() {
-  const { state: authState, signIn, devKeyPrefill } = useOpsAuth();
+  const { state: authState, signIn } = useOpsAuth();
   const [phone, setPhone] = useState('');
   const [staffCode, setStaffCode] = useState(
     () => localStorage.getItem(STAFF_CODE_KEY) ?? '',
@@ -102,7 +103,11 @@ export function MemberWindowApp() {
   const [newPhone, setNewPhone] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-  const [consent, setConsent] = useState(false);
+  // Pre-ticked at the shop's request; staff untick it if the customer says no.
+  const [consent, setConsent] = useState(true);
+  // Typed by the customer on this device, never by staff. Cleared once saved.
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   /** How the member was identified: scanned from their QR, or typed in. */
@@ -127,7 +132,9 @@ export function MemberWindowApp() {
     setNewMemberOpen(false);
     setDisplayName('');
     setEmail('');
-    setConsent(false);
+    setConsent(true);
+    setNewPin('');
+    setNewPinConfirm('');
     setResult({ kind: 'none' });
     setErr(null);
     setVerification('PHONE');
@@ -161,8 +168,22 @@ export function MemberWindowApp() {
     }
   }, [apiKey, phone, staffCode, base]);
 
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // The PIN is optional; when typed it must be 6 digits and match its confirmation.
+  const pinProblem =
+    !newPin && !newPinConfirm
+      ? null
+      : newPin.length !== 6
+        ? 'PIN must be 6 digits.'
+        : newPinConfirm.length === 6 && newPinConfirm !== newPin
+          ? 'The two PIN entries do not match.'
+          : newPinConfirm.length !== 6
+            ? 'Type the PIN again to confirm.'
+            : null;
+  const registerReady = Boolean(newPhone.trim() && displayName.trim() && emailOk && !pinProblem);
+
   const doRegister = useCallback(async () => {
-    if (!apiKey || !newPhone.trim() || !displayName.trim()) return;
+    if (!apiKey || !registerReady) return;
     setBusy(true);
     setErr(null);
     try {
@@ -171,12 +192,15 @@ export function MemberWindowApp() {
         {
           phone: newPhone,
           displayName: displayName.trim(),
-          email: email.trim() || undefined,
+          email: email.trim(),
           marketingConsent: consent,
+          ...(newPin ? { pin: newPin, pinConfirm: newPinConfirm } : {}),
           staffCode: staffCode || undefined,
         },
         base,
       );
+      setNewPin('');
+      setNewPinConfirm('');
       setNewMemberOpen(false);
       setPhone(newPhone);
       setResult({
@@ -193,15 +217,14 @@ export function MemberWindowApp() {
     } finally {
       setBusy(false);
     }
-  }, [apiKey, newPhone, displayName, email, consent, staffCode, base]);
+  }, [apiKey, registerReady, newPhone, displayName, email, consent, newPin, newPinConfirm, staffCode, base]);
 
   if (authState.status !== 'authenticated') {
     return (
       <OpsLoginScreen
         title="Member desk"
-        lead="Sign in with OPS_QUEUE_API_KEY to look up or register members."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         checking={authState.status === 'checking'}
-        devKeyPrefill={devKeyPrefill}
         onSubmit={signIn}
       />
     );
@@ -216,7 +239,8 @@ export function MemberWindowApp() {
           <input
             value={staffCode}
             onChange={(e) => setStaffCode(e.target.value.toUpperCase())}
-            placeholder="E001"
+            placeholder="Enter code"
+            aria-invalid={!staffCode.trim()}
             autoComplete="off"
             spellCheck={false}
           />
@@ -305,31 +329,59 @@ export function MemberWindowApp() {
             id="memberName"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Name shown in SalesPlay"
+            placeholder="Name"
             autoComplete="off"
           />
-          <label htmlFor="memberEmail">Email (optional)</label>
+          <label htmlFor="memberEmail">Email</label>
           <input
             id="memberEmail"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="for PIN recovery later"
+            placeholder="for PIN recovery and vouchers"
             inputMode="email"
             autoComplete="off"
           />
+          <div className="memberPinBox">
+            <p className="memberHint" style={{ margin: 0 }}>
+              Used to sign in to the app. Leave blank to set it in the app later.
+            </p>
+            <label htmlFor="memberPin">PIN</label>
+            <input
+              id="memberPin"
+              type="password"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/D/g, '').slice(0, 6))}
+              placeholder="6 digits"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+            />
+            <label htmlFor="memberPinConfirm">Confirm PIN</label>
+            <input
+              id="memberPinConfirm"
+              type="password"
+              value={newPinConfirm}
+              onChange={(e) => setNewPinConfirm(e.target.value.replace(/D/g, '').slice(0, 6))}
+              placeholder="type it again"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+            />
+            {pinProblem ? <p className="memberError" style={{ margin: 0 }}>{pinProblem}</p> : null}
+          </div>
           <label className="memberConsent">
             <input
               type="checkbox"
               checked={consent}
               onChange={(e) => setConsent(e.target.checked)}
             />
-            <span>Customer agreed to receive promotions</span>
+            <span>Agree to receive promotions</span>
           </label>
           <button
             type="button"
             className="memberPrimary"
             onClick={() => void doRegister()}
-            disabled={busy || !newPhone.trim() || !displayName.trim()}
+            disabled={busy || !registerReady}
           >
             {busy ? 'Saving…' : 'Register member'}
           </button>
@@ -341,6 +393,8 @@ export function MemberWindowApp() {
 
       {result.kind === 'found' && (
         <MemberResultCard
+          // A new member gets a fresh card, so its points state starts from their balance.
+          key={result.phoneE164}
           phoneE164={result.phoneE164}
           member={result.member}
           nextStep={result.nextStep}
@@ -402,6 +456,8 @@ function MemberResultCard({
   const advice = nextStepAdvice(nextStep, member.activated);
   // Redeeming changes the balance, so the card keeps its own copy.
   const [points, setPoints] = useState(member.pointsBalance ?? 0);
+  // Filled in by the Vouchers panel: the same list the member sees in the app.
+  const [voucherCount, setVoucherCount] = useState<number | null>(null);
   const [salesplayStatus, setSalesplayStatus] = useState(salesplay);
   const [salesplayBusy, setSalesplayBusy] = useState(false);
   const retrySalesplay = async () => {
@@ -468,7 +524,7 @@ function MemberResultCard({
           <span className="memberStatLabel">wallet</span>
         </div>
         <div>
-          <span className="memberStatValue">{member.activeVouchers ?? 0}</span>
+          <span className="memberStatValue">{voucherCount ?? member.activeVouchers ?? 0}</span>
           <span className="memberStatLabel">vouchers</span>
         </div>
         <div>
@@ -490,6 +546,17 @@ function MemberResultCard({
           setPoints(balance);
           onRedeemChanged();
         }}
+      />
+
+      <MemberVouchersPanel
+        apiKey={apiKey}
+        base={base}
+        staffCode={staffCode}
+        phone={phoneE164}
+        memberName={member.displayName}
+        activated={member.activated}
+        verification={verification}
+        onCount={setVoucherCount}
       />
 
       <div className={`memberAdvice memberAdvice--${advice.tone}`}>

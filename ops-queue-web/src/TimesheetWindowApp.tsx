@@ -51,7 +51,7 @@ export function TimesheetWindowApp() {
     return (
       <OpsLoginScreen
         title="Timesheet"
-        lead="Sign in with OPS_QUEUE_API_KEY before clocking in or out."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         checking={authState.status === 'checking'}
         onSubmit={signIn}
       />

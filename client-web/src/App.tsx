@@ -35,7 +35,6 @@ import {
   type MemberRewardsPayload,
   type PopularProduct,
   type RewardCodeResult,
-  type RewardRedemption,
 } from './api';
 import { OtpBoxes } from './components/OtpBoxes';
 import { copyText } from './lib/clipboard';
@@ -654,79 +653,6 @@ function formatRmCents(cents: number): string {
   return `RM ${(cents / 100).toFixed(2)}`;
 }
 
-/** Rewards the member has redeemed with points, newest first. */
-function RewardHistoryCard({ items }: { items: RewardRedemption[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? items : items.slice(0, 5);
-  return (
-    <Card>
-      <SectionHeader title="Redeemed rewards" />
-      {items.length === 0 ? (
-        <p className="caption" style={{ margin: 0 }}>
-          Rewards you redeem with points will be listed here.
-        </p>
-      ) : (
-        <>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {visible.map((r) => (
-              <li
-                key={r.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  padding: '10px 12px',
-                  border: '1px solid rgba(0,0,0,0.06)',
-                  borderRadius: 12,
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <strong style={{ fontSize: 14, fontWeight: 600 }}>{r.title}</strong>
-                  <span className="caption" style={{ margin: 0 }}>
-                    {formatLoyaltyDate(r.redeemedAt)}
-                    {r.orderNumber != null ? ` · Order #${r.orderNumber}` : ''}
-                  </span>
-                  {r.code ? (
-                    <span className="caption" style={{ margin: 0 }}>
-                      Code <strong>{r.code}</strong> ·{' '}
-                      {r.voucherStatus === 'used'
-                        ? 'Used'
-                        : r.voucherStatus === 'expired'
-                          ? 'Expired'
-                          : 'Not used yet'}
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <strong style={{ fontSize: 14, color: r.status === 'returned' ? '#64748b' : '#b45309' }}>
-                    {r.status === 'returned' ? '' : '−'}
-                    {r.pointsSpent.toLocaleString()} pts
-                  </strong>
-                  <div className="caption" style={{ margin: 0 }}>
-                    {r.status === 'returned'
-                      ? 'Order cancelled — points returned'
-                      : r.status === 'pending'
-                        ? 'Waiting for payment'
-                        : r.code
-                          ? 'Code issued'
-                          : 'Redeemed'}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {items.length > 5 ? (
-            <button type="button" className="textAction" style={{ marginTop: 10 }} onClick={() => setExpanded((v) => !v)}>
-              {expanded ? 'Show less' : `Show all ${items.length}`}
-            </button>
-          ) : null}
-        </>
-      )}
-    </Card>
-  );
-}
-
 function RewardCard({
   title,
   code,
@@ -790,6 +716,9 @@ function App() {
   const newPinRef = useRef(newPin);
   newPinRef.current = newPin;
   const [setPinPhase, setSetPinPhase] = useState<'first' | 'confirm'>('first');
+  // Sign-up opt-in for marketing emails; unticked unless the member ticks it.
+  const [signupMarketingOptIn, setSignupMarketingOptIn] = useState(false);
+  const [savingConsent, setSavingConsent] = useState(false);
   const [setupToken, setSetupToken] = useState('');
   const [otpFlowPurpose, setOtpFlowPurpose] = useState<OtpFlowPurpose>('register');
   const [otpExpiresAt, setOtpExpiresAt] = useState<string | null>(null);
@@ -1359,6 +1288,10 @@ function App() {
         setNewPinConfirm('');
         setSetupToken('');
         setSetPinPhase('first');
+        if (otpFlowPurpose === 'register' && signupMarketingOptIn) {
+          // The account works either way; the member can opt in later in Profile.
+          await updateMe({ marketingConsent: true }).catch(() => undefined);
+        }
         await loadMemberData();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not save PIN');
@@ -1366,8 +1299,22 @@ function App() {
         setLoading(false);
       }
     },
-    [setupToken, loadMemberData],
+    [setupToken, loadMemberData, otpFlowPurpose, signupMarketingOptIn],
   );
+
+  const handleConsentToggle = async (next: boolean) => {
+    if (savingConsent) return;
+    setSavingConsent(true);
+    setProfileMsg(null);
+    try {
+      setProfile(await updateMe({ marketingConsent: next }));
+      setProfileMsg(next ? 'You will get offers and voucher news by email.' : 'Marketing emails turned off.');
+    } catch (err) {
+      setProfileMsg(err instanceof Error ? err.message : 'Could not update email preference');
+    } finally {
+      setSavingConsent(false);
+    }
+  };
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1887,6 +1834,17 @@ function App() {
                     ariaLabel="6-digit PIN"
                   />
                   {error && <p className="err authErr">{error}</p>}
+                  {otpFlowPurpose === 'register' ? (
+                    <label className="consentRow">
+                      <input
+                        type="checkbox"
+                        checked={signupMarketingOptIn}
+                        onChange={(e) => setSignupMarketingOptIn(e.target.checked)}
+                        disabled={loading}
+                      />
+                      <span>Email me offers and voucher news. You can turn this off anytime in Profile.</span>
+                    </label>
+                  ) : null}
                   <button
                     type="button"
                     className="authPrimary"
@@ -2325,7 +2283,6 @@ function App() {
                         </Card>
                       )}
                     </div>
-                    <RewardHistoryCard items={rewardsData?.redemptions ?? []} />
                   </>
                 )}
               </>
@@ -2629,6 +2586,18 @@ function App() {
                         <span className="profileInfoLabel">Birthday</span>
                         <span className="profileInfoValue">{birthdayDisplay || '—'}</span>
                       </div>
+                      <label className="consentRow">
+                        <input
+                          type="checkbox"
+                          checked={profile.marketingConsent === true}
+                          onChange={(e) => void handleConsentToggle(e.target.checked)}
+                          disabled={savingConsent || (!profile.email?.trim() && profile.marketingConsent !== true)}
+                        />
+                        <span>
+                          Email me offers and voucher news
+                          {!profile.email?.trim() ? <small>Add your email above to turn this on.</small> : null}
+                        </span>
+                      </label>
                       {profileMsg ? <p className="hint">{profileMsg}</p> : null}
                     </div>
                   )}

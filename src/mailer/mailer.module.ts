@@ -6,11 +6,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AdminMailerController } from './admin-mailer.controller';
 import { MailerPublicController } from './mailer-public.controller';
 import { MailerService } from './mailer.service';
+import { VoucherIssueMailerService } from './voucher-issue-mailer.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule, AdminAuthModule, NotificationsModule],
   controllers: [AdminMailerController, MailerPublicController],
-  providers: [MailerService],
+  providers: [MailerService, VoucherIssueMailerService],
   exports: [MailerService],
 })
 export class MailerModule {}

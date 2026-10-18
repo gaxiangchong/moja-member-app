@@ -21,6 +21,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { OrdersModule } from '../orders/orders.module';
 import { SalesplayModule } from '../salesplay/salesplay.module';
 import { MemberOrdersSettingsAdminController } from './member-orders-settings.admin.controller';
+import { EarlyOrderDiscountAdminController } from './early-order-discount.admin.controller';
 import { DeliverySettingsAdminController } from './delivery-settings.admin.controller';
 import { PickupRulesAdminController } from './pickup-rules.admin.controller';
 import { WalletTopUpSettingsAdminController } from './wallet-topup-settings.admin.controller';
@@ -55,6 +56,7 @@ import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.modu
     PickupRulesAdminController,
     DeliverySettingsAdminController,
     MemberOrdersSettingsAdminController,
+    EarlyOrderDiscountAdminController,
     WalletTopUpSettingsAdminController,
     MemberVouchersAdminController,
     CounterRedemptionsAdminController,

@@ -7,7 +7,7 @@ import { useOpsAuth } from './useOpsAuth';
 import { formatOrderPickupLabel } from './orderRef';
 
 /**
- * Minimal app for `window.open(..., '#/scan')` — same origin as queue so ops API key in localStorage works.
+ * Minimal app for `window.open(..., '#/scan')` — same origin as queue so the saved sign-in in localStorage works.
  */
 export function ScanWindowApp() {
   const { state: authState, signIn } = useOpsAuth();
@@ -46,7 +46,7 @@ export function ScanWindowApp() {
     return (
       <OpsLoginScreen
         title="Scan to collect"
-        lead="Sign in with OPS_QUEUE_API_KEY before scanning pickup QR codes."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         checking={authState.status === 'checking'}
         onSubmit={signIn}
         footer={

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchQueueOrders, SESSION_EXPIRED_EVENT } from './api';
 import {
   defaultBase,
-  readDevKeyPrefill,
   readStoredBase,
   readStoredKey,
   STORAGE_BASE,
@@ -71,8 +70,8 @@ export function useOpsAuth() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // A background request was rejected with 401 (the ops key was rotated or
-  // revoked). Drop the live session and prompt for re-login. Ignore 401s from
+  // A background request was rejected with 401 (the token expired, the
+  // password changed, or the account was disabled). Drop the live session and prompt for re-login. Ignore 401s from
   // sign-in attempts (status is not yet 'authenticated'), which surface their
   // own inline error.
   useEffect(() => {
@@ -95,7 +94,7 @@ export function useOpsAuth() {
     async (key: string, base: string) => {
       const trimmedKey = key.trim();
       const trimmedBase = base.trim() || defaultBase;
-      if (!trimmedKey) throw new Error('Enter the ops API key from the server env OPS_QUEUE_API_KEY.');
+      if (!trimmedKey) throw new Error('Enter your email and password.');
       await verifySession(trimmedKey, trimmedBase);
       setSessionExpired(false);
       try {
@@ -118,5 +117,5 @@ export function useOpsAuth() {
     setState({ status: 'guest' });
   }, []);
 
-  return { state, signIn, signOut, sessionExpired, devKeyPrefill: readDevKeyPrefill() };
+  return { state, signIn, signOut, sessionExpired };
 }

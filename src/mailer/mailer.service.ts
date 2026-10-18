@@ -14,7 +14,6 @@ import {
   EmailCampaignStatus,
   EmailRecipientStatus,
   Prisma,
-  VoucherStatus,
 } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { daysUntilBirthdayUtc } from '../common/birthday.util';
@@ -24,11 +23,7 @@ import {
   CreateCampaignDto,
   UpdateCampaignDto,
 } from './dto/upsert-campaign.dto';
-import {
-  renderCampaignEmail,
-  RenderVoucherInfo,
-  TEMPLATE_PRESETS,
-} from './mailer-templates';
+import { renderCampaignEmail, TEMPLATE_PRESETS } from './mailer-templates';
 
 /** States in which the draft content may still be edited. */
 const EDITABLE_STATUSES: EmailCampaignStatus[] = [
@@ -40,8 +35,6 @@ const EDITABLE_STATUSES: EmailCampaignStatus[] = [
 const DISPATCH_POLL_MS = 30_000;
 /** Default BIRTHDAY_UPCOMING window when the campaign doesn't set one. */
 const DEFAULT_BIRTHDAY_WINDOW_DAYS = 14;
-/** referenceType stamped on vouchers issued by an email campaign. */
-const VOUCHER_REF_EMAIL_CAMPAIGN = 'email_campaign';
 /** Pause between individual sends — Resend free tier allows ~2 req/s. */
 const SEND_GAP_MS = 600;
 
@@ -104,9 +97,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createCampaign(dto: CreateCampaignDto, actorLabel: string | null) {
-    if (dto.voucherDefinitionId) {
-      await this.requireActiveVoucherDefinition(dto.voucherDefinitionId);
-    }
     const campaign = await this.prisma.emailCampaign.create({
       data: {
         name: dto.name.trim(),
@@ -117,8 +107,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         audience: dto.audience,
         tierFilter: this.normalizeTier(dto.tierFilter),
         birthdayWindowDays: dto.birthdayWindowDays ?? null,
-        voucherDefinitionId: dto.voucherDefinitionId ?? null,
-        voucherValidDays: dto.voucherValidDays ?? null,
         createdBy: actorLabel,
       },
     });
@@ -131,9 +119,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(
         `Campaign can no longer be edited (status: ${existing.status})`,
       );
-    }
-    if (dto.voucherDefinitionId) {
-      await this.requireActiveVoucherDefinition(dto.voucherDefinitionId);
     }
     const campaign = await this.prisma.emailCampaign.update({
       where: { id },
@@ -154,12 +139,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         ...(dto.birthdayWindowDays !== undefined
           ? { birthdayWindowDays: dto.birthdayWindowDays }
           : {}),
-        ...(dto.voucherDefinitionId !== undefined
-          ? { voucherDefinitionId: dto.voucherDefinitionId }
-          : {}),
-        ...(dto.voucherValidDays !== undefined
-          ? { voucherValidDays: dto.voucherValidDays }
-          : {}),
       },
     });
     return { campaign: this.toDetail(campaign) };
@@ -177,8 +156,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         audience: existing.audience,
         tierFilter: existing.tierFilter,
         birthdayWindowDays: existing.birthdayWindowDays,
-        voucherDefinitionId: existing.voucherDefinitionId,
-        voucherValidDays: existing.voucherValidDays,
         createdBy: actorLabel,
       },
     });
@@ -216,9 +193,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
     const scheduledAt = scheduledAtIso ? new Date(scheduledAtIso) : new Date();
     if (Number.isNaN(scheduledAt.getTime())) {
       throw new BadRequestException('Invalid scheduledAt datetime.');
-    }
-    if (existing.voucherDefinitionId) {
-      await this.requireActiveVoucherDefinition(existing.voucherDefinitionId);
     }
     const { count } = await this.audiencePreview(
       existing.audience,
@@ -346,19 +320,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  /** Load a voucher series and fail with a friendly error if unusable. */
-  private async requireActiveVoucherDefinition(id: string) {
-    const def = await this.prisma.voucherDefinition.findUnique({
-      where: { id },
-    });
-    if (!def || !def.isActive) {
-      throw new BadRequestException(
-        'The selected voucher series does not exist or is inactive.',
-      );
-    }
-    return def;
-  }
-
   // ---- Test send & preview ----------------------------------------------
 
   async previewCampaign(id: string) {
@@ -370,7 +331,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
       recipientName: 'Preview Member',
       unsubscribeUrl: this.unsubscribeUrl('00000000-0000-0000-0000-000000000000'),
       brandName: this.brandName(),
-      voucher: await this.sampleVoucherInfo(campaign),
     });
     return { subject: rendered.subject, html: rendered.html };
   }
@@ -393,7 +353,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
       recipientName: 'Test Member',
       unsubscribeUrl: this.unsubscribeUrl('00000000-0000-0000-0000-000000000000'),
       brandName: this.brandName(),
-      voucher: await this.sampleVoucherInfo(campaign),
     });
     const ok = await this.email.send({
       to: address,
@@ -510,32 +469,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Voucher series attached to the campaign (birthday gift etc.) — resolve
-    // once up front so a broken reference fails the run visibly.
-    let voucherDef: { id: string; code: string; title: string } | null = null;
-    if (campaign.voucherDefinitionId) {
-      const def = await this.prisma.voucherDefinition.findUnique({
-        where: { id: campaign.voucherDefinitionId },
-        select: { id: true, code: true, title: true, isActive: true },
-      });
-      if (!def || !def.isActive) {
-        await this.prisma.emailCampaign.update({
-          where: { id },
-          data: {
-            status: EmailCampaignStatus.FAILED,
-            lastError:
-              'Attached voucher series no longer exists or is inactive.',
-            completedAt: new Date(),
-          },
-        });
-        return;
-      }
-      voucherDef = def;
-    }
-    const voucherExpiresAt = campaign.voucherValidDays
-      ? new Date(Date.now() + campaign.voucherValidDays * 24 * 60 * 60 * 1000)
-      : null;
-
     // Materialize the recipient list (idempotent via skipDuplicates so a
     // restarted run doesn't re-add rows).
     const customers = await this.resolveAudience(
@@ -596,22 +529,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
           });
           continue;
         }
-        // Put the voucher in the member's wallet before the email goes out
-        // so the message never references a gift that doesn't exist yet.
-        let voucherInfo: RenderVoucherInfo | null = null;
-        if (voucherDef) {
-          const row = await this.ensureCampaignVoucher(
-            id,
-            recipient.customerId,
-            voucherDef.id,
-            voucherExpiresAt,
-          );
-          voucherInfo = {
-            code: voucherDef.code,
-            title: voucherDef.title,
-            expiresAt: row.expiresAt,
-          };
-        }
         const rendered = renderCampaignEmail({
           subject: campaign.subject,
           preheader: campaign.preheader,
@@ -619,7 +536,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
           recipientName: nameByCustomer.get(recipient.customerId) ?? null,
           unsubscribeUrl: this.unsubscribeUrl(recipient.customerId),
           brandName: brand,
-          voucher: voucherInfo,
         });
         const ok = await this.email.send({
           to: recipient.email,
@@ -673,58 +589,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
 
   // ---- Helpers ----------------------------------------------------------
 
-  /**
-   * Find-or-create the voucher issued to this customer by this campaign.
-   * Keyed on referenceType/referenceId so restarted runs never double-issue.
-   */
-  private async ensureCampaignVoucher(
-    campaignId: string,
-    customerId: string,
-    definitionId: string,
-    expiresAt: Date | null,
-  ) {
-    const existing = await this.prisma.customerVoucher.findFirst({
-      where: {
-        customerId,
-        definitionId,
-        referenceType: VOUCHER_REF_EMAIL_CAMPAIGN,
-        referenceId: campaignId,
-      },
-    });
-    if (existing) return existing;
-    return this.prisma.customerVoucher.create({
-      data: {
-        customerId,
-        definitionId,
-        status: VoucherStatus.ISSUED,
-        expiresAt,
-        referenceType: VOUCHER_REF_EMAIL_CAMPAIGN,
-        referenceId: campaignId,
-      },
-    });
-  }
-
-  /** Sample voucher values for preview/test sends (nothing is issued). */
-  private async sampleVoucherInfo(
-    campaign: EmailCampaign,
-  ): Promise<RenderVoucherInfo | null> {
-    if (!campaign.voucherDefinitionId) return null;
-    const def = await this.prisma.voucherDefinition.findUnique({
-      where: { id: campaign.voucherDefinitionId },
-      select: { code: true, title: true },
-    });
-    if (!def) return null;
-    return {
-      code: def.code,
-      title: def.title,
-      expiresAt: campaign.voucherValidDays
-        ? new Date(
-            Date.now() + campaign.voucherValidDays * 24 * 60 * 60 * 1000,
-          )
-        : null,
-    };
-  }
-
   private async requireCampaign(id: string): Promise<EmailCampaign> {
     const campaign = await this.prisma.emailCampaign.findUnique({
       where: { id },
@@ -738,12 +602,12 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
     return t || null;
   }
 
-  private brandName(): string {
+  brandName(): string {
     return this.email.getSubjectPrefix();
   }
 
   /** Marketing from-address; falls back to the transactional from. */
-  private marketingFrom(): string | undefined {
+  marketingFrom(): string | undefined {
     const from = this.config.get<string>('MARKETING_EMAIL_FROM')?.trim();
     return from || undefined;
   }
@@ -757,8 +621,6 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
       audience: c.audience,
       tierFilter: c.tierFilter,
       birthdayWindowDays: c.birthdayWindowDays,
-      voucherDefinitionId: c.voucherDefinitionId,
-      voucherValidDays: c.voucherValidDays,
       status: c.status,
       scheduledAt: c.scheduledAt,
       completedAt: c.completedAt,

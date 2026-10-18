@@ -499,6 +499,33 @@
   color: #002a70;
 }
 
+/* Marketing-email opt-in: sign-up (PIN step) and Profile. */
+.consentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 4px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.consentRow input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: #00348d;
+}
+
+.consentRow small {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
 /* --- OTP meta row (timer + resend) ------------------------------------ */
 .authOtpMeta {
   display: flex;
@@ -3215,6 +3242,19 @@ code {
 
 .pickupAvailShort {
   color: #b45309;
+  font-weight: 600;
+}
+
+/* Early-order cake discount, under the pickup date. */
+.earlyOrderHint {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.earlyOrderHint--on {
+  color: #047857;
   font-weight: 600;
 }
 

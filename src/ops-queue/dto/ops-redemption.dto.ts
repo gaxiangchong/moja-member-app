@@ -54,3 +54,34 @@ export class OpsAttachReceiptDto {
   @MaxLength(60)
   receiptRef!: string;
 }
+
+/** The vouchers a member holds, for the member desk. */
+export class OpsMemberVouchersDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(32)
+  phone!: string;
+}
+
+/** A cashier uses one of the member's vouchers at the till. */
+export class OpsUseVoucherDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(32)
+  phone!: string;
+
+  @IsUUID()
+  voucherId!: string;
+
+  /** CAMPAIGN = voucher campaigns (welcome, birthday, …); CATALOG = older series vouchers. */
+  @IsIn(['CATALOG', 'CAMPAIGN'])
+  source!: 'CATALOG' | 'CAMPAIGN';
+
+  /** Employee code of the cashier. Required: every use is attributed. */
+  @IsString()
+  @MaxLength(32)
+  staffCode!: string;
+
+  @IsIn(['QR', 'PHONE'])
+  verification!: 'QR' | 'PHONE';
+}

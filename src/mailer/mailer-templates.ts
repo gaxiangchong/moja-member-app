@@ -7,8 +7,7 @@ import { EmailTemplateKind } from '@prisma/client';
  *
  * Supported personalization placeholders (replaced per recipient at send
  * time): {{name}} — customer display name (falls back to "there").
- * When the campaign has an attached voucher series: {{voucher_title}},
- * {{voucher_code}}, {{voucher_expiry}} (localized date or "no expiry").
+ * Campaigns carry written content only: no voucher, and never a voucher code.
  */
 export type MailerTemplatePreset = {
   kind: EmailTemplateKind;
@@ -73,20 +72,14 @@ export const TEMPLATE_PRESETS: MailerTemplatePreset[] = [
   },
   {
     kind: EmailTemplateKind.BIRTHDAY,
-    label: 'Birthday voucher',
-    description:
-      'Birthday greeting with an attached voucher the member can spend online.',
-    subject: 'Happy early birthday, {{name}} — a gift from us 🎂',
-    preheader: 'Your birthday voucher is waiting in your member wallet.',
+    label: 'Birthday greeting',
+    description: 'A birthday-month greeting for members.',
+    subject: 'Happy birthday month, {{name}} 🎂',
+    preheader: 'A little celebration from all of us at Moja Maison.',
     bodyHtml: [
       '<h2>Happy birthday month, {{name}} 🎂</h2>',
-      '<p>Your special day is coming up and we want to celebrate with you. We have added a gift to your member wallet:</p>',
-      '<div style="background:#fff7ed;border:1px dashed #c2410c;border-radius:10px;padding:16px 20px;margin:16px 0;text-align:center;">',
-      '  <p style="margin:0 0 4px;font-size:17px;"><strong>{{voucher_title}}</strong></p>',
-      '  <p style="margin:0 0 4px;">Voucher code: <strong>{{voucher_code}}</strong></p>',
-      '  <p style="margin:0;font-size:13px;color:#9a3412;">Valid until: {{voucher_expiry}}</p>',
-      '</div>',
-      '<p>The voucher is already in your account — just open the member app, shop as usual, and pick it at checkout to enjoy your birthday treat.</p>',
+      '<p>Your special day is coming up and we want to celebrate with you.</p>',
+      '<p>(Describe your birthday treat or offer here.)</p>',
       '<p>We wish you a wonderful celebration! 🎉</p>',
     ].join('\n'),
   },
@@ -100,12 +93,6 @@ export const TEMPLATE_PRESETS: MailerTemplatePreset[] = [
   },
 ];
 
-export type RenderVoucherInfo = {
-  code: string;
-  title: string;
-  expiresAt: Date | null;
-};
-
 export type RenderEmailInput = {
   subject: string;
   preheader: string | null;
@@ -113,8 +100,6 @@ export type RenderEmailInput = {
   recipientName: string | null;
   unsubscribeUrl: string | null;
   brandName: string;
-  /** Voucher issued to this recipient; fills the {{voucher_*}} placeholders. */
-  voucher?: RenderVoucherInfo | null;
 };
 
 function escapeHtml(value: string): string {
@@ -125,27 +110,9 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function applyPlaceholders(
-  html: string,
-  name: string | null,
-  voucher: RenderVoucherInfo | null | undefined,
-): string {
+function applyPlaceholders(html: string, name: string | null): string {
   const safeName = escapeHtml((name ?? '').trim()) || 'there';
-  const expiry = voucher
-    ? voucher.expiresAt
-      ? voucher.expiresAt.toLocaleDateString('en-MY', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          timeZone: 'Asia/Kuala_Lumpur',
-        })
-      : 'no expiry'
-    : '';
-  return html
-    .replace(/\{\{\s*name\s*\}\}/gi, safeName)
-    .replace(/\{\{\s*voucher_code\s*\}\}/gi, escapeHtml(voucher?.code ?? ''))
-    .replace(/\{\{\s*voucher_title\s*\}\}/gi, escapeHtml(voucher?.title ?? ''))
-    .replace(/\{\{\s*voucher_expiry\s*\}\}/gi, escapeHtml(expiry));
+  return html.replace(/\{\{\s*name\s*\}\}/gi, safeName);
 }
 
 /** Strip tags for the plain-text alternative part. */
@@ -174,21 +141,13 @@ export function renderCampaignEmail(input: RenderEmailInput): {
   html: string;
   text: string;
 } {
-  const subject = applyPlaceholders(
-    input.subject,
-    input.recipientName,
-    input.voucher,
-  )
+  const subject = applyPlaceholders(input.subject, input.recipientName)
     // Subjects are plain text: undo entity escaping from placeholder fill.
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"');
-  const body = applyPlaceholders(
-    input.bodyHtml,
-    input.recipientName,
-    input.voucher,
-  );
+  const body = applyPlaceholders(input.bodyHtml, input.recipientName);
   const preheader = (input.preheader ?? '').trim();
   const brand = escapeHtml(input.brandName);
 
@@ -229,4 +188,66 @@ ${body}
   }
 
   return { subject, html, text: textParts.join('\n\n') };
+}
+
+/** What a "you've got a voucher" email says about the voucher. Never its code. */
+export type IssuedVoucherInfo = {
+  title: string;
+  /** e.g. "RM 5.00 off" or "15% off"; null when there is no value to state. */
+  valueLabel: string | null;
+  minSpendSen: number | null;
+  expiresAt: Date | null;
+  /** Where the member opens the app; the button is left out when unset. */
+  appUrl: string | null;
+};
+
+/**
+ * Subject and inner HTML for the email sent when a voucher lands in a
+ * member's wallet. The code is deliberately left out: the member finds it in
+ * the app under Rewards → Vouchers. Wrap with `renderCampaignEmail`.
+ */
+export function voucherIssuedEmail(v: IssuedVoucherInfo): {
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+} {
+  const expiry = v.expiresAt
+    ? v.expiresAt.toLocaleDateString('en-MY', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Kuala_Lumpur',
+      })
+    : null;
+  const lines = [
+    `<p style="margin:0 0 4px;font-size:17px;"><strong>${escapeHtml(v.title)}</strong></p>`,
+    v.valueLabel
+      ? `<p style="margin:0 0 4px;font-size:22px;font-weight:bold;color:#c2410c;">${escapeHtml(v.valueLabel)}</p>`
+      : '',
+    v.minSpendSen
+      ? `<p style="margin:0 0 4px;font-size:13px;">Min. spend RM ${(v.minSpendSen / 100).toFixed(2)}</p>`
+      : '',
+    `<p style="margin:0;font-size:13px;color:#9a3412;">${expiry ? `Valid until ${escapeHtml(expiry)}` : 'No expiry date'}</p>`,
+  ].filter(Boolean);
+  const button = v.appUrl
+    ? [
+        '<p style="text-align:center;margin:24px 0;">',
+        `  <a href="${escapeHtml(v.appUrl)}" style="background:#c2410c;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;display:inline-block;font-weight:bold;">Open the Moja app</a>`,
+        '</p>',
+      ]
+    : [];
+  return {
+    // Subjects are plain text; renderCampaignEmail fills {{name}} in both.
+    subject: `A voucher for you: ${v.title}`,
+    preheader: 'It is waiting in your Moja member wallet.',
+    bodyHtml: [
+      '<h2>Hi {{name}}, you have a new voucher 🎁</h2>',
+      '<p>We have added a voucher to your member wallet:</p>',
+      '<div style="background:#fff7ed;border:1px dashed #c2410c;border-radius:10px;padding:16px 20px;margin:16px 0;text-align:center;">',
+      ...lines.map((l) => `  ${l}`),
+      '</div>',
+      '<p>To use it, open the Moja app and go to <strong>Rewards → Vouchers</strong>. Copy the voucher code there and paste it at checkout.</p>',
+      ...button,
+    ].join('\n'),
+  };
 }

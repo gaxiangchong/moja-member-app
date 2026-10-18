@@ -139,6 +139,11 @@ export class CreateCampaignFromTemplateDto {
   @IsBoolean()
   allowStacking?: boolean;
 
+  /** Email opted-in members when they are issued this voucher (default off). */
+  @IsOptional()
+  @IsBoolean()
+  emailOnIssue?: boolean;
+
   @IsOptional()
   @IsString()
   tncText?: string;

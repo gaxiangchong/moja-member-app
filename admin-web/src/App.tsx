@@ -5,7 +5,6 @@ import {
   getStoredIdentity,
   hasSession,
   login,
-  loginWithApiKey,
   logout,
   SESSION_EXPIRED_EVENT,
   type AdminIdentity,
@@ -109,11 +108,10 @@ const GROUP_ICONS: Record<string, ReactNode> = {
   ),
 };
 
+/** Admin email + password: the same account signs in to admin-web, the admin dashboard and the ops screens. */
 function LoginScreen({ onSuccess }: { onSuccess: (identity: AdminIdentity) => void }) {
-  const [mode, setMode] = useState<'jwt' | 'api_key'>('jwt');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,9 +120,7 @@ function LoginScreen({ onSuccess }: { onSuccess: (identity: AdminIdentity) => vo
     setError(null);
     setLoading(true);
     try {
-      const identity =
-        mode === 'jwt' ? await login(email.trim(), password) : await loginWithApiKey(apiKey.trim());
-      onSuccess(identity);
+      onSuccess(await login(email.trim(), password));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -137,69 +133,30 @@ function LoginScreen({ onSuccess }: { onSuccess: (identity: AdminIdentity) => vo
       <form className="loginCard" onSubmit={submit}>
         <h1 className="loginTitle">Moja Admin</h1>
 
-        <div className="loginModeTabs">
-          <button
-            type="button"
-            className={`loginModeTab${mode === 'jwt' ? ' active' : ''}`}
-            onClick={() => setMode('jwt')}
-          >
-            Email &amp; password
-          </button>
-          <button
-            type="button"
-            className={`loginModeTab${mode === 'api_key' ? ' active' : ''}`}
-            onClick={() => setMode('api_key')}
-          >
-            API key
-          </button>
-        </div>
-
-        {mode === 'jwt' ? (
-          <>
-            <label className="loginLabel" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={loading}
-            />
-            <label className="loginLabel" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </>
-        ) : (
-          <>
-            <label className="loginLabel" htmlFor="apiKey">
-              API key
-            </label>
-            <input
-              id="apiKey"
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              required
-              disabled={loading}
-            />
-            <p className="loginHint">
-              Full-access service key — prefer email &amp; password for day-to-day use.
-            </p>
-          </>
-        )}
+        <label className="loginLabel" htmlFor="email">
+          Email
+        </label>
+        <input
+          id="email"
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={loading}
+        />
+        <label className="loginLabel" htmlFor="password">
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={loading}
+        />
 
         {error ? <p className="viewError">{error}</p> : null}
         <button type="submit" className="loginSubmit" disabled={loading}>

@@ -4,17 +4,30 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CustomerStatus, Prisma, type CounterRedemption } from '@prisma/client';
+import {
+  CustomerStatus,
+  Prisma,
+  VoucherLifecycleStatus,
+  VoucherStatus,
+  type CounterRedemption,
+} from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CampaignBuilderService } from '../rewards-workflow/campaign-builder.service';
+import {
+  assertBirthdayVoucherUsable,
+  birthdayVoucherBlock,
+} from '../rewards-workflow/birthday-voucher.rule';
+import { loadDefinitionDiscountMap } from '../rewards/voucher-definition-discount.util';
 import type {
   OpsAttachReceiptDto,
+  OpsMemberVouchersDto,
   OpsRedeemDto,
   OpsUndoRedemptionDto,
+  OpsUseVoucherDto,
 } from './dto/ops-redemption.dto';
 
 /** The most counter redemptions one member can have in a day. */
@@ -39,6 +52,42 @@ function discountLabel(c: {
   return c.voucherType === 'PERCENTAGE'
     ? `${c.percentageOff ?? 0}% off`
     : `RM${((c.fixedAmountOff ?? 0) / 100).toFixed(2)} off`;
+}
+
+/** What kind of voucher this is, in a word the cashier recognises. */
+function voucherKind(
+  trigger: string | null | undefined,
+  issueReason: unknown,
+): string {
+  switch (trigger) {
+    case 'NEW_MEMBER':
+      return 'Welcome';
+    case 'BIRTHDAY':
+      return 'Birthday';
+    case 'INACTIVE_DAYS':
+      return 'Win-back';
+    case 'REFERRAL_PURCHASE':
+    case 'REFERRAL_COUNT':
+      return 'Referral';
+    case 'MIN_PURCHASE':
+      return 'Spend reward';
+    case 'ALL_MEMBERS':
+      return 'Promotion';
+  }
+  if (
+    typeof issueReason === 'string' &&
+    issueReason.startsWith('reward_redeem')
+  ) {
+    return 'Points reward';
+  }
+  return 'Voucher';
+}
+
+/** "RM5.00 off" for an older series voucher, or '' when it has no cash value. */
+function seriesLabel(rebateValueSen: number | null | undefined): string {
+  return rebateValueSen
+    ? 'RM' + (rebateValueSen / 100).toFixed(2) + ' off'
+    : '';
 }
 
 function maskPhone(phone: string): string {
@@ -281,6 +330,9 @@ export class OpsRedemptionsService {
           null,
           `counter_redeem:${reward.code}`,
           tx,
+          null,
+          // Spent at the till right now: nothing to tell the member by email.
+          { notifyByEmail: false },
         );
         const meta =
           voucher.metadata && typeof voucher.metadata === 'object'
@@ -514,5 +566,246 @@ export class OpsRedemptionsService {
       where: { id },
     });
     return { redemption: this.view(row) };
+  }
+
+  // ---------------------------------------------------------------------
+  // Member's own vouchers (welcome, birthday, win-back, …) used at the till
+  // ---------------------------------------------------------------------
+
+  private async customerForPhone(phone: string) {
+    let phoneE164: string;
+    try {
+      phoneE164 = this.phoneNormalizer.normalizeToE164(phone);
+    } catch {
+      throw new BadRequestException({
+        code: 'INVALID_PHONE',
+        message: 'Enter a valid mobile number.',
+      });
+    }
+    const customer = await this.prisma.customer.findUnique({
+      where: { phoneE164 },
+      select: { id: true, status: true, birthday: true },
+    });
+    if (!customer) {
+      throw new NotFoundException({
+        code: 'MEMBER_NOT_FOUND',
+        message: 'No member with that number.',
+      });
+    }
+    return customer;
+  }
+
+  /**
+   * The vouchers a member can use right now — the same set the member app
+   * lists under Vouchers: wallet vouchers from voucher campaigns plus older
+   * series vouchers, minus expired ones and birthday vouchers outside the
+   * member's birthday window.
+   */
+  async listMemberVouchers(dto: OpsMemberVouchersDto) {
+    const customer = await this.customerForPhone(dto.phone);
+    const now = new Date();
+    const [campaignVouchers, seriesVouchers] = await Promise.all([
+      this.prisma.voucher.findMany({
+        where: {
+          customerId: customer.id,
+          visibleInWallet: true,
+          status: {
+            in: [VoucherLifecycleStatus.ACTIVE, VoucherLifecycleStatus.LOCKED],
+          },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        include: { voucherCampaign: true },
+        orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.customerVoucher.findMany({
+        where: {
+          customerId: customer.id,
+          status: VoucherStatus.ISSUED,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        include: { definition: { select: { id: true, title: true } } },
+        orderBy: { issuedAt: 'desc' },
+      }),
+    ]);
+    const seriesDiscount = await loadDefinitionDiscountMap(
+      this.prisma,
+      seriesVouchers.map((v) => v.definition.id),
+    );
+
+    const campaign = campaignVouchers
+      .filter(
+        (v) => !birthdayVoucherBlock(v.voucherCampaign, customer.birthday, now),
+      )
+      .map((v) => {
+        const c = v.voucherCampaign;
+        const meta =
+          v.metadata && typeof v.metadata === 'object'
+            ? (v.metadata as Record<string, unknown>)
+            : {};
+        return {
+          id: v.id,
+          source: 'CAMPAIGN' as const,
+          title: v.name,
+          kind: voucherKind(c?.autoCreditTrigger, meta.issueReason),
+          discountLabel: c ? discountLabel(c) : '',
+          minSpendCents: c?.minSpend ?? null,
+          expiresAt: v.expiresAt?.toISOString() ?? null,
+          // Held by an online checkout that is still being paid.
+          inUseOnline:
+            v.status === VoucherLifecycleStatus.LOCKED &&
+            !!v.lockExpiresAt &&
+            v.lockExpiresAt.getTime() > now.getTime(),
+        };
+      });
+    const series = seriesVouchers.map((v) => {
+      const meta = seriesDiscount.get(v.definition.id);
+      return {
+        id: v.id,
+        source: 'CATALOG' as const,
+        title: v.definition.title,
+        kind: 'Voucher',
+        discountLabel: seriesLabel(meta?.rebateValueSen),
+        minSpendCents: meta?.minSpendSen ?? null,
+        expiresAt: v.expiresAt?.toISOString() ?? null,
+        inUseOnline: false,
+      };
+    });
+    return [...campaign, ...series];
+  }
+
+  /**
+   * Uses one of the member's vouchers at the till: the cashier keys the
+   * discount into SalesPlay, and this marks the voucher used so it cannot be
+   * spent again online or at another counter.
+   */
+  async useMemberVoucher(dto: OpsUseVoucherDto, ip?: string | null) {
+    const staff = await this.requireStaff(dto.staffCode);
+    const customer = await this.customerForPhone(dto.phone);
+    // Same rule as spending points: an account the member never activated
+    // could belong to anyone who knows the number.
+    if (customer.status === CustomerStatus.DRAFT) {
+      throw new BadRequestException({
+        code: 'MEMBER_NOT_ACTIVATED',
+        message:
+          'This member has not activated their account yet. Ask them to open the Moja app and sign in once — their vouchers are safe.',
+      });
+    }
+    if (customer.status !== CustomerStatus.ACTIVE) {
+      throw new BadRequestException({
+        code: 'MEMBER_NOT_AVAILABLE',
+        message: 'This member account is not available.',
+      });
+    }
+    const now = new Date();
+    const notUsable = (message: string) =>
+      new BadRequestException({ code: 'VOUCHER_NOT_REDEEMABLE', message });
+    const notFound = () =>
+      new NotFoundException({
+        code: 'VOUCHER_NOT_FOUND',
+        message: 'Voucher not found for this member.',
+      });
+
+    let used: {
+      title: string;
+      discountLabel: string;
+      minSpendCents: number | null;
+    };
+    if (dto.source === 'CATALOG') {
+      const row = await this.prisma.customerVoucher.findFirst({
+        where: { id: dto.voucherId, customerId: customer.id },
+        include: { definition: { select: { id: true, title: true } } },
+      });
+      if (!row) throw notFound();
+      if (row.expiresAt && row.expiresAt <= now) {
+        throw notUsable('This voucher has expired.');
+      }
+      // Guarded on the status, so two counters can never both use it.
+      const updated = await this.prisma.customerVoucher.updateMany({
+        where: { id: row.id, status: VoucherStatus.ISSUED },
+        data: { status: VoucherStatus.REDEEMED, redeemedAt: now },
+      });
+      if (updated.count === 0) {
+        throw notUsable('This voucher has already been used.');
+      }
+      const meta = (
+        await loadDefinitionDiscountMap(this.prisma, [row.definition.id])
+      ).get(row.definition.id);
+      used = {
+        title: row.definition.title,
+        discountLabel: seriesLabel(meta?.rebateValueSen),
+        minSpendCents: meta?.minSpendSen ?? null,
+      };
+    } else {
+      const row = await this.prisma.voucher.findFirst({
+        where: { id: dto.voucherId, customerId: customer.id },
+        include: { voucherCampaign: true },
+      });
+      if (!row) throw notFound();
+      assertBirthdayVoucherUsable(row.voucherCampaign, customer.birthday, now);
+      if (row.expiresAt && row.expiresAt <= now) {
+        throw notUsable('This voucher has expired.');
+      }
+      if (
+        row.status === VoucherLifecycleStatus.LOCKED &&
+        row.lockExpiresAt &&
+        row.lockExpiresAt > now
+      ) {
+        throw notUsable(
+          'This voucher is being used in an online checkout right now. Try again in a few minutes.',
+        );
+      }
+      const updated = await this.prisma.voucher.updateMany({
+        where: {
+          id: row.id,
+          OR: [
+            { status: VoucherLifecycleStatus.ACTIVE },
+            {
+              status: VoucherLifecycleStatus.LOCKED,
+              lockExpiresAt: { lt: now },
+            },
+          ],
+        },
+        data: {
+          status: VoucherLifecycleStatus.USED,
+          usageCount: { increment: 1 },
+          usedAt: now,
+          lockToken: null,
+          lockedAt: null,
+          lockExpiresAt: null,
+          metadata: {
+            ...(row.metadata && typeof row.metadata === 'object'
+              ? (row.metadata as Record<string, unknown>)
+              : {}),
+            usedAtCounterBy: staff.code,
+            usedAtCounterVerification: dto.verification,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      if (updated.count === 0) {
+        throw notUsable('This voucher has already been used.');
+      }
+      const c = row.voucherCampaign;
+      used = {
+        title: row.name,
+        discountLabel: c ? discountLabel(c) : '',
+        minSpendCents: c?.minSpend ?? null,
+      };
+    }
+
+    await this.audit.log({
+      actorType: 'system',
+      action: 'ops.voucher_used_at_counter',
+      entityType: dto.source === 'CATALOG' ? 'customer_voucher' : 'voucher',
+      entityId: dto.voucherId,
+      ipAddress: ip ?? null,
+      metadata: {
+        customerId: customer.id,
+        staff: `${staff.code} (${staff.name})`,
+        verification: dto.verification,
+        title: used.title,
+        discountLabel: used.discountLabel,
+      } as Prisma.InputJsonValue,
+    });
+    return used;
   }
 }

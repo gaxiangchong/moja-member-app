@@ -103,6 +103,11 @@ export class UpdateCampaignDto {
   @IsBoolean()
   visibleInWallet?: boolean;
 
+  /** Email opted-in members when they are issued this voucher. */
+  @IsOptional()
+  @IsBoolean()
+  emailOnIssue?: boolean;
+
   /** Empty string clears the automatic trigger (manual issue only). */
   @IsOptional()
   @IsIn([...AUTO_CREDIT_TRIGGERS, ''])

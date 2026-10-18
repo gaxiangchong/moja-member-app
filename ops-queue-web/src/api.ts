@@ -82,7 +82,7 @@ function formatHttpError(
   return `Request failed (${status})`;
 }
 
-/** Dispatched when the ops API key is rejected with 401 (invalid/rotated key). */
+/** Dispatched when a request is rejected with 401 (sign-in expired or revoked). */
 export const SESSION_EXPIRED_EVENT = 'moja:ops-session-expired';
 
 const SESSION_EXPIRED_MESSAGE =
@@ -107,12 +107,35 @@ function assertOk(res: Response, data: { message?: string | string[] }): void {
   }
 }
 
+/**
+ * Signs in with an admin account (the same email and password as admin-web
+ * and the admin dashboard) and returns the access token every ops call sends.
+ */
+export async function opsSignIn(
+  email: string,
+  password: string,
+  baseUrl: string = defaultBase,
+): Promise<string> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/admin/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await parseJson<{ accessToken?: string; message?: string | string[] }>(res);
+  if (!res.ok || !data.accessToken) {
+    throw new Error(
+      res.status === 401 ? 'Wrong email or password.' : formatHttpError(res.status, data),
+    );
+  }
+  return data.accessToken;
+}
+
 export async function fetchQueueOrders(
   apiKey: string,
   baseUrl: string = defaultBase,
 ): Promise<QueueOrdersResponse> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/queue/orders`, {
-    headers: { 'x-ops-api-key': apiKey },
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
   const data = await parseJson<QueueOrdersResponse & { message?: string | string[] }>(res);
   assertOk(res, data);
@@ -126,7 +149,7 @@ export async function fetchQueueOrderDetail(
 ): Promise<QueueOrderDetail> {
   const res = await fetch(
     `${baseUrl.replace(/\/$/, '')}/ops/queue/orders/${encodeURIComponent(orderId)}`,
-    { headers: { 'x-ops-api-key': apiKey } },
+    { headers: { Authorization: `Bearer ${apiKey}` } },
   );
   const data = await parseJson<QueueOrderDetail & { message?: string | string[] }>(res);
   assertOk(res, data);
@@ -145,7 +168,7 @@ export async function completeQueueOrder(
     : `${apiRoot}/ops/queue/orders/${encodeURIComponent(orderToken)}/complete`;
   const res = await fetch(path, {
     method: 'PATCH',
-    headers: { 'x-ops-api-key': apiKey },
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
   const data = await parseJson<{ message?: string | string[]; orderNumber?: number }>(res);
   assertOk(res, data);
@@ -168,7 +191,7 @@ export async function timesheetClockIn(
     {
       method: 'POST',
       headers: {
-        'x-ops-api-key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ employeeCode }),
@@ -189,7 +212,7 @@ export async function timesheetClockOut(
     {
       method: 'POST',
       headers: {
-        'x-ops-api-key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ employeeCode }),
@@ -233,7 +256,7 @@ export async function fetchBentoPickupLookup(
 ): Promise<BentoPickupLookup> {
   const res = await fetch(
     `${baseUrl.replace(/\/$/, '')}/ops/queue/bento/lookup/${encodeURIComponent(pickupCode)}`,
-    { headers: { 'x-ops-api-key': apiKey } },
+    { headers: { Authorization: `Bearer ${apiKey}` } },
   );
   const data = await parseJson<BentoPickupLookup & { message?: string | string[] }>(res);
   assertOk(res, data);
@@ -253,7 +276,7 @@ export async function fetchKitchenStock(
   baseUrl: string = defaultBase,
 ): Promise<KitchenStockItem[]> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock`, {
-    headers: { 'x-ops-api-key': apiKey },
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
   const data = await parseJson<KitchenStockItem[] & { message?: string | string[] }>(res);
   assertOk(res, data as unknown as { message?: string | string[] });
@@ -271,7 +294,7 @@ export async function setKitchenStockQty(
     {
       method: 'PATCH',
       headers: {
-        'x-ops-api-key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ qty }),
@@ -290,7 +313,7 @@ export async function collectBentoPickup(
     `${baseUrl.replace(/\/$/, '')}/ops/queue/bento/collect/${encodeURIComponent(pickupCode)}`,
     {
       method: 'PATCH',
-      headers: { 'x-ops-api-key': apiKey },
+      headers: { Authorization: `Bearer ${apiKey}` },
     },
   );
   const data = await parseJson<{ message?: string | string[]; pickupCode?: string }>(res);
@@ -365,7 +388,7 @@ export async function pushMemberToSalesplay(
 ): Promise<SalesplayPushStatus> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members/salesplay`, {
     method: 'POST',
-    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, staffCode: staffCode || undefined }),
   });
   const data = await parseJson<{ salesplay?: SalesplayPushStatus; message?: string | string[] }>(res);
@@ -381,7 +404,7 @@ export async function lookupMember(
 ): Promise<OpsMemberLookupResult> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members/lookup`, {
     method: 'POST',
-    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, staffCode: staffCode || undefined }),
   });
   const data = await parseJson<OpsMemberLookupResult & { message?: string | string[] }>(res);
@@ -394,16 +417,19 @@ export async function registerMember(
   input: {
     phone: string;
     displayName?: string;
-    email?: string;
+    email: string;
     birthday?: string;
     marketingConsent?: boolean;
+    /** Typed by the customer themselves; omit to let them set it in the app. */
+    pin?: string;
+    pinConfirm?: string;
     staffCode?: string;
   },
   baseUrl: string = defaultBase,
 ): Promise<OpsMemberCreateResult> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/members`, {
     method: 'POST',
-    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   const data = await parseJson<OpsMemberCreateResult & { message?: string | string[] }>(res);
@@ -461,7 +487,7 @@ async function opsJson<T>(
 ): Promise<T> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
     method: init.method ?? 'GET',
-    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const data = await parseJson<T & { message?: string | string[] }>(res);
@@ -488,6 +514,48 @@ export function redeemAtCounter(
     method: 'POST',
     body: input,
   });
+}
+
+/** A voucher in the member's wallet that can be used at the till now. */
+export type MemberVoucher = {
+  id: string;
+  /** CAMPAIGN = voucher campaigns; CATALOG = older series vouchers. */
+  source: 'CAMPAIGN' | 'CATALOG';
+  title: string;
+  /** Welcome, Birthday, Win-back, Referral, Points reward, … */
+  kind: string;
+  /** e.g. "RM5.00 off" or "15% off". */
+  discountLabel: string;
+  minSpendCents: number | null;
+  expiresAt: string | null;
+  /** Held by an online checkout still being paid — cannot be used right now. */
+  inUseOnline: boolean;
+};
+
+export function fetchMemberVouchers(apiKey: string, phone: string, baseUrl: string = defaultBase) {
+  return opsJson<MemberVoucher[]>(apiKey, baseUrl, '/ops/redemptions/member-vouchers', {
+    method: 'POST',
+    body: { phone },
+  });
+}
+
+export function redeemMemberVoucher(
+  apiKey: string,
+  input: {
+    phone: string;
+    voucherId: string;
+    source: MemberVoucher['source'];
+    staffCode: string;
+    verification: 'QR' | 'PHONE';
+  },
+  baseUrl: string = defaultBase,
+) {
+  return opsJson<{ title: string; discountLabel: string; minSpendCents: number | null }>(
+    apiKey,
+    baseUrl,
+    '/ops/redemptions/member-vouchers/use',
+    { method: 'POST', body: input },
+  );
 }
 
 export function fetchTodayRedemptions(apiKey: string, baseUrl: string = defaultBase) {
@@ -534,7 +602,7 @@ export async function setQueueOrderStatus(
     `${baseUrl.replace(/\/$/, '')}/ops/queue/orders/${encodeURIComponent(orderId)}/status`,
     {
       method: 'PATCH',
-      headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, ...opts }),
     },
   );
@@ -574,7 +642,7 @@ export async function fetchStockDayGrid(
   if (from) qs.set('from', from);
   const res = await fetch(
     `${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days?${qs.toString()}`,
-    { headers: { 'x-ops-api-key': apiKey } },
+    { headers: { Authorization: `Bearer ${apiKey}` } },
   );
   const data = await parseJson<StockDayGrid & { message?: string | string[] }>(res);
   assertOk(res, data as unknown as { message?: string | string[] });
@@ -590,7 +658,7 @@ export async function setStockDayQty(
 ): Promise<StockDayCell> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days`, {
     method: 'POST',
-    headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ productId, businessDate, qty }),
   });
   const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);

@@ -5,12 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CustomerStatus, VoucherStatus } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { tierForPoints } from '../loyalty/member-tier';
 import { PrismaService } from '../prisma/prisma.service';
+import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 import { WalletService } from '../wallet/wallet.service';
 import { OpsCreateMemberDto, OpsMemberLookupDto } from './dto/ops-member.dto';
 
@@ -42,6 +44,7 @@ export class OpsMembersService {
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
     private readonly audit: AuditService,
+    private readonly campaignAutomation: CampaignAutomationService,
   ) {}
 
   /**
@@ -157,12 +160,13 @@ export class OpsMembersService {
   /**
    * Registers a walk-in member from the counter.
    *
-   * The account is created **without a PIN** — staff must never set or know a
-   * member's PIN, or they could sign in and spend that member's wallet credit
-   * and vouchers. The member activates it themselves on their own phone
-   * (`loginLookup` reports `hasPin: false`, which routes the app to OTP →
-   * set PIN). Points still accrue against the phone number in the meantime,
-   * so the account is useful even if it is never activated.
+   * Staff must never set or know a member's PIN, or they could sign in and
+   * spend that member's wallet credit and vouchers. So a PIN is only taken
+   * here when the **customer** types it themselves on the counter device, and
+   * only for a member who has none yet. Without one, the member activates the
+   * account on their own phone (`loginLookup` reports `hasPin: false`, which
+   * routes the app to OTP → set PIN). Points still accrue against the phone
+   * number in the meantime, so the account is useful even if never activated.
    *
    * Idempotent by phone number: registering an existing member returns that
    * member instead of failing, which is the common case when the cashier is
@@ -174,8 +178,26 @@ export class OpsMembersService {
 
     const existing = await this.prisma.customer.findUnique({
       where: { phoneE164 },
-      select: { id: true, salesplayCustomerId: true },
+      select: { id: true, salesplayCustomerId: true, loginPinHash: true },
     });
+
+    const pin = dto.pin?.trim() || null;
+    if (pin) {
+      if (pin !== dto.pinConfirm?.trim()) {
+        throw new BadRequestException({
+          code: 'PIN_MISMATCH',
+          message: 'The two PIN entries do not match. Ask the customer to type it again.',
+        });
+      }
+      // Never replace a PIN the member already chose.
+      if (existing?.loginPinHash) {
+        throw new BadRequestException({
+          code: 'PIN_ALREADY_SET',
+          message:
+            'This member already has a PIN. They sign in with it, or reset it in the app with "Forgot PIN".',
+        });
+      }
+    }
 
     // Creates the DRAFT customer plus loyalty/stored wallets and referral code.
     // Deliberately does NOT fire the WELCOME campaign — that happens when the
@@ -207,6 +229,25 @@ export class OpsMembersService {
     });
     await this.customers.ensureKitchenPickupCode(customer.id);
 
+    if (pin) {
+      // Same as finishing sign-up in the app: active, signed-in-able, and the
+      // welcome vouchers go out now that the member can actually log in.
+      const hash = await bcrypt.hash(pin, 12);
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { loginPinHash: hash, status: CustomerStatus.ACTIVE },
+      });
+      void this.campaignAutomation
+        .runNewMemberTrigger(customer.id)
+        .catch((err) =>
+          this.logger.error(
+            `New-member campaign trigger failed for ${customer.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+    }
+
     await this.audit.log({
       actorType: 'system',
       action: existing ? 'ops.member_register_existing' : 'ops.member_register',
@@ -218,6 +259,8 @@ export class OpsMembersService {
         staff: staffLabel,
         displayName: displayName ?? null,
         marketingConsent: dto.marketingConsent === true,
+        // Whether the customer set their PIN at the counter; never the PIN.
+        pinSetAtCounter: Boolean(pin),
       },
     });
 

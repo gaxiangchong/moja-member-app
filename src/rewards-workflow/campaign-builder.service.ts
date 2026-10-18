@@ -211,6 +211,7 @@ export class CampaignBuilderService {
         qualifyingMinSpend: qualifyingMinSpendSen,
         allowStacking: dto.allowStacking ?? false,
         visibleInWallet: true,
+        emailOnIssue: dto.emailOnIssue ?? false,
         tncText: dto.tncText?.trim() || preset.tncText,
         isActive: true,
         startsAt: new Date(dto.startsAt),
@@ -340,6 +341,9 @@ export class CampaignBuilderService {
         ...(dto.visibleInWallet !== undefined
           ? { visibleInWallet: dto.visibleInWallet }
           : {}),
+        ...(dto.emailOnIssue !== undefined
+          ? { emailOnIssue: dto.emailOnIssue }
+          : {}),
       },
     });
   }
@@ -362,6 +366,12 @@ export class CampaignBuilderService {
      * as "already issued". Hand-issued vouchers leave it unset.
      */
     issueKey?: string | null,
+    /**
+     * `notifyByEmail: false` never emails, whatever the campaign says (e.g. a
+     * counter redemption spent on the spot). Otherwise the campaign's
+     * `emailOnIssue` switch decides.
+     */
+    opts: { notifyByEmail?: boolean } = {},
   ) {
     const db = tx ?? this.prisma;
     const campaign = await db.voucherCampaign.findUnique({
@@ -429,6 +439,15 @@ export class CampaignBuilderService {
     const metadata: Record<string, string> = {};
     if (reason) metadata.issueReason = reason;
 
+    // Queued here, sent by VoucherIssueMailerService once this has committed.
+    // Only members who agreed to marketing email, and only wallet vouchers.
+    const emailQueued =
+      opts.notifyByEmail !== false &&
+      campaign.emailOnIssue &&
+      campaign.visibleInWallet &&
+      customer.marketingConsent &&
+      Boolean(customer.email?.trim());
+
     const voucher = await db.voucher.create({
       data: {
         customerId,
@@ -440,6 +459,7 @@ export class CampaignBuilderService {
         usageLimitPerUser: campaign.usageLimitPerUser,
         visibleInWallet: campaign.visibleInWallet,
         issueKey: issueKey ?? null,
+        issueEmailStatus: emailQueued ? 'PENDING' : null,
         metadata: Object.keys(metadata).length ? metadata : undefined,
       },
     });

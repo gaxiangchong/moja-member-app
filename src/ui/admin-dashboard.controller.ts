@@ -948,17 +948,17 @@ export class AdminDashboardController {
       <h1 class="login-title">Sign in</h1>
       <p class="login-lead">Authenticate before accessing the back-office dashboard.</p>
       <div class="auth-form-grid">
-        <div class="auth-mode-tabs">
-          <button type="button" class="auth-mode-btn active" id="authTabKey">API key</button>
-          <button type="button" class="auth-mode-btn" id="authTabJwt">Email &amp; password</button>
+        <div class="auth-mode-tabs hidden">
+          <button type="button" class="auth-mode-btn" id="authTabKey">API key</button>
+          <button type="button" class="auth-mode-btn active" id="authTabJwt">Email &amp; password</button>
         </div>
-        <div id="authKeyPanel">
+        <div id="authKeyPanel" class="hidden">
           <div class="form-section" style="margin-top:0">
             <label for="apiKey">Admin API key</label>
             <input id="apiKey" type="password" placeholder="From ADMIN_API_KEYS in server env" autocomplete="off" />
           </div>
         </div>
-        <div id="authJwtPanel" class="hidden">
+        <div id="authJwtPanel">
           <div class="form-section" style="margin-top:0">
             <label for="adminEmail">Admin email</label>
             <input id="adminEmail" type="email" placeholder="admin@example.com" autocomplete="username" />
@@ -968,7 +968,7 @@ export class AdminDashboardController {
             <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" />
           </div>
         </div>
-        <p class="muted-hint" id="authHelpText">Use an API key for service access, or sign in with admin credentials.</p>
+        <p class="muted-hint" id="authHelpText">Sign in with your admin email and password — the same account as admin-web and the ops screens.</p>
       </div>
       <button type="button" class="btn-primary" id="loginSubmitBtn" style="width:100%;margin-top:8px">Sign in</button>
       <p class="login-status" id="loginStatus" aria-live="polite"></p>
@@ -2283,7 +2283,7 @@ export class AdminDashboardController {
 
               <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
                 <h3 style="margin:0 0 4px;font-size:14px">2 &middot; Draft the email &mdash; <span id="mailEditorMode">new campaign</span></h3>
-                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. With an attached voucher you can also use <code>{{voucher_title}}</code>, <code>{{voucher_code}}</code> and <code>{{voucher_expiry}}</code>. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
+                <p class="field-hint" style="margin-top:0">Use <code>{{name}}</code> anywhere in the subject or body to insert the member's name. Campaigns are written content only: vouchers are sent from Voucher campaigns, and their codes are never emailed. The body is placed inside the branded layout (logo header, footer, unsubscribe link) automatically.</p>
                 <input type="hidden" id="mailEditingId" value="" />
                 <input type="hidden" id="mailTemplateKind" value="PLAIN" />
                 <div class="vc-form">
@@ -2323,14 +2323,6 @@ export class AdminDashboardController {
                   <div class="vc-field" id="mailBirthdayDaysWrap" style="display:none">
                     <label for="mailBirthdayDays">Birthday within (days)</label>
                     <input type="number" id="mailBirthdayDays" min="1" max="60" value="14" />
-                  </div>
-                  <div class="vc-field">
-                    <label for="mailVoucherDef">Attach voucher (added to each recipient's wallet)</label>
-                    <select id="mailVoucherDef"><option value="">— no voucher —</option></select>
-                  </div>
-                  <div class="vc-field">
-                    <label for="mailVoucherValidDays">Voucher valid for (days)</label>
-                    <input type="number" id="mailVoucherValidDays" min="1" max="365" placeholder="no expiry" />
                   </div>
                 </div>
                 <p class="field-hint" id="mailAudienceCount" style="margin:10px 0 0"></p>
@@ -4791,7 +4783,9 @@ export class AdminDashboardController {
 
     const savedKey = localStorage.getItem('moja_admin_api_key');
     if (savedKey) apiKeyInput.value = savedKey;
-    let currentAuthMode = localStorage.getItem('moja_admin_auth_mode') || (localStorage.getItem('moja_admin_jwt') ? 'jwt' : 'key');
+    // Email + password only, the same admin account as admin-web and the ops
+    // screens. A saved API key from before is no longer used to sign in.
+    let currentAuthMode = 'jwt';
     let isConnected = false;
 
     function setLoginStatus(message, ok) {
@@ -4810,17 +4804,15 @@ export class AdminDashboardController {
       }
     }
 
-    function setAuthTab(mode) {
-      currentAuthMode = mode === 'jwt' ? 'jwt' : 'key';
+    function setAuthTab() {
+      currentAuthMode = 'jwt';
       localStorage.setItem('moja_admin_auth_mode', currentAuthMode);
       const jwt = currentAuthMode === 'jwt';
       authKeyPanel.classList.toggle('hidden', jwt);
       authJwtPanel.classList.toggle('hidden', !jwt);
       authTabKey.classList.toggle('active', !jwt);
       authTabJwt.classList.toggle('active', jwt);
-      authHelpText.textContent = jwt
-        ? 'Sign in with admin credentials to issue a JWT token.'
-        : 'Use an API key for service-to-service access.';
+      authHelpText.textContent = 'Sign in with your admin email and password — the same account as admin-web and the ops screens.';
       if (loginSubmitBtn) loginSubmitBtn.textContent = jwt ? 'Sign in' : 'Sign in with API key';
     }
     setAuthTab(currentAuthMode);
@@ -8624,7 +8616,6 @@ export class AdminDashboardController {
         if (btn) mailTableAction(btn.getAttribute('data-mail-act'), btn.getAttribute('data-id')).catch(mailListErr);
       });
       mailLoadTemplates().catch(function () {});
-      mailLoadVoucherDefs().catch(function () {});
       loadMailCampaigns().catch(mailListErr);
       mailUpdateAudienceCount();
     }
@@ -8635,19 +8626,6 @@ export class AdminDashboardController {
         document.getElementById('mailAudience').value === 'BIRTHDAY_UPCOMING' ? '' : 'none';
     }
 
-    async function mailLoadVoucherDefs() {
-      var sel = document.getElementById('mailVoucherDef');
-      if (!sel) return;
-      var defs = await api('/admin/voucher-definitions');
-      var current = sel.value;
-      sel.innerHTML = '<option value="">— no voucher —</option>' + (defs || [])
-        .filter(function (d) { return d.isActive; })
-        .map(function (d) {
-          var extra = d.rebateValueSen ? ' (RM' + (d.rebateValueSen / 100).toFixed(2) + ' off)' : '';
-          return '<option value="' + vcEsc(d.id) + '">' + vcEsc(d.code + ' — ' + d.title + extra) + '</option>';
-        }).join('');
-      if (current) sel.value = current;
-    }
 
     async function mailLoadTemplates() {
       var grid = document.getElementById('mailTemplateGrid');
@@ -8700,8 +8678,6 @@ export class AdminDashboardController {
       document.getElementById('mailAudience').value = 'OPTED_IN';
       document.getElementById('mailTier').value = '';
       document.getElementById('mailBirthdayDays').value = '14';
-      document.getElementById('mailVoucherDef').value = '';
-      document.getElementById('mailVoucherValidDays').value = '';
       mailSyncBirthdayVisibility();
       document.getElementById('mailEditorMode').textContent = 'new campaign';
       document.getElementById('mailPreviewWrap').style.display = 'none';
@@ -8712,7 +8688,6 @@ export class AdminDashboardController {
 
     function mailEditorPayload() {
       var birthdayDays = parseInt(document.getElementById('mailBirthdayDays').value, 10);
-      var voucherValidDays = parseInt(document.getElementById('mailVoucherValidDays').value, 10);
       return {
         name: document.getElementById('mailName').value.trim(),
         templateKind: document.getElementById('mailTemplateKind').value || 'PLAIN',
@@ -8722,8 +8697,6 @@ export class AdminDashboardController {
         audience: document.getElementById('mailAudience').value,
         tierFilter: document.getElementById('mailTier').value.trim() || null,
         birthdayWindowDays: Number.isFinite(birthdayDays) ? birthdayDays : null,
-        voucherDefinitionId: document.getElementById('mailVoucherDef').value || null,
-        voucherValidDays: Number.isFinite(voucherValidDays) ? voucherValidDays : null,
       };
     }
 
@@ -8840,8 +8813,7 @@ export class AdminDashboardController {
       var rows = (data.campaigns || []).map(function (c) {
         var audience = (c.audience === 'ALL_WITH_EMAIL' ? 'All with email'
           : c.audience === 'BIRTHDAY_UPCOMING' ? '🎂 Birthday ≤ ' + (c.birthdayWindowDays || 14) + 'd'
-          : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '') +
-          (c.voucherDefinitionId ? ' · 🎟️ voucher' : '');
+          : 'Opted-in') + (c.tierFilter ? ' · ' + vcEsc(c.tierFilter) : '');
         var whenTxt = '';
         if (c.status === 'SCHEDULED' && c.scheduledAt) whenTxt = new Date(c.scheduledAt).toLocaleString();
         else if (c.completedAt) whenTxt = new Date(c.completedAt).toLocaleString();
@@ -8879,8 +8851,6 @@ export class AdminDashboardController {
         document.getElementById('mailAudience').value = c.audience || 'OPTED_IN';
         document.getElementById('mailTier').value = c.tierFilter || '';
         document.getElementById('mailBirthdayDays').value = c.birthdayWindowDays || '14';
-        document.getElementById('mailVoucherDef').value = c.voucherDefinitionId || '';
-        document.getElementById('mailVoucherValidDays').value = c.voucherValidDays || '';
         mailSyncBirthdayVisibility();
         var editable = c.status === 'DRAFT' || c.status === 'SCHEDULED';
         document.getElementById('mailEditorMode').textContent =

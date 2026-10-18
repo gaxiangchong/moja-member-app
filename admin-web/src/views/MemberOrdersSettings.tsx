@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchMemberOrdersSettings, updateMemberOrdersSettings } from '../api';
+import { EarlyOrderDiscountPanel } from './EarlyOrderDiscountPanel';
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
@@ -99,6 +100,7 @@ export function MemberOrdersSettings() {
           The savings figure always covers everything since the member joined.
         </p>
       </section>
+      <EarlyOrderDiscountPanel />
     </div>
   );
 }

@@ -106,6 +106,10 @@ const DISCOUNT_TYPES: { value: CampaignVoucherType; label: string }[] = [
   { value: 'FIXED_AMOUNT', label: 'Fixed amount off' },
 ];
 
+const EMAIL_ON_ISSUE_HINT =
+  'Covers hand issues, "Issue to all" and automatic pushes. Only members who agreed to marketing emails get it. ' +
+  'The email describes the voucher (value, min. spend, expiry) but never includes the code: members copy it from the app.';
+
 type CreateForm = {
   template: CampaignTemplateKey;
   name: string;
@@ -124,6 +128,7 @@ type CreateForm = {
   autoCreditThresholdValue: string;
   /** REFERRAL_PURCHASE: the friend's first order must reach this many RM. */
   qualifyingMinSpendRM: string;
+  emailOnIssue: boolean;
 };
 
 function emptyCreateForm(preset?: CampaignTemplatePreset): CreateForm {
@@ -145,6 +150,7 @@ function emptyCreateForm(preset?: CampaignTemplatePreset): CreateForm {
     // Seed the template's own defaults so what the admin sees is what gets saved.
     autoCreditThresholdValue: preset?.defaultThreshold != null ? String(preset.defaultThreshold) : '',
     qualifyingMinSpendRM: preset?.qualifyingMinSpendRM != null ? String(preset.qualifyingMinSpendRM) : '',
+    emailOnIssue: false,
   };
 }
 
@@ -338,6 +344,7 @@ export function VoucherCampaigns() {
         maxTotalIssued: createForm.maxTotalIssued ? Number(createForm.maxTotalIssued) : undefined,
         usageLimitPerUser: createForm.usageLimitPerUser ? Number(createForm.usageLimitPerUser) : undefined,
         tncText: createForm.tncText.trim() || undefined,
+        emailOnIssue: createForm.emailOnIssue,
       });
       // The create response is not shaped like a list row (no issued count), so
       // reload the list from the server rather than inserting it as it is.
@@ -406,6 +413,20 @@ export function VoucherCampaigns() {
     setSaveError(null);
     try {
       const updated = await updateCampaign(detail.id, { isActive: !detail.isActive });
+      await reloadCampaign(updated.id);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to update campaign');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleEmailOnIssue() {
+    if (!detail) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateCampaign(detail.id, { emailOnIssue: !detail.emailOnIssue });
       await reloadCampaign(updated.id);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to update campaign');
@@ -652,6 +673,24 @@ export function VoucherCampaigns() {
                       onMinSpend={(v) => setCreateForm((f) => ({ ...f, qualifyingMinSpendRM: v }))}
                     />
                   </section>
+
+                  <section>
+                    <h3 className="drawerSectionTitle">Email notification</h3>
+                    <label className="switchRow">
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={createForm.emailOnIssue}
+                          onChange={(e) => setCreateForm((f) => ({ ...f, emailOnIssue: e.target.checked }))}
+                        />
+                        <span className="switchTrack" aria-hidden />
+                      </span>
+                      <span>Email members when they are issued this voucher</span>
+                    </label>
+                    <p className="viewMuted" style={{ marginTop: 8, marginBottom: 0 }}>
+                      {EMAIL_ON_ISSUE_HINT}
+                    </p>
+                  </section>
                 </div>
                 <div className="drawerFooter">
                   <div>{createError ? <span className="viewError">{createError}</span> : null}</div>
@@ -769,7 +808,26 @@ export function VoucherCampaigns() {
                       </section>
 
                       <section>
+                        <h3 className="drawerSectionTitle">Email notification</h3>
+                        <label className="switchRow">
+                          <span className="switch">
+                            <input type="checkbox" checked={detail.emailOnIssue} onChange={toggleEmailOnIssue} disabled={saving} />
+                            <span className="switchTrack" aria-hidden />
+                          </span>
+                          <span>Email members when they are issued this voucher</span>
+                        </label>
+                        <p className="viewMuted" style={{ marginTop: 8, marginBottom: 0 }}>
+                          {EMAIL_ON_ISSUE_HINT}
+                        </p>
+                      </section>
+
+                      <section>
                         <h3 className="drawerSectionTitle">Issue this voucher</h3>
+                        <p className="viewMuted" style={{ marginTop: 0, marginBottom: 8 }}>
+                          {detail.emailOnIssue
+                            ? 'Members who agreed to marketing emails will get an email about it.'
+                            : 'No email will be sent; members see the voucher in the app.'}
+                        </p>
                         <CustomerSearch actionLabel="Issue" onSelect={(c) => issueToMember(c.id)} />
                         <button type="button" className="toolbarButton" style={{ marginTop: 12 }} onClick={issueAll} disabled={bulkBusy}>
                           {bulkBusy ? 'Issuing…' : 'Issue to all active members'}

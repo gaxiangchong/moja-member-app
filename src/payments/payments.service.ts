@@ -538,6 +538,20 @@ export class PaymentsService {
       }
     }
 
+    // Whole cakes ordered far enough ahead: on top of any voucher, from what
+    // the cakes cost after it.
+    const earlyOrderDiscountCents =
+      await this.customers.earlyOrderDiscountCentsFor(dto, discountCents);
+    dto.earlyOrderDiscountCents = earlyOrderDiscountCents;
+    discountCents += earlyOrderDiscountCents;
+    if (earlyOrderDiscountCents > 0) {
+      // Staff and the member see it on the order, receipts included.
+      dto.fulfillmentSummary = [
+        ...(dto.fulfillmentSummary ?? []),
+        `Early order discount: −RM ${(earlyOrderDiscountCents / 100).toFixed(2)}`,
+      ];
+    }
+
     dto.discountCents = discountCents;
     const goodsCents = Math.max(0, subtotalCents - discountCents);
     dto.totalCents =

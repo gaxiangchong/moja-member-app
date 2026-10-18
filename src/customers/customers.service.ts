@@ -28,6 +28,11 @@ import {
 } from '../orders/delivery';
 import { localOnlyProductIds } from '../orders/delivery-class';
 import { DeliverySettingsService } from '../orders/delivery-settings.service';
+import { EarlyOrderDiscountService } from '../orders/early-order-discount.service';
+import {
+  EARLY_ORDER_CATEGORY,
+  earlyOrderDiscountCents,
+} from '../orders/early-order-discount';
 import { SalesplayService } from '../salesplay/salesplay.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { OrderNotificationService } from '../notifications/order-notification.service';
@@ -165,6 +170,7 @@ export class CustomersService {
     private readonly orderNotices: OrderNotificationService,
     private readonly memberOrdersSettings: MemberOrdersSettingsService,
     private readonly deliverySettings: DeliverySettingsService,
+    private readonly earlyOrderDiscount: EarlyOrderDiscountService,
   ) {}
 
   /**
@@ -1170,6 +1176,42 @@ export class CustomersService {
     );
   }
 
+  /**
+   * The early-order discount for this order (sen), on top of
+   * `otherDiscountCents` from a voucher or reward. Categories come from the
+   * catalog, not the app; checkout extras are not catalog products and never
+   * count. A parcel has no collection day, so it never qualifies.
+   */
+  async earlyOrderDiscountCentsFor(
+    dto: SubmitMemberOrderDto,
+    otherDiscountCents: number,
+  ): Promise<number> {
+    const settings = await this.earlyOrderDiscount.getSettings();
+    const fulfilmentType = dto.fulfilmentType ?? 'PICKUP';
+    const parcel =
+      fulfilmentType === 'DELIVERY' && dto.deliveryMethod === 'SHIPPING';
+    if (!settings.enabled || parcel || fulfilmentType === 'IN_STORE') return 0;
+    const ids = [...new Set(dto.lines.map((l) => l.productId))];
+    const cakes = new Set(
+      (
+        await this.prisma.shopProduct.findMany({
+          where: { id: { in: ids }, category: EARLY_ORDER_CATEGORY },
+          select: { id: true },
+        })
+      ).map((p) => p.id),
+    );
+    return earlyOrderDiscountCents({
+      settings,
+      lines: dto.lines.map((l) => ({
+        amountCents: l.unitPriceCents * l.qty,
+        isWholeCake: cakes.has(l.productId),
+      })),
+      scheduledDate: dto.scheduledDate,
+      today: todayBusinessDate(),
+      otherDiscountCents,
+    });
+  }
+
   private validateMemberOrderTotals(
     dto: SubmitMemberOrderDto,
     shippingFeeCents: number,
@@ -1317,6 +1359,10 @@ export class CustomersService {
           status: ORDER_STATUS.PENDING_PAYMENT,
           fulfilmentType,
           deliveryFeeCents: shippingFeeCents,
+          earlyOrderDiscountCents: Math.max(
+            0,
+            Math.floor(dto.earlyOrderDiscountCents ?? 0),
+          ),
           ...(delivery
             ? {
                 deliveryMethod: shipping ? 'SHIPPING' : 'LOCAL',

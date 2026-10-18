@@ -75,6 +75,15 @@ export class SubmitMemberOrderDto {
   @Min(0)
   discountCents?: number;
 
+  /**
+   * Set by the server at checkout, never by the app: undecorated, so the
+   * validation pipe refuses it in a request body. Included in `discountCents`.
+   * `declare` so the compiled class does not create the property on every
+   * instance (ES2023 class fields would, and the pipe would then reject every
+   * order with "should not exist").
+   */
+  declare earlyOrderDiscountCents?: number;
+
   @IsOptional()
   fulfillmentSummary?: string[] | null;
 

@@ -150,6 +150,52 @@ body {
   box-shadow: 0 0 10px var(--accent2);
 }
 
+/* New-order alert: stays until a cashier presses "Got it". */
+.newOrderBanner {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  color: #78350f;
+  font-size: 1.05rem;
+  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.25);
+  animation: newOrderPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes newOrderPulse {
+  from {
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.2);
+  }
+  to {
+    box-shadow: 0 8px 32px rgba(245, 158, 11, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newOrderBanner {
+    animation: none;
+  }
+}
+
+.newOrderSoundHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.alertToggle--on {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(260px, 300px) 1fr;
@@ -876,6 +922,16 @@ body {
   text-transform: uppercase;
 }
 
+/* Empty: redeeming is blocked until a code is typed. */
+.memberStaffCode input[aria-invalid='true'] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+
+.memberStaffCode input::placeholder {
+  text-transform: none;
+}
+
 .memberLookupForm {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -966,7 +1022,8 @@ body {
 
 .memberCard input[type='text'],
 .memberCard input:not([type]),
-.memberCard input[type='email'] {
+.memberCard input[type='email'],
+.memberCard input[type='password'] {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -992,6 +1049,18 @@ body {
   font-weight: 700;
   font-size: 14px;
 }
+
+/* Customer-entered PIN at registration. */
+.memberPinBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
 
 .memberConsent {
   display: flex;
@@ -1311,6 +1380,19 @@ body {
 .redeemPanel h3 {
   margin: 0;
   font-size: 16px;
+}
+
+/* Welcome / Birthday / Win-back … tag next to a voucher's name. */
+.voucherKind {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
 }
 
 .redeemList {

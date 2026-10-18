@@ -17,6 +17,14 @@ import { BentoPickupPanel } from './BentoPickupPanel';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
+import {
+  desktopNotificationsSupported,
+  installAudioUnlock,
+  playChime,
+  requestDesktopNotifications,
+  showDesktopNotification,
+  soundBlocked,
+} from './newOrderAlert';
 import { formatOrderPickupLabel } from './orderRef';
 
 /** Self pickup lines from ShopFlow: `Date: yyyy-mm-dd`, `Time: hh:mm`. */
@@ -220,7 +228,7 @@ function OrderDetailView({
     return (
       <OpsLoginScreen
         title="Order detail"
-        lead="Sign in with the same OPS_QUEUE_API_KEY as the main queue to view this order."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         onSubmit={async (key, base) => {
           await fetchQueueOrderDetail(key, orderId, base);
           try {
@@ -492,8 +500,30 @@ function OrderCard({
   );
 }
 
+const SOUND_PREF = 'moja_ops_new_order_sound';
+const DESKTOP_PREF = 'moja_ops_new_order_desktop';
+/** While new orders are unacknowledged, the chime repeats this often. */
+const CHIME_REPEAT_MS = 30_000;
+
+function readPref(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v === '1';
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
+
 export function App() {
-  const { state: authState, signIn, signOut, sessionExpired, devKeyPrefill } =
+  const { state: authState, signIn, signOut, sessionExpired } =
     useOpsAuth();
   const [detailModalId, setDetailModalId] = useState<string | null>(() => detailIdFromSearch());
   const apiKey = authState.status === 'authenticated' ? authState.apiKey : '';
@@ -511,6 +541,19 @@ export function App() {
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(() => new Set());
   const prevPendingRef = useRef<Set<string>>(new Set());
+  // The first load seeds what is already in the queue, so only orders that
+  // arrive after that ring the bell.
+  const seededRef = useRef(false);
+  const [soundOn, setSoundOn] = useState(() => readPref(SOUND_PREF, true));
+  const [desktopOn, setDesktopOn] = useState(
+    () =>
+      readPref(DESKTOP_PREF, false) &&
+      desktopNotificationsSupported() &&
+      Notification.permission === 'granted',
+  );
+  const [audioLocked, setAudioLocked] = useState(() => soundBlocked());
+  /** Order numbers that arrived since the cashier last pressed "Got it". */
+  const [unseen, setUnseen] = useState<number[]>([]);
 
   const pendingSections = useMemo(() => {
     const f = filterByPickupCalendarDay(rawPending, dateFrom, dateTo);
@@ -545,6 +588,10 @@ export function App() {
     if (!apiKey.trim()) return;
     try {
       const data = await fetchQueueOrders(apiKey.trim(), apiBase.trim() || defaultBase);
+      if (!seededRef.current) {
+        prevPendingRef.current = new Set(data.pending.map((o) => o.id));
+        seededRef.current = true;
+      }
       setRawPending(data.pending);
       setRawHistory(data.history);
       setPollErr(null);
@@ -563,8 +610,21 @@ export function App() {
   }, [apiKey, apiBase, poll]);
 
   useEffect(() => {
+    if (!seededRef.current) return;
     const next = new Set(rawPending.map((p) => p.id));
     const prev = prevPendingRef.current;
+    const arrived = rawPending.filter((o) => !prev.has(o.id));
+    if (arrived.length > 0) {
+      const numbers = arrived.map((o) => o.orderNumber);
+      setUnseen((u) => [...u, ...numbers.filter((n) => !u.includes(n))]);
+      if (soundOn) playChime();
+      if (desktopOn) {
+        showDesktopNotification(
+          arrived.length === 1 ? `New order #${numbers[0]}` : `${arrived.length} new orders`,
+          numbers.map((n) => `#${n}`).join(', '),
+        );
+      }
+    }
     for (const id of next) {
       if (!prev.has(id)) {
         setPulseIds((s) => new Set(s).add(id));
@@ -578,7 +638,50 @@ export function App() {
       }
     }
     prevPendingRef.current = next;
+    // Only a change in the queue should ring, not toggling the alert settings.
   }, [rawPending]);
+
+  // Keep ringing until someone presses "Got it", so a busy counter can't miss it.
+  useEffect(() => {
+    if (!soundOn || unseen.length === 0) return;
+    const t = window.setInterval(() => playChime(), CHIME_REPEAT_MS);
+    return () => window.clearInterval(t);
+  }, [soundOn, unseen.length]);
+
+  // The tab title shows the count, so it stands out among other tabs.
+  useEffect(() => {
+    const base = 'Moja — Order queue';
+    document.title = unseen.length > 0 ? `(${unseen.length}) New order — ${base}` : base;
+    return () => {
+      document.title = base;
+    };
+  }, [unseen.length]);
+
+  // Browsers keep a page silent until it is tapped once.
+  useEffect(() => installAudioUnlock(() => setAudioLocked(false)), []);
+
+  const toggleSound = () => {
+    setSoundOn((on) => {
+      writePref(SOUND_PREF, !on);
+      if (!on) playChime(1); // one quick ring so the cashier hears the volume
+      return !on;
+    });
+  };
+
+  const toggleDesktop = async () => {
+    if (desktopOn) {
+      writePref(DESKTOP_PREF, false);
+      setDesktopOn(false);
+      return;
+    }
+    const ok = await requestDesktopNotifications();
+    if (!ok) {
+      window.alert('Desktop alerts are blocked for this site. Allow notifications in the browser settings, then try again.');
+      return;
+    }
+    writePref(DESKTOP_PREF, true);
+    setDesktopOn(true);
+  };
 
   const onDisconnect = () => {
     signOut();
@@ -586,6 +689,9 @@ export function App() {
     setRawHistory([]);
     setPollErr(null);
     setPollOk(false);
+    setUnseen([]);
+    seededRef.current = false;
+    prevPendingRef.current = new Set();
   };
 
   const onDone = (id: string) => {
@@ -620,9 +726,8 @@ export function App() {
     return (
       <OpsLoginScreen
         title="Order queue"
-        lead="Sign in with the secret configured on the API as OPS_QUEUE_API_KEY before accessing the kitchen queue."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         checking={authState.status === 'checking'}
-        devKeyPrefill={devKeyPrefill}
         notice={sessionExpired ? 'Your session has expired. Please sign in again.' : null}
         onSubmit={signIn}
       />
@@ -677,6 +782,24 @@ export function App() {
               <button type="button" className="btnGhost" onClick={() => void poll()}>
                 Refresh now
               </button>
+              <button
+                type="button"
+                className={soundOn ? 'btnGhost alertToggle alertToggle--on' : 'btnGhost alertToggle'}
+                onClick={toggleSound}
+                aria-pressed={soundOn}
+              >
+                {soundOn ? '🔔 Sound on' : '🔕 Sound off'}
+              </button>
+              {desktopNotificationsSupported() ? (
+                <button
+                  type="button"
+                  className={desktopOn ? 'btnGhost alertToggle alertToggle--on' : 'btnGhost alertToggle'}
+                  onClick={() => void toggleDesktop()}
+                  aria-pressed={desktopOn}
+                >
+                  {desktopOn ? 'Desktop alerts on' : 'Desktop alerts off'}
+                </button>
+              ) : null}
             </>
           ) : null}
           <button type="button" className="btnGhost" onClick={onDisconnect}>
@@ -684,6 +807,30 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {unseen.length > 0 ? (
+        <div className="newOrderBanner" role="alert">
+          <span>
+            🔔 {unseen.length === 1 ? 'New order' : `${unseen.length} new orders`}:{' '}
+            <strong>{unseen.map((n) => `#${n}`).join(', ')}</strong>
+          </span>
+          <button
+            type="button"
+            className="btnPrimary"
+            onClick={() => {
+              setUnseen([]);
+              setWorkspace('shop');
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      ) : null}
+      {soundOn && audioLocked ? (
+        <p className="newOrderSoundHint" role="status">
+          Tap anywhere on this page once to turn on the new-order sound.
+        </p>
+      ) : null}
 
       {workspace === 'bento' ? (
         <BentoPickupPanel apiKey={apiKey} baseUrl={apiBase} />

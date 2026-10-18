@@ -4,7 +4,6 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -50,19 +49,6 @@ export class CreateCampaignDto {
   @Min(1)
   @Max(60)
   birthdayWindowDays?: number | null;
-
-  /** Voucher series issued to every recipient when the campaign sends. */
-  @IsOptional()
-  @IsUUID()
-  voucherDefinitionId?: string | null;
-
-  /** Days the issued voucher stays valid (omit for no expiry). */
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(365)
-  voucherValidDays?: number | null;
 }
 
 export class UpdateCampaignDto {
@@ -105,17 +91,6 @@ export class UpdateCampaignDto {
   @Min(1)
   @Max(60)
   birthdayWindowDays?: number | null;
-
-  @IsOptional()
-  @IsUUID()
-  voucherDefinitionId?: string | null;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(365)
-  voucherValidDays?: number | null;
 }
 
 export class ScheduleCampaignDto {

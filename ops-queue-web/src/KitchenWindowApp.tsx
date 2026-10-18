@@ -79,7 +79,7 @@ export function KitchenWindowApp() {
     return (
       <OpsLoginScreen
         title="Kitchen stock"
-        lead="Sign in with OPS_QUEUE_API_KEY to update how many cakes are ready."
+        lead="Sign in with your admin email and password — the same account as the admin dashboard."
         checking={authState.status === 'checking'}
         onSubmit={signIn}
       />

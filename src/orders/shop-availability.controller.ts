@@ -3,6 +3,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { DeliverySettingsService } from './delivery-settings.service';
+import { EarlyOrderDiscountService } from './early-order-discount.service';
 import { PickupRulesService } from './pickup-rules.service';
 import {
   ProductStockService,
@@ -25,6 +26,7 @@ export class ShopAvailabilityController {
     private readonly productStock: ProductStockService,
     private readonly pickupRules: PickupRulesService,
     private readonly deliverySettings: DeliverySettingsService,
+    private readonly earlyOrderDiscount: EarlyOrderDiscountService,
   ) {}
 
   /**
@@ -61,6 +63,15 @@ export class ShopAvailabilityController {
   @Get('delivery-info')
   deliveryInfo() {
     return this.deliverySettings.getSettings();
+  }
+
+  /**
+   * The early-order cake discount, so checkout can show it. Display only: the
+   * server works out the real amount when the order is placed.
+   */
+  @Get('early-order-discount')
+  earlyOrderDiscountInfo() {
+    return this.earlyOrderDiscount.getSettings();
   }
 
   @Get('pickup-slots')

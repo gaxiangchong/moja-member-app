@@ -37,6 +37,7 @@ function setup(opts: {
   };
   const customers = {
     shippingFeeCentsFor: jest.fn().mockResolvedValue(0),
+    earlyOrderDiscountCentsFor: jest.fn().mockResolvedValue(0),
     createPendingMemberOrder: jest.fn().mockImplementation(() => {
       calls.push('createOrder');
       return Promise.resolve({

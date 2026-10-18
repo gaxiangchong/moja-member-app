@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Ip,
   Param,
   ParseUUIDPipe,
@@ -11,8 +12,10 @@ import {
 } from '@nestjs/common';
 import {
   OpsAttachReceiptDto,
+  OpsMemberVouchersDto,
   OpsRedeemDto,
   OpsUndoRedemptionDto,
+  OpsUseVoucherDto,
 } from './dto/ops-redemption.dto';
 import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
 import { OpsRedemptionsService } from './ops-redemptions.service';
@@ -40,6 +43,20 @@ export class OpsRedemptionsController {
   @Post()
   redeem(@Body() dto: OpsRedeemDto, @Ip() ip: string) {
     return this.redemptions.redeem(dto, ip);
+  }
+
+  /** The member's own vouchers (welcome, birthday, …) that can be used now. */
+  @Post('member-vouchers')
+  @HttpCode(200)
+  memberVouchers(@Body() dto: OpsMemberVouchersDto) {
+    return this.redemptions.listMemberVouchers(dto);
+  }
+
+  /** Use one of those vouchers at the till; it is marked used straight away. */
+  @Post('member-vouchers/use')
+  @HttpCode(200)
+  useMemberVoucher(@Body() dto: OpsUseVoucherDto, @Ip() ip: string) {
+    return this.redemptions.useMemberVoucher(dto, ip);
   }
 
   @Post(':id/undo')

@@ -110,7 +110,7 @@ export function ScanCollectModal({
         const lower = raw.toLowerCase();
         const apiHint =
           lower.includes('invalid') || lower.includes('unauthorized') || lower.includes('not active')
-            ? ' Check the ops API key on the main queue tab and that this order is still open.'
+            ? ' Check you are still signed in on the main queue tab and that this order is still open.'
             : '';
         setErr(`${raw}${apiHint}`);
         collectingRef.current = false;

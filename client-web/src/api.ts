@@ -694,6 +694,8 @@ export type MemberProfile = {
   email: string | null;
   birthday: string | null;
   memberTier: string | null;
+  /** Agreed to marketing emails (offers, voucher news). Off unless the member opts in. */
+  marketingConsent?: boolean;
   loyalty: { pointsBalance: number; walletId: string | null };
   createdAt: string;
   updatedAt: string;
@@ -724,6 +726,7 @@ export async function updateMe(input: {
   displayName?: string;
   email?: string;
   birthday?: string;
+  marketingConsent?: boolean;
 }): Promise<MemberProfile> {
   const res = await authorizedFetch('/customers/me', {
     method: 'PATCH',
@@ -1220,6 +1223,25 @@ export type PickupSlotDay = {
   leadTimeMessage: string | null;
   slots: PickupSlotOffer[];
 };
+
+/** Percent off whole cakes collected at least `minDaysAhead` days after ordering. */
+export type EarlyOrderDiscountInfo = {
+  enabled: boolean;
+  percent: number;
+  minDaysAhead: number;
+};
+
+/** Display only — the server works out the real discount when the order is placed. */
+export async function fetchEarlyOrderDiscount(): Promise<EarlyOrderDiscountInfo> {
+  const res = await fetch(`${base}/shop/early-order-discount`);
+  const data = await parseJson<Partial<EarlyOrderDiscountInfo> & { message?: string }>(res);
+  if (!res.ok) throw new Error('Failed to load early-order discount');
+  return {
+    enabled: data.enabled === true,
+    percent: typeof data.percent === 'number' ? data.percent : 0,
+    minDaysAhead: typeof data.minDaysAhead === 'number' ? data.minDaysAhead : 0,
+  };
+}
 
 export type DeliveryInfo = {
   /** Delivery can be chosen at checkout. */

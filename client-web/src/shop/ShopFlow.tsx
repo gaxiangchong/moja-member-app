@@ -36,6 +36,8 @@ import {
   fetchPaymentsTestMode,
   shippingFeeFor,
   type DeliveryInfo,
+  type EarlyOrderDiscountInfo,
+  fetchEarlyOrderDiscount,
   type SavedAddress,
   fetchMyAddresses,
   fetchPickupSlots,
@@ -54,6 +56,7 @@ import {
 } from '../lib/whatsapp';
 import { savePendingPayment } from '../payments/pendingPayment';
 import { PICKUP_TIME_SLOTS } from './lib/pickupTimeSlots';
+import { earlyOrderDiscountCents } from './lib/earlyOrderDiscount';
 
 type Screen = 'browse' | 'product' | 'cart' | 'checkout' | 'addresses' | 'paymentDemo';
 /**
@@ -225,6 +228,7 @@ export function ShopFlow({
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelCode, setSelectedChannelCode] = useState('');
   const [deliveryInfo, setDeliveryInfo] = useState<DeliveryInfo | null>(null);
+  const [earlyInfo, setEarlyInfo] = useState<EarlyOrderDiscountInfo | null>(null);
   // Only a test release says anything about the payment channel.
   const [testPayments, setTestPayments] = useState(false);
   const [paymentMethodMode, setPaymentMethodMode] =
@@ -374,7 +378,20 @@ export function ShopFlow({
   // A pickup goes out on a chosen day and time slot; a parcel is just posted.
   const isScheduled = fulfillmentMethod === 'pickup';
   const byCourier = isScheduled && pickupBy === 'courier';
-  const goodsTotal = getTotalCents();
+  // Whole cakes collected far enough ahead: the same rule the server applies.
+  const earlyDiscount = isScheduled
+    ? earlyOrderDiscountCents({
+        settings: earlyInfo,
+        lines: checkoutCart.map((l) => ({
+          amountCents: l.unitPriceCents * l.qty,
+          isWholeCake: products.find((p) => p.id === l.productId)?.category === 'whole_cakes',
+        })),
+        scheduledDate: pickupDate,
+        today: pickupDay?.today ?? todayIsoDate(),
+        otherDiscountCents: discount,
+      })
+    : 0;
+  const goodsTotal = getTotalCents() - earlyDiscount;
   const shippingFee =
     isShipping && deliveryInfo ? shippingFeeFor(deliveryInfo, goodsTotal) : 0;
   const total = goodsTotal + shippingFee;
@@ -468,9 +485,15 @@ export function ShopFlow({
     };
   }, [isScheduled, pickupDate, checkoutCart]);
 
-  // Whether delivery is on, and the WhatsApp number for courier help.
+  // Whether delivery is on, the WhatsApp number for courier help, and the
+  // early-order cake discount.
   useEffect(() => {
     let alive = true;
+    fetchEarlyOrderDiscount()
+      .then((info) => {
+        if (alive) setEarlyInfo(info);
+      })
+      .catch(() => undefined);
     fetchDeliveryInfo()
       .then((info) => {
         if (alive) setDeliveryInfo(info);
@@ -1015,7 +1038,7 @@ export function ShopFlow({
         idempotencyKey: crypto.randomUUID(),
         order: {
           totalCents: total,
-          discountCents: discount,
+          discountCents: discount + earlyDiscount,
           fulfillmentSummary: lines,
           fulfilmentType:
             draft.fulfillmentMethod === 'shipping' ? 'DELIVERY' : 'PICKUP',
@@ -1569,6 +1592,14 @@ export function ShopFlow({
                     ))}
                 </select>
                 </div>
+                {/* Full width under both fields, so the date and time boxes stay level. */}
+                {earlyInfo?.enabled && wholeCakeCount > 0 ? (
+                  <p className={earlyDiscount > 0 ? 'earlyOrderHint earlyOrderHint--on' : 'earlyOrderHint'}>
+                    {earlyDiscount > 0
+                      ? `Early order: ${earlyInfo.percent}% off your cakes.`
+                      : `Pick a date ${earlyInfo.minDaysAhead}+ days ahead to save ${earlyInfo.percent}% on whole cakes.`}
+                  </p>
+                ) : null}
                 {pickupDay && pickupDate === pickupDay.date && pickupDay.closedReason ? (
                   <p className="pickupAvailShort">{pickupDay.closedReason}</p>
                 ) : null}
@@ -1954,6 +1985,12 @@ export function ShopFlow({
                 <div className="discountLine">
                   <span>Discount</span>
                   <span>−{formatRm(discount)}</span>
+                </div>
+              ) : null}
+              {earlyDiscount > 0 ? (
+                <div className="discountLine">
+                  <span>Early order ({earlyInfo?.percent}% off cakes)</span>
+                  <span>−{formatRm(earlyDiscount)}</span>
                 </div>
               ) : null}
               {isShipping ? (

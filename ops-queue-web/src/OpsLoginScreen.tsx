@@ -1,37 +1,46 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
+import { opsSignIn } from './api';
 import { defaultBase, readStoredBase } from './opsSession';
 
 type Props = {
   title: string;
   lead: string;
   checking?: boolean;
-  devKeyPrefill?: string;
-  onSubmit: (key: string, base: string) => Promise<void>;
+  /** Receives the admin access token from a successful email + password sign-in. */
+  onSubmit: (token: string, base: string) => Promise<void>;
   footer?: ReactNode;
   /** Optional banner shown above the form, e.g. after a session expiry. */
   notice?: string | null;
 };
 
+/** Ops sign-in: the same admin email and password as admin-web and the admin dashboard. */
 export function OpsLoginScreen({
   title,
   lead,
   checking = false,
-  devKeyPrefill = '',
   onSubmit,
   footer,
   notice,
 }: Props) {
   const [apiBase, setApiBase] = useState(() => readStoredBase());
-  const [apiKey, setApiKey] = useState(() => devKeyPrefill);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const onConnect = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
+    if (!email.trim() || !password) {
+      setErr('Enter your email and password.');
+      return;
+    }
     setBusy(true);
     try {
-      await onSubmit(apiKey, apiBase);
+      const base = apiBase.trim() || defaultBase;
+      const token = await opsSignIn(email.trim(), password, base);
+      await onSubmit(token, base);
+      setPassword('');
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Could not sign in');
     } finally {
@@ -67,14 +76,24 @@ export function OpsLoginScreen({
               autoComplete="off"
               disabled={busy}
             />
-            <label htmlFor="opsLoginKey">Ops API key</label>
+            <label htmlFor="opsLoginEmail">Email</label>
             <input
-              id="opsLoginKey"
+              id="opsLoginEmail"
+              type="email"
+              value={email}
+              onChange={(ev) => setEmail(ev.target.value)}
+              placeholder="you@example.com"
+              autoComplete="username"
+              disabled={busy}
+            />
+            <label htmlFor="opsLoginPassword">Password</label>
+            <input
+              id="opsLoginPassword"
               type="password"
-              value={apiKey}
-              onChange={(ev) => setApiKey(ev.target.value)}
-              placeholder="From OPS_QUEUE_API_KEY"
-              autoComplete="off"
+              value={password}
+              onChange={(ev) => setPassword(ev.target.value)}
+              placeholder="Password"
+              autoComplete="current-password"
               disabled={busy}
             />
             {err ? <p className="err">{err}</p> : null}
