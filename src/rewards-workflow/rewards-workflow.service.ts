@@ -17,6 +17,7 @@ import {
   isBirthdayCampaign,
 } from './birthday-voucher.rule';
 import { CampaignBuilderService } from './campaign-builder.service';
+import { memberRewardsCatalogWhere } from '../rewards/member-rewards-catalog.util';
 
 type VoucherValidationInput = {
   customerId: string;
@@ -142,6 +143,16 @@ export class RewardsWorkflowService {
     rewardCatalogId: string,
     _idempotencyKey: string,
   ) {
+    // Rewards listed from the voucher-definition catalog share this endpoint:
+    // they have no reward-catalog row of their own.
+    const catalogRow = await this.prisma.rewardCatalog.findUnique({
+      where: { id: rewardCatalogId },
+      select: { id: true },
+    });
+    if (!catalogRow) {
+      return this.redeemDefinitionRewardByPoints(customerId, rewardCatalogId);
+    }
+
     const recentDuplicate = await this.prisma.userReward.findFirst({
       where: {
         customerId,
@@ -259,6 +270,112 @@ export class RewardsWorkflowService {
           expiresAt: voucher.expiresAt,
         },
         pointsSpent: reward.pointsCost,
+        pointsBalance: balanceAfter,
+      };
+    });
+  }
+
+  /**
+   * Redeem a voucher-definition reward (e.g. "RM5 Cash Voucher") with points:
+   * spend the points and put a voucher in the member's wallet, whose code they
+   * paste at checkout. Same response shape as a reward-catalog redemption.
+   */
+  private async redeemDefinitionRewardByPoints(
+    customerId: string,
+    definitionId: string,
+  ) {
+    const def = await this.prisma.voucherDefinition.findFirst({
+      where: { id: definitionId, ...memberRewardsCatalogWhere() },
+    });
+    if (!def || !def.pointsCost || def.pointsCost <= 0) {
+      throw new NotFoundException('Reward not found.');
+    }
+    const pointsCost = def.pointsCost;
+    const asVoucher = (cv: { id: string; expiresAt: Date | null }) => ({
+      id: cv.id,
+      code: def.code,
+      name: def.title,
+      expiresAt: cv.expiresAt,
+    });
+
+    // A double tap: hand back the voucher they already got, charge nothing more.
+    const recentDuplicate = await this.prisma.customerVoucher.findFirst({
+      where: {
+        customerId,
+        definitionId: def.id,
+        referenceType: 'points_redeem',
+        issuedAt: { gte: new Date(Date.now() - 30_000) },
+      },
+      orderBy: { issuedAt: 'desc' },
+    });
+    if (recentDuplicate) {
+      const wallet = await this.loyalty.getWalletSummary(customerId);
+      return {
+        idempotent: true as const,
+        userReward: null,
+        voucher: asVoucher(recentDuplicate),
+        pointsSpent: pointsCost,
+        pointsBalance: wallet.pointsBalance,
+      };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (def.maxTotalIssued != null) {
+        const issued = await tx.customerVoucher.count({
+          where: { definitionId: def.id },
+        });
+        if (issued >= def.maxTotalIssued) {
+          throw new BadRequestException('This reward is fully redeemed.');
+        }
+      }
+
+      const summary = await this.loyalty.getWalletSummary(customerId);
+      if (summary.pointsBalance < pointsCost) {
+        throw new BadRequestException(
+          'Not enough points to redeem this reward.',
+        );
+      }
+
+      let balanceAfter: number;
+      try {
+        ({ balanceAfter } = await this.loyalty.appendLedgerEntry(
+          {
+            customerId,
+            deltaPoints: -pointsCost,
+            reason: `redeem_${def.code}`,
+            referenceType: 'reward_redeem',
+            referenceId: def.id,
+          },
+          tx,
+        ));
+      } catch (err) {
+        // Someone else spent the points between the check and now.
+        if (
+          err instanceof BadRequestException &&
+          (err.getResponse() as { code?: string })?.code ===
+            'LOYALTY_INSUFFICIENT_POINTS'
+        ) {
+          throw new BadRequestException(
+            'Not enough points to redeem this reward.',
+          );
+        }
+        throw err;
+      }
+
+      const cv = await tx.customerVoucher.create({
+        data: {
+          customerId,
+          definitionId: def.id,
+          status: 'ISSUED',
+          referenceType: 'points_redeem',
+        },
+      });
+
+      return {
+        idempotent: false as const,
+        userReward: null,
+        voucher: asVoucher(cv),
+        pointsSpent: pointsCost,
         pointsBalance: balanceAfter,
       };
     });

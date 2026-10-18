@@ -859,12 +859,13 @@ export class CustomersService {
           }),
       ],
       rewards: [
-        // Legacy catalog rewards have no code of their own: they are applied
-        // at checkout. (`redeemVia` tells the app which way a reward works.)
+        // Voucher-definition rewards: redeeming spends the points and puts the
+        // voucher in the wallet, whose code is pasted at checkout.
+        // (`redeemVia` tells the app which way a reward works.)
         ...rewardCatalog.map((r) => ({
           ...r,
           ...withDiscount(r.id),
-          redeemVia: 'checkout' as const,
+          redeemVia: 'code' as const,
         })),
         // Only surface new rewards that resolve to a fixed cash discount so
         // every listed reward is redeemable at checkout.

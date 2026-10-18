@@ -590,7 +590,9 @@ function VoucherCard({
   status: string;
 }) {
   const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
-  const normalized = String(status || 'ACTIVE').toUpperCase();
+  // Wallet vouchers from voucher-definition rewards are ISSUED; same as ACTIVE here.
+  const rawStatus = String(status || 'ACTIVE').toUpperCase();
+  const normalized = rawStatus === 'ISSUED' ? 'ACTIVE' : rawStatus;
   let isExpiring = false;
   if (normalized === 'ACTIVE' && expiry !== '-') {
     const d = new Date(expiry);
