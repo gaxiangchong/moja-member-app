@@ -1,9 +1,6 @@
 // Information architecture for the new admin shell — deliberately NOT a 1:1
 // mirror of the legacy dashboard's DEFAULT_DASHBOARD_CONFIG.menuViews
 // anymore. Consolidated per product direction:
-//   - Bento and the shop catalog were split across two unrelated top-level
-//     groups ("Bento" vs "Settings") even though they're the same sales
-//     transaction — merged into one "Sales" group.
 //   - Wallet/Loyalty/Campaigns/Gift-rewards were 4 separate top-level groups
 //     for what is really one "points, vouchers & rewards" concern — merged
 //     into "Rewards & Loyalty".
@@ -11,6 +8,11 @@
 //   - Standalone "Reports" removed — customer reports moved into Customers,
 //     sales reporting moved into Finance (one financial view, not a
 //     separate copy of the same numbers).
+//   - Bento (subscription meal plans) is out of scope for this admin
+//     rebuild — cake sales (online + in-store via SalesPlay) and future
+//     marketplace channels (e.g. Grab) are the focus. "Sales channels" is
+//     a placeholder for that multi-channel view; the legacy dashboard still
+//     carries Bento admin until it is formally retired.
 // View ids are frontend-only navigation keys (not tied to any backend
 // permission code or route), so renaming/regrouping them here is safe.
 
@@ -48,8 +50,7 @@ export const MENU: MenuGroup[] = [
       { id: 'sales-pickup-rules', label: 'Pickup rules' },
       { id: 'sales-delivery', label: 'Delivery' },
       { id: 'sales-member-orders', label: 'Orders page' },
-      { id: 'sales-bento-menu', label: 'Bento menu' },
-      { id: 'sales-bento-pricing', label: 'Bento pricing' },
+      { id: 'sales-channels', label: 'Sales channels' },
       { id: 'sales-operations', label: 'Operations' },
       { id: 'sales-orders', label: 'Orders' },
     ],
@@ -63,7 +64,6 @@ export const MENU: MenuGroup[] = [
       { id: 'rewards-voucher-campaigns', label: 'Voucher campaigns' },
       { id: 'rewards-voucher-redeem', label: 'Redeem voucher' },
       { id: 'rewards-counter', label: 'Counter redemptions' },
-      { id: 'rewards-bento-vouchers', label: 'Bento vouchers' },
       { id: 'rewards-gift-rewards', label: 'Gift rewards' },
     ],
   },
@@ -117,7 +117,6 @@ export const IMPLEMENTED_VIEWS = new Set([
   'rewards-voucher-campaigns',
   'rewards-voucher-redeem',
   'rewards-counter',
-  'rewards-bento-vouchers',
   'rewards-gift-rewards',
 ]);
 

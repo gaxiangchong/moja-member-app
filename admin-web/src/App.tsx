@@ -19,7 +19,6 @@ import { RewardsWallet } from './views/RewardsWallet';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { VoucherCampaigns } from './views/VoucherCampaigns';
 import { RedeemVoucher } from './views/RedeemVoucher';
-import { BentoVouchers } from './views/BentoVouchers';
 import { GiftRewards } from './views/GiftRewards';
 import { PopularItems } from './views/PopularItems';
 import { HomeAds } from './views/HomeAds';
@@ -210,8 +209,6 @@ function renderView(viewId: string) {
       return <VoucherCampaigns />;
     case 'rewards-voucher-redeem':
       return <RedeemVoucher />;
-    case 'rewards-bento-vouchers':
-      return <BentoVouchers />;
     case 'rewards-gift-rewards':
       return <GiftRewards />;
     case 'sales-popular-items':

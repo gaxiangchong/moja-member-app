@@ -1435,66 +1435,6 @@ export async function redeemVoucherInStore(
   }
 }
 
-// --- Bento discount vouchers — shared promo codes typed in at Bento checkout,
-// not tied to any one member (distinct from the two voucher systems above). ---
-
-export type BentoVoucher = {
-  id: string;
-  code: string;
-  description: string | null;
-  amountOffCents: number;
-  minSpendCents: number | null;
-  startsAt: string;
-  endsAt: string;
-  redemptionCap: number;
-  redeemedCount: number;
-  remaining: number;
-  isActive: boolean;
-  createdAt: string;
-};
-
-export async function fetchBentoVouchers(): Promise<BentoVoucher[]> {
-  const res = await authorizedFetch('/admin/bento-vouchers');
-  return parseCatalogResponse<BentoVoucher[]>(res);
-}
-
-export type BentoVoucherInput = {
-  code?: string;
-  description?: string;
-  amountOffCents?: number;
-  minSpendCents?: number;
-  startsAt?: string;
-  endsAt?: string;
-  redemptionCap?: number;
-  isActive?: boolean;
-};
-
-export async function createBentoVoucher(input: BentoVoucherInput): Promise<BentoVoucher> {
-  const res = await authorizedFetch('/admin/bento-vouchers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return parseCatalogResponse<BentoVoucher>(res);
-}
-
-export async function updateBentoVoucher(id: string, input: BentoVoucherInput): Promise<BentoVoucher> {
-  const res = await authorizedFetch(`/admin/bento-vouchers/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return parseCatalogResponse<BentoVoucher>(res);
-}
-
-export async function deleteBentoVoucher(id: string): Promise<void> {
-  const res = await authorizedFetch(`/admin/bento-vouchers/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const data = await parseJson<{ message?: string | string[] }>(res);
-    throw new Error(extractMessage(data, res));
-  }
-}
-
 // --- Gift rewards (points-redeemable reward catalog) ---
 
 export type RewardType = 'FREE_ITEM' | 'DISCOUNT_VOUCHER' | 'LIMITED_TIME';
