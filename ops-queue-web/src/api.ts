@@ -623,6 +623,10 @@ export type StockDayCell = {
   sellableQty: number;
   /** False when the day has no explicit row yet (showing the fallback count). */
   explicit: boolean;
+  /** Kitchen's physical recount for that day, or null before it is submitted. */
+  actualQty: number | null;
+  /** actualQty − qty, or null before a recount is submitted. */
+  varianceQty: number | null;
 };
 
 export type StockDayGrid = {
@@ -661,6 +665,27 @@ export async function setStockDayQty(
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ productId, businessDate, qty }),
   });
+  const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);
+  assertOk(res, data as unknown as { message?: string | string[] });
+  return data as StockDayCell;
+}
+
+/** Kitchen's end-of-day physical recount for one product on one day. */
+export async function reconcileStockDay(
+  apiKey: string,
+  productId: string,
+  businessDate: string,
+  actualQty: number,
+  baseUrl: string = defaultBase,
+): Promise<StockDayCell> {
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days/reconcile`,
+    {
+      method: 'POST',
+      headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, businessDate, actualQty }),
+    },
+  );
   const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);
   assertOk(res, data as unknown as { message?: string | string[] });
   return data as StockDayCell;

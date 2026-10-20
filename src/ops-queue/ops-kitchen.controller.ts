@@ -14,7 +14,11 @@ import {
 } from '../orders/product-stock.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { SetStockQtyDto } from './dto/set-stock-qty.dto';
-import { SetStockDayDto, StockDayGridQueryDto } from './dto/stock-day.dto';
+import {
+  ReconcileStockDayDto,
+  SetStockDayDto,
+  StockDayGridQueryDto,
+} from './dto/stock-day.dto';
 import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
 
 @Controller('ops/kitchen')
@@ -69,6 +73,20 @@ export class OpsKitchenController {
       body.productId,
       body.businessDate,
       body.qty,
+    );
+  }
+
+  /**
+   * Nightly reconcile: kitchen enters what they physically counted at close
+   * for one product on one day. The response's `varianceQty` is that count
+   * minus what the ledger (opening qty − POS − online) expected.
+   */
+  @Post('stock/days/reconcile')
+  reconcileDay(@Body() body: ReconcileStockDayDto) {
+    return this.productStock.setActualQty(
+      body.productId,
+      body.businessDate,
+      body.actualQty,
     );
   }
 }

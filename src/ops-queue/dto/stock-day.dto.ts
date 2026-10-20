@@ -39,3 +39,19 @@ export class SetStockDayDto {
   @Max(9999)
   qty!: number;
 }
+
+/** Kitchen's end-of-day physical recount for one product on one day. */
+export class ReconcileStockDayDto {
+  @IsString()
+  productId!: string;
+
+  @IsString()
+  @Matches(YMD, { message: 'businessDate must be yyyy-mm-dd' })
+  businessDate!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(9999)
+  actualQty!: number;
+}

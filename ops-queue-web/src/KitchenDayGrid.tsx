@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchStockDayGrid,
+  reconcileStockDay,
   setStockDayQty,
   type StockDayGrid as Grid,
 } from './api';
@@ -36,6 +37,8 @@ export function KitchenDayGrid({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [reconcilingKey, setReconcilingKey] = useState<string | null>(null);
+  const [reconcileErr, setReconcileErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,6 +101,45 @@ export function KitchenDayGrid({
       }
     },
     [apiKey, apiBase, load],
+  );
+
+  /** First date in the loaded range — the grid always loads from today. */
+  const today = dates[0] ?? null;
+
+  const reconcile = useCallback(
+    async (productId: string, businessDate: string, actualQty: number) => {
+      const key = `${productId}|${businessDate}`;
+      setReconcilingKey(key);
+      setReconcileErr(null);
+      try {
+        const updated = await reconcileStockDay(
+          apiKey,
+          productId,
+          businessDate,
+          actualQty,
+          apiBase,
+        );
+        setGrid((cur) =>
+          cur
+            ? {
+                ...cur,
+                cells: cur.cells.map((c) =>
+                  c.productId === productId && c.businessDate === businessDate
+                    ? { ...c, actualQty: updated.actualQty, varianceQty: updated.varianceQty }
+                    : c,
+                ),
+              }
+            : cur,
+        );
+      } catch (e) {
+        setReconcileErr(
+          e instanceof Error ? e.message : 'Could not save that count',
+        );
+      } finally {
+        setReconcilingKey(null);
+      }
+    },
+    [apiKey, apiBase],
   );
 
   if (loading && !grid) return <p className="muted">Loading day grid…</p>;
@@ -176,6 +218,65 @@ export function KitchenDayGrid({
           </tbody>
         </table>
       </div>
+
+      {today && (
+        <div className="dayGridReconcile">
+          <h3>End-of-day count · today</h3>
+          <p className="dayGridHint">
+            After close, count what is actually left and enter it here. The
+            variance compares your count to what sales (online + in-store)
+            say should remain.
+          </p>
+          {reconcileErr && (
+            <p className="memberError" role="alert">
+              {reconcileErr}
+            </p>
+          )}
+          <ul className="dayGridReconcileList">
+            {(grid?.products ?? []).map((p) => {
+              const cell = cellMap.get(`${p.id}|${today}`);
+              const key = `${p.id}|${today}`;
+              return (
+                <li key={p.id} className="dayGridReconcileRow">
+                  <span className="dayGridReconcileName">{p.name}</span>
+                  <span className="dayGridReconcileExpected">
+                    Expect {cell?.qty ?? 0}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    placeholder="#"
+                    className="dayGridInput"
+                    defaultValue={cell?.actualQty ?? ''}
+                    disabled={reconcilingKey === key}
+                    onBlur={(e) => {
+                      const raw = e.target.value.trim();
+                      if (raw === '') return;
+                      const v = Math.max(0, Number(raw) || 0);
+                      void reconcile(p.id, today, v);
+                    }}
+                    aria-label={`Physical count of ${p.name} today`}
+                  />
+                  {cell?.varianceQty != null && (
+                    <span
+                      className={
+                        cell.varianceQty === 0
+                          ? 'dayGridVariance is-even'
+                          : cell.varianceQty < 0
+                            ? 'dayGridVariance is-short'
+                            : 'dayGridVariance is-over'
+                      }
+                    >
+                      {cell.varianceQty > 0 ? `+${cell.varianceQty}` : cell.varianceQty}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

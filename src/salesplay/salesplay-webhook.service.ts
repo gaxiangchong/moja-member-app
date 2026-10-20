@@ -1,14 +1,12 @@
-import {
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { purchasePoints } from '../loyalty/member-tier';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
+import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
+import { ProductStockService } from '../orders/product-stock.service';
 import {
   parseCreditNote,
   parseReceipt,
@@ -47,14 +45,20 @@ export class SalesplayWebhookService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly audit: AuditService,
+    private readonly shopCatalog: ShopCatalogService,
+    private readonly productStock: ProductStockService,
   ) {}
 
   verifyToken(token: string | undefined): void {
     const expected = this.config.get<string>('SALESPLAY_WEBHOOK_TOKEN')?.trim();
     if (!expected) {
       // Misconfiguration — refuse rather than accept unauthenticated callers.
-      this.logger.error('SALESPLAY_WEBHOOK_TOKEN is not set; rejecting webhook.');
-      throw new UnauthorizedException({ code: 'SALESPLAY_WEBHOOK_UNCONFIGURED' });
+      this.logger.error(
+        'SALESPLAY_WEBHOOK_TOKEN is not set; rejecting webhook.',
+      );
+      throw new UnauthorizedException({
+        code: 'SALESPLAY_WEBHOOK_UNCONFIGURED',
+      });
     }
     if (!token || token !== expected) {
       throw new UnauthorizedException({ code: 'SALESPLAY_WEBHOOK_FORBIDDEN' });
@@ -251,8 +255,78 @@ export class SalesplayWebhookService {
       },
     });
 
-    await this.maybeAwardLoyalty(parsed, receiptId, customerId, originOnlineOrderId);
+    await this.maybeAwardLoyalty(
+      parsed,
+      receiptId,
+      customerId,
+      originOnlineOrderId,
+    );
+    await this.maybeDecrementStock(parsed, originOnlineOrderId);
     return true;
+  }
+
+  /**
+   * Phase 3: an in-store sale consumes the same physical stock the shop sells
+   * online, so it must come off today's `ProductStockDay` or the shop keeps
+   * offering cakes the kitchen no longer has. Lines are matched to a catalog
+   * product via `salesplayProductCode`/`salesplayVariantCodes`
+   * (`ShopCatalogService.salesplayCodeIndex`); an unmapped SKU (not a
+   * tracked cake, e.g. a drink or a manual line) is left alone.
+   *
+   * Skipped for a receipt that settles one of our own online orders — that
+   * stock was already taken at checkout, so decrementing again would double
+   * count it — and for anything that is not a completed sale (void/refund/
+   * deleted), matching the loyalty-award guard above.
+   */
+  private async maybeDecrementStock(
+    parsed: ParsedReceipt,
+    originOnlineOrderId: string | null,
+  ): Promise<void> {
+    if (originOnlineOrderId) return;
+    if (
+      parsed.isDeleted ||
+      (parsed.receiptType && parsed.receiptType.toUpperCase() !== 'SALE')
+    ) {
+      return;
+    }
+
+    const linesWithCode = parsed.lines.filter((l) => l.productCode?.trim());
+    if (linesWithCode.length === 0) return;
+
+    const index = await this.shopCatalog.salesplayCodeIndex();
+    const qtyByProduct = new Map<string, number>();
+    for (const line of linesWithCode) {
+      const match = index.get(line.productCode!.trim().toLowerCase());
+      if (!match) continue;
+      qtyByProduct.set(
+        match.productId,
+        (qtyByProduct.get(match.productId) ?? 0) + line.qty,
+      );
+    }
+    if (qtyByProduct.size === 0) return;
+
+    const businessDate = parsed.businessDate.toISOString().slice(0, 10);
+    const lines = [...qtyByProduct.entries()].map(([productId, qty]) => ({
+      productId,
+      qty,
+    }));
+
+    try {
+      await this.productStock.decrementForPosSale(lines, businessDate);
+      this.logger.log(
+        `Decremented stock for SalesPlay receipt ${parsed.salesplayReceiptId}: ${lines
+          .map((l) => `${l.productId}×${l.qty}`)
+          .join(', ')} on ${businessDate}.`,
+      );
+    } catch (err) {
+      // Never let a stock-sync failure roll back the receipt itself — the
+      // sale already happened at the till and must still be recorded.
+      this.logger.error(
+        `Stock decrement failed for SalesPlay receipt ${parsed.salesplayReceiptId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async maybeAwardLoyalty(
@@ -432,7 +506,9 @@ export class SalesplayWebhookService {
     if (hints.phone) {
       const digits = hints.phone.replace(/\D/g, '');
       if (digits) {
-        const phoneE164 = hints.phone.startsWith('+') ? hints.phone : `+${digits}`;
+        const phoneE164 = hints.phone.startsWith('+')
+          ? hints.phone
+          : `+${digits}`;
         const byPhone = await this.prisma.customer.findUnique({
           where: { phoneE164 },
           select: { id: true },

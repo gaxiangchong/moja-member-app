@@ -673,6 +673,10 @@ model ProductStockDay {
   businessDate DateTime @map("business_date") @db.Date
   qty          Int      @default(0)
   reservedQty  Int      @default(0) @map("reserved_qty")
+  /// Kitchen's physical recount at end of day (Phase 3 nightly reconcile).
+  /// Null until the kitchen submits a count for that day.
+  actualQty    Int?     @map("actual_qty")
+  reconciledAt DateTime? @map("reconciled_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

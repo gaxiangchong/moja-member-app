@@ -16,6 +16,10 @@ export type DayStock = {
   sellableQty: number;
   /** False when the day has no explicit row (falling back to the global count). */
   explicit: boolean;
+  /** Kitchen's physical recount for that day, or null before it is submitted. */
+  actualQty: number | null;
+  /** actualQty − qty (short if negative), or null before a recount is submitted. */
+  varianceQty: number | null;
 };
 
 type Tx = Prisma.TransactionClient | PrismaService;
@@ -144,6 +148,9 @@ export class ProductStockService {
             reservedQty: row.reservedQty,
             sellableQty: Math.max(0, row.qty - row.reservedQty),
             explicit: true,
+            actualQty: row.actualQty,
+            varianceQty:
+              row.actualQty === null ? null : row.actualQty - row.qty,
           });
         } else {
           out.push({
@@ -153,6 +160,8 @@ export class ProductStockService {
             reservedQty: 0,
             sellableQty: fallback ?? 0,
             explicit: false,
+            actualQty: null,
+            varianceQty: null,
           });
         }
       }
@@ -180,6 +189,8 @@ export class ProductStockService {
       reservedQty: row.reservedQty,
       sellableQty: Math.max(0, row.qty - row.reservedQty),
       explicit: true,
+      actualQty: row.actualQty,
+      varianceQty: row.actualQty === null ? null : row.actualQty - row.qty,
     };
   }
 
@@ -281,5 +292,93 @@ export class ProductStockService {
         WHERE product_id = ${line.productId} AND business_date = ${date}::date
       `;
     }
+  }
+
+  /**
+   * An in-store SalesPlay sale consumes physical stock immediately — unlike
+   * an online order it was never reserved first, so only `qty` moves (not
+   * `reserved_qty`). Seeds the day from the product-level fallback on first
+   * touch, same as `reserveForOrderLines`, so a cake sold in-store before the
+   * kitchen has touched the day grid still shows up as sold, not lost.
+   * Clamped at zero: a receipt that arrives after the kitchen already zeroed
+   * the day (e.g. backfill/reconcile replay) cannot drive stock negative.
+   */
+  async decrementForPosSale(
+    lines: { productId: string; qty: number }[],
+    businessDate: string,
+    tx: Tx = this.prisma,
+  ): Promise<void> {
+    const date = parseBusinessDate(businessDate);
+    for (const line of lines) {
+      const qty = Math.max(0, Math.round(line.qty));
+      if (qty === 0) continue;
+
+      const fallback = await this.shopCatalog.getAvailableQty(line.productId);
+      if (fallback === null) {
+        // Not stock-tracked — unlimited, nothing to decrement unless the
+        // kitchen already set an explicit count for this day.
+        const existing = await tx.productStockDay.findUnique({
+          where: {
+            productId_businessDate: {
+              productId: line.productId,
+              businessDate: date,
+            },
+          },
+          select: { id: true },
+        });
+        if (!existing) continue;
+      }
+
+      await tx.$executeRaw`
+        INSERT INTO product_stock_days (id, product_id, business_date, qty, reserved_qty, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${line.productId}, ${date}::date, ${fallback ?? 0}, 0, NOW(), NOW())
+        ON CONFLICT (product_id, business_date) DO NOTHING
+      `;
+
+      await tx.$executeRaw`
+        UPDATE product_stock_days
+        SET qty = GREATEST(0, qty - ${qty}), updated_at = NOW()
+        WHERE product_id = ${line.productId} AND business_date = ${date}::date
+      `;
+    }
+  }
+
+  /**
+   * Kitchen's end-of-day physical recount (Phase 3 nightly reconcile).
+   * `varianceQty` = actual − system qty: negative means fewer cakes were
+   * found than the ledger expects (shrinkage/miscount/unlogged giveaway),
+   * positive means more (e.g. a POS sale that never made it to the webhook).
+   * Does not touch `qty` itself — reconcile is a report, not a correction;
+   * an operator adjusts the day count separately via `setQty` if needed.
+   */
+  async setActualQty(
+    productId: string,
+    businessDate: string,
+    actualQty: number,
+  ): Promise<DayStock> {
+    const safeActual = Math.max(0, Math.round(actualQty));
+    const date = parseBusinessDate(businessDate);
+    const fallback = await this.shopCatalog.getAvailableQty(productId);
+    const row = await this.prisma.productStockDay.upsert({
+      where: { productId_businessDate: { productId, businessDate: date } },
+      create: {
+        productId,
+        businessDate: date,
+        qty: fallback ?? 0,
+        actualQty: safeActual,
+        reconciledAt: new Date(),
+      },
+      update: { actualQty: safeActual, reconciledAt: new Date() },
+    });
+    return {
+      productId,
+      businessDate,
+      qty: row.qty,
+      reservedQty: row.reservedQty,
+      sellableQty: Math.max(0, row.qty - row.reservedQty),
+      explicit: true,
+      actualQty: row.actualQty,
+      varianceQty: row.actualQty === null ? null : row.actualQty - row.qty,
+    };
   }
 }
