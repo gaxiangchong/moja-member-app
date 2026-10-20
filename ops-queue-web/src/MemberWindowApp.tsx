@@ -410,6 +410,23 @@ export function MemberWindowApp() {
         />
       )}
 
+      {result.kind === 'found' && result.justCreated && (
+        <div className="scanOverlay" role="dialog" aria-modal aria-label="Registration complete">
+          <div className="scanModal">
+            <div className="scanModalHead">
+              <h2>Submission completed</h2>
+            </div>
+            <p>
+              {result.member.displayName || 'The member'} is registered. Click OK to go
+              back to the registration page for the next customer.
+            </p>
+            <button type="button" className="btnPrimary" onClick={reset}>
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       <TodayRedemptions apiKey={apiKey} base={base} staffCode={staffCode} refreshKey={redeemTick} />
 
       <MemberQrScanModal
