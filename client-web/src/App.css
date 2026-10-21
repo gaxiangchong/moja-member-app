@@ -1514,17 +1514,25 @@
   box-shadow: 0 8px 18px rgba(0, 52, 141, 0.08);
 }
 
+/*
+ * The photo fills the card's full height, and every card has the same height
+ * (fixed title / description areas below), so the spacing around photos is
+ * identical from card to card.
+ */
 .productImage {
   position: relative;
   flex: 0 0 auto;
   width: clamp(120px, 42%, 180px);
-  aspect-ratio: 1 / 1;
-  align-self: flex-start;
+  align-self: stretch;
+  min-height: 120px;
   border-radius: 12px;
   background-color: #f1ece6;
   overflow: hidden;
 }
+/* Out of flow, so a photo's own shape never changes the card's height. */
 .productImageInner {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1540,17 +1548,36 @@
   padding: 2px 8px 4px 0;
 }
 
+/*
+ * Title + description always take the same space: room for a two-line title,
+ * three description lines and "more…". A one-line title leaves its spare line
+ * below the description (above the price), not under the title.
+ */
+.productText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: calc(16px * 1.25 * 2 + 6px + 13px * 1.4 * 4);
+}
+
+/* Titles stop at two lines (longer ones end in "…"). */
 .productBody strong {
   font-size: 16px;
   line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
+/* Description always takes three lines' space. */
 .productDesc p {
   margin: 0;
   color: #5f77a5;
   font-size: 13px;
   line-height: 1.4;
-  max-height: calc(13px * 1.4 * 3);
+  height: calc(13px * 1.4 * 3);
   overflow: hidden;
 }
 

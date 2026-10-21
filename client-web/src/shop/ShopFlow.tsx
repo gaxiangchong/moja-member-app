@@ -1313,8 +1313,10 @@ export function ShopFlow({
                     {p.shippable === true ? <ShippingBadge shippable /> : null}
                   </div>
                   <div className="productBody">
-                    <strong>{p.name}</strong>
-                    <ClampedDescription text={p.shortDescription} />
+                    <div className="productText">
+                      <strong>{p.name}</strong>
+                      <ClampedDescription text={p.shortDescription} />
+                    </div>
                     <div className="productFoot">
                       <PointsPill
                         cashback={cashbackOf(p.variants?.[0]?.priceCents ?? p.basePriceCents)}
@@ -2597,7 +2599,14 @@ function ClampedDescription({ text }: { text: string }) {
   return (
     <div className="productDesc">
       <p ref={ref}>{text}</p>
-      {overflowing ? <span className="productDescMore">more...</span> : null}
+      {/* Always rendered so every card keeps the same height; hidden when not needed. */}
+      <span
+        className="productDescMore"
+        style={overflowing ? undefined : { visibility: 'hidden' }}
+        aria-hidden={!overflowing}
+      >
+        more...
+      </span>
     </div>
   );
 }
