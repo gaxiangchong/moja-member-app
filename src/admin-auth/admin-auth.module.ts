@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { configSeconds } from '../common/config-seconds.util';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminAuthService } from './admin-auth.service';
@@ -20,9 +21,10 @@ import { AdminPermissionsGuard } from './guards/admin-permissions.guard';
           config.get<string>('ADMIN_JWT_SECRET') ||
           config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<number>(
-            'ADMIN_JWT_EXPIRES_IN_SEC',
-            config.get<number>('JWT_EXPIRES_IN_SEC', 604800) ?? 604800,
+          expiresIn: configSeconds(
+            config,
+            ['ADMIN_JWT_EXPIRES_IN_SEC', 'JWT_EXPIRES_IN_SEC'],
+            604800,
           ),
         },
       }),

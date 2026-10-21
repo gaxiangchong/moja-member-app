@@ -704,7 +704,8 @@ export class SalesplayService {
     return this.formatSalesplayParts(ref, ['year', 'month', 'day']).join('-');
   }
 
-  private formatSalesplayDateTime(ref: Date): string {
+  /** `Y-m-d H:i:s` in the shop timezone, as SalesPlay filters expect. */
+  formatSalesplayDateTime(ref: Date): string {
     const [y, mo, d] = this.formatSalesplayParts(ref, [
       'year',
       'month',

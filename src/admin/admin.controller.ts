@@ -25,6 +25,7 @@ import { P } from '../admin-auth/permissions';
 import type { AdminAuthState } from '../admin-auth/types/admin-auth.types';
 import { ApprovalsService } from './approvals.service';
 import { AdminService } from './admin.service';
+import { CustomerPurchaseHistoryService } from './customer-purchase-history.service';
 import { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
@@ -103,6 +104,7 @@ function salesplaySyncOptions(
 export class AdminController {
   constructor(
     private readonly admin: AdminService,
+    private readonly purchaseHistory: CustomerPurchaseHistoryService,
     private readonly approvals: ApprovalsService,
     private readonly shopCatalog: ShopCatalogService,
     private readonly homeAds: HomeAdsService,
@@ -172,6 +174,16 @@ export class AdminController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ) {
     return this.admin.listCustomerAuditLogs(id, limit);
+  }
+
+  /** In-store + online purchases with the points each earned, for checking points. */
+  @Get('customers/:id/purchase-history')
+  @RequirePermissions(P.CUSTOMER_READ, P.LOYALTY_READ)
+  customerPurchaseHistory(
+    @Param('id') id: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    return this.purchaseHistory.forCustomer(id, limit);
   }
 
   @Get('customers/:id/orders')

@@ -36,6 +36,13 @@ export class AdminAuthController {
     return this.auth.changeOwnPassword(admin, dto);
   }
 
+  /** Swaps a still-valid admin token for a fresh one (sliding session). */
+  @Post('refresh')
+  @UseGuards(AdminAuthGuard)
+  refresh(@CurrentAdmin() admin: AdminAuthState) {
+    return this.auth.refresh(admin);
+  }
+
   @Get('me')
   @UseGuards(AdminAuthGuard)
   me(@CurrentAdmin() admin: AdminAuthState) {

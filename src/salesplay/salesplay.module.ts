@@ -8,6 +8,7 @@ import { SalesplayService } from './salesplay.service';
 import { SalesplayWebhookService } from './salesplay-webhook.service';
 import { SalesplayWebhookController } from './salesplay-webhook.controller';
 import { SalesplayPullService } from './salesplay-pull.service';
+import { SalesplayLiveSyncService } from './salesplay-live-sync.service';
 
 @Module({
   imports: [
@@ -18,7 +19,12 @@ import { SalesplayPullService } from './salesplay-pull.service';
     OrdersModule,
   ],
   controllers: [SalesplayWebhookController],
-  providers: [SalesplayService, SalesplayWebhookService, SalesplayPullService],
-  exports: [SalesplayService, SalesplayPullService],
+  providers: [
+    SalesplayService,
+    SalesplayWebhookService,
+    SalesplayPullService,
+    SalesplayLiveSyncService,
+  ],
+  exports: [SalesplayService, SalesplayPullService, SalesplayLiveSyncService],
 })
 export class SalesplayModule {}

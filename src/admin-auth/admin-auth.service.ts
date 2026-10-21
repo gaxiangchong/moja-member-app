@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AdminRoleCode } from '@prisma/client';
+import { configSeconds } from '../common/config-seconds.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AdminAuthState } from './types/admin-auth.types';
@@ -36,10 +37,51 @@ export class AdminAuthService {
   }
 
   private jwtExpiresSec(): number {
-    return this.config.get<number>(
-      'ADMIN_JWT_EXPIRES_IN_SEC',
-      this.config.get<number>('JWT_EXPIRES_IN_SEC', 604800) ?? 604800,
+    return configSeconds(
+      this.config,
+      ['ADMIN_JWT_EXPIRES_IN_SEC', 'JWT_EXPIRES_IN_SEC'],
+      604800,
     );
+  }
+
+  private signAdminToken(user: {
+    id: string;
+    role: AdminRoleCode;
+  }): Promise<string> {
+    return this.jwt.signAsync(
+      { sub: user.id, typ: 'admin', role: user.role },
+      { secret: this.jwtSecret(), expiresIn: this.jwtExpiresSec() },
+    );
+  }
+
+  /**
+   * Sliding session: swaps a still-valid admin token for a fresh one so an
+   * open dashboard never hits the TTL. The guard has already rejected
+   * expired, disabled and password-changed sessions before this runs.
+   */
+  async refresh(
+    actor: AdminAuthState,
+  ): Promise<{ accessToken: string; expiresIn: number }> {
+    if (actor.kind !== 'user' || !actor.adminUserId) {
+      throw new ForbiddenException({
+        code: 'ADMIN_REFRESH_REQUIRES_USER',
+        message: 'Only email/password sessions can be refreshed.',
+      });
+    }
+    const user = await this.prisma.adminUser.findUnique({
+      where: { id: actor.adminUserId },
+      select: { id: true, role: true, isActive: true },
+    });
+    if (!user?.isActive) {
+      throw new UnauthorizedException({
+        code: 'ADMIN_USER_INACTIVE',
+        message: 'Admin account is disabled',
+      });
+    }
+    return {
+      accessToken: await this.signAdminToken(user),
+      expiresIn: this.jwtExpiresSec(),
+    };
   }
 
   async bootstrap(dto: AdminBootstrapDto) {
@@ -112,12 +154,8 @@ export class AdminAuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
-    const secret = this.jwtSecret();
     const expiresIn = this.jwtExpiresSec();
-    const accessToken = await this.jwt.signAsync(
-      { sub: user.id, typ: 'admin', role: user.role },
-      { secret, expiresIn },
-    );
+    const accessToken = await this.signAdminToken(user);
     await this.audit.log({
       actorType: 'admin',
       actorId: `admin:${user.email}`,
@@ -371,14 +409,8 @@ export class AdminAuthService {
 
     // The change just invalidated every token issued before `changedAt`,
     // including the one that made this request — hand back a new one.
-    const secret =
-      this.config.get<string>('ADMIN_JWT_SECRET') ||
-      this.config.getOrThrow<string>('JWT_SECRET');
     const expiresInSec = this.jwtExpiresSec();
-    const accessToken = await this.jwt.signAsync(
-      { sub: user.id, typ: 'admin', role: user.role },
-      { secret, expiresIn: expiresInSec },
-    );
+    const accessToken = await this.signAdminToken(user);
     return { accessToken, expiresInSec };
   }
 }

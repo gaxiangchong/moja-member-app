@@ -4029,7 +4029,7 @@ export class AdminDashboardController {
   </div>
 
   <div id="editMemberBackdrop" class="modal-backdrop hidden" aria-hidden="true"></div>
-  <div id="editMemberModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="editMemberTitle">
+  <div id="editMemberModal" class="modal-panel hidden" role="dialog" aria-modal="true" aria-labelledby="editMemberTitle" style="width:min(880px, calc(100vw - 24px))">
     <div class="modal-head">
       <h2 id="editMemberTitle">Edit member</h2>
       <button type="button" class="icon-btn" id="editMemberClose" aria-label="Close" style="margin:0">&times;</button>
@@ -4070,8 +4070,10 @@ export class AdminDashboardController {
           </div>
         </div>
         <div class="form-section" style="margin-top:8px">
-          <label>Recent orders (stored)</label>
-          <div id="emOrdersWrap" class="muted-box" style="max-height:200px;overflow:auto;margin-top:6px">—</div>
+          <label>Purchase history &amp; points</label>
+          <p class="field-hint" style="margin-top:0">In-store (SalesPlay) and online purchases with the points each one earned. <strong>Missing</strong> = an eligible purchase got no points; <strong>Check</strong> = the points are not what the earn rule gives (RM × rate × tier 1× / 1.5× / 2×).</p>
+          <div id="emPurchaseSummary" style="margin-top:6px;font-size:13px"></div>
+          <div id="emOrdersWrap" class="muted-box" style="max-height:360px;overflow:auto;margin-top:6px">—</div>
         </div>
         <div class="form-section">
           <label for="emPhone">Phone (E.164)</label>
@@ -4971,6 +4973,7 @@ export class AdminDashboardController {
           }
           if (!data.accessToken) throw new Error('Login response missing accessToken');
           localStorage.setItem('moja_admin_jwt', data.accessToken);
+          lastSessionRefreshAt = Date.now();
           adminPassword.value = '';
           await loadAll();
           showDashboard(true);
@@ -5015,17 +5018,81 @@ export class AdminDashboardController {
       }
       setLoginStatus('Verifying saved session…', true);
       loginSubmitBtn.disabled = true;
+      // Extend the saved session first so a token near its TTL is renewed
+      // before the dashboard loads. Only a real 401 sends the user to login.
+      const refreshed = await refreshAdminSession();
+      if (refreshed === 'expired') {
+        loginSubmitBtn.disabled = false;
+        return;
+      }
       try {
         await loadAll();
         showDashboard(true);
         setLoginStatus('');
-      } catch (_) {
-        showDashboard(false);
-        setLoginStatus('Session expired or invalid. Sign in again.');
+      } catch (err) {
+        const msg = (err && err.message) || String(err);
+        if (msg.indexOf('session has expired') !== -1 || msg.indexOf('(401)') !== -1) {
+          endAdminSession('Session expired or invalid. Sign in again.');
+        } else {
+          // API unreachable (e.g. mid-deploy): keep the session and the
+          // dashboard; "Refresh data" retries once the API is back.
+          showDashboard(true);
+        }
       } finally {
         loginSubmitBtn.disabled = false;
       }
     }
+
+    // ── Sliding admin session ────────────────────────────────────────────
+    // The JWT is swapped for a fresh one on open, every 30 minutes, and when
+    // the tab comes back into view, so an admin who keeps using the
+    // dashboard is never logged out by the token TTL.
+    const SESSION_REFRESH_MS = 30 * 60 * 1000;
+    let lastSessionRefreshAt = 0;
+
+    function endAdminSession(message) {
+      localStorage.removeItem('moja_admin_jwt');
+      isConnected = false;
+      updateConnectionUi();
+      showDashboard(false);
+      setLoginStatus(message);
+    }
+
+    /** Returns 'ok' | 'expired' | 'skipped' (no token, or API unreachable). */
+    async function refreshAdminSession() {
+      const t = localStorage.getItem('moja_admin_jwt');
+      if (!t) return 'skipped';
+      try {
+        const res = await fetch('/admin/auth/refresh', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + t },
+        });
+        if (res.status === 401) {
+          endAdminSession('Session expired or invalid. Sign in again.');
+          return 'expired';
+        }
+        if (!res.ok) return 'skipped';
+        const data = await res.json();
+        if (data && data.accessToken) {
+          localStorage.setItem('moja_admin_jwt', data.accessToken);
+          lastSessionRefreshAt = Date.now();
+          return 'ok';
+        }
+      } catch (_) {
+        // Network blip — keep the current token and try again later.
+      }
+      return 'skipped';
+    }
+
+    function refreshAdminSessionIfDue() {
+      if (Date.now() - lastSessionRefreshAt < SESSION_REFRESH_MS) return;
+      refreshAdminSession().catch(function () {});
+    }
+    setInterval(refreshAdminSessionIfDue, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') refreshAdminSessionIfDue();
+    });
+    window.addEventListener('focus', refreshAdminSessionIfDue);
     updateConnectionUi();
 
     function getAuthHeaders() {
@@ -5151,10 +5218,14 @@ export class AdminDashboardController {
         api('/admin/customers/' + encodeURIComponent(id) + '/orders').catch(function () {
           return [];
         }),
+        api('/admin/customers/' + encodeURIComponent(id) + '/purchase-history?limit=100').catch(function () {
+          return null;
+        }),
       ])
         .then(function (pair) {
           const c = pair[0];
           const orders = pair[1];
+          const purchaseHistory = pair[2];
           editMemberInitial = c;
           document.getElementById('emId').value = c.id || id;
           document.getElementById('emUpdatedAt').value = dateFmt(c.updatedAt);
@@ -5239,6 +5310,7 @@ export class AdminDashboardController {
                 '</tbody></table>';
             }
           }
+          renderPurchaseHistory(purchaseHistory);
           document.getElementById('editMemberBackdrop').classList.remove('hidden');
           document.getElementById('editMemberModal').classList.remove('hidden');
           statusPanel.textContent =
@@ -5248,6 +5320,120 @@ export class AdminDashboardController {
           statusPanel.textContent = e.message || String(e);
         });
     }
+
+    // ── Member purchase history & points check ──────────────────────────
+    function phEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    const PH_CHECK = {
+      ok: ['ok', 'OK'],
+      missing: ['warn', 'Missing'],
+      mismatch: ['warn', 'Check'],
+      reversed: ['neutral', 'Reversed'],
+      not_eligible: ['neutral', 'No points'],
+    };
+
+    /** Replaces the stored-orders box with purchases + points; null keeps the old view. */
+    function renderPurchaseHistory(h) {
+      const sumEl = document.getElementById('emPurchaseSummary');
+      const wrap = document.getElementById('emOrdersWrap');
+      if (sumEl) sumEl.innerHTML = '';
+      if (!h || !wrap) return;
+      const s = h.summary || {};
+      const l = s.ledger || {};
+      const flags = (s.missing || 0) + (s.mismatch || 0);
+      if (sumEl) {
+        sumEl.innerHTML =
+          '<div style="display:flex;flex-wrap:wrap;gap:6px 16px">' +
+          '<span><strong>' + phEsc(s.purchases || 0) + '</strong> purchases · RM ' + moneyFromCents(s.spendCents || 0) + '</span>' +
+          '<span><strong>' + phEsc(s.pointsFromPurchases || 0) + '</strong> pts from these purchases</span>' +
+          (flags
+            ? '<span class="pill warn">' + phEsc(s.missing || 0) + ' missing · ' + phEsc(s.mismatch || 0) + ' to check</span>'
+            : '<span class="pill ok">All points aligned</span>') +
+          '</div>' +
+          '<div class="field-hint" style="margin-top:4px">Balance <strong>' + phEsc(l.balance || 0) + '</strong> pts = ' +
+          phEsc(l.purchases || 0) + ' purchases ' +
+          (l.redemptions < 0 ? '− ' + phEsc(-l.redemptions) : '+ ' + phEsc(l.redemptions || 0)) + ' redemptions ' +
+          (l.reversals < 0 ? '− ' + phEsc(-l.reversals) : '+ ' + phEsc(l.reversals || 0)) + ' reversals ' +
+          (l.other < 0 ? '− ' + phEsc(-l.other) : '+ ' + phEsc(l.other || 0)) + ' other (backfill, campaigns, adjustments) · rate ' +
+          phEsc(h.pointsPerRm) + ' pt/RM</div>';
+      }
+      const rows = Array.isArray(h.purchases) ? h.purchases : [];
+      if (!rows.length) {
+        wrap.textContent = 'No purchases recorded for this member yet.';
+        return;
+      }
+      wrap.innerHTML =
+        '<table class="data mk-mini-table" style="width:100%"><thead><tr>' +
+        '<th>When</th><th>Where</th><th>Ref</th><th>Items</th><th style="text-align:right">Amount (RM)</th>' +
+        '<th style="text-align:right">Points</th><th>Points check</th></tr></thead><tbody>' +
+        rows.map(function (p) {
+          const items = (p.items || []).map(function (i) {
+            return phEsc(i.name) + ' ×' + phEsc(i.qty);
+          }).join('<br>') || '<span class="field-hint">—</span>';
+          const chk = PH_CHECK[p.check] || ['neutral', p.check];
+          var pts = '<strong>' + phEsc(p.pointsEarned) + '</strong>';
+          if (p.pointsRedeemed) pts += '<br><span class="field-hint">−' + phEsc(p.pointsRedeemed) + ' redeemed</span>';
+          if (p.pointsReversed) pts += '<br><span class="field-hint">' + phEsc(p.pointsReversed) + ' reversed</span>';
+          var detail = [];
+          if (p.check === 'missing' || p.check === 'mismatch') detail.push('Expected ' + phEsc(p.basePoints) + ' pts at 1× (more for Gold / Platinum)');
+          if (p.note) detail.push(phEsc(p.note));
+          if (p.refunded) detail.push('Refunded');
+          var ids = Array.isArray(p.reversibleEntryIds) ? p.reversibleEntryIds : [];
+          var reverseBtn = ids.length
+            ? '<div style="margin-top:6px"><button type="button" class="btn-outline ph-reverse-btn" style="padding:3px 8px;font-size:12px;white-space:nowrap" data-entry-ids="' +
+              phEsc(ids.join(',')) + '" data-label="' + phEsc((p.channel === 'in_store' ? 'receipt ' : 'order ') + p.reference) +
+              '" data-points="' + phEsc(p.pointsEarned + (p.pointsReversed || 0)) + '">Reverse points</button></div>'
+            : '';
+          return (
+            '<tr' + (p.check === 'missing' || p.check === 'mismatch' ? ' style="background:#fffbeb"' : '') + '>' +
+            '<td style="white-space:nowrap">' + dateFmt(p.occurredAt) + '</td>' +
+            '<td>' + (p.channel === 'in_store' ? 'In-store' : 'Online') + '</td>' +
+            '<td>' + phEsc(p.reference) + '</td>' +
+            '<td style="min-width:160px">' + items + '</td>' +
+            '<td style="text-align:right">' + moneyFromCents(p.amountCents) + '</td>' +
+            '<td style="text-align:right">' + pts + '</td>' +
+            '<td><span class="pill ' + chk[0] + '">' + phEsc(chk[1]) + '</span>' +
+            (detail.length ? '<div class="field-hint" style="margin-top:4px">' + detail.join('<br>') + '</div>' : '') +
+            reverseBtn +
+            '</td></tr>'
+          );
+        }).join('') +
+        '</tbody></table>';
+    }
+
+    /** Undo points wrongly credited for one purchase, from the member pop-up. */
+    async function phReversePurchasePoints(btn) {
+      var ids = String(btn.getAttribute('data-entry-ids') || '').split(',').filter(Boolean);
+      var memberId = document.getElementById('emId').value;
+      var sumEl = document.getElementById('emPurchaseSummary');
+      if (!ids.length || !memberId) return;
+      var label = btn.getAttribute('data-label') || 'this purchase';
+      var points = btn.getAttribute('data-points') || '';
+      var reason = window.prompt('Reason for reversing ' + points + ' pts on ' + label + ' (required, min 3 characters):', 'Points credited in error');
+      if (reason === null) return;
+      reason = reason.trim();
+      if (reason.length < 3) { window.alert('A reason of at least 3 characters is required.'); return; }
+      if (!window.confirm('Reverse ' + points + ' pts on ' + label + '? This subtracts the points from the member. The original entry is kept for the audit trail.')) return;
+      btn.disabled = true;
+      try {
+        for (var i = 0; i < ids.length; i += 1) {
+          await apiPost('/admin/loyalty-ledger/' + encodeURIComponent(ids[i]) + '/reverse', { reason: reason });
+        }
+        renderPurchaseHistory(await api('/admin/customers/' + encodeURIComponent(memberId) + '/purchase-history?limit=100'));
+        if (sumEl) sumEl.insertAdjacentHTML('afterbegin', '<p class="field-hint" style="color:#047857;margin:0 0 4px">Reversed ' + phEsc(points) + ' pts on ' + phEsc(label) + '.</p>');
+      } catch (e) {
+        btn.disabled = false;
+        window.alert('Could not reverse: ' + (e.message || String(e)));
+      }
+    }
+    var emOrdersWrapEl = document.getElementById('emOrdersWrap');
+    if (emOrdersWrapEl) emOrdersWrapEl.addEventListener('click', function (ev) {
+      var b = ev.target && ev.target.closest ? ev.target.closest('.ph-reverse-btn') : null;
+      if (b) phReversePurchasePoints(b);
+    });
 
     async function saveEditMember() {
       const id = document.getElementById('emId').value;

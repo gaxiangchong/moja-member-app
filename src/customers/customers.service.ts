@@ -35,6 +35,7 @@ import {
   earlyOrderDiscountCents,
 } from '../orders/early-order-discount';
 import { SalesplayService } from '../salesplay/salesplay.service';
+import { SalesplayLiveSyncService } from '../salesplay/salesplay-live-sync.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { OrderNotificationService } from '../notifications/order-notification.service';
 import {
@@ -163,6 +164,7 @@ export class CustomersService {
     private readonly loyalty: LoyaltyService,
     private readonly wallet: WalletService,
     private readonly salesplay: SalesplayService,
+    private readonly salesplayLiveSync: SalesplayLiveSyncService,
     private readonly shopCatalog: ShopCatalogService,
     private readonly config: ConfigService,
     private readonly campaignAutomation: CampaignAutomationService,
@@ -507,7 +509,11 @@ export class CustomersService {
         code: customer.referralCode,
         memberTier: customer.memberTier,
       });
-    if (!ok) return 'failed';
+    if (!ok) {
+      // Staff are told it failed; keep retrying in the background as well.
+      this.salesplayLiveSync.enqueueMemberPush(customer.id);
+      return 'failed';
+    }
     if (salesplayCustomerId) {
       await this.prisma.customer.update({
         where: { id: customer.id },
@@ -517,7 +523,11 @@ export class CustomersService {
     return 'synced';
   }
 
-  /** Fire-and-forget SalesPlay upsert that also stores the returned customer id. */
+  /**
+   * Fire-and-forget SalesPlay upsert that also stores the returned customer id.
+   * A failed push is handed to the live-sync retry queue, so a SalesPlay
+   * outage at sign-up does not leave the member missing from the till.
+   */
   private syncToSalesplay(customer: {
     id: string;
     displayName: string | null;
@@ -526,8 +536,9 @@ export class CustomersService {
     referralCode: string | null;
     memberTier: string;
   }): void {
+    if (!this.salesplay.isConfigured()) return;
     void this.salesplay
-      .syncCustomer({
+      .pushCustomer({
         id: customer.id,
         displayName: customer.displayName,
         phoneE164: customer.phoneE164,
@@ -535,16 +546,19 @@ export class CustomersService {
         code: customer.referralCode,
         memberTier: customer.memberTier,
       })
-      .then((salesplayCustomerId) => {
-        if (!salesplayCustomerId) return;
-        return this.prisma.customer
-          .update({
+      .then(async ({ ok, customerId: salesplayCustomerId }) => {
+        if (!ok) {
+          this.salesplayLiveSync.enqueueMemberPush(customer.id);
+          return;
+        }
+        if (salesplayCustomerId) {
+          await this.prisma.customer.update({
             where: { id: customer.id },
             data: { salesplayCustomerId },
-          })
-          .then(() => undefined);
+          });
+        }
       })
-      .catch(() => undefined);
+      .catch(() => this.salesplayLiveSync.enqueueMemberPush(customer.id));
   }
 
   async getProfileBundle(customerId: string) {

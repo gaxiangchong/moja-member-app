@@ -7,6 +7,7 @@ import { AdminApprovalsController } from './admin-approvals.controller';
 import { AdminReportsController } from './admin-reports.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { CustomerPurchaseHistoryService } from './customer-purchase-history.service';
 import { ApprovalsService } from './approvals.service';
 import { FinanceReportService } from './finance-report.service';
 import { ReportingSettingsModule } from './reporting-settings.module';
@@ -66,6 +67,7 @@ import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.modu
     ApprovalsService,
     FinanceReportService,
     MemberVouchersAdminService,
+    CustomerPurchaseHistoryService,
   ],
 })
 export class AdminModule {}
