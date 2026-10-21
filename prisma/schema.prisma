@@ -50,6 +50,8 @@ enum ImportBatchKind {
   LOYALTY_ADJUSTMENT
   VOUCHER_ASSIGNMENT
   TAGS
+  /// Customers exported from SalesPlay Back Office (links salesplay_customer_id).
+  SALESPLAY_CUSTOMERS
 }
 
 enum ImportBatchStatus {

@@ -41,6 +41,7 @@ import type {
 } from './sites-catalog.types';
 import { dataDir } from '../config/data-dir';
 import { OPEN_ORDER_STATUSES } from '../orders/order-status';
+import { isShopFilter, resolveShopFilter, type ShopFilter } from './shop-filter';
 
 export type ShopCatalogProductImage = {
   src: string;
@@ -61,6 +62,11 @@ export type ShopCatalogProduct = {
   category: 'whole_cakes' | 'cake_slices' | 'drinks' | 'specials' | 'cookies';
   /** Display category for the public shop site, e.g. "Premium Cake". */
   categoryLabel?: string;
+  /**
+   * Member-app shop filter chip (Cheesecake / Cream Cake / Cookies / Drinks),
+   * set by an admin. Unset → guessed by `resolveShopFilter`.
+   */
+  shopFilter?: ShopFilter;
   name: string;
   shortDescription: string;
   description: string;
@@ -139,9 +145,11 @@ export type ShopCatalogLayout = {
 
 export type ShopCatalogProductInput = Omit<
   Partial<ShopCatalogProduct>,
-  'variants'
+  'variants' | 'shopFilter'
 > & {
   variants?: Partial<ShopCatalogProductVariant>[];
+  /** null / '' clears an admin choice back to the automatic guess. */
+  shopFilter?: ShopFilter | '' | null;
 };
 
 export type HomePopularConfig = {
@@ -722,6 +730,13 @@ export class ShopCatalogService implements OnModuleInit {
         raw.categoryLabel != null
           ? String(raw.categoryLabel).trim()
           : base.categoryLabel,
+      // null / '' clears it back to the automatic guess.
+      shopFilter:
+        raw.shopFilter !== undefined
+          ? isShopFilter(raw.shopFilter)
+            ? raw.shopFilter
+            : undefined
+          : base.shopFilter,
       name:
         raw.name != null
           ? String(raw.name).trim()
@@ -786,16 +801,23 @@ export class ShopCatalogService implements OnModuleInit {
     };
   }
 
-  async listPublicProducts(): Promise<ShopCatalogProduct[]> {
+  /** Active products, each with the shop filter chip it shows under. */
+  async listPublicProducts(): Promise<
+    (Omit<ShopCatalogProduct, 'shopFilter'> & { shopFilter: ShopFilter | null })[]
+  > {
     return (await this.loadAll())
       .filter((p) => p.isActive !== false)
-      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((p) => ({ ...p, shopFilter: resolveShopFilter(p) }));
   }
 
-  async listAdminProducts(): Promise<ShopCatalogProduct[]> {
-    return (await this.loadAll()).sort(
-      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
-    );
+  /** `shopFilter` is the admin's own choice; `shopFilterResolved` what the shop uses. */
+  async listAdminProducts(): Promise<
+    (ShopCatalogProduct & { shopFilterResolved: ShopFilter | null })[]
+  > {
+    return (await this.loadAll())
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((p) => ({ ...p, shopFilterResolved: resolveShopFilter(p) }));
   }
 
   /** One POS code, one product — see {@link findSalesplayCodeConflict}. */

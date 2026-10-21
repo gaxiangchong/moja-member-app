@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  CATEGORY_LABELS,
   DELIVERY_CLASS_LABELS,
+  SHOP_FILTER_LABELS,
   deliveryClassForProduct,
   type CartLine,
   type DeliveryClass,
@@ -11,8 +11,9 @@ import {
   type MockVoucher,
   type PickupBy,
   type Product,
-  type ProductCategory,
+  type ShopFilter,
 } from './types';
+import { cashbackFor, tierMultiplier, type Cashback } from './cashback';
 import type { MemberRewardsPayload } from '../api';
 import { formatRm } from './data/mockCatalog';
 import { cartSubtotalCents, computeDiscountCents } from './lib/pricing';
@@ -43,6 +44,8 @@ import {
   fetchPickupSlots,
   fetchShopAvailability,
   fetchShopCatalogProducts,
+  fetchLoyaltyEarn,
+  type LoyaltyEarn,
   type PickupSlotDay,
   fetchXenditShopChannels,
   getXenditCardTokenSessionStatus,
@@ -207,7 +210,7 @@ export function ShopFlow({
 }) {
   const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
-  const [category, setCategory] = useState<ProductCategory | 'all'>('all');
+  const [filter, setFilter] = useState<ShopFilter | 'all'>('all');
   const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
   const checkoutErrorsRef = useRef<HTMLDivElement>(null);
@@ -218,6 +221,25 @@ export function ShopFlow({
     }
   }, [checkoutErrors]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [loyaltyEarn, setLoyaltyEarn] = useState<LoyaltyEarn | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetchLoyaltyEarn().then((e) => {
+      if (alive) setLoyaltyEarn(e);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // Signed-in members earn at their tier's rate; guests see the base rate.
+  const earnMultiplier = loyaltyEarn
+    ? tierMultiplier(loyaltyEarn, memberRewards?.wallet?.lifetimePoints)
+    : 1;
+  const cashbackOf = useCallback(
+    (amountSen: number): Cashback | null =>
+      loyaltyEarn ? cashbackFor(amountSen, loyaltyEarn, earnMultiplier) : null,
+    [loyaltyEarn, earnMultiplier],
+  );
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -646,11 +668,11 @@ export function ShopFlow({
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (category !== 'all' && p.category !== category) return false;
+      if (filter !== 'all' && p.shopFilter !== filter) return false;
       if (!q) return true;
       return `${p.name} ${p.shortDescription}`.toLowerCase().includes(q);
     });
-  }, [category, query, products]);
+  }, [filter, query, products]);
 
   const product = productId
     ? products.find((p) => p.id === productId)
@@ -1221,31 +1243,35 @@ export function ShopFlow({
             </button>
           </header>
           <section className="pmCard shopSearchCard">
-            <input
-              className="searchInput"
-              style={{ marginBottom: 0 }}
-              placeholder="Search cakes & drinks"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
             <div className="chips shopCategoryChips">
               <button
                 type="button"
-                className={category === 'all' ? 'chip active' : 'chip'}
-                onClick={() => setCategory('all')}
+                className={filter === 'all' ? 'chip active' : 'chip'}
+                onClick={() => setFilter('all')}
               >
                 All
               </button>
-              {(Object.keys(CATEGORY_LABELS) as ProductCategory[]).map((c) => (
+              {(Object.keys(SHOP_FILTER_LABELS) as ShopFilter[]).map((f) => (
                 <button
-                  key={c}
+                  key={f}
                   type="button"
-                  className={category === c ? 'chip active' : 'chip'}
-                  onClick={() => setCategory(c)}
+                  className={filter === f ? 'chip active' : 'chip'}
+                  onClick={() => setFilter(f)}
                 >
-                  {CATEGORY_LABELS[c]}
+                  {SHOP_FILTER_LABELS[f]}
                 </button>
               ))}
+              {query.trim() ? (
+                // A search started from the Home tab — show it so it can be cleared.
+                <button
+                  type="button"
+                  className="chip active"
+                  onClick={() => setQuery('')}
+                  aria-label={`Clear search ${query.trim()}`}
+                >
+                  “{query.trim()}” ✕
+                </button>
+              ) : null}
             </div>
           </section>
           <div className="productsGrid">
@@ -1290,12 +1316,17 @@ export function ShopFlow({
                     <strong>{p.name}</strong>
                     <ClampedDescription text={p.shortDescription} />
                     <div className="productFoot">
-                      <span className="shopFromLabel">from</span>
-                      <span>
-                        {formatRm(
-                          p.variants?.[0]?.priceCents ?? p.basePriceCents,
-                        )}
-                      </span>
+                      <PointsPill
+                        cashback={cashbackOf(p.variants?.[0]?.priceCents ?? p.basePriceCents)}
+                      />
+                      <div className="productPrice">
+                        <span className="shopFromLabel">from</span>
+                        <span className="productPriceValue">
+                          {formatRm(
+                            p.variants?.[0]?.priceCents ?? p.basePriceCents,
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -1322,6 +1353,7 @@ export function ShopFlow({
           deliveryInfo={deliveryInfo}
           unshippableNames={unshippableNames}
           cartHasShippable={checkoutCart.some((l) => classOfLine(l) === 'NATIONWIDE')}
+          cashbackOf={cashbackOf}
         />
       )}
 
@@ -2144,6 +2176,7 @@ function ProductDetailScreen({
   deliveryInfo,
   unshippableNames,
   cartHasShippable,
+  cashbackOf,
 }: {
   product: Product;
   onBack: () => void;
@@ -2157,6 +2190,8 @@ function ProductDetailScreen({
   unshippableNames: string[];
   /** The cart already holds products that can be shipped. */
   cartHasShippable: boolean;
+  /** Points / cashback a spend earns for this member (null: rate unknown). */
+  cashbackOf: (amountSen: number) => Cashback | null;
 }) {
   const cartHasCake = unshippableNames.length > 0;
   const shippingOn = deliveryInfo?.shippingEnabled !== false;
@@ -2348,6 +2383,7 @@ function ProductDetailScreen({
               ? 'Sold out'
               : `Add to cart · ${formatRm(unitCents * qty)}`}
           </button>
+          {!soldOut ? <CashbackNote cashback={cashbackOf(unitCents * qty)} /> : null}
         </div>
       </article>
     </>
@@ -2593,6 +2629,35 @@ function ShippingBadge({ shippable }: { shippable: boolean }) {
         )}
       </svg>
       {shippable ? 'Ships nationwide' : 'Local only'}
+    </span>
+  );
+}
+
+/**
+ * "Earn 82 pts · RM8.20 member cashback". Points are only credited to signed-in
+ * members, after payment; Gold / Platinum members see their boosted rate.
+ */
+function CashbackNote({ cashback }: { cashback: Cashback | null }) {
+  if (!cashback || cashback.points <= 0) return null;
+  const boost = cashback.multiplier > 1 ? ` (${cashback.multiplier}×)` : '';
+  return (
+    <p className="shopCashback">
+      <span className="shopCashbackIcon" aria-hidden>★</span>
+      Earn {cashback.points} pts{boost} · {formatRm(cashback.valueSen)} member cashback
+    </p>
+  );
+}
+
+/** Product-list badge: points only — the RM value is on the product page. */
+function PointsPill({ cashback }: { cashback: Cashback | null }) {
+  if (!cashback || cashback.points <= 0) return <span />;
+  return (
+    <span
+      className="productPointsPill"
+      title={cashback.multiplier > 1 ? `Your tier earns ${cashback.multiplier}×` : undefined}
+    >
+      <span className="productPointsStar" aria-hidden>★</span>
+      Earn {cashback.points} pts
     </span>
   );
 }

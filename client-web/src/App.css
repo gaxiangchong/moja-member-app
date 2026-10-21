@@ -1575,19 +1575,66 @@
   left: 6px;
 }
 
+/* Card footer: points pill on the left, price on the right. */
 .productFoot {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px 8px;
   margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #edf2fc;
 }
 
-.productFoot span {
+/* Sized by the card, not the screen: the two-up grid makes cards narrow. */
+.productBody {
+  container-type: inline-size;
+}
+
+/* Too narrow for pill + price side by side: price on top, pill beneath it. */
+@container (max-width: 184px) {
+  .productFoot {
+    flex-direction: column-reverse;
+    align-items: flex-end;
+  }
+}
+
+.productPrice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.productPriceValue {
   color: #00348d;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.productPointsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px 4px 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fff6e5, #fdebc8);
+  border: 1px solid #f3d9a4;
+  color: #8a5a10;
+  font-size: 11.5px;
   font-weight: 700;
-  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.productPointsStar {
+  color: #d99a22;
+  font-size: 11px;
 }
 
 .productFoot button {
@@ -2652,15 +2699,41 @@ code {
 }
 
 .shopFromLabel {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  color: #7c6a59;
+  color: #8a9ab8;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
+  line-height: 1;
 }
 
 .shopProductHit--soldOut {
   opacity: 0.6;
+}
+
+/* "Earn 82 pts · RM8.20 member cashback" under prices. */
+.shopCashback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fdf3e2;
+  color: #7a4f12;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.shopCashbackIcon {
+  color: #c98a1b;
+  flex-shrink: 0;
+}
+
+/* The chips row is now the whole card (no search box above it). */
+.shopSearchCard .shopCategoryChips {
+  margin-top: 0;
 }
 
 .shopSoldOutBadge {

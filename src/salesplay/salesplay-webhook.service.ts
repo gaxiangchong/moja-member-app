@@ -13,6 +13,23 @@ import {
   type ParsedCreditNote,
   type ParsedReceipt,
 } from './salesplay-receipt.parser';
+import { phoneCandidates } from './salesplay-customer-match';
+
+export type RelinkReport = {
+  dryRun: boolean;
+  /** Unlinked in-store receipts looked at. */
+  scanned: number;
+  /** Receipts now matched to a member (would be, for a dry run). */
+  linked: number;
+  /** Points given for those receipts (1× estimate for a dry run). */
+  pointsAwarded: number;
+  /** Walk-in sales with no customer attached at the till — normal. */
+  noCustomerOnReceipt: number;
+  /** Receipts naming a customer we still cannot find. */
+  stillUnmatched: number;
+  /** The customer ids / phones behind those, most receipts first. */
+  unmatchedExamples: { hint: string; receipts: number; lastReceipt: string }[];
+};
 
 type SalesplayWebhookBody = {
   type?: string;
@@ -334,15 +351,21 @@ export class SalesplayWebhookService {
     receiptId: string,
     customerId: string | null,
     originOnlineOrderId: string | null,
-  ): Promise<void> {
-    if (!customerId) return;
+  ): Promise<number> {
+    if (!customerId) return 0;
+    // Never award the same receipt twice (a relink after a live award).
+    const already = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: { referenceType: 'pos_receipt', referenceId: receiptId },
+      select: { id: true },
+    });
+    if (already) return 0;
     // Online orders already earn points at checkout; their in-store settlement
     // receipt must not double-award.
     if (originOnlineOrderId) {
       this.logger.debug(
         `Receipt ${parsed.salesplayReceiptId} is online order ${originOnlineOrderId}; not re-awarding points.`,
       );
-      return;
+      return 0;
     }
     // Only a SALE earns points — refund/void receipts and deleted receipts
     // must not; refunds arrive separately as credit notes.
@@ -353,9 +376,9 @@ export class SalesplayWebhookService {
       this.logger.debug(
         `Receipt ${parsed.salesplayReceiptId} is ${parsed.isDeleted ? 'deleted' : parsed.receiptType}; not awarding points.`,
       );
-      return;
+      return 0;
     }
-    if (parsed.netCents <= 0) return;
+    if (parsed.netCents <= 0) return 0;
 
     // Floor RM, then the tier multiplier (from lifetime earnings) — same formula
     // as online checkout.
@@ -367,7 +390,7 @@ export class SalesplayWebhookService {
       pointsPerRm: this.pointsPerUnit(),
       balanceBefore,
     });
-    if (earned.points <= 0) return;
+    if (earned.points <= 0) return 0;
 
     await this.loyalty.appendLedgerEntry({
       customerId,
@@ -396,6 +419,7 @@ export class SalesplayWebhookService {
     this.logger.log(
       `Awarded ${earned.points} pts (${earned.tier} ${earned.multiplier}×) to ${customerId} for SalesPlay receipt ${parsed.salesplayReceiptId}.`,
     );
+    return earned.points;
   }
 
   /** Persists a credit note (idempotent). Returns true when newly ingested. */
@@ -491,10 +515,16 @@ export class SalesplayWebhookService {
   }
 
   /** Match the receipt's customer to a member by SalesPlay id, then by phone. */
-  private async matchCustomerId(hints: {
-    salesplayCustomerId: string | null;
-    phone: string | null;
-  }): Promise<string | null> {
+  /**
+   * Finds the member a receipt belongs to: by SalesPlay customer id first,
+   * then by phone (any format the cashier typed, or our pushed customer_code).
+   * A phone match teaches us the member's SalesPlay id, so later receipts that
+   * carry only the id link too.
+   */
+  async matchCustomerId(
+    hints: { salesplayCustomerId: string | null; phone: string | null },
+    opts: { learn: boolean } = { learn: true },
+  ): Promise<string | null> {
     if (hints.salesplayCustomerId) {
       const byId = await this.prisma.customer.findFirst({
         where: { salesplayCustomerId: hints.salesplayCustomerId },
@@ -503,21 +533,136 @@ export class SalesplayWebhookService {
       if (byId) return byId.id;
     }
 
-    if (hints.phone) {
-      const digits = hints.phone.replace(/\D/g, '');
-      if (digits) {
-        const phoneE164 = hints.phone.startsWith('+')
-          ? hints.phone
-          : `+${digits}`;
-        const byPhone = await this.prisma.customer.findUnique({
-          where: { phoneE164 },
-          select: { id: true },
+    const region = this.config.get<string>('PHONE_DEFAULT_REGION') || 'MY';
+    const candidates = [
+      ...phoneCandidates(hints.phone, region),
+      // Some SalesPlay accounts use the phone itself as the customer id/code.
+      ...(hints.salesplayCustomerId &&
+      hints.salesplayCustomerId.replace(/\D/g, '').length >= 9
+        ? phoneCandidates(hints.salesplayCustomerId, region)
+        : []),
+    ];
+    if (candidates.length === 0) return null;
+
+    const byPhone = await this.prisma.customer.findFirst({
+      where: { phoneE164: { in: candidates } },
+      select: { id: true, salesplayCustomerId: true },
+    });
+    if (!byPhone) return null;
+
+    if (opts.learn && hints.salesplayCustomerId && !byPhone.salesplayCustomerId) {
+      await this.prisma.customer
+        .update({
+          where: { id: byPhone.id },
+          data: { salesplayCustomerId: hints.salesplayCustomerId },
+        })
+        .catch(() => undefined);
+    }
+    return byPhone.id;
+  }
+
+  /**
+   * Links in-store receipts stored without a member — before the member's
+   * SalesPlay id was known, or before matching understood their phone format —
+   * and awards the purchase points they missed. `dryRun` only reports.
+   *
+   * Points use the same rule as a live receipt; the tier multiplier is the
+   * member's tier today, not on the day of the sale.
+   */
+  async relinkUnmatchedReceipts(opts: {
+    dryRun: boolean;
+    sinceDays?: number;
+  }): Promise<RelinkReport> {
+    const since = opts.sinceDays
+      ? new Date(Date.now() - opts.sinceDays * 86_400_000)
+      : undefined;
+    const report: RelinkReport = {
+      dryRun: opts.dryRun,
+      scanned: 0,
+      linked: 0,
+      pointsAwarded: 0,
+      noCustomerOnReceipt: 0,
+      stillUnmatched: 0,
+      unmatchedExamples: [],
+    };
+    const unknown = new Map<string, { hint: string; receipts: number; lastReceipt: string }>();
+
+    let cursor: string | undefined;
+    for (;;) {
+      const batch = await this.prisma.posReceipt.findMany({
+        where: {
+          customerId: null,
+          originOnlineOrderId: null,
+          ...(since ? { businessDate: { gte: since } } : {}),
+        },
+        orderBy: { id: 'asc' },
+        take: 200,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        select: { id: true, rawPayload: true, receiptNumber: true, salesplayReceiptId: true },
+      });
+      if (batch.length === 0) break;
+      cursor = batch[batch.length - 1].id;
+
+      for (const r of batch) {
+        report.scanned++;
+        const parsed = parseReceipt(r.rawPayload);
+        if (!parsed) continue;
+        const hints = parsed.customerHints;
+        if (!hints.salesplayCustomerId && !hints.phone) {
+          report.noCustomerOnReceipt++;
+          continue;
+        }
+        const customerId = await this.matchCustomerId(hints, { learn: !opts.dryRun });
+        if (!customerId) {
+          report.stillUnmatched++;
+          const key = [hints.salesplayCustomerId, hints.phone].filter(Boolean).join(' / ');
+          const u = unknown.get(key) ?? { hint: key, receipts: 0, lastReceipt: '' };
+          u.receipts++;
+          u.lastReceipt = r.receiptNumber ?? r.salesplayReceiptId;
+          unknown.set(key, u);
+          continue;
+        }
+        report.linked++;
+        if (opts.dryRun) {
+          report.pointsAwarded += this.pointsFor(parsed);
+          continue;
+        }
+        await this.prisma.posReceipt.update({
+          where: { id: r.id },
+          data: { customerId },
         });
-        if (byPhone) return byPhone.id;
+        report.pointsAwarded += await this.maybeAwardLoyalty(parsed, r.id, customerId, null);
       }
     }
 
-    return null;
+    report.unmatchedExamples = [...unknown.values()]
+      .sort((a, b) => b.receipts - a.receipts)
+      .slice(0, 20);
+    if (!opts.dryRun) {
+      await this.audit.log({
+        actorType: 'system',
+        action: 'pos.receipts_relinked',
+        entityType: 'pos_receipt',
+        metadata: {
+          scanned: report.scanned,
+          linked: report.linked,
+          pointsAwarded: report.pointsAwarded,
+        },
+      });
+    }
+    return report;
+  }
+
+  /** Base (1×) points a receipt would earn — used only for the preview total. */
+  private pointsFor(parsed: ParsedReceipt): number {
+    if (
+      parsed.isDeleted ||
+      (parsed.receiptType && parsed.receiptType.toUpperCase() !== 'SALE') ||
+      parsed.netCents <= 0
+    ) {
+      return 0;
+    }
+    return Math.floor(Math.floor(parsed.netCents / 100) * this.pointsPerUnit());
   }
 }
 

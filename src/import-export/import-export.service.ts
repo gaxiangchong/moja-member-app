@@ -28,9 +28,25 @@ import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { WalletService } from '../wallet/wallet.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { SegmentationService } from '../segmentation/segmentation.service';
+import { CustomersService } from '../customers/customers.service';
+import { SalesplayPullService } from '../salesplay/salesplay-pull.service';
+import { readSalesplayCustomerRow } from './salesplay-customer-row';
 import type { ExportRequestDto } from './dto/export-request.dto';
 import type { SegmentFiltersDto } from '../segmentation/dto/segment-filters.dto';
 import { dataDir } from '../config/data-dir';
+
+export type SalesplayImportAction = 'link' | 'create' | 'unchanged' | 'conflict';
+
+/** What importing one SalesPlay customer does to the matching member (if any). */
+export function salesplayImportAction(
+  memberExists: boolean,
+  currentSalesplayId: string | null,
+  importedSalesplayId: string,
+): SalesplayImportAction {
+  if (!memberExists) return 'create';
+  if (!currentSalesplayId) return 'link';
+  return currentSalesplayId === importedSalesplayId ? 'unchanged' : 'conflict';
+}
 
 function ensureDir(p: string) {
   return fs.mkdir(p, { recursive: true });
@@ -92,6 +108,8 @@ export class ImportExportService implements OnModuleInit {
     private readonly loyalty: LoyaltyService,
     private readonly segmentation: SegmentationService,
     private readonly audit: AuditService,
+    private readonly customers: CustomersService,
+    private readonly salesplayPull: SalesplayPullService,
   ) {}
 
   async onModuleInit() {
@@ -109,6 +127,10 @@ export class ImportExportService implements OnModuleInit {
         'phone_e164,delta_points,reason\n+6591234567,50,import_bonus\n',
       VOUCHER_ASSIGNMENT: 'phone_e164,voucher_code\n+6591234567,WELCOME10\n',
       TAGS: 'phone_e164,tags\n+6591234567,vip;returning\n',
+      // Upload the SalesPlay Back Office customer export as-is; this shows the
+      // columns it is read from (others are ignored).
+      SALESPLAY_CUSTOMERS:
+        'Customer ID,Customer Code,Customer Name,Phone Number,Email\n1000,60123456789,Ada Member,012-345 6789,ada@example.com\n',
     };
     const name = `template_${kind.toLowerCase()}.csv`;
     return { filename: name, content: templates[kind] };
@@ -174,6 +196,15 @@ export class ImportExportService implements OnModuleInit {
     }
     const rows = await this.parseUpload(file.buffer, file.originalname);
     const { errors, preview } = this.validateImport(kind, rows);
+    const plan =
+      kind === ImportBatchKind.SALESPLAY_CUSTOMERS
+        ? await this.planSalesplayCustomers(rows, errors)
+        : null;
+    if (plan) {
+      for (const p of preview) {
+        p.action = plan.actions.get(String(p.phone_e164)) ?? null;
+      }
+    }
     const id = randomUUID();
     const storageName = `${id}${path.extname(file.originalname) || '.csv'}`;
     const storagePath = path.join(this.importDir, storageName);
@@ -195,6 +226,7 @@ export class ImportExportService implements OnModuleInit {
         summary: {
           validRows: rows.length - errors.length,
           errorCount: errors.length,
+          ...(plan ? { salesplay: plan.counts } : {}),
         },
       },
     });
@@ -203,7 +235,99 @@ export class ImportExportService implements OnModuleInit {
       totalRows: rows.length,
       errors: errors.slice(0, 50),
       preview,
+      ...(plan ? { salesplay: plan.counts } : {}),
     };
+  }
+
+  /** Phone column for a row: SalesPlay exports name it differently. */
+  private rowPhoneRaw(kind: ImportBatchKind, row: Record<string, string>): string {
+    if (kind === ImportBatchKind.SALESPLAY_CUSTOMERS) {
+      return readSalesplayCustomerRow(row).phoneRaw;
+    }
+    return row.phone_e164 ?? row.phone ?? row.phonee164 ?? '';
+  }
+
+  /**
+   * What a SalesPlay customer import will do with each valid row:
+   *  - link       member exists in the app; save their SalesPlay id
+   *  - create     only in SalesPlay; create the member (not pushed back)
+   *  - unchanged  member already has this SalesPlay id
+   *  - conflict   member already linked to a different SalesPlay id (left as is)
+   */
+  private async planSalesplayCustomers(
+    rows: Record<string, string>[],
+    errors: { row: number }[],
+  ): Promise<{
+    counts: { link: number; create: number; unchanged: number; conflict: number };
+    actions: Map<string, SalesplayImportAction>;
+  }> {
+    const bad = new Set(errors.map((e) => e.row));
+    const wanted = new Map<string, string>();
+    rows.forEach((row, idx) => {
+      if (bad.has(idx + 2)) return;
+      const sp = readSalesplayCustomerRow(row);
+      try {
+        wanted.set(this.phones.normalizeToE164(sp.phoneRaw), sp.salesplayId ?? '');
+      } catch {
+        /* already reported by validateImport */
+      }
+    });
+    const existing = await this.prisma.customer.findMany({
+      where: { phoneE164: { in: [...wanted.keys()] } },
+      select: { phoneE164: true, salesplayCustomerId: true },
+    });
+    const byPhone = new Map(existing.map((c) => [c.phoneE164, c.salesplayCustomerId]));
+    const counts = { link: 0, create: 0, unchanged: 0, conflict: 0 };
+    const actions = new Map<string, SalesplayImportAction>();
+    for (const [phone, spId] of wanted) {
+      const action = salesplayImportAction(byPhone.has(phone), byPhone.get(phone) ?? null, spId);
+      counts[action]++;
+      actions.set(phone, action);
+    }
+    return { counts, actions };
+  }
+
+  /** Applies one SalesPlay customer row (see {@link planSalesplayCustomers}). */
+  private async applySalesplayCustomerRow(
+    row: Record<string, string>,
+    phone: string,
+  ): Promise<SalesplayImportAction> {
+    const sp = readSalesplayCustomerRow(row);
+    const spId = sp.salesplayId ?? '';
+    const member = await this.prisma.customer.findUnique({
+      where: { phoneE164: phone },
+      select: { id: true, salesplayCustomerId: true, displayName: true, email: true },
+    });
+    const action = salesplayImportAction(Boolean(member), member?.salesplayCustomerId ?? null, spId);
+    if (action === 'unchanged' || action === 'conflict') return action;
+
+    if (member) {
+      await this.prisma.customer.update({
+        where: { id: member.id },
+        data: {
+          salesplayCustomerId: spId,
+          // Fill gaps only — never overwrite what the member set in the app.
+          ...(!member.displayName && sp.displayName ? { displayName: sp.displayName } : {}),
+          ...(!member.email && sp.email ? { email: sp.email } : {}),
+        },
+      });
+      return action;
+    }
+
+    const created = await this.customers.createWalkInCustomer(phone, {
+      displayName: sp.displayName,
+      signupSource: 'salesplay_import',
+      // They are already in SalesPlay — pushing would create a duplicate there.
+      skipSalesplaySync: true,
+    });
+    await this.prisma.customer.update({
+      where: { id: created.id },
+      data: {
+        salesplayCustomerId: spId,
+        ...(sp.email ? { email: sp.email } : {}),
+      },
+    });
+    return action;
   }
 
   private validateImport(
@@ -219,10 +343,15 @@ export class ImportExportService implements OnModuleInit {
 
     rows.forEach((row, idx) => {
       const rowNum = idx + 2;
-      const phoneRaw =
-        row.phone_e164 ?? row.phone ?? row.phonee164 ?? row['phone_e164'] ?? '';
+      const phoneRaw = this.rowPhoneRaw(kind, row);
       if (!String(phoneRaw).trim()) {
-        errors.push({ row: rowNum, message: 'Missing phone_e164' });
+        errors.push({
+          row: rowNum,
+          message:
+            kind === ImportBatchKind.SALESPLAY_CUSTOMERS
+              ? 'Missing phone number'
+              : 'Missing phone_e164',
+        });
         return;
       }
       let phone: string;
@@ -238,7 +367,22 @@ export class ImportExportService implements OnModuleInit {
       }
       seenPhones.add(phone);
 
-      if (kind === ImportBatchKind.CUSTOMER_MASTER) {
+      if (kind === ImportBatchKind.SALESPLAY_CUSTOMERS) {
+        const sp = readSalesplayCustomerRow(row);
+        if (!sp.salesplayId) {
+          errors.push({
+            row: rowNum,
+            message: 'Missing SalesPlay Customer ID / Customer Code',
+          });
+          return;
+        }
+        preview.push({
+          phone_e164: phone,
+          salesplay_customer_id: sp.salesplayId,
+          id_column: sp.idSource,
+          display_name: sp.displayName,
+        });
+      } else if (kind === ImportBatchKind.CUSTOMER_MASTER) {
         preview.push({ phone_e164: phone, display_name: row.display_name });
       } else if (kind === ImportBatchKind.WALLET_ADJUSTMENT) {
         const n = Number(row.amount_cents);
@@ -310,6 +454,7 @@ export class ImportExportService implements OnModuleInit {
     const { errors } = this.validateImport(batch.kind, rows);
 
     let success = 0;
+    const salesplayCounts = { link: 0, create: 0, unchanged: 0, conflict: 0 };
     const rowErrors = [...errors];
     const invalidRowNums = new Set(errors.map((e) => e.row));
 
@@ -318,7 +463,7 @@ export class ImportExportService implements OnModuleInit {
       const rowNum = idx + 2;
       if (invalidRowNums.has(rowNum)) continue;
 
-      const phoneRaw = row.phone_e164 ?? row.phone ?? '';
+      const phoneRaw = this.rowPhoneRaw(batch.kind, row);
       let phone: string;
       try {
         phone = this.phones.normalizeToE164(String(phoneRaw));
@@ -328,7 +473,19 @@ export class ImportExportService implements OnModuleInit {
       }
 
       try {
-        await this.applyImportRow(batch.kind, row, phone);
+        if (batch.kind === ImportBatchKind.SALESPLAY_CUSTOMERS) {
+          const action = await this.applySalesplayCustomerRow(row, phone);
+          salesplayCounts[action]++;
+          if (action === 'conflict') {
+            rowErrors.push({
+              row: rowNum,
+              message: 'Member is already linked to a different SalesPlay customer; left unchanged',
+            });
+            continue;
+          }
+        } else {
+          await this.applyImportRow(batch.kind, row, phone);
+        }
         success++;
       } catch (e) {
         rowErrors.push({
@@ -339,6 +496,26 @@ export class ImportExportService implements OnModuleInit {
     }
 
     const failed = rowErrors.length;
+
+    // Newly linked members: attach the in-store receipts that were waiting
+    // for them and award the purchase points they missed.
+    let receipts: { linked: number; pointsAwarded: number } | null = null;
+    if (
+      batch.kind === ImportBatchKind.SALESPLAY_CUSTOMERS &&
+      salesplayCounts.link + salesplayCounts.create > 0
+    ) {
+      try {
+        const r = await this.salesplayPull.relinkUnmatchedReceipts(false);
+        receipts = { linked: r.linked, pointsAwarded: r.pointsAwarded };
+      } catch (e) {
+        rowErrors.push({
+          row: 0,
+          message: `Members imported, but linking their receipts failed: ${
+            e instanceof Error ? e.message : String(e)
+          }. Use POS sync health → Link receipts to members.`,
+        });
+      }
+    }
 
     await this.prisma.importBatch.update({
       where: { id: batchId },
@@ -351,6 +528,9 @@ export class ImportExportService implements OnModuleInit {
           committedAt: new Date().toISOString(),
           success,
           failed,
+          ...(batch.kind === ImportBatchKind.SALESPLAY_CUSTOMERS
+            ? { salesplay: salesplayCounts, receipts }
+            : {}),
         },
       },
     });
@@ -367,7 +547,14 @@ export class ImportExportService implements OnModuleInit {
       } as object,
     });
 
-    return { batchId, successRows: success, failedRows: failed };
+    return {
+      batchId,
+      successRows: success,
+      failedRows: failed,
+      ...(batch.kind === ImportBatchKind.SALESPLAY_CUSTOMERS
+        ? { salesplay: salesplayCounts, receipts, errors: rowErrors.slice(0, 50) }
+        : {}),
+    };
   }
 
   private async applyImportRow(

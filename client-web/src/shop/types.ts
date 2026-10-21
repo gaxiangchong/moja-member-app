@@ -26,6 +26,8 @@ export type ProductVariant = {
 export type Product = {
   id: string;
   category: ProductCategory;
+  /** Shop filter chip this product appears under (null: only under All). */
+  shopFilter?: ShopFilter | null;
   name: string;
   shortDescription: string;
   description: string;
@@ -86,6 +88,16 @@ export type MockReward = {
   discountType: 'fixed';
   valueCents: number;
   minSpendSen?: number | null;
+};
+
+export type ShopFilter = 'cheesecake' | 'cream_cake' | 'cookies' | 'drinks';
+
+/** The shop page's filter chips, in display order (set per product in admin). */
+export const SHOP_FILTER_LABELS: Record<ShopFilter, string> = {
+  cheesecake: 'Cheesecake',
+  cream_cake: 'Cream Cake',
+  cookies: 'Cookies',
+  drinks: 'Drinks',
 };
 
 export const CATEGORY_LABELS: Record<ProductCategory, string> = {

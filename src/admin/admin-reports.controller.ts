@@ -97,6 +97,24 @@ export class AdminReportsController {
       : this.salesplayPull.reconcile();
   }
 
+  /**
+   * Preview linking in-store receipts stored without a member: how many would
+   * link, the points they would earn, and which customers still can't be found.
+   * Changes nothing.
+   */
+  @Get('pos/relink-receipts')
+  @RequirePermissions(P.REPORT_VIEW)
+  previewRelinkReceipts() {
+    return this.salesplayPull.relinkUnmatchedReceipts(true);
+  }
+
+  /** Link those receipts to their members and award the points they missed. */
+  @Post('pos/relink-receipts')
+  @RequirePermissions(P.REPORT_VIEW, P.LOYALTY_ADJUST)
+  relinkReceipts() {
+    return this.salesplayPull.relinkUnmatchedReceipts(false);
+  }
+
   @Get('dashboard')
   @RequirePermissions(P.REPORT_VIEW)
   dashboard() {

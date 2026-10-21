@@ -65,6 +65,37 @@ export type ParsedCreditNote = {
   };
 };
 
+const CUSTOMER_ID_KEYS = ['customer_id', 'customer', 'customer_uid'];
+const CUSTOMER_PHONE_KEYS = [
+  'customer_code',
+  'customer_mobile',
+  'customer_phone',
+  'mobile_no',
+  'mobile',
+  'phone',
+  'phone_number',
+  'telephone',
+];
+
+/**
+ * Who bought it. Read from the receipt's own fields and, when SalesPlay nests
+ * the buyer as `customer: { … }`, from inside that object as well.
+ */
+function receiptCustomerHints(receipt: Record<string, unknown>): {
+  salesplayCustomerId: string | null;
+  phone: string | null;
+} {
+  const nested = asRecord(receipt['customer']) ?? asRecord(receipt['customer_details']);
+  return {
+    salesplayCustomerId:
+      pickString(receipt, CUSTOMER_ID_KEYS) ??
+      (nested ? pickString(nested, ['customer_id', 'id', 'customer_uid']) : null),
+    phone:
+      pickString(receipt, CUSTOMER_PHONE_KEYS) ??
+      (nested ? pickString(nested, CUSTOMER_PHONE_KEYS) : null),
+  };
+}
+
 export function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -276,20 +307,7 @@ export function parseReceipt(raw: unknown): ParsedReceipt | null {
         'external_reference_number',
       ]),
     },
-    customerHints: {
-      salesplayCustomerId: pickString(receipt, [
-        'customer_id',
-        'customer',
-        'customer_uid',
-      ]),
-      phone: pickString(receipt, [
-        'customer_code',
-        'customer_mobile',
-        'mobile_no',
-        'phone_number',
-        'telephone',
-      ]),
-    },
+    customerHints: receiptCustomerHints(receipt),
   };
 }
 

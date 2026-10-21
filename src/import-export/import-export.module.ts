@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { CustomersModule } from '../customers/customers.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { SalesplayModule } from '../salesplay/salesplay.module';
 import { SegmentationModule } from '../segmentation/segmentation.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { ImportExportController } from './import-export.controller';
@@ -14,6 +15,7 @@ import { ImportExportService } from './import-export.service';
     WalletModule,
     LoyaltyModule,
     SegmentationModule,
+    SalesplayModule,
   ],
   controllers: [ImportExportController],
   providers: [ImportExportService],

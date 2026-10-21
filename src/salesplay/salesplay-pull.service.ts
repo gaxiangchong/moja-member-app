@@ -4,7 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportingSettingsService } from '../admin/reporting-settings.service';
 import { SalesplayService } from './salesplay.service';
-import { SalesplayWebhookService } from './salesplay-webhook.service';
+import {
+  SalesplayWebhookService,
+  type RelinkReport,
+} from './salesplay-webhook.service';
 
 /** Resource key used for the receipts row in salesplay_sync_state. */
 const RECEIPTS_RESOURCE = 'receipts';
@@ -326,6 +329,11 @@ export class SalesplayPullService {
       create: { resource, lastPulledAt: new Date() },
       update: { lastPulledAt: new Date() },
     });
+  }
+
+  /** Link stored in-store receipts that have no member yet (see the webhook service). */
+  relinkUnmatchedReceipts(dryRun: boolean): Promise<RelinkReport> {
+    return this.webhook.relinkUnmatchedReceipts({ dryRun });
   }
 
   /** Data for the admin sync-health panel. */

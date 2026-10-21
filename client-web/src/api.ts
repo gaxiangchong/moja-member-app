@@ -869,7 +869,35 @@ export type ShopCatalogProduct = {
   shippable?: boolean;
   /** Kitchen-tracked count of this cake currently ready. `undefined` = not stock-tracked. */
   availableQty?: number;
+  /** Shop filter chip this product appears under (null: only under All). */
+  shopFilter?: ShopFilter | null;
 };
+
+export type ShopFilter = 'cheesecake' | 'cream_cake' | 'cookies' | 'drinks';
+
+/** How purchases earn points — for the shop's cashback hint. */
+export type LoyaltyEarn = {
+  pointsPerRm: number;
+  /** What one point is worth when redeemed, in sen. */
+  pointValueSen: number;
+  tierMultipliers?: { silver?: number; gold?: number; platinum?: number };
+};
+
+export async function fetchLoyaltyEarn(): Promise<LoyaltyEarn | null> {
+  try {
+    const res = await fetch(`${base}/shop/loyalty-earn`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<LoyaltyEarn>;
+    if (!(Number(data.pointsPerRm) > 0) || !(Number(data.pointValueSen) > 0)) return null;
+    return {
+      pointsPerRm: Number(data.pointsPerRm),
+      pointValueSen: Number(data.pointValueSen),
+      tierMultipliers: data.tierMultipliers,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** Effective sold-out state: the manual toggle OR a kitchen-tracked count at zero. */
 export function isShopProductSoldOut(p: ShopCatalogProduct): boolean {

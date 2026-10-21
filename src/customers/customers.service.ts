@@ -435,7 +435,12 @@ export class CustomersService {
    */
   async createWalkInCustomer(
     phoneE164: string,
-    opts?: { displayName?: string | null },
+    opts?: {
+      displayName?: string | null;
+      signupSource?: string;
+      /** For members that already exist in SalesPlay (e.g. imported from it). */
+      skipSalesplaySync?: boolean;
+    },
   ) {
     const existing = await this.findByPhoneE164(phoneE164);
     if (existing) {
@@ -452,7 +457,7 @@ export class CustomersService {
       data: {
         phoneE164,
         status: CustomerStatus.ACTIVE,
-        signupSource: 'admin_manual',
+        signupSource: opts?.signupSource ?? 'admin_manual',
         ...(displayName ? { displayName } : {}),
         referralCode,
       },
@@ -460,7 +465,7 @@ export class CustomersService {
     await this.loyalty.ensureWallet(customer.id);
     await this.wallet.ensureWallet(customer.id);
     await this.ensureKitchenPickupCode(customer.id);
-    this.syncToSalesplay(customer);
+    if (!opts?.skipSalesplaySync) this.syncToSalesplay(customer);
     return customer;
   }
 

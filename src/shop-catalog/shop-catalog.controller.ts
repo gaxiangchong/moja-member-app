@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { TIER_POINTS_MULTIPLIER } from '../loyalty/member-tier';
 import { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
 import { ShopCartHandoffService } from './shop-cart-handoff.service';
 import { ShopCatalogService } from './shop-catalog.service';
@@ -15,11 +17,32 @@ export class ShopCatalogController {
   constructor(
     private readonly shopCatalog: ShopCatalogService,
     private readonly cartHandoff: ShopCartHandoffService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('catalog/products')
   listProducts() {
     return this.shopCatalog.listPublicProducts();
+  }
+
+  /**
+   * How purchases earn points, so the shop can show "earn X pts · RM Y
+   * cashback". Same rate the earn paths use (LOYALTY_POINTS_PER_RM, legacy
+   * SALESPLAY_POINTS_PER_UNIT); a point's worth in sen comes from
+   * LOYALTY_POINT_VALUE_SEN (default 10: 50 pts redeem RM5).
+   */
+  @Get('loyalty-earn')
+  loyaltyEarn() {
+    const num = (k: string) => Number(this.config.get<string>(k));
+    const rate = [num('LOYALTY_POINTS_PER_RM'), num('SALESPLAY_POINTS_PER_UNIT')].find(
+      (n) => Number.isFinite(n) && n > 0,
+    );
+    const value = num('LOYALTY_POINT_VALUE_SEN');
+    return {
+      pointsPerRm: rate ?? 1,
+      pointValueSen: Number.isFinite(value) && value > 0 ? value : 10,
+      tierMultipliers: TIER_POINTS_MULTIPLIER,
+    };
   }
 
   @Get('catalog/popular')

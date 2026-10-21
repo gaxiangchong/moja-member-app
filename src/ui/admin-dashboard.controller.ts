@@ -2484,8 +2484,33 @@ export class AdminDashboardController {
         <section id="data-import" class="tab-panel hidden">
           <div class="sheet">
             <div class="sheet-head"><h2>Import data</h2></div>
-            <div class="coming-soon">
-              Guided import wizard is pending. Backend is live via <code>POST /admin/import/preview/:kind</code> then <code>POST /admin/import/batches/:batchId/commit</code>. Recommended control pattern: template download, validation preview, explicit commit.
+            <div style="padding:16px 20px">
+              <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label for="imKind">What are you importing?</label>
+                  <select id="imKind">
+                    <option value="SALESPLAY_CUSTOMERS" selected>SalesPlay members (Back Office customer export)</option>
+                    <option value="CUSTOMER_MASTER">Members (app template)</option>
+                    <option value="LOYALTY_ADJUSTMENT">Points adjustments</option>
+                    <option value="WALLET_ADJUSTMENT">Wallet adjustments</option>
+                    <option value="VOUCHER_ASSIGNMENT">Voucher assignments</option>
+                    <option value="TAGS">Tags</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="imFile">File (.csv or .xlsx)</label>
+                  <input type="file" id="imFile" accept=".csv,.xlsx" />
+                </div>
+                <button type="button" class="btn-outline" id="imPreviewBtn">Preview</button>
+                <button type="button" class="btn-primary" id="imCommitBtn" disabled>Import</button>
+              </div>
+              <p class="field-hint" id="imKindHint" style="margin-top:10px">
+                Export customers from SalesPlay Back Office (Customers → Export) and upload the file as-is.
+                Each customer is matched to a member by phone: existing members get linked to their SalesPlay customer, and
+                customers who only registered at the till are created as members (not sent back to SalesPlay).
+                After importing, their past in-store receipts are linked and the purchase points they missed are awarded.
+              </p>
+              <div id="imResult" style="margin-top:12px;font-size:13px"></div>
             </div>
           </div>
         </section>
@@ -2508,6 +2533,7 @@ export class AdminDashboardController {
             <div style="padding:16px 20px">
               <p class="muted-hint" style="margin-top:0">Templates are downloaded through authenticated API calls to avoid exposing data tooling without authorization.</p>
               <div class="sheet-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn-outline template-dl-btn" data-kind="SALESPLAY_CUSTOMERS">SalesPlay members (example columns)</button>
                 <button type="button" class="btn-outline template-dl-btn" data-kind="CUSTOMER_MASTER">Customers template</button>
                 <button type="button" class="btn-outline template-dl-btn" data-kind="WALLET_ADJUSTMENT">Wallet adjustments template</button>
                 <button type="button" class="btn-outline template-dl-btn" data-kind="LOYALTY_ADJUSTMENT">Loyalty adjustments template</button>
@@ -3003,6 +3029,21 @@ export class AdminDashboardController {
               </p>
               <p class="field-hint" id="fsResult" style="padding:0 16px 16px;margin:0"></p>
             </div>
+            <div class="sa-export-block sa-panel">
+              <div class="sa-export-head">
+                <h3>Link receipts to members</h3>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn-outline" id="fsRelinkPreviewBtn">Preview</button>
+                  <button type="button" class="btn-primary" id="fsRelinkApplyBtn" disabled>Link &amp; award points</button>
+                </div>
+              </div>
+              <p class="muted-hint" style="margin:0 16px 8px;font-size:13px">
+                In-store receipts are shown in a member's purchase history (and earn points) only when they are linked to that member.
+                Receipts stored before the member's SalesPlay customer id was known stay unlinked. <strong>Preview</strong> shows what can be linked now;
+                <strong>Link &amp; award points</strong> links them and gives the purchase points they missed (never twice for the same receipt).
+              </p>
+              <div id="fsRelinkResult" style="padding:0 16px 16px;font-size:13px"></div>
+            </div>
           </div>
         </section>
 
@@ -3257,6 +3298,16 @@ export class AdminDashboardController {
                     <option value="cookies">cookies</option>
                   </select>
                 </div>
+              </div>
+              <div class="form-section"><label for="scShopFilter">Shop filter (member app)</label>
+                <select id="scShopFilter">
+                  <option value="">Automatic</option>
+                  <option value="cheesecake">Cheesecake</option>
+                  <option value="cream_cake">Cream Cake</option>
+                  <option value="cookies">Cookies</option>
+                  <option value="drinks">Drinks</option>
+                </select>
+                <p class="field-hint" id="scShopFilterHint">Which filter chip this product appears under in the member app's shop.</p>
               </div>
               <div class="form-section"><label for="scShort">Short description</label><input type="text" id="scShort" /></div>
               <div class="form-section"><label for="scDesc">Description</label><textarea id="scDesc"></textarea></div>
@@ -10213,6 +10264,153 @@ export class AdminDashboardController {
     saBind('fsPullBtn', function () { finRunPull('reconcile'); });
     saBind('fsBackfillBtn', function () { finRunPull('backfill'); });
 
+    // ── Import data (preview → import) ───────────────────────────────────
+    var imBatchId = null;
+    function imEsc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function imErrorsHtml(errors) {
+      if (!errors || !errors.length) return '';
+      return '<p class="field-hint" style="margin:8px 0 4px">Rows that will be skipped:</p>' +
+        '<table class="data mk-mini-table"><thead><tr><th>Row</th><th>Problem</th></tr></thead><tbody>' +
+        errors.slice(0, 50).map(function (e) {
+          return '<tr><td>' + (e.row ? imEsc(e.row) : '—') + '</td><td>' + imEsc(e.message) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    var IM_ACTION = { link: 'Link to member', create: 'Create member', unchanged: 'Already linked', conflict: 'Conflict — skipped' };
+    function imSalesplayCounts(c) {
+      if (!c) return '';
+      return '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0">' +
+        '<span><strong>' + imEsc(c.link) + '</strong> existing members to link</span>' +
+        '<span><strong>' + imEsc(c.create) + '</strong> new members to create</span>' +
+        '<span><strong>' + imEsc(c.unchanged) + '</strong> already linked</span>' +
+        (c.conflict ? '<span class="pill warn">' + imEsc(c.conflict) + ' linked to a different SalesPlay customer</span>' : '') +
+        '</div>';
+    }
+    async function imPreview() {
+      var out = document.getElementById('imResult');
+      var commit = document.getElementById('imCommitBtn');
+      var kind = document.getElementById('imKind').value;
+      var file = document.getElementById('imFile').files[0];
+      imBatchId = null;
+      if (commit) commit.disabled = true;
+      if (!file) { out.textContent = 'Choose a file first.'; return; }
+      out.textContent = 'Reading file…';
+      try {
+        var fd = new FormData();
+        fd.append('file', file);
+        var res = await fetch('/admin/import/preview/' + encodeURIComponent(kind), { method: 'POST', headers: getAuthHeaders(), body: fd });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.message || ('Preview failed (' + res.status + ')'));
+        imBatchId = data.batchId;
+        var valid = data.totalRows - (data.errors ? data.errors.length : 0);
+        var rows = (data.preview || []).map(function (p) {
+          return '<tr><td>' + imEsc(p.phone_e164) + '</td><td>' + imEsc(p.display_name || '') + '</td>' +
+            (kind === 'SALESPLAY_CUSTOMERS'
+              ? '<td>' + imEsc(p.salesplay_customer_id) + ' <span class="field-hint">(' + imEsc(p.id_column === 'customer_code' ? 'Customer Code' : 'Customer ID') + ')</span></td><td>' + imEsc(IM_ACTION[p.action] || p.action || '') + '</td>'
+              : '<td colspan="2">' + imEsc(JSON.stringify(p)) + '</td>') +
+            '</tr>';
+        }).join('');
+        out.innerHTML =
+          '<p style="margin:0"><strong>' + imEsc(valid) + '</strong> of ' + imEsc(data.totalRows) + ' rows are ready to import.</p>' +
+          imSalesplayCounts(data.salesplay) +
+          (rows
+            ? '<p class="field-hint" style="margin:8px 0 4px">First rows:</p><table class="data mk-mini-table"><thead><tr><th>Phone</th><th>Name</th>' +
+              (kind === 'SALESPLAY_CUSTOMERS' ? '<th>SalesPlay customer</th><th>Will</th>' : '<th colspan="2">Values</th>') +
+              '</tr></thead><tbody>' + rows + '</tbody></table>'
+            : '') +
+          imErrorsHtml(data.errors);
+        if (commit) commit.disabled = !(valid > 0);
+      } catch (e) {
+        out.textContent = e.message || String(e);
+      }
+    }
+    async function imCommit() {
+      var out = document.getElementById('imResult');
+      var commit = document.getElementById('imCommitBtn');
+      if (!imBatchId) return;
+      if (!window.confirm('Import the rows shown in the preview? This cannot be undone automatically.')) return;
+      commit.disabled = true;
+      out.textContent = 'Importing…';
+      try {
+        var r = await apiPost('/admin/import/batches/' + encodeURIComponent(imBatchId) + '/commit', {});
+        var html = '<p style="margin:0;color:#047857"><strong>Imported ' + imEsc(r.successRows) + '</strong> rows' +
+          (r.failedRows ? ' · ' + imEsc(r.failedRows) + ' skipped' : '') + '.</p>';
+        if (r.salesplay) {
+          html += '<p style="margin:6px 0 0">' + imEsc(r.salesplay.link) + ' members linked · ' + imEsc(r.salesplay.create) + ' members created · ' +
+            imEsc(r.salesplay.unchanged) + ' already linked' + (r.salesplay.conflict ? ' · ' + imEsc(r.salesplay.conflict) + ' conflicts left unchanged' : '') + '.</p>';
+          if (r.receipts) {
+            html += '<p style="margin:6px 0 0">Linked <strong>' + imEsc(r.receipts.linked) + '</strong> past in-store receipts and awarded <strong>' +
+              imEsc(r.receipts.pointsAwarded) + '</strong> purchase points.</p>';
+          }
+        }
+        out.innerHTML = html + imErrorsHtml(r.errors);
+        imBatchId = null;
+      } catch (e) {
+        commit.disabled = false;
+        out.textContent = e.message || String(e);
+      }
+    }
+    saBind('imPreviewBtn', function () { imPreview(); });
+    saBind('imCommitBtn', function () { imCommit(); });
+    var imKindEl = document.getElementById('imKind');
+    if (imKindEl) imKindEl.addEventListener('change', function () {
+      imBatchId = null;
+      document.getElementById('imCommitBtn').disabled = true;
+      document.getElementById('imResult').textContent = '';
+      document.getElementById('imKindHint').style.display = imKindEl.value === 'SALESPLAY_CUSTOMERS' ? '' : 'none';
+    });
+
+    // ── Link unlinked in-store receipts to members ───────────────────────
+    function fsRelinkRender(r) {
+      var out = document.getElementById('fsRelinkResult');
+      if (!out) return;
+      var esc = function (s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      };
+      var head = r.dryRun
+        ? '<p style="margin:0 0 6px"><strong>' + esc(r.linked) + '</strong> of ' + esc(r.scanned) + ' unlinked receipts can be linked now (about <strong>' + esc(r.pointsAwarded) + '</strong> pts at 1×; Gold / Platinum members get more).</p>'
+        : '<p style="margin:0 0 6px;color:#047857"><strong>Linked ' + esc(r.linked) + '</strong> receipts and awarded <strong>' + esc(r.pointsAwarded) + '</strong> pts.</p>';
+      var rest = '<p class="field-hint" style="margin:0 0 6px">' + esc(r.noCustomerOnReceipt) + ' walk-in sales had no customer attached at the till (normal). ' +
+        esc(r.stillUnmatched) + ' receipts name a customer we still can\\'t find.</p>';
+      var table = '';
+      if (r.unmatchedExamples && r.unmatchedExamples.length) {
+        table = '<p class="field-hint" style="margin:6px 0 4px">Customers on receipts with no matching member — check the phone on the SalesPlay customer, or whether they have joined the app:</p>' +
+          '<table class="data mk-mini-table"><thead><tr><th>SalesPlay customer id / phone</th><th>Receipts</th><th>Latest receipt</th></tr></thead><tbody>' +
+          r.unmatchedExamples.map(function (u) {
+            return '<tr><td>' + esc(u.hint) + '</td><td>' + esc(u.receipts) + '</td><td>' + esc(u.lastReceipt) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      out.innerHTML = head + rest + table;
+    }
+    saBind('fsRelinkPreviewBtn', function () {
+      var out = document.getElementById('fsRelinkResult');
+      var apply = document.getElementById('fsRelinkApplyBtn');
+      if (out) out.textContent = 'Checking unlinked receipts…';
+      api('/admin/reports/pos/relink-receipts')
+        .then(function (r) {
+          fsRelinkRender(r);
+          if (apply) apply.disabled = !(r.linked > 0);
+        })
+        .catch(function (e) { if (out) out.textContent = e.message || String(e); });
+    });
+    saBind('fsRelinkApplyBtn', function () {
+      var out = document.getElementById('fsRelinkResult');
+      var apply = document.getElementById('fsRelinkApplyBtn');
+      if (!window.confirm('Link the receipts shown in the preview to their members and award the purchase points they missed?')) return;
+      if (apply) apply.disabled = true;
+      if (out) out.textContent = 'Linking receipts…';
+      apiPost('/admin/reports/pos/relink-receipts', {})
+        .then(function (r) {
+          fsRelinkRender(r);
+          loadFinanceSync().catch(function () {});
+        })
+        .catch(function (e) {
+          if (apply) apply.disabled = false;
+          if (out) out.textContent = e.message || String(e);
+        });
+    });
+
     document.querySelectorAll('.template-dl-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.getAttribute('data-kind');
@@ -12422,6 +12620,11 @@ export class AdminDashboardController {
       document.getElementById('scName').value = p.name || '';
       document.getElementById('scCategory').value = p.category || 'specials';
       document.getElementById('scCategoryLabel').value = p.categoryLabel || '';
+      document.getElementById('scShopFilter').value = p.shopFilter || '';
+      var SC_FILTER_LABELS = { cheesecake: 'Cheesecake', cream_cake: 'Cream Cake', cookies: 'Cookies', drinks: 'Drinks' };
+      document.getElementById('scShopFilterHint').textContent = p.shopFilter
+        ? 'Set by an admin. Choose Automatic to go back to the guess from its name.'
+        : 'Automatic shows it under: ' + (SC_FILTER_LABELS[p.shopFilterResolved] || 'All only (no filter)') + '. Pick one to override.';
       document.getElementById('scShort').value = p.shortDescription || '';
       document.getElementById('scDesc').value = p.description || '';
       document.getElementById('scImageUrl').value = p.imageUrl || '';
@@ -12467,6 +12670,8 @@ export class AdminDashboardController {
       document.getElementById('scName').value = '';
       document.getElementById('scCategory').value = 'specials';
       document.getElementById('scCategoryLabel').value = '';
+      document.getElementById('scShopFilter').value = '';
+      document.getElementById('scShopFilterHint').textContent = "Which filter chip this product appears under in the member app's shop. Automatic guesses from the name.";
       document.getElementById('scShort').value = '';
       document.getElementById('scDesc').value = '';
       document.getElementById('scImageUrl').value = '';
@@ -12596,6 +12801,8 @@ export class AdminDashboardController {
         name: document.getElementById('scName').value.trim(),
         category: document.getElementById('scCategory').value,
         categoryLabel: document.getElementById('scCategoryLabel').value.trim() || undefined,
+        // '' = Automatic (clears an earlier admin choice).
+        shopFilter: document.getElementById('scShopFilter').value,
         shortDescription: document.getElementById('scShort').value.trim(),
         description: document.getElementById('scDesc').value.trim(),
         imageUrl: document.getElementById('scImageUrl').value.trim(),

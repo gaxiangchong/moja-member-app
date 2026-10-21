@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { SHOP_FILTERS, type ShopFilter } from '../../shop-catalog/shop-filter';
 import {
   IsArray,
   IsBoolean,
@@ -88,6 +89,11 @@ export class CreateShopCatalogProductDto {
   @IsString()
   @MaxLength(80)
   categoryLabel?: string;
+
+  /** Member-app shop filter chip; null or '' returns it to the automatic guess. */
+  @IsOptional()
+  @IsIn([...SHOP_FILTERS, ''])
+  shopFilter?: ShopFilter | '' | null;
 
   @IsOptional()
   @IsString()
