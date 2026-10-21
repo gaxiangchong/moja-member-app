@@ -226,8 +226,9 @@ export class RewardsWorkflowAdminController {
     await this.audit.log({
       ...auditActorBase(auth),
       action: 'loyalty.reward_redeemed_in_store',
-      entityType: 'user_reward',
-      entityId: result.userReward.id,
+      // A reward backed by a voucher definition issues a voucher instead.
+      entityType: result.userReward ? 'user_reward' : 'customer_voucher',
+      entityId: result.userReward?.id ?? result.voucher?.id ?? rewardCatalogId,
       metadata: {
         customerId,
         rewardCatalogId,
