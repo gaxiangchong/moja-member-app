@@ -511,6 +511,25 @@ export class AdminDashboardController {
       border: 1px solid var(--border);
       overflow: hidden;
     }
+    /* Walk-in member forms: stacked label above a full-width field. */
+    #customers-walkin label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    #customers-walkin input[type="text"],
+    #customers-walkin input[type="password"] {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font: inherit;
+    }
     .sheet-head {
       display: flex;
       align-items: center;
@@ -1605,12 +1624,13 @@ export class AdminDashboardController {
 
           <div class="sheet" style="margin-top:16px">
             <div class="sheet-head">
-              <h2>Backfill points</h2>
+              <h2>Backfill or revert points</h2>
             </div>
-            <div style="padding:12px 20px;max-width:520px">
+            <div style="padding:12px 20px;max-width:760px">
               <p class="field-hint" style="margin-top:0">
-                Retroactively credit points for purchases made before a member joined. Requires your own
-                admin password as confirmation.
+                Retroactively credit points for purchases made before a member joined (requires your own
+                admin password), or revert points that were credited by mistake. Find the member by phone in
+                any format, e.g. 012-345 6789 or 60123456789.
               </p>
               <div class="form-row-2" style="gap:12px;max-width:520px">
                 <div>
@@ -1636,6 +1656,21 @@ export class AdminDashboardController {
                 <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                   <button type="button" class="btn-primary" id="wmBfSubmitBtn">Credit points</button>
                   <span class="field-hint" id="wmBfResult" style="margin:0"></span>
+                </div>
+              </div>
+
+              <div id="wmPtsPanel" style="display:none;margin-top:22px">
+                <h3 style="margin:0 0 4px;font-size:14px">Points history — revert a wrong credit</h3>
+                <p class="field-hint" style="margin:0 0 8px">
+                  <strong>Reverse</strong> takes back points that were credited (backfills, purchases, campaigns, adjustments)
+                  with your reason. The original entry stays for the audit trail, and each entry can be reversed once.
+                </p>
+                <p class="field-hint" id="wmPtsResult" style="margin:0 0 6px"></p>
+                <div class="table-wrap" style="max-height:360px;overflow:auto">
+                  <table class="data mk-mini-table" style="width:100%">
+                    <thead><tr><th>When</th><th>Type / reason</th><th style="text-align:right">Points</th><th style="text-align:right">Balance after</th><th></th></tr></thead>
+                    <tbody id="wmPtsBody"></tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -11312,10 +11347,81 @@ export class AdminDashboardController {
         if (panel) { panel.style.display = ''; panel.dataset.customerId = match.id; }
         var resultEl = document.getElementById('wmBfResult');
         if (resultEl) resultEl.textContent = '';
+        if (out) out.textContent = 'Member: ' + (match.displayName ? match.displayName + ' · ' : '') + (match.phoneE164 || '');
+        var ptsResult = document.getElementById('wmPtsResult');
+        if (ptsResult) ptsResult.textContent = '';
+        await wmLoadPointsHistory(match.id);
       } catch (e) {
         if (out) out.textContent = e.message || String(e);
+        var ptsPanel = document.getElementById('wmPtsPanel');
+        if (ptsPanel) ptsPanel.style.display = 'none';
       }
     }
+
+    /** The found member's points entries, with Reverse on those that can be. */
+    async function wmLoadPointsHistory(customerId) {
+      var panel = document.getElementById('wmPtsPanel');
+      var body = document.getElementById('wmPtsBody');
+      if (!panel || !body) return;
+      panel.style.display = '';
+      panel.dataset.customerId = customerId;
+      body.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+      var esc = function (s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      };
+      try {
+        var rows = await api('/admin/loyalty-ledger?limit=200&customerId=' + encodeURIComponent(customerId));
+        if (!rows || !rows.length) {
+          body.innerHTML = '<tr><td colspan="5">No points entries yet.</td></tr>';
+          return;
+        }
+        body.innerHTML = rows.map(function (r) {
+          var isReversal = r.referenceType === 'reversal';
+          // Only credits: undoing a redemption would refund points while the
+          // voucher it bought stays issued.
+          var canReverse = !isReversal && !r.reversed && r.deltaPoints > 0;
+          var action = canReverse
+            ? '<button type="button" class="btn-outline wmPtsReverseBtn" style="padding:3px 8px;font-size:12px" data-entry-id="' + esc(r.id) + '" data-points="' + esc(r.deltaPoints) + '">Reverse</button>'
+            : '<span class="field-hint" style="margin:0">' + (isReversal ? 'Reversal' : r.reversed ? 'Reversed' : '') + '</span>';
+          return '<tr' + (r.reversed ? ' style="opacity:.55"' : '') + '>' +
+            '<td style="white-space:nowrap">' + esc(r.createdAt ? new Date(r.createdAt).toLocaleString('en-MY', { dateStyle: 'short', timeStyle: 'short' }) : '-') + '</td>' +
+            '<td style="white-space:normal;word-break:break-word">' + esc(r.referenceType || '—') + '<div class="field-hint" style="margin:0">' + esc(r.reason) + '</div></td>' +
+            '<td style="text-align:right;font-weight:600;color:' + (r.deltaPoints < 0 ? '#b91c1c' : '#047857') + '">' + esc(r.deltaPoints > 0 ? '+' + r.deltaPoints : r.deltaPoints) + '</td>' +
+            '<td style="text-align:right">' + esc(r.balanceAfter) + '</td>' +
+            '<td>' + action + '</td></tr>';
+        }).join('');
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="5">' + esc(e.message || String(e)) + '</td></tr>';
+      }
+    }
+
+    async function wmReversePoints(btn) {
+      var panel = document.getElementById('wmPtsPanel');
+      var out = document.getElementById('wmPtsResult');
+      var customerId = panel ? panel.dataset.customerId : '';
+      var entryId = btn.getAttribute('data-entry-id');
+      var pts = Number(btn.getAttribute('data-points'));
+      if (!customerId || !entryId) return;
+      var reason = window.prompt('Reason for reversing ' + (pts > 0 ? '+' : '') + pts + ' pts (required, min 3 characters):', 'Points credited in error');
+      if (reason === null) return;
+      reason = reason.trim();
+      if (reason.length < 3) { if (out) out.textContent = 'A reason of at least 3 characters is required.'; return; }
+      if (!window.confirm((pts > 0 ? 'Subtract ' + pts : 'Give back ' + (-pts)) + ' points from this member? The original entry is kept for the audit trail.')) return;
+      btn.disabled = true;
+      try {
+        await apiPost('/admin/loyalty-ledger/' + encodeURIComponent(entryId) + '/reverse', { reason: reason });
+        if (out) { out.style.color = '#047857'; out.textContent = 'Reversed ' + (pts > 0 ? '+' : '') + pts + ' pts.'; }
+        await wmLoadPointsHistory(customerId);
+      } catch (e) {
+        btn.disabled = false;
+        if (out) { out.style.color = '#b91c1c'; out.textContent = 'Could not reverse: ' + (e.message || String(e)); }
+      }
+    }
+    var wmPtsBodyEl = document.getElementById('wmPtsBody');
+    if (wmPtsBodyEl) wmPtsBodyEl.addEventListener('click', function (ev) {
+      var b = ev.target && ev.target.closest ? ev.target.closest('.wmPtsReverseBtn') : null;
+      if (b) wmReversePoints(b);
+    });
     async function wmBfSubmit() {
       var panel = document.getElementById('wmBfPanel');
       var customerId = panel ? panel.dataset.customerId : '';
@@ -11354,6 +11460,7 @@ export class AdminDashboardController {
           res = await apiPost(path, body);
         }
         if (out) out.textContent = 'Credited ' + points + ' points. New balance: ' + res.pointsBalance + '.';
+        wmLoadPointsHistory(customerId).catch(function () {});
         ['wmBfPoints', 'wmBfReason', 'wmBfRef', 'wmBfPassword'].forEach(function (id) {
           var el = document.getElementById(id);
           if (el) el.value = '';

@@ -402,11 +402,13 @@ export class AdminController {
     @Query('search') search?: string,
     @Query('reason') reason?: string,
     @Query('referenceType') referenceType?: string,
+    @Query('customerId') customerId?: string,
   ) {
     return this.admin.listLoyaltyLedger(limit, {
       search,
       reason,
       referenceType,
+      customerId,
     });
   }
 

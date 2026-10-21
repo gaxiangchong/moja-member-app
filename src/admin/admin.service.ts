@@ -46,6 +46,7 @@ import { CustomersService } from '../customers/customers.service';
 import { PhoneNormalizerService } from '../customers/phone-normalizer.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { tierForPoints, tierPointsRange } from '../loyalty/member-tier';
+import { phoneCandidates } from '../salesplay/salesplay-customer-match';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentsSettingsService } from '../payments/payments-settings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -349,6 +350,16 @@ export class AdminService {
         { displayName: { contains: s, mode: 'insensitive' } },
         { email: { contains: s, mode: 'insensitive' } },
       ];
+      // A phone typed with spaces/dashes or in local form ("012-345 6789")
+      // must still find "+60123456789".
+      const digits = s.replace(/\D/g, '');
+      if (digits.length >= 6 && digits !== s) {
+        or.push({ phoneE164: { contains: digits } });
+      }
+      const region = this.config.get<string>('PHONE_DEFAULT_REGION') || 'MY';
+      for (const e164 of phoneCandidates(s, region)) {
+        or.push({ phoneE164: e164 });
+      }
       if (
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
           s,
@@ -1044,10 +1055,16 @@ export class AdminService {
 
   async listLoyaltyLedger(
     limit = 50,
-    filters: { search?: string; reason?: string; referenceType?: string } = {},
+    filters: {
+      search?: string;
+      reason?: string;
+      referenceType?: string;
+      customerId?: string;
+    } = {},
   ) {
     const take = Math.min(Math.max(limit, 1), 500);
     const where: Prisma.LoyaltyLedgerEntryWhereInput = {};
+    if (filters.customerId?.trim()) where.customerId = filters.customerId.trim();
     const digits = (filters.search ?? '').replace(/\D/g, '');
     if (digits) where.customer = { phoneE164: { contains: digits } };
     if (filters.reason?.trim()) {
