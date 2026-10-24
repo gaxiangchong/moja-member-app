@@ -2305,6 +2305,25 @@ export class AdminDashboardController {
               </div>
             </div>
           </div>
+
+          <div class="sheet">
+            <div class="sheet-head"><h2>Older rewards (voucher series)</h2></div>
+            <div style="padding:12px 20px;max-width:1040px">
+              <p class="field-hint" style="margin-top:0">
+                Rewards set up in the earlier voucher-series system. Those marked <strong>Shown</strong> appear in the member app's
+                Rewards list <em>alongside</em> the gift rewards above, so a reward set up in both places shows twice.
+                <strong>Hide</strong> one copy to remove the duplicate. Hiding only takes it off the list: nothing is deleted and
+                vouchers members already redeemed keep working.
+              </p>
+              <p class="field-hint" id="lrResult" style="margin:0 0 6px"></p>
+              <div class="table-wrap">
+                <table class="data mk-mini-table" style="width:100%">
+                  <thead><tr><th>Reward</th><th style="text-align:right">Points</th><th style="text-align:right">Value</th><th style="text-align:right">Min spend</th><th>Status</th><th>In member app</th><th></th></tr></thead>
+                  <tbody id="lrBody"><tr><td colspan="7">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="campaigns-segments" class="tab-panel hidden">
@@ -11011,7 +11030,56 @@ export class AdminDashboardController {
       (campaigns || []).forEach(function (c) { lastGrCampaignMap[c.id] = c; });
       populateGrCampaigns(campaigns || []);
       renderGiftRewards();
+      loadLegacyRewards().catch(function (e) {
+        var b = document.getElementById('lrBody');
+        if (b) b.innerHTML = '<tr><td colspan="7">' + vcEsc(e.message || String(e)) + '</td></tr>';
+      });
     }
+
+    // ── Older (voucher-series) rewards: show / hide in the member app ─────
+    async function loadLegacyRewards() {
+      var body = document.getElementById('lrBody');
+      if (!body) return;
+      var defs = await api('/admin/voucher-definitions');
+      // Only series that cost points are rewards; the rest are plain vouchers.
+      var rows = (defs || []).filter(function (d) { return (d.pointsCost || 0) > 0; });
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="7">No older rewards.</td></tr>';
+        return;
+      }
+      var rm = function (sen) { return sen != null && sen > 0 ? 'RM ' + (sen / 100).toFixed(2) : '—'; };
+      body.innerHTML = rows.map(function (d) {
+        var shown = !!d.showInRewardsCatalog;
+        return '<tr' + (shown ? '' : ' style="opacity:.6"') + '>' +
+          '<td><strong>' + vcEsc(d.title) + '</strong><div class="field-hint" style="margin:0">' + vcEsc(d.code) + '</div></td>' +
+          '<td style="text-align:right">' + vcEsc(d.pointsCost) + '</td>' +
+          '<td style="text-align:right">' + rm(d.rebateValueSen) + '</td>' +
+          '<td style="text-align:right">' + rm(d.minSpendSen) + '</td>' +
+          '<td>' + statusPill(d.isActive ? 'ACTIVE' : 'INACTIVE') + '</td>' +
+          '<td>' + (shown && d.isActive ? statusPill('Shown') : '<span class="field-hint" style="margin:0">Hidden</span>') + '</td>' +
+          '<td><button type="button" class="btn-outline lr-toggle-btn" style="padding:3px 10px;font-size:12px" data-id="' + vcEsc(d.id) +
+          '" data-show="' + (shown ? '0' : '1') + '" data-title="' + vcEsc(d.title) + '">' + (shown ? 'Hide' : 'Show in app') + '</button></td>' +
+          '</tr>';
+      }).join('');
+    }
+    var lrBodyEl = document.getElementById('lrBody');
+    if (lrBodyEl) lrBodyEl.addEventListener('click', async function (ev) {
+      var b = ev.target && ev.target.closest ? ev.target.closest('.lr-toggle-btn') : null;
+      if (!b) return;
+      var show = b.getAttribute('data-show') === '1';
+      var title = b.getAttribute('data-title') || 'this reward';
+      var out = document.getElementById('lrResult');
+      if (!window.confirm((show ? 'Show "' : 'Hide "') + title + (show ? '" in' : '" from') + ' the member app\\'s Rewards list?')) return;
+      b.disabled = true;
+      try {
+        await apiPatch('/admin/voucher-definitions/' + encodeURIComponent(b.getAttribute('data-id')), { showInRewardsCatalog: show });
+        if (out) { out.style.color = '#047857'; out.textContent = (show ? 'Now shown: ' : 'Hidden: ') + title + '.'; }
+        await loadLegacyRewards();
+      } catch (e) {
+        b.disabled = false;
+        if (out) { out.style.color = '#b91c1c'; out.textContent = 'Could not update: ' + (e.message || String(e)); }
+      }
+    });
     function populateGrCampaigns(campaigns) {
       var sel = document.getElementById('grCampaign');
       if (!sel) return;
