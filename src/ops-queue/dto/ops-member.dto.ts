@@ -50,12 +50,12 @@ export class OpsCreateMemberDto {
    */
   @IsOptional()
   @IsString()
-  @Matches(/^d{6}$/, { message: 'PIN must be 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'PIN must be 6 digits' })
   pin?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(/^d{6}$/, { message: 'PIN confirmation must be 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'PIN confirmation must be 6 digits' })
   pinConfirm?: string;
 
   @IsOptional()

@@ -350,7 +350,7 @@ export function MemberWindowApp() {
               id="memberPin"
               type="password"
               value={newPin}
-              onChange={(e) => setNewPin(e.target.value.replace(/D/g, '').slice(0, 6))}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="6 digits"
               inputMode="numeric"
               autoComplete="new-password"
@@ -361,7 +361,7 @@ export function MemberWindowApp() {
               id="memberPinConfirm"
               type="password"
               value={newPinConfirm}
-              onChange={(e) => setNewPinConfirm(e.target.value.replace(/D/g, '').slice(0, 6))}
+              onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="type it again"
               inputMode="numeric"
               autoComplete="new-password"
