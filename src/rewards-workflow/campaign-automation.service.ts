@@ -64,15 +64,12 @@ export class CampaignAutomationService {
   // ---------------------------------------------------------------------
 
   /**
-   * First login (PIN set). Issues welcome vouchers, plus any "every member"
-   * campaign that is running, so a member who joins mid-campaign gets it too.
+   * First login (PIN set). Issues any "every member" campaign that is
+   * running, so a member who joins mid-campaign gets it too. Welcome
+   * (NEW_MEMBER) vouchers are not issued here — they wait for the member's
+   * first purchase, see {@link runFirstPurchaseTrigger}.
    */
   async runNewMemberTrigger(customerId: string): Promise<void> {
-    for (const campaign of await this.activeCampaigns(NEW_MEMBER)) {
-      await this.issueOne(campaign, customerId, 'auto_new_member', 'welcome', {
-        oncePerCampaign: true,
-      });
-    }
     for (const campaign of await this.activeCampaigns(ALL_MEMBERS)) {
       await this.issueOne(
         campaign,
@@ -145,6 +142,27 @@ export class CampaignAutomationService {
     });
     if (!member?.birthday || member.status !== CustomerStatus.ACTIVE) return 0;
     return this.issueBirthdayVouchers(campaigns, [member], [member.id]);
+  }
+
+  /**
+   * A member paid for something — an online order, or an in-store SalesPlay
+   * receipt linked to them. Issues the welcome (NEW_MEMBER) voucher, which is
+   * a reward for making a first purchase, not for signing up.
+   *
+   * Called after every purchase; once-per-campaign makes the first one the
+   * only one that issues, so a member never gets the welcome voucher twice.
+   */
+  async runFirstPurchaseTrigger(customerId: string): Promise<void> {
+    const member = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { status: true },
+    });
+    if (!member || member.status === CustomerStatus.SUSPENDED) return;
+    for (const campaign of await this.activeCampaigns(NEW_MEMBER)) {
+      await this.issueOne(campaign, customerId, 'auto_first_purchase', 'welcome', {
+        oncePerCampaign: true,
+      });
+    }
   }
 
   /** After an order is finalized, with its total, to fire MIN_PURCHASE campaigns. */

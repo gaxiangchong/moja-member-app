@@ -4,6 +4,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { ReportingSettingsModule } from '../admin/reporting-settings.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { OrdersModule } from '../orders/orders.module';
+import { RewardsWorkflowModule } from '../rewards-workflow/rewards-workflow.module';
 import { SalesplayService } from './salesplay.service';
 import { SalesplayWebhookService } from './salesplay-webhook.service';
 import { SalesplayWebhookController } from './salesplay-webhook.controller';
@@ -17,6 +18,7 @@ import { SalesplayLiveSyncService } from './salesplay-live-sync.service';
     ReportingSettingsModule,
     ShopCatalogModule,
     OrdersModule,
+    RewardsWorkflowModule,
   ],
   controllers: [SalesplayWebhookController],
   providers: [

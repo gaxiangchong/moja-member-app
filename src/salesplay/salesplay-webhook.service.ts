@@ -14,6 +14,7 @@ import {
   type ParsedReceipt,
 } from './salesplay-receipt.parser';
 import { phoneCandidates } from './salesplay-customer-match';
+import { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 
 export type RelinkReport = {
   dryRun: boolean;
@@ -64,6 +65,7 @@ export class SalesplayWebhookService {
     private readonly audit: AuditService,
     private readonly shopCatalog: ShopCatalogService,
     private readonly productStock: ProductStockService,
+    private readonly campaignAutomation: CampaignAutomationService,
   ) {}
 
   verifyToken(token: string | undefined): void {
@@ -278,8 +280,36 @@ export class SalesplayWebhookService {
       customerId,
       originOnlineOrderId,
     );
+    this.afterMemberPurchase(parsed, customerId, originOnlineOrderId);
     await this.maybeDecrementStock(parsed, originOnlineOrderId);
     return true;
+  }
+
+  /**
+   * An in-store sale linked to a member is a purchase: it earns the welcome
+   * voucher if this is their first. Skips refunds/voids and the in-store
+   * settlement of an online order (that order already counted). Never throws.
+   */
+  private afterMemberPurchase(
+    parsed: ParsedReceipt,
+    customerId: string | null,
+    originOnlineOrderId: string | null,
+  ): void {
+    if (!customerId || originOnlineOrderId) return;
+    if (
+      parsed.isDeleted ||
+      (parsed.receiptType && parsed.receiptType.toUpperCase() !== 'SALE') ||
+      parsed.netCents <= 0
+    ) {
+      return;
+    }
+    void this.campaignAutomation.runFirstPurchaseTrigger(customerId).catch((err) =>
+      this.logger.error(
+        `First-purchase (welcome) trigger failed for receipt ${parsed.salesplayReceiptId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      ),
+    );
   }
 
   /**
@@ -632,6 +662,7 @@ export class SalesplayWebhookService {
           data: { customerId },
         });
         report.pointsAwarded += await this.maybeAwardLoyalty(parsed, r.id, customerId, null);
+        this.afterMemberPurchase(parsed, customerId, null);
       }
     }
 

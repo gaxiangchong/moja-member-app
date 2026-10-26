@@ -1584,6 +1584,14 @@ export class CustomersService {
       this.pushShopOrderToSalesplay(orderId);
       void this.orderNotices.notify(orderId, 'placed');
       if (finalizedCustomerId) {
+        // A paid order is a purchase: the welcome voucher is earned now.
+        void this.campaignAutomation
+          .runFirstPurchaseTrigger(finalizedCustomerId)
+          .catch((err) =>
+            this.logger.error(
+              `First-purchase (welcome) trigger failed for order ${orderId}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
         void this.campaignAutomation
           .runMinPurchaseTrigger(finalizedCustomerId, finalizedTotalCents)
           .catch((err) =>

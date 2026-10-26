@@ -125,21 +125,46 @@ describe('referral purchase voucher', () => {
 });
 
 describe('welcome voucher', () => {
-  it('is issued once per campaign and never again', async () => {
-    const { service, prisma, builder } = setup([RM30]);
+  /** Campaigns keyed by trigger, so each call only sees its own kind. */
+  function setupByTrigger(byTrigger: Record<string, Campaign[]>, status = 'ACTIVE') {
+    const ctx = setup([], { referrerStatus: status });
+    ctx.prisma.voucherCampaign.findMany.mockImplementation(
+      (args: { where: { autoCreditTrigger: string } }) =>
+        Promise.resolve(byTrigger[args.where.autoCreditTrigger] ?? []),
+    );
+    return ctx;
+  }
+  const WELCOME: Campaign = { id: 'welcome', qualifyingMinSpend: null, autoCreditThreshold: null };
+  const EVERYONE: Campaign = { id: 'everyone', qualifyingMinSpend: null, autoCreditThreshold: null };
+
+  it('is not issued at sign-up', async () => {
+    const { service, builder } = setupByTrigger({ NEW_MEMBER: [WELCOME], ALL_MEMBERS: [EVERYONE] });
     await service.runNewMemberTrigger('new-member');
+    const issued = builder.issueVoucherToCustomer.mock.calls.map((c) => c[1]);
+    expect(issued).toEqual(['everyone']);
+  });
+
+  it('is issued after the first purchase, and never again', async () => {
+    const { service, prisma, builder } = setupByTrigger({ NEW_MEMBER: [WELCOME] });
+    await service.runFirstPurchaseTrigger('new-member');
     expect(builder.issueVoucherToCustomer).toHaveBeenCalledWith(
       'new-member',
-      'c1',
+      'welcome',
       null,
-      'auto_new_member',
+      'auto_first_purchase',
       undefined,
       'welcome',
     );
 
     builder.issueVoucherToCustomer.mockClear();
     prisma.voucher.findFirst.mockResolvedValue({ id: 'already' });
-    await service.runNewMemberTrigger('new-member');
+    await service.runFirstPurchaseTrigger('new-member');
+    expect(builder.issueVoucherToCustomer).not.toHaveBeenCalled();
+  });
+
+  it('is not issued to a suspended member', async () => {
+    const { service, builder } = setupByTrigger({ NEW_MEMBER: [WELCOME] }, 'SUSPENDED');
+    await service.runFirstPurchaseTrigger('new-member');
     expect(builder.issueVoucherToCustomer).not.toHaveBeenCalled();
   });
 });

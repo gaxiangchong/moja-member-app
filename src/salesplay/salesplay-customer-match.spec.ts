@@ -7,6 +7,7 @@ import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { phoneCandidates } from './salesplay-customer-match';
 import { parseReceipt } from './salesplay-receipt.parser';
 import { SalesplayWebhookService } from './salesplay-webhook.service';
+import type { CampaignAutomationService } from '../rewards-workflow/campaign-automation.service';
 
 describe('phoneCandidates', () => {
   it.each([
@@ -75,6 +76,8 @@ describe('SalesplayWebhookService receipt linking', () => {
       appendLedgerEntry,
     } as unknown as LoyaltyService;
     const audit = { log: jest.fn(async () => undefined) } as unknown as AuditService;
+    const runFirstPurchaseTrigger = jest.fn(async () => undefined);
+    const campaignAutomation = { runFirstPurchaseTrigger };
     const config = {
       get: (k: string) => (k === 'PHONE_DEFAULT_REGION' ? 'MY' : k === 'LOYALTY_POINTS_PER_RM' ? '1' : undefined),
     } as unknown as ConfigService;
@@ -85,8 +88,9 @@ describe('SalesplayWebhookService receipt linking', () => {
       audit,
       {} as ShopCatalogService,
       {} as ProductStockService,
+      campaignAutomation as unknown as CampaignAutomationService,
     );
-    return { service, customerUpdate, receiptUpdate, appendLedgerEntry };
+    return { service, customerUpdate, receiptUpdate, appendLedgerEntry, runFirstPurchaseTrigger };
   }
 
   const sale = (id: string, extra: Record<string, unknown>) => ({
@@ -119,6 +123,23 @@ describe('SalesplayWebhookService receipt linking', () => {
     expect(appendLedgerEntry).toHaveBeenCalledWith(
       expect.objectContaining({ deltaPoints: 25, referenceType: 'pos_receipt', referenceId: 'r1' }),
     );
+  });
+
+  it('counts a linked in-store sale as a purchase for the welcome voucher', async () => {
+    const { service, runFirstPurchaseTrigger } = make([
+      sale('r1', { customer_mobile: '012-345 6789' }),
+      sale('r2', { customer_mobile: '012-345 6789', receipt_type: 'REFUND' }),
+    ]);
+    await service.relinkUnmatchedReceipts({ dryRun: false });
+    // The sale counts; the refund does not.
+    expect(runFirstPurchaseTrigger).toHaveBeenCalledTimes(1);
+    expect(runFirstPurchaseTrigger).toHaveBeenCalledWith('m1');
+  });
+
+  it('never issues anything on a preview', async () => {
+    const { service, runFirstPurchaseTrigger } = make([sale('r1', { customer_mobile: '0123456789' })]);
+    await service.relinkUnmatchedReceipts({ dryRun: true });
+    expect(runFirstPurchaseTrigger).not.toHaveBeenCalled();
   });
 
   it('never awards a receipt that already has points', async () => {

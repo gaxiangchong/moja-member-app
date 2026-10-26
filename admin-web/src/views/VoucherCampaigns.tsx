@@ -23,7 +23,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 
 const TRIGGER_LABELS: Record<AutoCreditTrigger | '', string> = {
   '': 'None — issue manually only',
-  NEW_MEMBER: 'Welcome — when a member first signs in',
+  NEW_MEMBER: 'Welcome — after a member’s first purchase',
   BIRTHDAY: "Birthday — before a member's birthday",
   REFERRAL_PURCHASE: 'Referral — when a referred friend makes their first purchase',
   REFERRAL_COUNT: 'Referral milestone — when referral count reaches…',
@@ -34,7 +34,8 @@ const TRIGGER_LABELS: Record<AutoCreditTrigger | '', string> = {
 
 /** What each trigger does, in the words the person setting it up needs. */
 const TRIGGER_HELP: Record<AutoCreditTrigger, string> = {
-  NEW_MEMBER: 'Each member gets this once, the first time they sign in.',
+  NEW_MEMBER:
+    'Each member gets this once, after their first paid purchase (an online order or an in-store receipt linked to them) — not at sign-up.',
   BIRTHDAY:
     'Appears in the member’s wallet this many days before their birthday, once per year, and stays usable until the “valid for” days after the birthday.',
   REFERRAL_PURCHASE:
