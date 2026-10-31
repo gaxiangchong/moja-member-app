@@ -1322,6 +1322,18 @@ export class CustomersService {
     }
   }
 
+  /** The distinct product categories in an order, read from the catalog. */
+  private async orderLineCategories(
+    lines: SubmitMemberOrderDto['lines'],
+  ): Promise<string[]> {
+    const ids = [...new Set(lines.map((l) => l.productId))];
+    const rows = await this.prisma.shopProduct.findMany({
+      where: { id: { in: ids } },
+      select: { category: true },
+    });
+    return [...new Set(rows.map((r) => r.category).filter(Boolean))];
+  }
+
   /**
    * Creates a shop order awaiting payment (Xendit). Does not credit lifetime spend until finalized.
    */
@@ -1399,6 +1411,10 @@ export class CustomersService {
       fulfilmentType === 'IN_STORE' || shipping
         ? todayBusinessDate()
         : (dto.scheduledDate ?? todayBusinessDate());
+    // Some categories (whole cakes) are baked to order and need days of notice.
+    const categories = scheduled
+      ? await this.orderLineCategories(dto.lines)
+      : [];
 
     const order = await this.prisma.$transaction(async (tx) => {
       await this.pickupRules.assertCanPlace(
@@ -1406,6 +1422,7 @@ export class CustomersService {
           fulfilmentType,
           scheduledDate: scheduled ? (dto.scheduledDate ?? null) : null,
           scheduledSlot: scheduled ? (dto.scheduledSlot ?? null) : null,
+          categories,
         },
         tx,
       );

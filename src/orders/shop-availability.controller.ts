@@ -52,10 +52,6 @@ export class ShopAvailabilityController {
   }
 
   /**
-   * Which pickup windows are still open for a day: lead time, cut-off,
-   * capacity, store hours, and closed days. `date` defaults to today.
-   */
-  /**
    * Whether delivery can be chosen at checkout, and the WhatsApp number to ask
    * Moja Maison for help arranging a courier. Public: it is shown to anyone
    * reaching checkout.
@@ -74,8 +70,17 @@ export class ShopAvailabilityController {
     return this.earlyOrderDiscount.getSettings();
   }
 
+  /**
+   * Which pickup windows are still open for a day: lead time, pre-order
+   * notice for the cart's `categories`, cut-off, capacity, store hours, and
+   * closed days. `date` defaults to today.
+   */
   @Get('pickup-slots')
   pickupSlots(@Query() query: AvailabilityQueryDto) {
-    return this.pickupRules.quoteDay(query.date ?? todayBusinessDate());
+    const categories = (query.categories ?? '').split(',').filter(Boolean);
+    return this.pickupRules.quoteDay(
+      query.date ?? todayBusinessDate(),
+      categories,
+    );
   }
 }

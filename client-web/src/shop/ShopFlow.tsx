@@ -369,8 +369,26 @@ export function ShopFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- addonLimit derives from the deps listed
   }, [cart, hasCake, wholeCakeCount, setLineQty]);
 
-  // A date saved from an earlier visit may have passed; never offer one before today.
-  const earliestPickupDate = pickupDay?.today ?? todayIsoDate();
+  // The categories in the cart decide the pre-order notice (whole cakes are
+  // baked to order). Joined into a string so the fetch below only reruns when
+  // the set of categories changes, not on every quantity change.
+  const cartCategoryKey = useMemo(
+    () =>
+      [
+        ...new Set(
+          cart
+            .map((l) => products.find((p) => p.id === l.productId)?.category)
+            .filter((c): c is NonNullable<typeof c> => Boolean(c)),
+        ),
+      ]
+        .sort()
+        .join(','),
+    [cart, products],
+  );
+
+  // A date saved from an earlier visit may have passed, and a pre-order needs
+  // days of notice; never offer one before the earliest date the server allows.
+  const earliestPickupDate = pickupDay?.minDate ?? pickupDay?.today ?? todayIsoDate();
   useEffect(() => {
     if (!pickupDate || pickupDate < earliestPickupDate) {
       setPickupDate(earliestPickupDate);
@@ -450,7 +468,7 @@ export function ShopFlow({
     const date =
       isScheduled && pickupDate ? pickupDate : undefined;
     let alive = true;
-    void fetchPickupSlots(date)
+    void fetchPickupSlots(date, cartCategoryKey ? cartCategoryKey.split(',') : [])
       .then((day) => {
         if (alive) setPickupDay(day);
       })
@@ -460,7 +478,7 @@ export function ShopFlow({
     return () => {
       alive = false;
     };
-  }, [screen, isScheduled, pickupDate]);
+  }, [screen, isScheduled, pickupDate, cartCategoryKey]);
 
   useEffect(() => {
     if (!pickupDay || !pickupTime) return;
@@ -1589,7 +1607,7 @@ export function ShopFlow({
                 <input
                   id="pickupDate"
                   type="date"
-                  min={pickupDay?.today ?? todayIsoDate()}
+                  min={earliestPickupDate}
                   max={pickupDay?.maxDate}
                   value={pickupDate ?? ''}
                   onChange={(e) => setPickupDate(e.target.value || null)}
@@ -1632,6 +1650,12 @@ export function ShopFlow({
                     {earlyDiscount > 0
                       ? `Early order: ${earlyInfo.percent}% off your cakes.`
                       : `Pick a date ${earlyInfo.minDaysAhead}+ days ahead to save ${earlyInfo.percent}% on whole cakes.`}
+                  </p>
+                ) : null}
+                {pickupDay && pickupDay.preorderDays > 0 && !pickupDay.closedReason ? (
+                  <p className="caption" style={{ margin: 0 }}>
+                    Some items in your cart are made to order: choose a date at least {pickupDay.preorderDays}{' '}
+                    {pickupDay.preorderDays === 1 ? 'day' : 'days'} from today.
                   </p>
                 ) : null}
                 {pickupDay && pickupDate === pickupDay.date && pickupDay.closedReason ? (

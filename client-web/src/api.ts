@@ -1241,7 +1241,11 @@ export type PickupSlotOffer = {
 export type PickupSlotDay = {
   date: string;
   today: string;
+  /** Earliest date the cart can be collected; later than today for a pre-order. */
+  minDate: string;
   maxDate: string;
+  /** Days of notice the cart needs; 0 when it holds no pre-order items. */
+  preorderDays: number;
   openTime: string;
   closeTime: string;
   closed: boolean;
@@ -1336,8 +1340,15 @@ export async function fetchPaymentsTestMode(): Promise<boolean> {
   }
 }
 
-export async function fetchPickupSlots(date?: string): Promise<PickupSlotDay> {
-  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+/** `categories`: the product categories in the cart, for the pre-order notice. */
+export async function fetchPickupSlots(
+  date?: string,
+  categories: readonly string[] = [],
+): Promise<PickupSlotDay> {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (categories.length > 0) params.set('categories', categories.join(','));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
   const res = await fetch(`${base}/shop/pickup-slots${qs}`);
   const data = await parseJson<PickupSlotDay & { message?: string }>(res);
   if (!res.ok) {

@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
   fetchPickupRules,
+  SHOP_CATALOG_CATEGORIES,
   updatePickupRules,
   type PickupRules,
   type PickupSlotRule,
 } from '../api';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  whole_cakes: 'Whole cakes',
+  cake_slices: 'Cake slices',
+  drinks: 'Drinks',
+  specials: 'Specials',
+  cookies: 'Cookies',
+};
 
 const WEEKDAYS = [
   { day: 0, label: 'Sun' },
@@ -79,6 +88,8 @@ export function PickupRules() {
   const [timeZone, setTimeZone] = useState('Asia/Kuala_Lumpur');
   const [closedDates, setClosedDates] = useState('');
   const [maxAdvanceDays, setMaxAdvanceDays] = useState('30');
+  const [preorderDays, setPreorderDays] = useState('2');
+  const [preorderCategories, setPreorderCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -118,6 +129,8 @@ export function PickupRules() {
     setTimeZone(rules.timeZone);
     setClosedDates(rules.closedDates.join('\n'));
     setMaxAdvanceDays(String(rules.maxAdvanceDays));
+    setPreorderDays(String(rules.preorderDays ?? 0));
+    setPreorderCategories(rules.preorderCategories ?? []);
     setSlots(rules.slots.map(slotToForm));
   }
 
@@ -216,6 +229,8 @@ export function PickupRules() {
           .map((date) => date.trim())
           .filter(Boolean),
         maxAdvanceDays: Number(maxAdvanceDays),
+        preorderDays: Number(preorderDays),
+        preorderCategories,
         slots: slots.map((slot) => ({
           start: slot.start,
           endTime: slot.endTime.trim() || null,
@@ -278,6 +293,46 @@ export function PickupRules() {
             Time zone
             <input className="toolbarInput" value={timeZone} onChange={(e) => setTimeZone(e.target.value)} />
           </label>
+        </div>
+
+        <h3 className="drawerSectionTitle" style={{ marginTop: 16 }}>Pre-order notice</h3>
+        <p className="dataTableMuted" style={{ marginTop: 0 }}>
+          Orders with any product from the ticked categories must be collected at least this many days after the
+          day they are placed (2 = order today, collect the day after tomorrow). Earlier dates can't be picked at
+          checkout. Set 0 or untick every category to turn it off. Applies to pickup and local delivery.
+        </p>
+        <div className="drawerRowActions" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label className="filterField" style={{ maxWidth: 160 }}>
+            Days of notice
+            <input
+              className="toolbarInput"
+              type="number"
+              min={0}
+              max={30}
+              value={preorderDays}
+              onChange={(e) => {
+                setPreorderDays(e.target.value);
+                setSavedAt(null);
+              }}
+            />
+          </label>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', paddingBottom: 6 }}>
+            {SHOP_CATALOG_CATEGORIES.map((category) => (
+              <label key={category}>
+                <input
+                  type="checkbox"
+                  checked={preorderCategories.includes(category)}
+                  onChange={(e) => {
+                    setPreorderCategories((cur) =>
+                      e.target.checked ? [...cur, category].sort() : cur.filter((c) => c !== category),
+                    );
+                    setSavedAt(null);
+                  }}
+                />{' '}
+                {CATEGORY_LABELS[category] ?? category}
+              </label>
+            ))}
+          </div>
         </div>
 
         <h3 className="drawerSectionTitle" style={{ marginTop: 16 }}>Opening hours</h3>

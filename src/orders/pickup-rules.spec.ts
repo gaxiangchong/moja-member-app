@@ -3,6 +3,7 @@ import {
   evaluatePickupDay,
   evaluateStoreNow,
   hoursForWeekday,
+  needsPreorder,
   normalizePickupRules,
   PickupRulesError,
   zonedWallToUtc,
@@ -330,5 +331,80 @@ describe('opening hours decide which pickup times are offered', () => {
       evaluatePickupDay({ rules, date: sunday, now: at('2026-09-30', '09:00') })
         .closed,
     ).toBe(true);
+  });
+});
+
+describe('pre-order notice for made-to-order categories', () => {
+  // Saturday 31 Oct 2026, 10:00 in Kuala Lumpur.
+  const now = new Date('2026-10-31T02:00:00.000Z');
+  const rules = DEFAULT_PICKUP_RULES;
+
+  it('applies only when the cart holds a pre-order category', () => {
+    expect(needsPreorder(rules, ['whole_cakes', 'drinks'])).toBe(true);
+    expect(needsPreorder(rules, ['cake_slices', 'drinks'])).toBe(false);
+    expect(needsPreorder({ ...rules, preorderDays: 0 }, ['whole_cakes'])).toBe(
+      false,
+    );
+  });
+
+  it('closes today and tomorrow for a cake order and opens two days out', () => {
+    for (const date of ['2026-10-31', '2026-11-01']) {
+      const quote = evaluatePickupDay({ rules, date, now, preorder: true });
+      expect(quote.closed).toBe(true);
+      expect(quote.closedReason).toContain("2 days' notice");
+      expect(quote.closedReason).toContain('2 Nov');
+    }
+    const ok = evaluatePickupDay({
+      rules,
+      date: '2026-11-02',
+      now,
+      preorder: true,
+    });
+    expect(ok.closed).toBe(false);
+    expect(ok.minDate).toBe('2026-11-02');
+    expect(ok.preorderDays).toBe(2);
+    expect(ok.slots.some((slot) => slot.available)).toBe(true);
+  });
+
+  it('leaves other orders bookable today', () => {
+    const quote = evaluatePickupDay({ rules, date: '2026-10-31', now });
+    expect(quote.closed).toBe(false);
+    expect(quote.minDate).toBe('2026-10-31');
+    expect(quote.preorderDays).toBe(0);
+  });
+
+  it('fills in the default for rules saved before the setting existed', () => {
+    const old: Partial<ShopPickupRules> = { ...DEFAULT_PICKUP_RULES };
+    delete old.preorderDays;
+    delete old.preorderCategories;
+    const normalized = normalizePickupRules(old);
+    expect(normalized.preorderDays).toBe(2);
+    expect(normalized.preorderCategories).toEqual(['whole_cakes']);
+  });
+
+  it('keeps an admin choice of categories, including none', () => {
+    expect(
+      normalizePickupRules({
+        ...DEFAULT_PICKUP_RULES,
+        preorderCategories: ['cookies', 'whole_cakes', 'cookies'],
+      }).preorderCategories,
+    ).toEqual(['cookies', 'whole_cakes']);
+    expect(
+      normalizePickupRules({ ...DEFAULT_PICKUP_RULES, preorderCategories: [] })
+        .preorderCategories,
+    ).toEqual([]);
+  });
+
+  it('rejects notice longer than the booking window', () => {
+    expect(() =>
+      normalizePickupRules({
+        ...DEFAULT_PICKUP_RULES,
+        maxAdvanceDays: 3,
+        preorderDays: 5,
+      }),
+    ).toThrow(PickupRulesError);
+    expect(() =>
+      normalizePickupRules({ ...DEFAULT_PICKUP_RULES, preorderDays: 1.5 }),
+    ).toThrow(PickupRulesError);
   });
 });

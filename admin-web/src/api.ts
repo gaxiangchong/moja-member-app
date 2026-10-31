@@ -1508,6 +1508,9 @@ export type PickupRules = {
   closedWeekdays: number[];
   closedDates: string[];
   maxAdvanceDays: number;
+  /** Days of notice for a cart holding any of `preorderCategories`. 0 = off. */
+  preorderDays: number;
+  preorderCategories: string[];
   slots: PickupSlotRule[];
 };
 

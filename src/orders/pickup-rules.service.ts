@@ -7,6 +7,7 @@ import {
   DEFAULT_PICKUP_RULES,
   evaluatePickupDay,
   evaluateStoreNow,
+  needsPreorder,
   normalizePickupRules,
   PickupRulesError,
   type PickupDayQuote,
@@ -19,6 +20,8 @@ type PlaceInput = {
   fulfilmentType: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
   scheduledDate?: string | null;
   scheduledSlot?: string | null;
+  /** Product categories in the order; some need days of notice. */
+  categories?: readonly string[];
   now?: Date;
 };
 
@@ -72,15 +75,26 @@ export class PickupRulesService {
     return next;
   }
 
-  async quoteDay(date: string, now = new Date()): Promise<PickupDayQuote> {
+  /** `categories`: the product categories in the cart, for the pre-order notice. */
+  async quoteDay(
+    date: string,
+    categories: readonly string[] = [],
+    now = new Date(),
+  ): Promise<PickupDayQuote> {
     const rules = await this.getRules();
     const bookedBySlot = await this.countBooked(date);
-    return evaluatePickupDay({ rules, date, now, bookedBySlot });
+    return evaluatePickupDay({
+      rules,
+      date,
+      now,
+      bookedBySlot,
+      preorder: needsPreorder(rules, categories),
+    });
   }
 
   /**
-   * Rejects a checkout that misses lead time, cut-off, capacity, hours, or
-   * a closed day. Capacity takes a transaction lock so two checkouts cannot
+   * Rejects a checkout that misses lead time, pre-order notice, cut-off,
+   * capacity, hours, or a closed day. Capacity takes a transaction lock so two checkouts cannot
    * both claim the last place in a slot.
    */
   async assertCanPlace(
@@ -109,7 +123,12 @@ export class PickupRulesService {
       });
     }
 
-    const preview = evaluatePickupDay({ rules, date, now });
+    const preview = evaluatePickupDay({
+      rules,
+      date,
+      now,
+      preorder: needsPreorder(rules, input.categories ?? []),
+    });
     if (preview.closed) {
       throw new BadRequestException({
         code: 'PICKUP_DATE_CLOSED',

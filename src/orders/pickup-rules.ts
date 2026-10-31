@@ -46,6 +46,13 @@ export type ShopPickupRules = {
   closedDates: string[];
   /** How far ahead a pickup date may be chosen. */
   maxAdvanceDays: number;
+  /**
+   * Pre-order notice: a cart holding any product in `preorderCategories` must
+   * be collected at least this many calendar days after today. 0 = off.
+   */
+  preorderDays: number;
+  /** Product categories (e.g. "whole_cakes") that need the pre-order notice. */
+  preorderCategories: string[];
   slots: PickupSlotConfig[];
 };
 
@@ -58,6 +65,8 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
   closedWeekdays: [],
   closedDates: [],
   maxAdvanceDays: 30,
+  preorderDays: 2,
+  preorderCategories: ['whole_cakes'],
   slots: [
     {
       start: '11:00',
@@ -120,6 +129,7 @@ const WEEKDAY_NAMES = [
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const CATEGORY = /^[a-z][a-z0-9_]{0,31}$/;
 
 export class PickupRulesError extends Error {
   constructor(message: string) {
@@ -169,7 +179,11 @@ export type PickupSlotOffer = {
 export type PickupDayQuote = {
   date: string;
   today: string;
+  /** Earliest date this cart can be collected: today, or later for a pre-order. */
+  minDate: string;
   maxDate: string;
+  /** Days of notice applied to this cart; 0 when it holds no pre-order items. */
+  preorderDays: number;
   timeZone: string;
   openTime: string;
   closeTime: string;
@@ -201,6 +215,8 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
     Number.isFinite(maxRaw) && maxRaw >= 1
       ? Math.min(Math.floor(maxRaw), 90)
       : DEFAULT_PICKUP_RULES.maxAdvanceDays;
+  const preorderDays = normalizePreorderDays(raw.preorderDays, maxAdvanceDays);
+  const preorderCategories = normalizeCategories(raw.preorderCategories);
   if (!Array.isArray(raw.slots) || raw.slots.length === 0) {
     throw new PickupRulesError('Add at least one pickup slot.');
   }
@@ -220,8 +236,21 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
     closedWeekdays,
     closedDates,
     maxAdvanceDays,
+    preorderDays,
+    preorderCategories,
     slots,
   };
+}
+
+/** Whether a cart with these product categories needs the pre-order notice. */
+export function needsPreorder(
+  rules: Pick<ShopPickupRules, 'preorderDays' | 'preorderCategories'>,
+  categories: readonly string[],
+): boolean {
+  return (
+    rules.preorderDays > 0 &&
+    categories.some((c) => rules.preorderCategories.includes(c))
+  );
 }
 
 export function evaluatePickupDay(input: {
@@ -229,16 +258,22 @@ export function evaluatePickupDay(input: {
   date: string;
   now: Date;
   bookedBySlot?: Record<string, number>;
+  /** The cart holds a pre-order product, so `rules.preorderDays` applies. */
+  preorder?: boolean;
 }): PickupDayQuote {
   const { rules, date, now } = input;
   const booked = input.bookedBySlot ?? {};
   const today = zonedParts(now, rules.timeZone).ymd;
+  const preorderDays = input.preorder ? rules.preorderDays : 0;
+  const minDate = addDaysYmd(today, preorderDays);
   const maxDate = addDaysYmd(today, rules.maxAdvanceDays);
   const store = evaluateStoreNow(rules, now);
   const base = {
     date,
     today,
+    minDate,
     maxDate,
+    preorderDays,
     timeZone: rules.timeZone,
     openTime: rules.openTime,
     closeTime: rules.closeTime,
@@ -263,6 +298,15 @@ export function evaluatePickupDay(input: {
       ...base,
       closed: true,
       closedReason: 'That date has already passed.',
+      leadTimeMessage: null,
+      slots: [],
+    };
+  }
+  if (date < minDate) {
+    return {
+      ...base,
+      closed: true,
+      closedReason: `This order needs ${preorderDays} ${preorderDays === 1 ? "day's" : "days'"} notice. The earliest pickup date is ${formatYmd(minDate)}.`,
       leadTimeMessage: null,
       slots: [],
     };
@@ -559,6 +603,52 @@ function uniqueDates(input: unknown): string[] {
     dates.add(text);
   }
   return [...dates].sort();
+}
+
+function normalizePreorderDays(input: unknown, maxAdvanceDays: number): number {
+  if (input == null || String(input as string).trim() === '') {
+    return Math.min(DEFAULT_PICKUP_RULES.preorderDays, maxAdvanceDays);
+  }
+  const days = Number(input);
+  if (!Number.isInteger(days) || days < 0 || days > 30) {
+    throw new PickupRulesError(
+      'Pre-order notice must be a whole number of days from 0 to 30.',
+    );
+  }
+  if (days > maxAdvanceDays) {
+    throw new PickupRulesError(
+      `Pre-order notice (${days} days) cannot be longer than how far ahead customers may book (${maxAdvanceDays} days).`,
+    );
+  }
+  return days;
+}
+
+function normalizeCategories(input: unknown): string[] {
+  if (input == null) return [...DEFAULT_PICKUP_RULES.preorderCategories];
+  if (!Array.isArray(input)) {
+    throw new PickupRulesError('Pre-order categories must be a list.');
+  }
+  const out = new Set<string>();
+  for (const value of input) {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) continue;
+    if (!CATEGORY.test(text)) {
+      throw new PickupRulesError(`Unknown product category "${text}".`);
+    }
+    out.add(text);
+  }
+  return [...out].sort();
+}
+
+/** 2026-11-02 -> "Mon 2 Nov". */
+export function formatYmd(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
 function requireHhmm(value: unknown, label: string): string {
