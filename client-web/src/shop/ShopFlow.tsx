@@ -99,7 +99,7 @@ function todayIsoDate(): string {
 // products, so they're left out of the ship-nationwide checks.
 // `onePerCake`: free, and capped at the number of whole cakes in the cart.
 const CHECKOUT_ADDONS = [
-  { productId: 'addon-birthday-set', name: 'Birthday set', note: 'Candle & birthday topper', priceCents: 0, onePerCake: true },
+  { productId: 'addon-birthday-set', name: 'Birthday set', note: 'Candle, birthday topper, cake knife & mini birthday card', priceCents: 0, onePerCake: true },
   { productId: 'addon-thermal-bag', name: 'Cooler bag', note: 'Keeps your cake cool on the way', priceCents: 500, onePerCake: false },
 ] as const;
 type CheckoutAddon = (typeof CHECKOUT_ADDONS)[number];
