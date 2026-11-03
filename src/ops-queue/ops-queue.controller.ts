@@ -9,6 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { OrderNotificationService } from '../notifications/order-notification.service';
 import { TimesheetCodeDto } from '../employees/dto/timesheet-code.dto';
 import { EmployeesService } from '../employees/employees.service';
 import { OpsApiKeyGuard } from './guards/ops-api-key.guard';
@@ -21,11 +22,18 @@ export class OpsQueueController {
   constructor(
     private readonly ops: OpsQueueService,
     private readonly employees: EmployeesService,
+    private readonly orderNotices: OrderNotificationService,
   ) {}
 
   @Get('orders')
   list() {
     return this.ops.listOrders();
+  }
+
+  /** Whether the shop is emailed about new orders, shown on the queue screen. */
+  @Get('alerts')
+  alerts() {
+    return { staffEmail: this.orderNotices.staffAlertStatus() };
   }
 
   @Get('orders/:id')

@@ -142,6 +142,50 @@ export async function fetchQueueOrders(
   return data as QueueOrdersResponse;
 }
 
+/**
+ * Which of these days the shop is shut (closed weekday or closed date), from
+ * the public pickup rules. A day that fails to load counts as open.
+ */
+export async function fetchClosedDays(
+  dates: string[],
+  baseUrl: string = defaultBase,
+): Promise<Set<string>> {
+  const base = baseUrl.replace(/\/$/, '');
+  const results = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const res = await fetch(`${base}/shop/pickup-slots?date=${encodeURIComponent(date)}`);
+        if (!res.ok) return null;
+        const day = (await res.json()) as { closed?: boolean; closedReason?: string | null };
+        return day.closed && /store is closed/i.test(day.closedReason ?? '') ? date : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return new Set(results.filter((d): d is string => d !== null));
+}
+
+/** Whether the shop gets an email for each new paid online order. */
+export type StaffEmailStatus = {
+  on: boolean;
+  recipient: string | null;
+  /** Why it's off, when it is. */
+  reason: string | null;
+};
+
+export async function fetchQueueAlerts(
+  apiKey: string,
+  baseUrl: string = defaultBase,
+): Promise<{ staffEmail: StaffEmailStatus }> {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/queue/alerts`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const data = await parseJson<{ staffEmail: StaffEmailStatus } & { message?: string | string[] }>(res);
+  assertOk(res, data);
+  return data;
+}
+
 export async function fetchQueueOrderDetail(
   apiKey: string,
   orderId: string,

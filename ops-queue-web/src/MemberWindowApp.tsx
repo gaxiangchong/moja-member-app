@@ -10,6 +10,7 @@ import {
 import { CounterRedeemPanel } from './CounterRedeemPanel';
 import { MemberVouchersPanel } from './MemberVouchersPanel';
 import { MemberQrScanModal } from './MemberQrScanModal';
+import { HomeBar } from './HomeBar';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { TodayRedemptions } from './TodayRedemptions';
 import { defaultBase } from './opsSession';
@@ -231,214 +232,217 @@ export function MemberWindowApp() {
   }
 
   return (
-    <div className="memberDesk">
-      <header className="memberDeskHeader">
-        <h1>Member desk</h1>
-        <label className="memberStaffCode">
-          Staff code
-          <input
-            value={staffCode}
-            onChange={(e) => setStaffCode(e.target.value.toUpperCase())}
-            placeholder="Enter code"
-            aria-invalid={!staffCode.trim()}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-      </header>
-
-      <form
-        className="memberLookupForm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void doLookup();
-        }}
-      >
-        <label htmlFor="memberPhone">Phone number</label>
-        <div className="memberLookupRow">
-          <input
-            id="memberPhone"
-            ref={phoneRef}
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value);
-              setVerification('PHONE');
-              setResult({ kind: 'none' });
-            }}
-            placeholder="012-345 6789"
-            inputMode="tel"
-            autoComplete="off"
-            autoFocus
-          />
-          <button type="submit" disabled={busy || !phone.trim()}>
-            {busy ? '…' : 'Check'}
-          </button>
-        </div>
-        <button type="button" className="memberScanBtn" onClick={() => setScanOpen(true)}>
-          Scan member QR
-        </button>
-        {!newMemberOpen ? (
-          <button
-            type="button"
-            className="memberScanBtn"
-            onClick={() => {
-              setNewPhone(phone);
-              setResult({ kind: 'none' });
-              setErr(null);
-              setNewMemberOpen(true);
-            }}
-          >
-            + Register new member
-          </button>
-        ) : null}
-        <p className="memberHint">
-          Read the number back to the customer before saving — points follow the
-          phone number, and a typo cannot be undone by the customer.
-        </p>
-      </form>
-
-      {err && (
-        <p className="memberError" role="alert">
-          {err}
-        </p>
-      )}
-
-      {newMemberOpen && result.kind !== 'found' && (
-        <section className="memberCard">
-          <h2>Register new member</h2>
-          {result.kind === 'not_found' ? (
-            <p className="memberNormalized">
-              No member yet with <strong>{result.phoneE164}</strong>
-            </p>
-          ) : null}
-          <p className="memberHint">
-            Once saved, the member is added to SalesPlay so you can attach them to
-            the sale and they start collecting points.
-          </p>
-          <label htmlFor="newMemberPhone">Phone number</label>
-          <input
-            id="newMemberPhone"
-            value={newPhone}
-            onChange={(e) => setNewPhone(e.target.value)}
-            placeholder="012-345 6789"
-            inputMode="tel"
-            autoComplete="off"
-          />
-          <label htmlFor="memberName">Name</label>
-          <input
-            id="memberName"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Name"
-            autoComplete="off"
-          />
-          <label htmlFor="memberEmail">Email</label>
-          <input
-            id="memberEmail"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="for PIN recovery and vouchers"
-            inputMode="email"
-            autoComplete="off"
-          />
-          <div className="memberPinBox">
-            <p className="memberHint" style={{ margin: 0 }}>
-              Used to sign in to the app. Leave blank to set it in the app later.
-            </p>
-            <label htmlFor="memberPin">PIN</label>
+    <>
+      <HomeBar title="Member desk" />
+      <div className="memberDesk">
+        <header className="memberDeskHeader">
+          <h1>Member desk</h1>
+          <label className="memberStaffCode">
+            Staff code
             <input
-              id="memberPin"
-              type="password"
-              value={newPin}
-              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="6 digits"
-              inputMode="numeric"
-              autoComplete="new-password"
-              maxLength={6}
+              value={staffCode}
+              onChange={(e) => setStaffCode(e.target.value.toUpperCase())}
+              placeholder="Enter code"
+              aria-invalid={!staffCode.trim()}
+              autoComplete="off"
+              spellCheck={false}
             />
-            <label htmlFor="memberPinConfirm">Confirm PIN</label>
-            <input
-              id="memberPinConfirm"
-              type="password"
-              value={newPinConfirm}
-              onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="type it again"
-              inputMode="numeric"
-              autoComplete="new-password"
-              maxLength={6}
-            />
-            {pinProblem ? <p className="memberError" style={{ margin: 0 }}>{pinProblem}</p> : null}
-          </div>
-          <label className="memberConsent">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-            />
-            <span>Agree to receive promotions</span>
           </label>
-          <button
-            type="button"
-            className="memberPrimary"
-            onClick={() => void doRegister()}
-            disabled={busy || !registerReady}
-          >
-            {busy ? 'Saving…' : 'Register member'}
-          </button>
-          <button type="button" className="memberScanBtn" onClick={reset}>
-            Cancel
-          </button>
-        </section>
-      )}
+        </header>
 
-      {result.kind === 'found' && (
-        <MemberResultCard
-          // A new member gets a fresh card, so its points state starts from their balance.
-          key={result.phoneE164}
-          phoneE164={result.phoneE164}
-          member={result.member}
-          nextStep={result.nextStep}
-          justCreated={result.justCreated}
-          alreadyExisted={result.alreadyExisted}
-          salesplay={result.salesplay}
-          onDone={reset}
-          apiKey={apiKey}
-          base={base}
-          staffCode={staffCode}
-          verification={verification}
-          onRedeemChanged={() => setRedeemTick((n) => n + 1)}
-        />
-      )}
-
-      {result.kind === 'found' && result.justCreated && (
-        <div className="scanOverlay" role="dialog" aria-modal aria-label="Registration complete">
-          <div className="scanModal">
-            <div className="scanModalHead">
-              <h2>Submission completed</h2>
-            </div>
-            <p>
-              {result.member.displayName || 'The member'} is registered. Click OK to go
-              back to the registration page for the next customer.
-            </p>
-            <button type="button" className="btnPrimary" onClick={reset}>
-              OK
+        <form
+          className="memberLookupForm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void doLookup();
+          }}
+        >
+          <label htmlFor="memberPhone">Phone number</label>
+          <div className="memberLookupRow">
+            <input
+              id="memberPhone"
+              ref={phoneRef}
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setVerification('PHONE');
+                setResult({ kind: 'none' });
+              }}
+              placeholder="012-345 6789"
+              inputMode="tel"
+              autoComplete="off"
+              autoFocus
+            />
+            <button type="submit" disabled={busy || !phone.trim()}>
+              {busy ? '…' : 'Check'}
             </button>
           </div>
-        </div>
-      )}
+          <button type="button" className="memberScanBtn" onClick={() => setScanOpen(true)}>
+            Scan member QR
+          </button>
+          {!newMemberOpen ? (
+            <button
+              type="button"
+              className="memberScanBtn"
+              onClick={() => {
+                setNewPhone(phone);
+                setResult({ kind: 'none' });
+                setErr(null);
+                setNewMemberOpen(true);
+              }}
+            >
+              + Register new member
+            </button>
+          ) : null}
+          <p className="memberHint">
+            Read the number back to the customer before saving — points follow the
+            phone number, and a typo cannot be undone by the customer.
+          </p>
+        </form>
 
-      <TodayRedemptions apiKey={apiKey} base={base} staffCode={staffCode} refreshKey={redeemTick} />
+        {err && (
+          <p className="memberError" role="alert">
+            {err}
+          </p>
+        )}
 
-      <MemberQrScanModal
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScan={(digits) => {
-          setPhone(digits);
-          setVerification('QR');
-          void doLookup(digits);
-        }}
-      />
-    </div>
+        {newMemberOpen && result.kind !== 'found' && (
+          <section className="memberCard">
+            <h2>Register new member</h2>
+            {result.kind === 'not_found' ? (
+              <p className="memberNormalized">
+                No member yet with <strong>{result.phoneE164}</strong>
+              </p>
+            ) : null}
+            <p className="memberHint">
+              Once saved, the member is added to SalesPlay so you can attach them to
+              the sale and they start collecting points.
+            </p>
+            <label htmlFor="newMemberPhone">Phone number</label>
+            <input
+              id="newMemberPhone"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="012-345 6789"
+              inputMode="tel"
+              autoComplete="off"
+            />
+            <label htmlFor="memberName">Name</label>
+            <input
+              id="memberName"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Name"
+              autoComplete="off"
+            />
+            <label htmlFor="memberEmail">Email</label>
+            <input
+              id="memberEmail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="for PIN recovery and vouchers"
+              inputMode="email"
+              autoComplete="off"
+            />
+            <div className="memberPinBox">
+              <p className="memberHint" style={{ margin: 0 }}>
+                Used to sign in to the app. Leave blank to set it in the app later.
+              </p>
+              <label htmlFor="memberPin">PIN</label>
+              <input
+                id="memberPin"
+                type="password"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="6 digits"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={6}
+              />
+              <label htmlFor="memberPinConfirm">Confirm PIN</label>
+              <input
+                id="memberPinConfirm"
+                type="password"
+                value={newPinConfirm}
+                onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="type it again"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={6}
+              />
+              {pinProblem ? <p className="memberError" style={{ margin: 0 }}>{pinProblem}</p> : null}
+            </div>
+            <label className="memberConsent">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+              />
+              <span>Agree to receive promotions</span>
+            </label>
+            <button
+              type="button"
+              className="memberPrimary"
+              onClick={() => void doRegister()}
+              disabled={busy || !registerReady}
+            >
+              {busy ? 'Saving…' : 'Register member'}
+            </button>
+            <button type="button" className="memberScanBtn" onClick={reset}>
+              Cancel
+            </button>
+          </section>
+        )}
+
+        {result.kind === 'found' && (
+          <MemberResultCard
+            // A new member gets a fresh card, so its points state starts from their balance.
+            key={result.phoneE164}
+            phoneE164={result.phoneE164}
+            member={result.member}
+            nextStep={result.nextStep}
+            justCreated={result.justCreated}
+            alreadyExisted={result.alreadyExisted}
+            salesplay={result.salesplay}
+            onDone={reset}
+            apiKey={apiKey}
+            base={base}
+            staffCode={staffCode}
+            verification={verification}
+            onRedeemChanged={() => setRedeemTick((n) => n + 1)}
+          />
+        )}
+
+        {result.kind === 'found' && result.justCreated && (
+          <div className="scanOverlay" role="dialog" aria-modal aria-label="Registration complete">
+            <div className="scanModal">
+              <div className="scanModalHead">
+                <h2>Submission completed</h2>
+              </div>
+              <p>
+                {result.member.displayName || 'The member'} is registered. Click OK to go
+                back to the registration page for the next customer.
+              </p>
+              <button type="button" className="btnPrimary" onClick={reset}>
+                OK
+              </button>
+            </div>
+          </div>
+        )}
+
+        <TodayRedemptions apiKey={apiKey} base={base} staffCode={staffCode} refreshKey={redeemTick} />
+
+        <MemberQrScanModal
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          onScan={(digits) => {
+            setPhone(digits);
+            setVerification('QR');
+            void doLookup(digits);
+          }}
+        />
+      </div>
+    </>
   );
 }
 

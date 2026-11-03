@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { completeQueueOrder } from './api';
+import { HomeBar } from './HomeBar';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { ScanCollectModal } from './ScanCollectModal';
 import { defaultBase, readStoredKey } from './opsSession';
@@ -59,19 +60,22 @@ export function ScanWindowApp() {
   }
 
   return (
-    <div className="scanWindowPage">
-      {flash ? (
-        <p className="scanFlash" role="status">
-          {flash}
-        </p>
-      ) : null}
-      <ScanCollectModal
-        open
-        variant="standalone"
-        closeOnCollect={false}
-        onClose={() => window.close()}
-        onCollect={onCollect}
-      />
-    </div>
+    <>
+      <HomeBar title="Scan QR" />
+      <div className="scanWindowPage">
+        {flash ? (
+          <p className="scanFlash" role="status">
+            {flash}
+          </p>
+        ) : null}
+        <ScanCollectModal
+          open
+          variant="standalone"
+          closeOnCollect={false}
+          onClose={() => window.close()}
+          onCollect={onCollect}
+        />
+      </div>
+    </>
   );
 }

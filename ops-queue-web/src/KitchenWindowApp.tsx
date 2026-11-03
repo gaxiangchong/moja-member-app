@@ -1,17 +1,26 @@
 import { useState } from 'react';
+import { HomeBar } from './HomeBar';
 import { KitchenDayGrid } from './KitchenDayGrid';
 import { KitchenTodayStock } from './KitchenTodayStock';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
 
+const TABS = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'Next 7 days' },
+  { id: 'count', label: 'End-of-day count' },
+] as const;
+
+type Tab = (typeof TABS)[number]['id'];
+
 /**
- * Kitchen staff set how many of each cake size are ready (`#/kitchen`): today's
- * shelf, or the next seven days for pre-orders.
+ * Kitchen stock (`#/kitchen`): today's shelf per size, the next seven days
+ * for pre-orders, and the end-of-day count.
  */
 export function KitchenWindowApp() {
   const { state: authState, signIn } = useOpsAuth();
-  const [view, setView] = useState<'today' | 'days'>('today');
+  const [tab, setTab] = useState<Tab>('today');
 
   if (authState.status !== 'authenticated') {
     return (
@@ -26,36 +35,33 @@ export function KitchenWindowApp() {
 
   const base = authState.apiBase.trim() || defaultBase;
 
-  if (view === 'days') {
-    return (
-      <div className="kitchenPage">
-        <div className="kitchenTabs">
-          <button type="button" className="btnGhost" onClick={() => setView('today')}>
-            ← Today's tray
-          </button>
-        </div>
-        <KitchenDayGrid apiKey={authState.apiKey} apiBase={base} />
-      </div>
-    );
-  }
-
   return (
-    <div className="loginPage">
-      <div className="loginCard" style={{ maxWidth: 560 }}>
-        <div className="loginBrand">
-          Moja <span>Kitchen</span>
-        </div>
-        <h1 className="loginTitle">Today's cake stock</h1>
-        <button
-          type="button"
-          className="btnGhost"
-          style={{ marginBottom: 8 }}
-          onClick={() => setView('days')}
-        >
-          Next 7 days →
-        </button>
-        <KitchenTodayStock apiKey={authState.apiKey} apiBase={base} />
+    <>
+      <HomeBar title="Kitchen stock" />
+      <div className="kitchenPage">
+        <header className="kitchenHead">
+          <h1>Cake stock</h1>
+          <div className="kitchenTabs" role="tablist" aria-label="Kitchen stock views">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                className={tab === t.id ? 'kitchenTab kitchenTab--on' : 'kitchenTab'}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </header>
+        {tab === 'today' ? (
+          <KitchenTodayStock apiKey={authState.apiKey} apiBase={base} />
+        ) : (
+          <KitchenDayGrid apiKey={authState.apiKey} apiBase={base} mode={tab} />
+        )}
       </div>
-    </div>
+    </>
   );
 }

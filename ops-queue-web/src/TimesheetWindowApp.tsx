@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { timesheetClockIn, timesheetClockOut } from './api';
+import { HomeBar } from './HomeBar';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
@@ -59,32 +60,35 @@ export function TimesheetWindowApp() {
   }
 
   return (
-    <div className="loginPage">
-      <div className="loginCard" style={{ maxWidth: 440 }}>
-        <div className="loginBrand">
-          Moja <span>Operations</span>
-        </div>
-        <h1 className="loginTitle">Timesheet</h1>
-        <p className="loginLead">Enter your employee ID, then clock in or out.</p>
-        <label htmlFor="tsEmployee">Employee ID</label>
-        <input
-          id="tsEmployee"
-          value={employeeCode}
-          onChange={(ev) => setEmployeeCode(ev.target.value)}
-          autoComplete="off"
-          disabled={busy}
-        />
-        {err ? <p className="err">{err}</p> : null}
-        {msg ? <p className="loginStatus ok">{msg}</p> : null}
-        <div className="btnRow" style={{ marginTop: 16 }}>
-          <button type="button" className="btnPrimary" disabled={busy} onClick={() => void run('in')}>
-            Clock in
-          </button>
-          <button type="button" className="btnGhost" disabled={busy} onClick={() => void run('out')}>
-            Clock out
-          </button>
+    <>
+      <HomeBar title="Timesheet" />
+      <div className="loginPage">
+        <div className="loginCard" style={{ maxWidth: 440 }}>
+          <div className="loginBrand">
+            Moja <span>Operations</span>
+          </div>
+          <h1 className="loginTitle">Timesheet</h1>
+          <p className="loginLead">Enter your employee ID, then clock in or out.</p>
+          <label htmlFor="tsEmployee">Employee ID</label>
+          <input
+            id="tsEmployee"
+            value={employeeCode}
+            onChange={(ev) => setEmployeeCode(ev.target.value)}
+            autoComplete="off"
+            disabled={busy}
+          />
+          {err ? <p className="err">{err}</p> : null}
+          {msg ? <p className="loginStatus ok">{msg}</p> : null}
+          <div className="btnRow" style={{ marginTop: 16 }}>
+            <button type="button" className="btnPrimary" disabled={busy} onClick={() => void run('in')}>
+              Clock in
+            </button>
+            <button type="button" className="btnGhost" disabled={busy} onClick={() => void run('out')}>
+              Clock out
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

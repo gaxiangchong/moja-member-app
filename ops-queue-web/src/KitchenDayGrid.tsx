@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  fetchClosedDays,
   fetchStockDayGrid,
   reconcileStockDay,
   setStockDayQty,
@@ -40,31 +41,37 @@ export function cellKey(productId: string, variant: string, date: string): strin
 }
 
 /**
- * Seven-day availability grid: how many of each cake size the kitchen can
- * supply on each day. A cell shows the count the kitchen set and, when some
- * are already spoken for by orders, how many are held.
+ * The kitchen's planning views. `week`: how many of each cake size can be
+ * made on each of the next seven days (pre-orders hold against these), with
+ * closed days hatched out. `count`: after close, the physical count of what
+ * is left today, compared with what sales say should remain.
  */
 export function KitchenDayGrid({
   apiKey,
   apiBase,
+  mode,
 }: {
   apiKey: string;
   apiBase: string;
+  mode: 'week' | 'count';
 }) {
   const [grid, setGrid] = useState<Grid | null>(null);
+  const [closedDays, setClosedDays] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [reconcilingKey, setReconcilingKey] = useState<string | null>(null);
-  const [reconcileErr, setReconcileErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      setGrid(await fetchStockDayGrid(apiKey, undefined, DAYS, apiBase));
+      const next = await fetchStockDayGrid(apiKey, undefined, DAYS, apiBase);
+      setGrid(next);
+      const dates = [...new Set(next.cells.map((c) => c.businessDate))];
+      void fetchClosedDays(dates, apiBase).then(setClosedDays);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to load the day grid');
+      setErr(e instanceof Error ? e.message : 'Failed to load stock');
     } finally {
       setLoading(false);
     }
@@ -81,8 +88,7 @@ export function KitchenDayGrid({
 
   const cellMap = useMemo(() => {
     const m = new Map<string, Grid['cells'][number]>();
-    for (const c of grid?.cells ?? [])
-      m.set(cellKey(c.productId, c.variant, c.businessDate), c);
+    for (const c of grid?.cells ?? []) m.set(cellKey(c.productId, c.variant, c.businessDate), c);
     return m;
   }, [grid]);
 
@@ -100,12 +106,7 @@ export function KitchenDayGrid({
               ...cur,
               cells: cur.cells.map((c) =>
                 cellKey(c.productId, c.variant, c.businessDate) === key
-                  ? {
-                      ...c,
-                      qty,
-                      explicit: true,
-                      sellableQty: Math.max(0, qty - c.reservedQty),
-                    }
+                  ? { ...c, qty, explicit: true, sellableQty: Math.max(0, qty - c.reservedQty) }
                   : c,
               ),
             }
@@ -130,16 +131,9 @@ export function KitchenDayGrid({
     async (productId: string, variant: string, businessDate: string, actualQty: number) => {
       const key = cellKey(productId, variant, businessDate);
       setReconcilingKey(key);
-      setReconcileErr(null);
+      setErr(null);
       try {
-        const updated = await reconcileStockDay(
-          apiKey,
-          productId,
-          variant,
-          businessDate,
-          actualQty,
-          apiBase,
-        );
+        const updated = await reconcileStockDay(apiKey, productId, variant, businessDate, actualQty, apiBase);
         setGrid((cur) =>
           cur
             ? {
@@ -153,9 +147,7 @@ export function KitchenDayGrid({
             : cur,
         );
       } catch (e) {
-        setReconcileErr(
-          e instanceof Error ? e.message : 'Could not save that count',
-        );
+        setErr(e instanceof Error ? e.message : 'Could not save that count');
       } finally {
         setReconcilingKey(null);
       }
@@ -163,144 +155,158 @@ export function KitchenDayGrid({
     [apiKey, apiBase],
   );
 
-  if (loading && !grid) return <p className="muted">Loading day grid…</p>;
+  if (loading && !grid) return <p className="kitchenMuted">Loading…</p>;
+
+  if (mode === 'count') {
+    return (
+      <section className="kitchenCount">
+        <p className="kitchenMuted">
+          After close, count what is actually left and enter it. The difference compares your count with what
+          sales (online and at the till) say should remain.
+        </p>
+        {err ? <p className="kitchenError">{err}</p> : null}
+        {today ? (
+          <table className="countTable">
+            <thead>
+              <tr>
+                <th scope="col">Cake</th>
+                <th scope="col">Should be left</th>
+                <th scope="col">Counted</th>
+                <th scope="col">Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const key = cellKey(r.productId, r.variant, today);
+                const cell = cellMap.get(key);
+                const name = `${r.name}${r.variant ? ` · ${r.variant}` : ''}`;
+                return (
+                  <tr key={key}>
+                    <th scope="row">{name}</th>
+                    <td>{cell?.explicit ? cell.qty : '—'}</td>
+                    <td>
+                      <input
+                        type="number"
+                        min={0}
+                        max={999}
+                        placeholder="—"
+                        className="weekInput"
+                        defaultValue={cell?.actualQty ?? ''}
+                        disabled={reconcilingKey === key}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === '') return;
+                          void reconcile(r.productId, r.variant, today, Math.max(0, Number(raw) || 0));
+                        }}
+                        aria-label={`Counted ${name} left today`}
+                      />
+                    </td>
+                    <td>
+                      {cell?.varianceQty != null ? (
+                        <span
+                          className={
+                            cell.varianceQty === 0
+                              ? 'countDiff'
+                              : cell.varianceQty < 0
+                                ? 'countDiff countDiff--short'
+                                : 'countDiff countDiff--over'
+                          }
+                        >
+                          {cell.varianceQty === 0
+                            ? 'Matches'
+                            : cell.varianceQty < 0
+                              ? `${-cell.varianceQty} short`
+                              : `${cell.varianceQty} extra`}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
-    <div className="dayGridWrap">
-      <div className="dayGridHead">
-        <h2>Availability · next {DAYS} days</h2>
-        <button type="button" className="btnGhost" onClick={() => void load()}>
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </div>
-      <p className="dayGridHint">
-        Set how many of each size you can supply each day. A greyed count is not
-        set yet. “−n” means that many are held by online orders for that day.
-        Till sales come off automatically.
+    <section className="kitchenWeek">
+      <p className="kitchenMuted">
+        How many of each size the kitchen can make each day. Pre-orders are held against these; an empty box means
+        not counted yet.
       </p>
-      {err && (
-        <p className="memberError" role="alert">
-          {err}
-        </p>
-      )}
-
-      <div className="dayGridScroll">
-        <table className="dayGrid">
+      {err ? <p className="kitchenError">{err}</p> : null}
+      <div className="weekScroll">
+        <table className="weekTable">
           <thead>
             <tr>
-              <th scope="col" className="dayGridProductHead">
+              <th scope="col" className="weekCakeHead">
                 Cake
               </th>
               {dates.map((d) => {
                 const { dow, date } = dayLabel(d);
+                const closed = closedDays.has(d);
                 return (
-                  <th key={d} scope="col">
-                    <span className="dayGridDow">{dow}</span>
-                    <span className="dayGridDate">{date}</span>
+                  <th key={d} scope="col" className={closed ? 'weekDay weekDay--closed' : 'weekDay'}>
+                    {dow} {date}
+                    {closed ? <span className="weekClosedNote">Closed</span> : null}
                   </th>
                 );
               })}
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.productId}|${r.variant}`}>
-                <th scope="row" className="dayGridProduct">
-                  {r.name}
-                  {r.variant ? <span className="dayGridVariant"> · {r.variant}</span> : null}
-                </th>
-                {dates.map((d) => {
-                  const key = cellKey(r.productId, r.variant, d);
-                  const cell = cellMap.get(key);
-                  const label = `${r.name}${r.variant ? ` ${r.variant}` : ''} on ${d}`;
-                  return (
-                    <td key={d}>
-                      <input
-                        type="number"
-                        min={0}
-                        max={999}
-                        className={`dayGridInput${cell?.explicit ? '' : ' is-implicit'}`}
-                        value={cell?.qty ?? 0}
-                        disabled={savingKey === key}
-                        onChange={(e) => {
-                          const v = Math.max(0, Number(e.target.value) || 0);
-                          void save(r.productId, r.variant, d, v);
-                        }}
-                        aria-label={label}
-                      />
-                      {cell && cell.reservedQty > 0 && (
-                        <span className="dayGridReserved">
-                          −{cell.reservedQty}
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {(grid?.products ?? []).map((p) => {
+              const sizes = p.variants.length > 0 ? p.variants : [''];
+              return (
+                <Fragment key={p.id}>
+                  {sizes.length > 1 || sizes[0] !== '' ? (
+                    <tr className="weekCakeRow">
+                      <th scope="rowgroup" colSpan={dates.length + 1}>
+                        {p.name}
+                      </th>
+                    </tr>
+                  ) : null}
+                  {sizes.map((v) => (
+                    <tr key={v || 'each'} className={v ? 'weekSizeRow' : 'weekSizeRow weekSizeRow--solo'}>
+                      <th scope="row">{v || p.name}</th>
+                      {dates.map((d) => {
+                        const key = cellKey(p.id, v, d);
+                        const cell = cellMap.get(key);
+                        if (closedDays.has(d)) {
+                          return <td key={d} className="weekClosed" aria-label="Closed" />;
+                        }
+                        return (
+                          <td key={d}>
+                            <input
+                              type="number"
+                              min={0}
+                              max={999}
+                              placeholder="—"
+                              className={cell?.explicit ? 'weekInput' : 'weekInput weekInput--empty'}
+                              value={cell?.explicit ? cell.qty : ''}
+                              disabled={savingKey === key}
+                              onChange={(e) => {
+                                if (e.target.value === '') return;
+                                void save(p.id, v, d, Math.max(0, Number(e.target.value) || 0));
+                              }}
+                              aria-label={`${p.name}${v ? ` ${v}` : ''} on ${d}`}
+                            />
+                            {cell && cell.reservedQty > 0 ? (
+                              <span className="weekHeld">{cell.reservedQty} held</span>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
-
-      {today && (
-        <div className="dayGridReconcile">
-          <h3>End-of-day count · today</h3>
-          <p className="dayGridHint">
-            After close, count what is actually left and enter it here. The
-            variance compares your count to what sales (online + in-store)
-            say should remain.
-          </p>
-          {reconcileErr && (
-            <p className="memberError" role="alert">
-              {reconcileErr}
-            </p>
-          )}
-          <ul className="dayGridReconcileList">
-            {rows.map((r) => {
-              const key = cellKey(r.productId, r.variant, today);
-              const cell = cellMap.get(key);
-              const name = `${r.name}${r.variant ? ` · ${r.variant}` : ''}`;
-              return (
-                <li key={key} className="dayGridReconcileRow">
-                  <span className="dayGridReconcileName">{name}</span>
-                  <span className="dayGridReconcileExpected">
-                    Expect {cell?.qty ?? 0}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={999}
-                    placeholder="#"
-                    className="dayGridInput"
-                    defaultValue={cell?.actualQty ?? ''}
-                    disabled={reconcilingKey === key}
-                    onBlur={(e) => {
-                      const raw = e.target.value.trim();
-                      if (raw === '') return;
-                      const v = Math.max(0, Number(raw) || 0);
-                      void reconcile(r.productId, r.variant, today, v);
-                    }}
-                    aria-label={`Physical count of ${name} today`}
-                  />
-                  {cell?.varianceQty != null && (
-                    <span
-                      className={
-                        cell.varianceQty === 0
-                          ? 'dayGridVariance is-even'
-                          : cell.varianceQty < 0
-                            ? 'dayGridVariance is-short'
-                            : 'dayGridVariance is-over'
-                      }
-                    >
-                      {cell.varianceQty > 0 ? `+${cell.varianceQty}` : cell.varianceQty}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

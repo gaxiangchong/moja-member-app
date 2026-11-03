@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { buildOrderNotice, type OrderNoticeKind } from './order-notice';
+import { buildStaffOrderAlert } from './staff-order-alert';
 import {
   WhatsappMessagingService,
   WhatsappTemplateNotConfiguredError,
@@ -171,6 +172,104 @@ export class OrderNotificationService {
         }`,
       );
       return 'none';
+    }
+  }
+
+  /**
+   * Where new-order alerts go: SHOP_ORDER_NOTIFY_EMAIL, else the same inbox
+   * bento alerts use. "off" turns the alert off.
+   */
+  private staffAlertRecipient(): string | null {
+    const raw =
+      this.config.get<string>('SHOP_ORDER_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('BENTO_ADMIN_NOTIFY_EMAIL')?.trim() ||
+      'admin@mojamaison.com';
+    return raw.toLowerCase() === 'off' ? null : raw;
+  }
+
+  /** Whether the shop is emailed about new orders, for the ops screen. */
+  staffAlertStatus(): {
+    on: boolean;
+    recipient: string | null;
+    reason: string | null;
+  } {
+    const recipient = this.staffAlertRecipient();
+    if (!recipient) {
+      return {
+        on: false,
+        recipient: null,
+        reason: 'Turned off (SHOP_ORDER_NOTIFY_EMAIL=off).',
+      };
+    }
+    if (!this.email.isConfigured()) {
+      return {
+        on: false,
+        recipient,
+        reason: 'Email sending is not set up on the server.',
+      };
+    }
+    return { on: true, recipient, reason: null };
+  }
+
+  /**
+   * Emails the shop about a new paid online order. Separate from the
+   * member's receipt; sent even when the member has no email. Never throws.
+   */
+  async notifyStaffNewOrder(orderId: string): Promise<boolean> {
+    try {
+      const status = this.staffAlertStatus();
+      if (!status.on || !status.recipient) {
+        this.logger.warn(
+          `New-order staff email skipped for ${orderId}: ${status.reason}`,
+        );
+        return false;
+      }
+      const order = await this.prisma.customerOrder.findUnique({
+        where: { id: orderId },
+        select: {
+          orderNumber: true,
+          fulfilmentType: true,
+          fulfillmentSummary: true,
+          totalCents: true,
+          customer: { select: { displayName: true, phoneE164: true } },
+          lines: { select: { name: true, variantLabel: true, qty: true } },
+        },
+      });
+      if (!order) return false;
+      const alert = buildStaffOrderAlert({
+        orderNumber: order.orderNumber,
+        fulfilmentType: order.fulfilmentType,
+        fulfillmentSummary: Array.isArray(order.fulfillmentSummary)
+          ? order.fulfillmentSummary.filter(
+              (l): l is string => typeof l === 'string',
+            )
+          : [],
+        customerName: order.customer.displayName,
+        customerPhone: order.customer.phoneE164,
+        totalCents: order.totalCents,
+        lines: order.lines,
+        queueUrl:
+          this.config.get<string>('OPS_QUEUE_PUBLIC_URL')?.trim() || null,
+      });
+      const sent = await this.email.send({
+        to: status.recipient,
+        subject: `${this.email.getSubjectPrefix()} ${alert.subject}`,
+        html: alert.html,
+        text: alert.text,
+      });
+      if (sent) {
+        this.logger.log(
+          `New-order staff email sent for #${order.orderNumber}.`,
+        );
+      }
+      return Boolean(sent);
+    } catch (err) {
+      this.logger.error(
+        `New-order staff email failed for ${orderId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return false;
     }
   }
 

@@ -1622,6 +1622,7 @@ export class CustomersService {
     if (finalized) {
       this.pushShopOrderToSalesplay(orderId);
       void this.orderNotices.notify(orderId, 'placed');
+      void this.orderNotices.notifyStaffNewOrder(orderId);
       if (finalizedCustomerId) {
         // A paid order is a purchase: the welcome voucher is earned now.
         void this.campaignAutomation

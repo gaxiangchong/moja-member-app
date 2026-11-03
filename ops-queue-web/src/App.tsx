@@ -8,12 +8,13 @@ import {
 import {
   completeQueueOrder,
   fetchQueueOrderDetail,
+  fetchQueueAlerts,
   fetchQueueOrders,
   type QueueOrderDetail,
   setQueueOrderStatus,
   type QueueOrderSummary,
+  type StaffEmailStatus,
 } from './api';
-import { BentoPickupPanel } from './BentoPickupPanel';
 import { OpsLoginScreen } from './OpsLoginScreen';
 import { defaultBase, readStoredBase, readStoredKey, STORAGE_BASE, STORAGE_KEY } from './opsSession';
 import { useOpsAuth } from './useOpsAuth';
@@ -61,29 +62,6 @@ function pickupSortTimestamp(order: QueueOrderSummary): number {
     if (!Number.isNaN(t)) return t;
   }
   return new Date(order.placedAt).getTime();
-}
-
-/** Calendar day used for From/To filter: pickup date, else placed date (yyyy-mm-dd). */
-function calendarDayForPickupFilter(order: QueueOrderSummary): string {
-  const p = pickupCalendarDay(order.fulfillmentSummary);
-  if (p) return p;
-  return order.placedAt.slice(0, 10);
-}
-
-function filterByPickupCalendarDay(
-  list: QueueOrderSummary[],
-  dateFrom: string,
-  dateTo: string,
-): QueueOrderSummary[] {
-  const df = dateFrom.trim();
-  const dt = dateTo.trim();
-  if (!df && !dt) return list;
-  const lo = df || '0000-01-01';
-  const hi = dt || '9999-12-31';
-  return list.filter((o) => {
-    const day = calendarDayForPickupFilter(o);
-    return day >= lo && day <= hi;
-  });
 }
 
 function sortByPickupSlot(
@@ -146,32 +124,6 @@ function shopDateFromIso(iso: string | null | undefined): string {
   const day = parts.find((p) => p.type === 'day')?.value;
   if (!y || !mo || !day) return iso.slice(0, 10);
   return `${y}-${mo}-${day}`;
-}
-
-function filterPendingTodayShop(
-  list: QueueOrderSummary[],
-  todayOnly: boolean,
-): QueueOrderSummary[] {
-  if (!todayOnly) return list;
-  const today = shopCalendarYmd();
-  return list.filter((o) => {
-    if (isExpediteOrder(o)) return true;
-    const pickupDay = pickupCalendarDay(o.fulfillmentSummary);
-    if (pickupDay) return pickupDay === today;
-    return calendarDayForPickupFilter(o) === today;
-  });
-}
-
-function splitExpediteScheduled(list: QueueOrderSummary[]): {
-  expedite: QueueOrderSummary[];
-  scheduled: QueueOrderSummary[];
-} {
-  const expedite: QueueOrderSummary[] = [];
-  const scheduled: QueueOrderSummary[] = [];
-  for (const o of list) {
-    (isExpediteOrder(o) ? expedite : scheduled).push(o);
-  }
-  return { expedite, scheduled };
 }
 
 function detailIdFromSearch(): string | null {
@@ -378,7 +330,7 @@ function openKitchenPopup(): void {
   window.open(
     u.toString(),
     'mojaOpsKitchen',
-    'width=560,height=780,scrollbars=yes,resizable=yes',
+    'width=1200,height=860,scrollbars=yes,resizable=yes',
   );
 }
 
@@ -393,7 +345,7 @@ function openMemberPopup(): void {
   );
 }
 
-/** Short labels for the queue card chip. */
+/** Short labels for the ticket's state tag. */
 const QUEUE_STATUS_LABEL: Record<string, string> = {
   placed: 'New',
   preparing: 'Preparing',
@@ -402,8 +354,67 @@ const QUEUE_STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
-function OrderCard({
+/** A parcel is posted, not collected: it has its own list and its own verb. */
+function isParcel(order: QueueOrderSummary): boolean {
+  return order.fulfillmentSummary.some((l) => l.trim().toLowerCase() === 'shipping');
+}
+
+/** "16:00" -> "4:00 PM". */
+function clock12(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/** The pickup slot written on a scheduled order: `Date: yyyy-mm-dd`, `Time: hh:mm`. */
+function pickupSlot(order: QueueOrderSummary): { date: string | null; time: string | null; at: number | null } {
+  let date: string | null = null;
+  let time: string | null = null;
+  for (const line of order.fulfillmentSummary) {
+    const dm = line.match(/Date:\s*(\d{4}-\d{2}-\d{2})/i);
+    if (dm) date = dm[1];
+    const tm = line.match(/Time:\s*(\d{1,2}:\d{2})/i);
+    if (tm) time = tm[1].padStart(5, '0');
+  }
+  const ts = date && time ? pickupSortTimestamp(order) : null;
+  return { date, time, at: ts };
+}
+
+/** In-store orders say "Collect today from 3:40 PM"; that's when it is due. */
+function inStoreReadyFrom(order: QueueOrderSummary): string | null {
+  for (const line of order.fulfillmentSummary) {
+    const m = line.match(/Collect today from\s+(.+)$/i);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+/** "3 min", "1 h 20 min", "2 days". Rough drops the minutes once past an hour. */
+function durationLabel(ms: number, rough = false): string {
+  const mins = Math.max(0, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return mins % 60 && !rough ? `${hours} h ${mins % 60} min` : `${hours} h`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+/** Lines that only repeat what the ticket already shows (lane, date, time). */
+function extraNotes(order: QueueOrderSummary): string[] {
+  return order.fulfillmentSummary.filter(
+    (l) =>
+      !/^(self pickup|in store · prepare now|shipping)$/i.test(l.trim()) &&
+      !/^(date|time):/i.test(l.trim()) &&
+      !/^collect today/i.test(l.trim()),
+  );
+}
+
+function Ticket({
   order,
+  lane,
+  now,
   pulse,
   busy,
   onDone,
@@ -411,93 +422,116 @@ function OrderCard({
   onOpenDetail,
 }: {
   order: QueueOrderSummary;
+  lane: 'instore' | 'pickup' | 'parcel' | 'upcoming';
+  now: number;
   pulse: boolean;
   busy: boolean;
   onDone: () => void;
   onAdvance: (next: 'preparing' | 'ready') => void;
   onOpenDetail: () => void;
 }) {
+  const slot = pickupSlot(order);
+  const late =
+    lane === 'pickup' && slot.at != null && slot.at < now && order.status !== 'ready';
+  const who = order.customerDisplayName?.trim() || order.customerPhoneMasked;
+  const notes = extraNotes(order);
+  const readyFrom = lane === 'instore' ? inStoreReadyFrom(order) : null;
+  const doneLabel = lane === 'parcel' ? 'Posted' : 'Collected';
+
+  // One main button: the next step for this order.
+  const next =
+    order.status === 'placed'
+      ? { label: 'Start preparing', className: 'tBtn tBtn--next', run: () => onAdvance('preparing') }
+      : order.status === 'preparing'
+        ? { label: 'Mark ready', className: 'tBtn tBtn--ready', run: () => onAdvance('ready') }
+        : { label: doneLabel, className: 'tBtn tBtn--next', run: onDone };
+
+  const stateClass = late ? 'late' : order.status;
   return (
-    <article className={`orderCard${pulse ? ' orderCard--pulse' : ''}`}>
-      <div className="orderCardHead">
-        <div>
-          <div className="idline">
-            Order {formatOrderPickupLabel(order.orderNumber)}
-            <span className={`statusChip statusChip--${order.status}`}>
-              {QUEUE_STATUS_LABEL[order.status] ?? order.status}
-            </span>
-          </div>
-          <div className="when">{placedLabel(order.placedAt)}</div>
-        </div>
-        <div className="muted" style={{ fontSize: '0.9rem' }}>
-          {order.customerDisplayName?.trim() || 'Member'} · {order.customerPhoneMasked}
-        </div>
+    <article
+      className={`ticket ticket--${lane} ticket--${stateClass}${pulse ? ' ticket--arrived' : ''}`}
+    >
+      <div className="tWhen">
+        {lane === 'instore' ? (
+          <>
+            <span className="tBig">{durationLabel(now - new Date(order.placedAt).getTime())}</span>
+            <span className="tSmall">waiting</span>
+          </>
+        ) : lane === 'parcel' ? (
+          <>
+            <span className="tBig tBig--date">{placedLabel(order.placedAt)}</span>
+            <span className="tSmall">ordered</span>
+          </>
+        ) : (
+          <>
+            <span className="tBig">{slot.time ? clock12(slot.time) : '—'}</span>
+            {lane === 'upcoming' && slot.date ? (
+              <span className="tSmall">{dayLabel(slot.date)}</span>
+            ) : null}
+          </>
+        )}
       </div>
 
-      {order.fulfillmentSummary.length > 0 ? (
-        <div className="pickupBlock">
-          <h3>Pickup / delivery</h3>
-          <ul>
-            {order.fulfillmentSummary.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+      <div className="tBody">
+        <div className="tMeta">
+          {late ? (
+            <span className="state state--late">Late {durationLabel(now - (slot.at ?? now), true)}</span>
+          ) : (
+            <span className={`state state--${order.status}`}>
+              {QUEUE_STATUS_LABEL[order.status] ?? order.status}
+            </span>
+          )}
+          <span className="tNum">#{formatOrderPickupLabel(order.orderNumber)}</span>
+          <span className="tWho">{who}</span>
         </div>
-      ) : null}
-
-      <table className="linesTable">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Qty</th>
-          </tr>
-        </thead>
-        <tbody>
+        <ul className="tItems">
           {order.lines.map((l) => (
-            <tr key={l.id}>
-              <td>
+            <li key={l.id}>
+              <span className="tQty">{l.qty}</span>
+              <span>
                 {l.name}
-                {l.variantLabel ? ` (${l.variantLabel})` : ''}
-              </td>
-              <td>{l.qty}</td>
-            </tr>
+                {l.variantLabel ? <span className="tSize"> · {l.variantLabel}</span> : null}
+              </span>
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+        {readyFrom ? (
+          <p className="tNote">
+            Ready from <strong>{readyFrom}</strong>
+          </p>
+        ) : null}
+        {notes.map((n) => (
+          <p key={n} className="tNote">
+            {n}
+          </p>
+        ))}
+      </div>
 
-      <div className="orderFoot">
-        <span className="totalBadge">{formatRm(order.totalCents)}</span>
-        <div className="btnRow">
-          <button type="button" className="btnGhost" onClick={onOpenDetail}>
-            View details
+      <div className="tActions">
+        <button type="button" className={next.className} disabled={busy} onClick={next.run}>
+          {busy ? 'Saving…' : next.label}
+        </button>
+        <div className="tLinks">
+          <button type="button" className="tLink" onClick={onOpenDetail}>
+            Details
           </button>
-          {order.status === 'placed' && (
-            <button
-              type="button"
-              className="btnGhost"
-              disabled={busy}
-              onClick={() => onAdvance('preparing')}
-            >
-              Start preparing
+          {order.status !== 'ready' ? (
+            <button type="button" className="tLink" disabled={busy} onClick={onDone}>
+              {doneLabel}
             </button>
-          )}
-          {(order.status === 'placed' || order.status === 'preparing') && (
-            <button
-              type="button"
-              className="btnReady"
-              disabled={busy}
-              onClick={() => onAdvance('ready')}
-            >
-              Mark ready
-            </button>
-          )}
-          <button type="button" className="btnPrimary" disabled={busy} onClick={onDone}>
-            {busy ? 'Saving…' : 'Collected'}
-          </button>
+          ) : null}
         </div>
       </div>
     </article>
   );
+}
+
+/** "2026-11-05" -> "Thu 5 Nov". */
+function dayLabel(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(dt.getTime())) return ymd;
+  return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 const SOUND_PREF = 'moja_ops_new_order_sound';
@@ -531,12 +565,15 @@ export function App() {
 
   const [rawPending, setRawPending] = useState<QueueOrderSummary[]>([]);
   const [rawHistory, setRawHistory] = useState<QueueOrderSummary[]>([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortPickup, setSortPickup] = useState<'desc' | 'asc'>('asc');
-  const [todayOnly, setTodayOnly] = useState(false);
+  /** Shop day whose collected orders are listed (yyyy-mm-dd). */
+  const [collectedDay, setCollectedDay] = useState(() => shopCalendarYmd());
+  /** Which folded list is open under the lanes. */
+  const [openFold, setOpenFold] = useState<'upcoming' | 'parcels' | 'collected' | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  /** Ticks every 30s so waiting times and late flags stay current. */
+  const [now, setNow] = useState(() => Date.now());
+  const [staffEmail, setStaffEmail] = useState<StaffEmailStatus | null>(null);
   const [pollErr, setPollErr] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState<'shop' | 'bento'>('shop');
   const [pollOk, setPollOk] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(() => new Set());
@@ -555,34 +592,82 @@ export function App() {
   /** Order numbers that arrived since the cashier last pressed "Got it". */
   const [unseen, setUnseen] = useState<number[]>([]);
 
-  const pendingSections = useMemo(() => {
-    const f = filterByPickupCalendarDay(rawPending, dateFrom, dateTo);
-    const g = filterPendingTodayShop(f, todayOnly);
-    const { expedite, scheduled } = splitExpediteScheduled(g);
-    return {
-      expedite: sortByPickupSlot(expedite, sortPickup),
-      scheduled: sortByPickupSlot(scheduled, sortPickup),
-    };
-  }, [rawPending, dateFrom, dateTo, sortPickup, todayOnly]);
-
-  const displayPendingCount =
-    pendingSections.expedite.length + pendingSections.scheduled.length;
-
-  const hasPickupDateFilter = Boolean(dateFrom.trim() || dateTo.trim());
-
-  /** Sidebar: only today’s collected (shop day) unless From/To filters are set — then same pickup-date range as the queue. */
-  const sidebarHistory = useMemo(() => {
-    let list: QueueOrderSummary[];
-    if (!hasPickupDateFilter) {
-      const today = shopCalendarYmd();
-      list = rawHistory.filter(
-        (h) => shopDateFromIso(h.completedAt ?? h.placedAt) === today,
-      );
-    } else {
-      list = filterByPickupCalendarDay(rawHistory, dateFrom, dateTo);
+  /**
+   * The lanes: in-store orders by how long they've waited; today's pickups
+   * (and any overdue from earlier days) by time; later pickups and parcels
+   * folded away.
+   */
+  const lanes = useMemo(() => {
+    const today = shopCalendarYmd(new Date(now));
+    const instore: QueueOrderSummary[] = [];
+    const pickups: QueueOrderSummary[] = [];
+    const upcoming: QueueOrderSummary[] = [];
+    const parcels: QueueOrderSummary[] = [];
+    for (const o of rawPending) {
+      if (isExpediteOrder(o)) instore.push(o);
+      else if (isParcel(o)) parcels.push(o);
+      else if ((pickupCalendarDay(o.fulfillmentSummary) ?? today) > today) upcoming.push(o);
+      else pickups.push(o);
     }
-    return sortByPickupSlot(list, sortPickup);
-  }, [rawHistory, hasPickupDateFilter, dateFrom, dateTo, sortPickup]);
+    const byPlaced = (a: QueueOrderSummary, b: QueueOrderSummary) =>
+      new Date(a.placedAt).getTime() - new Date(b.placedAt).getTime();
+    return {
+      instore: instore.sort(byPlaced),
+      pickups: sortByPickupSlot(pickups, 'asc'),
+      upcoming: sortByPickupSlot(upcoming, 'asc'),
+      parcels: parcels.sort(byPlaced),
+    };
+  }, [rawPending, now]);
+
+  const lateCount = lanes.pickups.filter((o) => {
+    const at = pickupSlot(o).at;
+    return at != null && at < now && o.status !== 'ready';
+  }).length;
+  const toMakeCount = lanes.instore.length + lanes.pickups.length;
+
+  const collected = useMemo(
+    () =>
+      rawHistory
+        .filter((h) => h.status === 'completed' && shopDateFromIso(h.completedAt ?? h.placedAt) === collectedDay)
+        .sort((a, b) => new Date(b.completedAt ?? b.placedAt).getTime() - new Date(a.completedAt ?? a.placedAt).getTime()),
+    [rawHistory, collectedDay],
+  );
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // The More menu closes on Escape or a click anywhere outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (!(e.target as Element | null)?.closest('.qMenu')) setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [menuOpen]);
+
+  // Whether the shop gets an email for each new order: shown in the top bar.
+  useEffect(() => {
+    if (!apiKey.trim()) return;
+    let alive = true;
+    void fetchQueueAlerts(apiKey.trim(), apiBase.trim() || defaultBase)
+      .then((res) => {
+        if (alive) setStaffEmail(res.staffEmail);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [apiKey, apiBase]);
 
   const poll = useCallback(async () => {
     if (!apiKey.trim()) return;
@@ -734,94 +819,93 @@ export function App() {
     );
   }
 
+  const ticketProps = (o: QueueOrderSummary) => ({
+    order: o,
+    now,
+    pulse: pulseIds.has(o.id),
+    busy: completingId === o.id,
+    onDone: () => onDone(o.id),
+    onAdvance: (next: 'preparing' | 'ready') => onAdvance(o.id, next),
+    onOpenDetail: () => setDetailModalId(o.id),
+  });
+
   return (
     <div className="queueApp">
-      <header className="topBar">
-        <div>
-          <h1>{workspace === 'bento' ? 'Bento pickup' : 'Order queue'}</h1>
-          {workspace === 'shop' ? (
-            <div className={`livePill${pollOk ? ' ok' : ''}`}>
-              <span className="dot" aria-hidden />
-              {pollOk ? 'Live · polling every 2.5s' : 'Connecting…'}
-            </div>
-          ) : (
-            <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>
-              Collect today&apos;s scheduled bento meals by pickup code.
-            </p>
-          )}
-        </div>
-        <div className="btnRow">
+      <header className="qBar">
+        <h1>Order queue</h1>
+        <p className="qCount">
+          <strong>{toMakeCount} to make</strong>
+          {lateCount > 0 ? <span className="qLate"> · {lateCount} late</span> : null}
+          {!pollOk ? <span className="qOffline"> · Reconnecting…</span> : null}
+        </p>
+        <span className="qSpacer" />
+        <button
+          type="button"
+          className={soundOn ? 'qStatus qStatus--on' : 'qStatus qStatus--off'}
+          onClick={toggleSound}
+          aria-pressed={soundOn}
+          title="Chime when a new order comes in"
+        >
+          {soundOn ? 'Sound on' : 'Sound off'}
+        </button>
+        {staffEmail ? (
+          <span
+            className={staffEmail.on ? 'qStatus qStatus--on' : 'qStatus qStatus--off'}
+            title={
+              staffEmail.on
+                ? `Each new order is emailed to ${staffEmail.recipient}`
+                : staffEmail.reason ?? 'New-order emails are off'
+            }
+          >
+            {staffEmail.on ? 'Email alerts on' : 'Email alerts off'}
+          </span>
+        ) : null}
+        <button type="button" className="qBtn" onClick={() => openScanPopup()}>
+          Scan QR
+        </button>
+        <button type="button" className="qBtn" onClick={() => void poll()}>
+          Refresh
+        </button>
+        <div className="qMenu">
           <button
             type="button"
-            className={workspace === 'shop' ? 'btnPrimary' : 'btnGhost'}
-            onClick={() => setWorkspace('shop')}
+            className="qBtn"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            Shop queue
+            More ▾
           </button>
-          <button
-            type="button"
-            className={workspace === 'bento' ? 'btnPrimary' : 'btnGhost'}
-            onClick={() => setWorkspace('bento')}
-          >
-            Bento pickup
-          </button>
-          {workspace === 'shop' ? (
-            <>
-              <button type="button" className="btnGhost" onClick={() => openScanPopup()}>
-                Scan QR
-              </button>
-              <button type="button" className="btnGhost" onClick={() => openTimesheetPopup()}>
-                Timesheet
-              </button>
-              <button type="button" className="btnGhost" onClick={() => openKitchenPopup()}>
+          {menuOpen ? (
+            <div className="qMenuList" role="menu" onClick={() => setMenuOpen(false)}>
+              <button type="button" role="menuitem" onClick={() => openKitchenPopup()}>
                 Kitchen stock
               </button>
-              <button type="button" className="btnGhost" onClick={() => openMemberPopup()}>
+              <button type="button" role="menuitem" onClick={() => openMemberPopup()}>
                 Member desk
               </button>
-              <button type="button" className="btnGhost" onClick={() => void poll()}>
-                Refresh now
-              </button>
-              <button
-                type="button"
-                className={soundOn ? 'btnGhost alertToggle alertToggle--on' : 'btnGhost alertToggle'}
-                onClick={toggleSound}
-                aria-pressed={soundOn}
-              >
-                {soundOn ? '🔔 Sound on' : '🔕 Sound off'}
+              <button type="button" role="menuitem" onClick={() => openTimesheetPopup()}>
+                Timesheet
               </button>
               {desktopNotificationsSupported() ? (
-                <button
-                  type="button"
-                  className={desktopOn ? 'btnGhost alertToggle alertToggle--on' : 'btnGhost alertToggle'}
-                  onClick={() => void toggleDesktop()}
-                  aria-pressed={desktopOn}
-                >
-                  {desktopOn ? 'Desktop alerts on' : 'Desktop alerts off'}
+                <button type="button" role="menuitem" onClick={() => void toggleDesktop()}>
+                  {desktopOn ? 'Turn off desktop alerts' : 'Turn on desktop alerts'}
                 </button>
               ) : null}
-            </>
+              <button type="button" role="menuitem" onClick={onDisconnect}>
+                Sign out
+              </button>
+            </div>
           ) : null}
-          <button type="button" className="btnGhost" onClick={onDisconnect}>
-            Sign out
-          </button>
         </div>
       </header>
 
       {unseen.length > 0 ? (
         <div className="newOrderBanner" role="alert">
           <span>
-            🔔 {unseen.length === 1 ? 'New order' : `${unseen.length} new orders`}:{' '}
+            {unseen.length === 1 ? 'New order' : `${unseen.length} new orders`}:{' '}
             <strong>{unseen.map((n) => `#${n}`).join(', ')}</strong>
           </span>
-          <button
-            type="button"
-            className="btnPrimary"
-            onClick={() => {
-              setUnseen([]);
-              setWorkspace('shop');
-            }}
-          >
+          <button type="button" className="tBtn tBtn--next" onClick={() => setUnseen([])}>
             Got it
           </button>
         </div>
@@ -831,173 +915,126 @@ export function App() {
           Tap anywhere on this page once to turn on the new-order sound.
         </p>
       ) : null}
+      {pollErr ? <p className="qError">{pollErr}</p> : null}
 
-      {workspace === 'bento' ? (
-        <BentoPickupPanel apiKey={apiKey} baseUrl={apiBase} />
-      ) : (
-        <>
-      {pollErr ? (
-        <p className="err" style={{ marginBottom: 16 }}>
-          {pollErr}
-        </p>
-      ) : null}
-
-      <section className="queueToolbar" aria-label="Filter and sort by pickup date">
-        <div className="queueToolbarRow">
-          <span className="queueToolbarLabel">Pickup date (self pickup) · sort by slot</span>
-          <label className="queueToolbarField">
-            <span>From</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(ev) => setDateFrom(ev.target.value)}
-              aria-label="Filter from pickup date"
-            />
-          </label>
-          <label className="queueToolbarField">
-            <span>To</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(ev) => setDateTo(ev.target.value)}
-              aria-label="Filter to pickup date"
-            />
-          </label>
-          <label className="queueToolbarField">
-            <span>Sort</span>
-            <select
-              value={sortPickup}
-              onChange={(ev) => setSortPickup(ev.target.value === 'asc' ? 'asc' : 'desc')}
-              aria-label="Sort by pickup slot"
-            >
-              <option value="asc">Soonest pickup first</option>
-              <option value="desc">Latest pickup first</option>
-            </select>
-          </label>
-          <label className="queueToolbarField queueToolbarCheck">
-            <span>Today</span>
-            <input
-              type="checkbox"
-              checked={todayOnly}
-              onChange={(ev) => setTodayOnly(ev.target.checked)}
-              aria-label="Show only today’s pickups plus all in-store expedite"
-            />
-          </label>
-          <button
-            type="button"
-            className="btnGhost"
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-              setSortPickup('asc');
-              setTodayOnly(false);
-            }}
-          >
-            Clear filters
-          </button>
-        </div>
-        <p className="queueToolbarHint">
-          Active: {displayPendingCount} of {rawPending.length} · Collected sidebar:{' '}
-          {sidebarHistory.length}
-          {!hasPickupDateFilter
-            ? ` (today = ${shopCalendarYmd()} in ${shopTimeZone()} · earlier days: set From/To)`
-            : ` of ${rawHistory.length} loaded · pickup-date range`}
-          {todayOnly
-            ? ` · Queue “Today”: in-store expedite always included`
-            : ''}
-          {hasPickupDateFilter &&
-            ' · Range uses pickup date on the card; delivery-only uses placed date for the day'}
-        </p>
-      </section>
-
-      <div className="layout">
-        <aside className="sidePanel">
-          <h2>Recent collected</h2>
-          <p className="muted" style={{ fontSize: 13, marginTop: -6, marginBottom: 12 }}>
-            {hasPickupDateFilter
-              ? 'Filtered by pickup From/To. Click a row for details.'
-              : `Today only (${shopCalendarYmd()}, ${shopTimeZone()}). Resets each shop day — set From/To to see earlier collected orders.`}
-          </p>
-          <div className="historyList">
-            {sidebarHistory.length === 0 ? (
-              <p className="muted" style={{ padding: 8 }}>
-                {rawHistory.length === 0
-                  ? 'No collected orders yet.'
-                  : hasPickupDateFilter
-                    ? 'No collected orders match this date range.'
-                    : 'Nothing collected today yet.'}
-              </p>
-            ) : (
-              sidebarHistory.map((h) => (
-                <button
-                  key={h.id}
-                  type="button"
-                  className="historyRow"
-                  onClick={() => setDetailModalId(h.id)}
-                >
-                  <strong>
-                    {formatOrderPickupLabel(h.orderNumber)} · {formatRm(h.totalCents)}
-                  </strong>
-                  <div className="meta">
-                    {placedLabel(h.placedAt)} · {h.customerPhoneMasked}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </aside>
-
-        <div className="mainColumn">
-          {displayPendingCount === 0 ? (
-            <div className="emptyQueue">
-              <p style={{ margin: 0, fontSize: '1.05rem' }}>
-                {rawPending.length === 0
-                  ? 'No active orders in the queue.'
-                  : 'No active orders match the current filters.'}
-              </p>
-              <p className="muted" style={{ margin: '10px 0 0' }}>
-                New member purchases appear here as cards. Mark <strong>Collected</strong> when the
-                member shows their QR or confirms pickup.
-              </p>
-            </div>
+      <div className="rail">
+        <section className="lane" aria-labelledby="lane-instore">
+          <h2 id="lane-instore">
+            In store now <small>{lanes.instore.length} waiting</small>
+          </h2>
+          {lanes.instore.length === 0 ? (
+            <p className="laneEmpty">No one is waiting. In-store orders from the app appear here.</p>
           ) : (
-            <>
-              {pendingSections.expedite.length > 0 ? (
-                <>
-                  <h2 className="queueSectionTitle">Expedite · in store now</h2>
-                  {pendingSections.expedite.map((o) => (
-                    <OrderCard
-                      key={o.id}
-                      order={o}
-                      pulse={pulseIds.has(o.id)}
-                      busy={completingId === o.id}
-                      onDone={() => onDone(o.id)}
-                      onAdvance={(next) => onAdvance(o.id, next)}
-                      onOpenDetail={() => setDetailModalId(o.id)}
-                    />
-                  ))}
-                </>
-              ) : null}
-              {pendingSections.scheduled.length > 0 ? (
-                <>
-                  <h2 className="queueSectionTitle">Scheduled · pickup / delivery</h2>
-                  {pendingSections.scheduled.map((o) => (
-                    <OrderCard
-                      key={o.id}
-                      order={o}
-                      pulse={pulseIds.has(o.id)}
-                      busy={completingId === o.id}
-                      onDone={() => onDone(o.id)}
-                      onAdvance={(next) => onAdvance(o.id, next)}
-                      onOpenDetail={() => setDetailModalId(o.id)}
-                    />
-                  ))}
-                </>
-              ) : null}
-            </>
+            <div className="tickets">
+              {lanes.instore.map((o) => (
+                <Ticket key={o.id} lane="instore" {...ticketProps(o)} />
+              ))}
+            </div>
           )}
-        </div>
+        </section>
+
+        <section className="lane" aria-labelledby="lane-pickups">
+          <h2 id="lane-pickups">
+            Today&apos;s pickups{' '}
+            <small>
+              {dayLabel(shopCalendarYmd(new Date(now)))} · {lanes.pickups.length} left
+            </small>
+          </h2>
+          {lanes.pickups.length === 0 ? (
+            <p className="laneEmpty">No more pickups today.</p>
+          ) : (
+            <div className="tickets">
+              {lanes.pickups.map((o) => (
+                <Ticket key={o.id} lane="pickup" {...ticketProps(o)} />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
+
+      <div className="folds">
+        <FoldButton
+          label="Coming up"
+          count={lanes.upcoming.length}
+          open={openFold === 'upcoming'}
+          onToggle={() => setOpenFold((f) => (f === 'upcoming' ? null : 'upcoming'))}
+        />
+        <FoldButton
+          label="Parcels to post"
+          count={lanes.parcels.length}
+          open={openFold === 'parcels'}
+          onToggle={() => setOpenFold((f) => (f === 'parcels' ? null : 'parcels'))}
+        />
+        <FoldButton
+          label="Collected"
+          count={collected.length}
+          open={openFold === 'collected'}
+          onToggle={() => setOpenFold((f) => (f === 'collected' ? null : 'collected'))}
+        />
+      </div>
+
+      {openFold === 'upcoming' ? (
+        <section className="foldPanel" aria-label="Coming up">
+          {lanes.upcoming.length === 0 ? (
+            <p className="laneEmpty">No pickups booked for later days.</p>
+          ) : (
+            <div className="tickets">
+              {lanes.upcoming.map((o) => (
+                <Ticket key={o.id} lane="upcoming" {...ticketProps(o)} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+      {openFold === 'parcels' ? (
+        <section className="foldPanel" aria-label="Parcels to post">
+          {lanes.parcels.length === 0 ? (
+            <p className="laneEmpty">No parcels waiting to be posted.</p>
+          ) : (
+            <div className="tickets">
+              {lanes.parcels.map((o) => (
+                <Ticket key={o.id} lane="parcel" {...ticketProps(o)} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+      {openFold === 'collected' ? (
+        <section className="foldPanel" aria-label="Collected orders">
+          <label className="foldDate">
+            Collected on
+            <input
+              type="date"
+              value={collectedDay}
+              max={shopCalendarYmd(new Date(now))}
+              onChange={(e) => setCollectedDay(e.target.value || shopCalendarYmd())}
+            />
+          </label>
+          {collected.length === 0 ? (
+            <p className="laneEmpty">Nothing collected on {dayLabel(collectedDay)}.</p>
+          ) : (
+            <ul className="collectedList">
+              {collected.map((h) => (
+                <li key={h.id}>
+                  <button type="button" onClick={() => setDetailModalId(h.id)}>
+                    <span className="tNum">#{formatOrderPickupLabel(h.orderNumber)}</span>
+                    <span>{h.customerDisplayName?.trim() || h.customerPhoneMasked}</span>
+                    <span className="collectedAt">
+                      {h.completedAt
+                        ? new Date(h.completedAt).toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        : ''}
+                    </span>
+                    <span>{formatRm(h.totalCents)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       {detailModalId ? (
         <div
@@ -1016,8 +1053,32 @@ export function App() {
           </div>
         </div>
       ) : null}
-        </>
-      )}
     </div>
+  );
+}
+
+function FoldButton({
+  label,
+  count,
+  open,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={open ? 'fold fold--open' : 'fold'}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <strong>{label}</strong>
+      <span>
+        {count} {open ? '▴' : '▾'}
+      </span>
+    </button>
   );
 }
