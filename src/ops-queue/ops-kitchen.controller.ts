@@ -41,8 +41,9 @@ export class OpsKitchenController {
   }
 
   /**
-   * Day grid: how many of each cake the kitchen can supply on each of the next
-   * N days, with what is already spoken for by paid orders.
+   * Day grid: how many of each cake size (6 inch, 8 inch, Slice) the kitchen
+   * can supply on each of the next N days, with what is already spoken for by
+   * orders. Till sales from SalesPlay come off the same counts.
    */
   @Get('stock/days')
   async listDays(@Query() query: StockDayGridQueryDto) {
@@ -50,7 +51,7 @@ export class OpsKitchenController {
     const from = query.from ?? todayBusinessDate();
     const days = query.days ?? 7;
     const cells = await this.productStock.listRange(
-      products.map((p) => p.id),
+      products.map((p) => ({ id: p.id, variants: p.variants })),
       from,
       days,
     );
@@ -61,16 +62,18 @@ export class OpsKitchenController {
         id: p.id,
         name: p.name,
         category: p.category,
+        variants: p.variants,
       })),
       cells,
     };
   }
 
-  /** Kitchen sets the count for one product on one day. */
+  /** Kitchen sets the count for one product size on one day. */
   @Post('stock/days')
   setDay(@Body() body: SetStockDayDto) {
     return this.productStock.setQty(
       body.productId,
+      (body.variant ?? '').trim(),
       body.businessDate,
       body.qty,
     );
@@ -78,13 +81,14 @@ export class OpsKitchenController {
 
   /**
    * Nightly reconcile: kitchen enters what they physically counted at close
-   * for one product on one day. The response's `varianceQty` is that count
-   * minus what the ledger (opening qty − POS − online) expected.
+   * for one product size on one day. The response's `varianceQty` is that
+   * count minus what the ledger (opening qty − POS − online) expected.
    */
   @Post('stock/days/reconcile')
   reconcileDay(@Body() body: ReconcileStockDayDto) {
     return this.productStock.setActualQty(
       body.productId,
+      (body.variant ?? '').trim(),
       body.businessDate,
       body.actualQty,
     );

@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ShopCatalogModule } from '../shop-catalog/shop-catalog.module';
 import { DeliverySettingsService } from './delivery-settings.service';
 import { EarlyOrderDiscountService } from './early-order-discount.service';
+import { InStoreService } from './in-store.service';
 import { MemberOrdersSettingsService } from './member-orders-settings.service';
 import { OrdersMaintenanceService } from './orders-maintenance.service';
 import { PickupRulesService } from './pickup-rules.service';
@@ -21,6 +22,7 @@ import { ShopAvailabilityController } from './shop-availability.controller';
     MemberOrdersSettingsService,
     DeliverySettingsService,
     EarlyOrderDiscountService,
+    InStoreService,
   ],
   exports: [
     ProductStockService,
@@ -29,6 +31,7 @@ import { ShopAvailabilityController } from './shop-availability.controller';
     MemberOrdersSettingsService,
     DeliverySettingsService,
     EarlyOrderDiscountService,
+    InStoreService,
   ],
 })
 export class OrdersModule {}

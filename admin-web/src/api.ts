@@ -641,7 +641,85 @@ export async function clearShopCatalogProductImage(id: string): Promise<ShopCata
 export async function fetchSalesplayCodeSuggestions(): Promise<string[]> {
   const res = await authorizedFetch('/admin/shop-catalog/salesplay-codes');
   const data = await parseCatalogResponse<unknown>(res);
-  return Array.isArray(data) ? data.filter((c): c is string => typeof c === 'string') : [];
+  if (!Array.isArray(data)) return [];
+  // The API returns { code, name, lineCount, … } per code.
+  return data
+    .map((c: unknown) =>
+      typeof c === 'string' ? c : typeof (c as { code?: unknown })?.code === 'string' ? (c as { code: string }).code : '',
+    )
+    .filter(Boolean);
+}
+
+export type SalesplayCodeCheck = {
+  code: string;
+  /** Null when no SalesPlay product list has been uploaded. */
+  inProductList: boolean | null;
+  productListName: string | null;
+  productListEnabled: boolean | null;
+  /** Receipt lines with this code from the till. */
+  tillSales: number;
+  tillName: string | null;
+  /** Catalog products / sizes already mapped to this code. */
+  usedBy: { productId: string; name: string; variantLabel: string | null }[];
+};
+
+/** Checks codes against the SalesPlay product list and till receipts. */
+export async function checkSalesplayCodes(
+  codes: string[],
+): Promise<{ productListUploadedAt: string | null; results: SalesplayCodeCheck[] }> {
+  const res = await authorizedFetch('/admin/shop-catalog/salesplay-codes/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codes }),
+  });
+  return parseCatalogResponse(res);
+}
+
+export type SalesplaySyncHealth = {
+  configured: boolean;
+  pullEnabled: boolean;
+  reconcileEnabled: boolean;
+  lastWebhookAt: string | null;
+  lastPulledAt: string | null;
+  receiptsToday: number;
+  creditNotesToday: number;
+  unmatchedReceiptsToday: number;
+  totalReceipts: number;
+  intervalHours: number;
+  nextPullDueAt: string | null;
+  pullInProgress: boolean;
+  lastReceipt: {
+    receiptNumber: string | null;
+    netCents: number;
+    soldAt: string | null;
+    receivedAt: string;
+    source: string;
+    matchedMember: boolean;
+  } | null;
+  /** The light receipt poll that runs every few minutes. */
+  live: {
+    receiptsEnabled: boolean;
+    intervalSec: number;
+    lastSuccessAt: string | null;
+    lastErrorAt: string | null;
+    consecutiveFailures: number;
+    membersPendingPush: number;
+  };
+};
+
+export async function fetchSalesplaySyncHealth(): Promise<SalesplaySyncHealth> {
+  const res = await authorizedFetch('/admin/reports/pos/sync-health');
+  return parseCatalogResponse<SalesplaySyncHealth>(res);
+}
+
+/** Pulls recent receipts from SalesPlay now (catches anything the webhook missed). */
+export async function pullSalesplayNow(): Promise<unknown> {
+  const res = await authorizedFetch('/admin/reports/pos/pull', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'reconcile' }),
+  });
+  return parseCatalogResponse(res);
 }
 
 export type SalesplayCsvInfo = { exists: boolean; uploadedAt?: string; rowCount?: number };
@@ -1511,6 +1589,13 @@ export type PickupRules = {
   /** Days of notice for a cart holding any of `preorderCategories`. 0 = off. */
   preorderDays: number;
   preorderCategories: string[];
+  /** "In-store today": collect today from what the kitchen counted. */
+  inStore: {
+    enabled: boolean;
+    categories: string[];
+    prepMinutes: number;
+    cutoffMinutes: number;
+  };
   slots: PickupSlotRule[];
 };
 

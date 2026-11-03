@@ -29,6 +29,7 @@ import { UnifiedTransactionsQueryDto } from './dto/unified-transactions-query.dt
 import { BentoOrdersReportService } from '../bento/bento-orders-report.service';
 import { BentoService } from '../bento/bento.service';
 import { BentoScheduleDto } from '../bento/dto/bento-subscription.dto';
+import { SalesplayLiveSyncService } from '../salesplay/salesplay-live-sync.service';
 import { SalesplayPullService } from '../salesplay/salesplay-pull.service';
 import { FinanceReportService } from './finance-report.service';
 
@@ -40,6 +41,7 @@ export class AdminReportsController {
     private readonly bentoOrdersReport: BentoOrdersReportService,
     private readonly bento: BentoService,
     private readonly salesplayPull: SalesplayPullService,
+    private readonly salesplayLiveSync: SalesplayLiveSyncService,
     private readonly finance: FinanceReportService,
   ) {}
 
@@ -77,11 +79,17 @@ export class AdminReportsController {
     return payload;
   }
 
-  /** SalesPlay POS ingest health for the finance dashboard sync panel. */
+  /**
+   * SalesPlay POS ingest health for the admin sync panels: webhook and pull
+   * times, the live receipt refresh interval, and the last receipt received.
+   */
   @Get('pos/sync-health')
   @RequirePermissions(P.REPORT_VIEW)
-  posSyncHealth() {
-    return this.salesplayPull.getSyncHealth();
+  async posSyncHealth() {
+    return {
+      ...(await this.salesplayPull.getSyncHealth()),
+      live: this.salesplayLiveSync.getStatus(),
+    };
   }
 
   /**

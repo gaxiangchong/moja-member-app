@@ -6,6 +6,8 @@ import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 
 export type DayStock = {
   productId: string;
+  /** Variant label ("6 inch", "8 inch", "Slice"), or "" for the whole product. */
+  variant: string;
   /** yyyy-mm-dd in the shop timezone. */
   businessDate: string;
   /** What the kitchen says exists for that day. */
@@ -20,6 +22,14 @@ export type DayStock = {
   actualQty: number | null;
   /** actualQty − qty (short if negative), or null before a recount is submitted. */
   varianceQty: number | null;
+};
+
+/** One order or receipt line as stock sees it. */
+export type StockLine = {
+  productId: string;
+  /** The size bought; null/empty for a product without sizes. */
+  variantLabel?: string | null;
+  qty: number;
 };
 
 type Tx = Prisma.TransactionClient | PrismaService;
@@ -37,14 +47,45 @@ export function todayBusinessDate(): string {
   return shopCalendarYmd();
 }
 
+/** The stock row a line counts against: its size, or "" for the whole product. */
+export function stockVariant(label?: string | null): string {
+  return (label ?? '').trim();
+}
+
+/** Map key for one product size. */
+export function stockKey(productId: string, variant: string): string {
+  return `${productId}|${variant}`;
+}
+
+function toDayStock(
+  productId: string,
+  variant: string,
+  businessDate: string,
+  row: { qty: number; reservedQty: number; actualQty: number | null },
+): DayStock {
+  return {
+    productId,
+    variant,
+    businessDate,
+    qty: row.qty,
+    reservedQty: row.reservedQty,
+    sellableQty: Math.max(0, row.qty - row.reservedQty),
+    explicit: true,
+    actualQty: row.actualQty,
+    varianceQty: row.actualQty === null ? null : row.actualQty - row.qty,
+  };
+}
+
 /**
- * Per-day kitchen availability.
+ * Per-day kitchen availability, counted per size: a cake's 6 inch, 8 inch and
+ * Slice each have their own row (`variant` = the catalog variant label).
+ * Products without sizes use `variant = ''`.
  *
- * A product is sellable for a date when `qty - reservedQty > 0`. Products with
- * no `product_stock_days` row for that date fall back to the product-level
- * `shop_products.available_qty` (null there = not stock-tracked = unlimited),
- * so nothing has to be back-filled before the kitchen starts using the day
- * grid.
+ * A size is sellable for a date when `qty - reservedQty > 0`. With no row for
+ * that date, the whole-product row ('') falls back to the product-level
+ * `shop_products.available_qty`; a size falls back to nothing. Either way
+ * `null` means not stock-tracked, which ordinary orders treat as unlimited and
+ * in-store-today orders treat as unavailable.
  *
  * All mutations are single atomic statements so concurrent checkouts and
  * kitchen edits cannot lose an update.
@@ -58,29 +99,43 @@ export class ProductStockService {
     private readonly shopCatalog: ShopCatalogService,
   ) {}
 
+  /** The count to use when a day has no row for this size yet. */
+  private async fallbackQty(
+    productId: string,
+    variant: string,
+  ): Promise<number | null> {
+    if (variant) return null;
+    return this.shopCatalog.getAvailableQty(productId);
+  }
+
   /**
-   * Sellable quantity for one product on one date, or `null` when the product
-   * is not stock-tracked at all (unlimited).
+   * Sellable quantity for one size on one date, or `null` when it is not
+   * stock-tracked at all.
    */
   async getSellableQty(
     productId: string,
     businessDate: string,
+    variant = '',
   ): Promise<number | null> {
     const row = await this.prisma.productStockDay.findUnique({
       where: {
-        productId_businessDate: {
+        productId_variant_businessDate: {
           productId,
+          variant,
           businessDate: parseBusinessDate(businessDate),
         },
       },
       select: { qty: true, reservedQty: true },
     });
     if (row) return Math.max(0, row.qty - row.reservedQty);
-    // No explicit day row — fall back to the product-level count.
-    return this.shopCatalog.getAvailableQty(productId);
+    return this.fallbackQty(productId, variant);
   }
 
-  /** Sellable quantities for many products on one date, keyed by product id. */
+  /**
+   * Sellable quantities for many products on one date. Keyed by
+   * `stockKey(productId, variant)`: every size with a row, plus the
+   * whole-product key ('') for each id (row or product-level fallback).
+   */
   async getSellableQtyMap(
     productIds: string[],
     businessDate: string,
@@ -94,20 +149,28 @@ export class ProductStockService {
         productId: { in: ids },
         businessDate: parseBusinessDate(businessDate),
       },
-      select: { productId: true, qty: true, reservedQty: true },
+      select: { productId: true, variant: true, qty: true, reservedQty: true },
     });
     for (const r of rows) {
-      out.set(r.productId, Math.max(0, r.qty - r.reservedQty));
+      out.set(
+        stockKey(r.productId, r.variant),
+        Math.max(0, r.qty - r.reservedQty),
+      );
     }
     for (const id of ids) {
-      if (!out.has(id)) out.set(id, await this.shopCatalog.getAvailableQty(id));
+      const key = stockKey(id, '');
+      if (!out.has(key)) out.set(key, await this.fallbackQty(id, ''));
     }
     return out;
   }
 
-  /** The kitchen's day grid: one row per product for each date in the range. */
+  /**
+   * The kitchen's day grid: one row per product size for each date in the
+   * range. `products[].variants` lists the sizes; an empty list means the
+   * product is counted as a whole.
+   */
   async listRange(
-    productIds: string[],
+    products: { id: string; variants: string[] }[],
     fromDate: string,
     days: number,
   ): Promise<DayStock[]> {
@@ -121,7 +184,7 @@ export class ProductStockService {
 
     const rows = await this.prisma.productStockDay.findMany({
       where: {
-        productId: { in: productIds },
+        productId: { in: products.map((p) => p.id) },
         businessDate: {
           gte: start,
           lte: parseBusinessDate(dates[dates.length - 1]),
@@ -130,83 +193,101 @@ export class ProductStockService {
     });
     const byKey = new Map(
       rows.map((r) => [
-        `${r.productId}|${r.businessDate.toISOString().slice(0, 10)}`,
+        `${stockKey(r.productId, r.variant)}|${r.businessDate.toISOString().slice(0, 10)}`,
         r,
       ]),
     );
 
     const out: DayStock[] = [];
-    for (const productId of productIds) {
-      const fallback = await this.shopCatalog.getAvailableQty(productId);
-      for (const businessDate of dates) {
-        const row = byKey.get(`${productId}|${businessDate}`);
-        if (row) {
-          out.push({
-            productId,
-            businessDate,
-            qty: row.qty,
-            reservedQty: row.reservedQty,
-            sellableQty: Math.max(0, row.qty - row.reservedQty),
-            explicit: true,
-            actualQty: row.actualQty,
-            varianceQty:
-              row.actualQty === null ? null : row.actualQty - row.qty,
-          });
-        } else {
-          out.push({
-            productId,
-            businessDate,
-            qty: fallback ?? 0,
-            reservedQty: 0,
-            sellableQty: fallback ?? 0,
-            explicit: false,
-            actualQty: null,
-            varianceQty: null,
-          });
+    for (const product of products) {
+      const variants = product.variants.length > 0 ? product.variants : [''];
+      for (const variant of variants) {
+        const fallback = await this.fallbackQty(product.id, variant);
+        for (const businessDate of dates) {
+          const row = byKey.get(
+            `${stockKey(product.id, variant)}|${businessDate}`,
+          );
+          if (row) {
+            out.push(toDayStock(product.id, variant, businessDate, row));
+          } else {
+            out.push({
+              productId: product.id,
+              variant,
+              businessDate,
+              qty: fallback ?? 0,
+              reservedQty: 0,
+              sellableQty: fallback ?? 0,
+              explicit: false,
+              actualQty: null,
+              varianceQty: null,
+            });
+          }
         }
       }
     }
     return out;
   }
 
-  /** Kitchen sets the count it can supply for one product on one day. */
+  /** Kitchen sets the count it can supply for one size on one day. */
   async setQty(
     productId: string,
+    variant: string,
     businessDate: string,
     qty: number,
   ): Promise<DayStock> {
     const safeQty = Math.max(0, Math.round(qty));
     const date = parseBusinessDate(businessDate);
     const row = await this.prisma.productStockDay.upsert({
-      where: { productId_businessDate: { productId, businessDate: date } },
-      create: { productId, businessDate: date, qty: safeQty },
+      where: {
+        productId_variant_businessDate: {
+          productId,
+          variant,
+          businessDate: date,
+        },
+      },
+      create: { productId, variant, businessDate: date, qty: safeQty },
       update: { qty: safeQty },
     });
-    return {
-      productId,
-      businessDate,
-      qty: row.qty,
-      reservedQty: row.reservedQty,
-      sellableQty: Math.max(0, row.qty - row.reservedQty),
-      explicit: true,
-      actualQty: row.actualQty,
-      varianceQty: row.actualQty === null ? null : row.actualQty - row.qty,
-    };
+    return toDayStock(productId, variant, businessDate, row);
+  }
+
+  /** Whether a size has a row for this day, i.e. the kitchen counted it. */
+  private async hasRow(
+    tx: Tx,
+    productId: string,
+    variant: string,
+    date: Date,
+  ): Promise<boolean> {
+    const existing = await tx.productStockDay.findUnique({
+      where: {
+        productId_variant_businessDate: {
+          productId,
+          variant,
+          businessDate: date,
+        },
+      },
+      select: { id: true },
+    });
+    return existing !== null;
   }
 
   /**
-   * Reserves stock for a paid order's lines. Creates the day row from the
+   * Reserves stock for an order's lines. Creates the day row from the
    * product-level fallback when the kitchen has not set that date yet, so an
    * order never silently oversells an untouched day.
    *
    * Atomic per line: the `reserved_qty + n <= qty` guard means two concurrent
    * checkouts for the last cake cannot both succeed. Returns the product ids
    * that could not be reserved (caller rejects the order).
+   *
+   * `requireTracked`: a line whose size has no count is refused rather than
+   * treated as unlimited (in-store today only sells what the kitchen counted).
    */
   async reserveForOrderLines(
-    lines: { productId: string; qty: number }[],
+    lines: StockLine[],
     businessDate: string,
     tx: Tx = this.prisma,
+    opts: { requireTracked?: (line: StockLine) => boolean } = {},
   ): Promise<string[]> {
     const date = parseBusinessDate(businessDate);
     const failed: string[] = [];
@@ -214,33 +295,30 @@ export class ProductStockService {
     for (const line of lines) {
       const qty = Math.max(0, Math.round(line.qty));
       if (qty === 0) continue;
+      const variant = stockVariant(line.variantLabel);
 
-      const fallback = await this.shopCatalog.getAvailableQty(line.productId);
-      if (fallback === null) {
-        // Not stock-tracked — unlimited, nothing to reserve.
-        const existing = await tx.productStockDay.findUnique({
-          where: {
-            productId_businessDate: {
-              productId: line.productId,
-              businessDate: date,
-            },
-          },
-          select: { id: true },
-        });
-        if (!existing) continue;
+      const fallback = await this.fallbackQty(line.productId, variant);
+      if (
+        fallback === null &&
+        !(await this.hasRow(tx, line.productId, variant, date))
+      ) {
+        // Not stock-tracked: unlimited for ordinary orders.
+        if (opts.requireTracked?.(line)) failed.push(line.productId);
+        continue;
       }
 
       // Seed the day from the product-level count on first touch.
       await tx.$executeRaw`
-        INSERT INTO product_stock_days (id, product_id, business_date, qty, reserved_qty, created_at, updated_at)
-        VALUES (gen_random_uuid(), ${line.productId}, ${date}::date, ${fallback ?? 0}, 0, NOW(), NOW())
-        ON CONFLICT (product_id, business_date) DO NOTHING
+        INSERT INTO product_stock_days (id, product_id, variant, business_date, qty, reserved_qty, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${line.productId}, ${variant}, ${date}::date, ${fallback ?? 0}, 0, NOW(), NOW())
+        ON CONFLICT (product_id, variant, business_date) DO NOTHING
       `;
 
       const updated = await tx.$executeRaw`
         UPDATE product_stock_days
         SET reserved_qty = reserved_qty + ${qty}, updated_at = NOW()
         WHERE product_id = ${line.productId}
+          AND variant = ${variant}
           AND business_date = ${date}::date
           AND reserved_qty + ${qty} <= qty
       `;
@@ -254,7 +332,7 @@ export class ProductStockService {
    * double release cannot drive the reservation negative.
    */
   async releaseForOrderLines(
-    lines: { productId: string; qty: number }[],
+    lines: StockLine[],
     businessDate: string,
     tx: Tx = this.prisma,
   ): Promise<void> {
@@ -262,21 +340,24 @@ export class ProductStockService {
     for (const line of lines) {
       const qty = Math.max(0, Math.round(line.qty));
       if (qty === 0) continue;
+      const variant = stockVariant(line.variantLabel);
       await tx.$executeRaw`
         UPDATE product_stock_days
         SET reserved_qty = GREATEST(0, reserved_qty - ${qty}), updated_at = NOW()
-        WHERE product_id = ${line.productId} AND business_date = ${date}::date
+        WHERE product_id = ${line.productId}
+          AND variant = ${variant}
+          AND business_date = ${date}::date
       `;
     }
   }
 
   /**
-   * Consumes reserved stock when an order is handed over: both `qty` and
+   * Consumes reserved stock when an order is paid: both `qty` and
    * `reserved_qty` come down, so the day's remaining count stays correct and
    * the item is not double-counted against a later order.
    */
   async consumeForOrderLines(
-    lines: { productId: string; qty: number }[],
+    lines: StockLine[],
     businessDate: string,
     tx: Tx = this.prisma,
   ): Promise<void> {
@@ -284,12 +365,15 @@ export class ProductStockService {
     for (const line of lines) {
       const qty = Math.max(0, Math.round(line.qty));
       if (qty === 0) continue;
+      const variant = stockVariant(line.variantLabel);
       await tx.$executeRaw`
         UPDATE product_stock_days
         SET qty = GREATEST(0, qty - ${qty}),
             reserved_qty = GREATEST(0, reserved_qty - ${qty}),
             updated_at = NOW()
-        WHERE product_id = ${line.productId} AND business_date = ${date}::date
+        WHERE product_id = ${line.productId}
+          AND variant = ${variant}
+          AND business_date = ${date}::date
       `;
     }
   }
@@ -304,7 +388,7 @@ export class ProductStockService {
    * the day (e.g. backfill/reconcile replay) cannot drive stock negative.
    */
   async decrementForPosSale(
-    lines: { productId: string; qty: number }[],
+    lines: StockLine[],
     businessDate: string,
     tx: Tx = this.prisma,
   ): Promise<void> {
@@ -312,33 +396,54 @@ export class ProductStockService {
     for (const line of lines) {
       const qty = Math.max(0, Math.round(line.qty));
       if (qty === 0) continue;
+      const variant = stockVariant(line.variantLabel);
 
-      const fallback = await this.shopCatalog.getAvailableQty(line.productId);
-      if (fallback === null) {
-        // Not stock-tracked — unlimited, nothing to decrement unless the
-        // kitchen already set an explicit count for this day.
-        const existing = await tx.productStockDay.findUnique({
-          where: {
-            productId_businessDate: {
-              productId: line.productId,
-              businessDate: date,
-            },
-          },
-          select: { id: true },
-        });
-        if (!existing) continue;
+      const fallback = await this.fallbackQty(line.productId, variant);
+      if (
+        fallback === null &&
+        !(await this.hasRow(tx, line.productId, variant, date))
+      ) {
+        // Not stock-tracked — nothing to decrement unless the kitchen
+        // already set an explicit count for this day.
+        continue;
       }
 
       await tx.$executeRaw`
-        INSERT INTO product_stock_days (id, product_id, business_date, qty, reserved_qty, created_at, updated_at)
-        VALUES (gen_random_uuid(), ${line.productId}, ${date}::date, ${fallback ?? 0}, 0, NOW(), NOW())
-        ON CONFLICT (product_id, business_date) DO NOTHING
+        INSERT INTO product_stock_days (id, product_id, variant, business_date, qty, reserved_qty, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${line.productId}, ${variant}, ${date}::date, ${fallback ?? 0}, 0, NOW(), NOW())
+        ON CONFLICT (product_id, variant, business_date) DO NOTHING
       `;
 
       await tx.$executeRaw`
         UPDATE product_stock_days
         SET qty = GREATEST(0, qty - ${qty}), updated_at = NOW()
-        WHERE product_id = ${line.productId} AND business_date = ${date}::date
+        WHERE product_id = ${line.productId}
+          AND variant = ${variant}
+          AND business_date = ${date}::date
+      `;
+    }
+  }
+
+  /**
+   * A till sale that was fully refunded the same day puts its cakes back on
+   * the shelf. Only rows the kitchen counted are touched.
+   */
+  async restockForPosRefund(
+    lines: StockLine[],
+    businessDate: string,
+    tx: Tx = this.prisma,
+  ): Promise<void> {
+    const date = parseBusinessDate(businessDate);
+    for (const line of lines) {
+      const qty = Math.max(0, Math.round(line.qty));
+      if (qty === 0) continue;
+      const variant = stockVariant(line.variantLabel);
+      await tx.$executeRaw`
+        UPDATE product_stock_days
+        SET qty = qty + ${qty}, updated_at = NOW()
+        WHERE product_id = ${line.productId}
+          AND variant = ${variant}
+          AND business_date = ${date}::date
       `;
     }
   }
@@ -353,16 +458,24 @@ export class ProductStockService {
    */
   async setActualQty(
     productId: string,
+    variant: string,
     businessDate: string,
     actualQty: number,
   ): Promise<DayStock> {
     const safeActual = Math.max(0, Math.round(actualQty));
     const date = parseBusinessDate(businessDate);
-    const fallback = await this.shopCatalog.getAvailableQty(productId);
+    const fallback = await this.fallbackQty(productId, variant);
     const row = await this.prisma.productStockDay.upsert({
-      where: { productId_businessDate: { productId, businessDate: date } },
+      where: {
+        productId_variant_businessDate: {
+          productId,
+          variant,
+          businessDate: date,
+        },
+      },
       create: {
         productId,
+        variant,
         businessDate: date,
         qty: fallback ?? 0,
         actualQty: safeActual,
@@ -370,15 +483,6 @@ export class ProductStockService {
       },
       update: { actualQty: safeActual, reconciledAt: new Date() },
     });
-    return {
-      productId,
-      businessDate,
-      qty: row.qty,
-      reservedQty: row.reservedQty,
-      sellableQty: Math.max(0, row.qty - row.reservedQty),
-      explicit: true,
-      actualQty: row.actualQty,
-      varianceQty: row.actualQty === null ? null : row.actualQty - row.qty,
-    };
+    return toDayStock(productId, variant, businessDate, row);
   }
 }

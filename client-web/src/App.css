@@ -2797,6 +2797,28 @@ code {
   margin-bottom: 12px;
 }
 
+/* Pickup: pre-order for a day, or collect today from the shelf. */
+.orderTimingRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.orderTimingRow .shopFulfillmentChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shopTodayStock {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #15803d;
+}
+
+.shopTodayStock.is-out {
+  color: #64748b;
+}
+
 .shopFulfillmentChip {
   flex: 1;
   min-width: 120px;

@@ -62,7 +62,7 @@ export class OrdersMaintenanceService {
         id: true,
         scheduledDate: true,
         placedAt: true,
-        lines: { select: { productId: true, qty: true } },
+        lines: { select: { productId: true, variantLabel: true, qty: true } },
       },
       take: 200,
     });

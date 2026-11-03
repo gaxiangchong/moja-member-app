@@ -6,6 +6,8 @@ export type CheckoutDraft = {
   pickupDate: string | null;
   pickupTime: string | null;
   delivery?: DeliveryDraft;
+  /** Collect today from the shelf: no pickup date or time to choose. */
+  inStoreToday?: boolean;
 };
 
 export type CheckoutValidationResult = {
@@ -24,7 +26,7 @@ export function validateCheckout(state: CheckoutDraft): CheckoutValidationResult
     errors.push('Choose Self pickup or Ship nationwide.');
   }
 
-  if (state.fulfillmentMethod === 'pickup') {
+  if (state.fulfillmentMethod === 'pickup' && !state.inStoreToday) {
     if (!state.pickupDate) errors.push('Select a pickup date.');
     if (!state.pickupTime) errors.push('Select a pickup time.');
   }

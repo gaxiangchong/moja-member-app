@@ -6,7 +6,10 @@ import { purchasePoints } from '../loyalty/member-tier';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
-import { ProductStockService } from '../orders/product-stock.service';
+import {
+  ProductStockService,
+  type StockLine,
+} from '../orders/product-stock.service';
 import {
   parseCreditNote,
   parseReceipt,
@@ -340,36 +343,91 @@ export class SalesplayWebhookService {
     const linesWithCode = parsed.lines.filter((l) => l.productCode?.trim());
     if (linesWithCode.length === 0) return;
 
-    const index = await this.shopCatalog.salesplayCodeIndex();
-    const qtyByProduct = new Map<string, number>();
-    for (const line of linesWithCode) {
-      const match = index.get(line.productCode!.trim().toLowerCase());
-      if (!match) continue;
-      qtyByProduct.set(
-        match.productId,
-        (qtyByProduct.get(match.productId) ?? 0) + line.qty,
-      );
-    }
-    if (qtyByProduct.size === 0) return;
-
+    const lines = await this.stockLinesFor(linesWithCode);
+    if (lines.length === 0) return;
     const businessDate = parsed.businessDate.toISOString().slice(0, 10);
-    const lines = [...qtyByProduct.entries()].map(([productId, qty]) => ({
-      productId,
-      qty,
-    }));
 
     try {
       await this.productStock.decrementForPosSale(lines, businessDate);
       this.logger.log(
-        `Decremented stock for SalesPlay receipt ${parsed.salesplayReceiptId}: ${lines
-          .map((l) => `${l.productId}×${l.qty}`)
-          .join(', ')} on ${businessDate}.`,
+        `Decremented stock for SalesPlay receipt ${parsed.salesplayReceiptId}: ${describeStockLines(
+          lines,
+        )} on ${businessDate}.`,
       );
     } catch (err) {
       // Never let a stock-sync failure roll back the receipt itself — the
       // sale already happened at the till and must still be recorded.
       this.logger.error(
         `Stock decrement failed for SalesPlay receipt ${parsed.salesplayReceiptId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Till lines as stock lines: each SalesPlay code is matched to its catalog
+   * product and size (the code mapped to "6 inch" comes off the 6 inch count).
+   * Unmapped codes are dropped; lines for the same size are summed.
+   */
+  private async stockLinesFor(
+    tillLines: { productCode?: string | null; qty: number }[],
+  ): Promise<StockLine[]> {
+    const index = await this.shopCatalog.salesplayCodeIndex();
+    const byKey = new Map<string, StockLine>();
+    for (const line of tillLines) {
+      const code = line.productCode?.trim();
+      if (!code) continue;
+      const match = index.get(code.toLowerCase());
+      if (!match) continue;
+      const variantLabel = match.variantLabel ?? '';
+      const key = `${match.productId}|${variantLabel}`;
+      const cur = byKey.get(key);
+      if (cur) cur.qty += line.qty;
+      else
+        byKey.set(key, {
+          productId: match.productId,
+          variantLabel,
+          qty: line.qty,
+        });
+    }
+    return [...byKey.values()];
+  }
+
+  /**
+   * A till sale refunded in full on the day it was made puts its cakes back
+   * on today's count, so in-store-today ordering can offer them again. A
+   * partial refund (the credit note cannot say which item) or a refund on a
+   * later day leaves stock alone. Never throws.
+   */
+  private async maybeRestockForRefund(parsed: ParsedCreditNote): Promise<void> {
+    if (!parsed.salesplayReceiptId) return;
+    try {
+      const receipt = await this.prisma.posReceipt.findUnique({
+        where: { salesplayReceiptId: parsed.salesplayReceiptId },
+        select: {
+          netCents: true,
+          businessDate: true,
+          originOnlineOrderId: true,
+          lines: { select: { productCode: true, qty: true } },
+        },
+      });
+      if (!receipt || receipt.originOnlineOrderId) return;
+      const saleDay = receipt.businessDate.toISOString().slice(0, 10);
+      if (parsed.businessDate.toISOString().slice(0, 10) !== saleDay) return;
+      if (parsed.amountCents < receipt.netCents) return;
+
+      const lines = await this.stockLinesFor(receipt.lines);
+      if (lines.length === 0) return;
+      await this.productStock.restockForPosRefund(lines, saleDay);
+      this.logger.log(
+        `Restocked for refunded SalesPlay receipt ${parsed.salesplayReceiptId}: ${describeStockLines(
+          lines,
+        )} on ${saleDay}.`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Restock failed for SalesPlay credit note ${parsed.salesplayCreditNoteId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -499,6 +557,7 @@ export class SalesplayWebhookService {
         parsed.amountCents / 100
       ).toFixed(2)}).`,
     );
+    await this.maybeRestockForRefund(parsed);
     return true;
   }
 
@@ -701,4 +760,13 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+/** "strawberry-shortcake 6 inch×2, brownie×1" for logs. */
+function describeStockLines(lines: StockLine[]): string {
+  return lines
+    .map(
+      (l) => `${l.productId}${l.variantLabel ? ` ${l.variantLabel}` : ''}×${l.qty}`,
+    )
+    .join(', ');
 }

@@ -269,6 +269,8 @@ export type KitchenStockItem = {
   category: string;
   availableQty: number | null;
   soldOut: boolean;
+  /** Size labels the kitchen counts separately. */
+  variants?: string[];
 };
 
 export async function fetchKitchenStock(
@@ -617,6 +619,8 @@ export async function setQueueOrderStatus(
 
 export type StockDayCell = {
   productId: string;
+  /** Size label ("6 inch", "8 inch", "Slice"), or "" for a product without sizes. */
+  variant: string;
   businessDate: string;
   qty: number;
   reservedQty: number;
@@ -632,7 +636,7 @@ export type StockDayCell = {
 export type StockDayGrid = {
   from: string;
   days: number;
-  products: { id: string; name: string; category: string }[];
+  products: { id: string; name: string; category: string; variants: string[] }[];
   cells: StockDayCell[];
 };
 
@@ -656,6 +660,7 @@ export async function fetchStockDayGrid(
 export async function setStockDayQty(
   apiKey: string,
   productId: string,
+  variant: string,
   businessDate: string,
   qty: number,
   baseUrl: string = defaultBase,
@@ -663,7 +668,7 @@ export async function setStockDayQty(
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/ops/kitchen/stock/days`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, businessDate, qty }),
+    body: JSON.stringify({ productId, variant, businessDate, qty }),
   });
   const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);
   assertOk(res, data as unknown as { message?: string | string[] });
@@ -674,6 +679,7 @@ export async function setStockDayQty(
 export async function reconcileStockDay(
   apiKey: string,
   productId: string,
+  variant: string,
   businessDate: string,
   actualQty: number,
   baseUrl: string = defaultBase,
@@ -683,7 +689,7 @@ export async function reconcileStockDay(
     {
       method: 'POST',
       headers: { 'x-ops-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, businessDate, actualQty }),
+      body: JSON.stringify({ productId, variant, businessDate, actualQty }),
     },
   );
   const data = await parseJson<StockDayCell & { message?: string | string[] }>(res);

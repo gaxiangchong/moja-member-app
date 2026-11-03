@@ -6,7 +6,7 @@ import { parseBusinessDate } from './product-stock.service';
 import {
   DEFAULT_PICKUP_RULES,
   evaluatePickupDay,
-  evaluateStoreNow,
+  evaluateInStoreNow,
   needsPreorder,
   normalizePickupRules,
   PickupRulesError,
@@ -104,11 +104,13 @@ export class PickupRulesService {
     const now = input.now ?? new Date();
     const rules = await this.getRules();
     if (input.fulfilmentType === 'IN_STORE') {
-      const store = evaluateStoreNow(rules, now);
-      if (!store.open) {
+      // Collected today from the shelf: no slot and no pre-order notice. Stock
+      // per size is checked when it is reserved.
+      const window = evaluateInStoreNow(rules, now);
+      if (!window.open) {
         throw new BadRequestException({
-          code: 'STORE_CLOSED',
-          message: store.reason ?? 'The store is closed.',
+          code: 'IN_STORE_CLOSED',
+          message: window.reason ?? 'In-store orders are closed.',
         });
       }
       return;

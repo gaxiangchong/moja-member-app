@@ -21,10 +21,28 @@ function dayLabel(ymd: string): { dow: string; date: string } {
   };
 }
 
+/** One row of the grid: a product, or one size of it. */
+export type StockRow = { productId: string; name: string; variant: string };
+
+/** Every size of every product, in grid order. A product without sizes is one row. */
+export function stockRows(grid: Grid | null): StockRow[] {
+  return (grid?.products ?? []).flatMap((p) =>
+    (p.variants.length > 0 ? p.variants : ['']).map((variant) => ({
+      productId: p.id,
+      name: p.name,
+      variant,
+    })),
+  );
+}
+
+export function cellKey(productId: string, variant: string, date: string): string {
+  return `${productId}|${variant}|${date}`;
+}
+
 /**
- * Seven-day availability grid: how many of each cake the kitchen can supply
- * on each day. A cell shows the count the kitchen set and, when some are
- * already spoken for by paid orders, how many are still sellable.
+ * Seven-day availability grid: how many of each cake size the kitchen can
+ * supply on each day. A cell shows the count the kitchen set and, when some
+ * are already spoken for by orders, how many are held.
  */
 export function KitchenDayGrid({
   apiKey,
@@ -64,13 +82,15 @@ export function KitchenDayGrid({
   const cellMap = useMemo(() => {
     const m = new Map<string, Grid['cells'][number]>();
     for (const c of grid?.cells ?? [])
-      m.set(`${c.productId}|${c.businessDate}`, c);
+      m.set(cellKey(c.productId, c.variant, c.businessDate), c);
     return m;
   }, [grid]);
 
+  const rows = useMemo(() => stockRows(grid), [grid]);
+
   const save = useCallback(
-    async (productId: string, businessDate: string, qty: number) => {
-      const key = `${productId}|${businessDate}`;
+    async (productId: string, variant: string, businessDate: string, qty: number) => {
+      const key = cellKey(productId, variant, businessDate);
       setSavingKey(key);
       setErr(null);
       // Optimistic: the kitchen types fast and should not wait on a round trip.
@@ -79,7 +99,7 @@ export function KitchenDayGrid({
           ? {
               ...cur,
               cells: cur.cells.map((c) =>
-                c.productId === productId && c.businessDate === businessDate
+                cellKey(c.productId, c.variant, c.businessDate) === key
                   ? {
                       ...c,
                       qty,
@@ -92,7 +112,7 @@ export function KitchenDayGrid({
           : cur,
       );
       try {
-        await setStockDayQty(apiKey, productId, businessDate, qty, apiBase);
+        await setStockDayQty(apiKey, productId, variant, businessDate, qty, apiBase);
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'Could not save that count');
         await load();
@@ -107,14 +127,15 @@ export function KitchenDayGrid({
   const today = dates[0] ?? null;
 
   const reconcile = useCallback(
-    async (productId: string, businessDate: string, actualQty: number) => {
-      const key = `${productId}|${businessDate}`;
+    async (productId: string, variant: string, businessDate: string, actualQty: number) => {
+      const key = cellKey(productId, variant, businessDate);
       setReconcilingKey(key);
       setReconcileErr(null);
       try {
         const updated = await reconcileStockDay(
           apiKey,
           productId,
+          variant,
           businessDate,
           actualQty,
           apiBase,
@@ -124,7 +145,7 @@ export function KitchenDayGrid({
             ? {
                 ...cur,
                 cells: cur.cells.map((c) =>
-                  c.productId === productId && c.businessDate === businessDate
+                  cellKey(c.productId, c.variant, c.businessDate) === key
                     ? { ...c, actualQty: updated.actualQty, varianceQty: updated.varianceQty }
                     : c,
                 ),
@@ -153,9 +174,9 @@ export function KitchenDayGrid({
         </button>
       </div>
       <p className="dayGridHint">
-        Set how many you can supply each day. A greyed count is not set yet and
-        falls back to the product-level number. “−n” means that many are already
-        sold for that day.
+        Set how many of each size you can supply each day. A greyed count is not
+        set yet. “−n” means that many are held by online orders for that day.
+        Till sales come off automatically.
       </p>
       {err && (
         <p className="memberError" role="alert">
@@ -182,14 +203,16 @@ export function KitchenDayGrid({
             </tr>
           </thead>
           <tbody>
-            {(grid?.products ?? []).map((p) => (
-              <tr key={p.id}>
+            {rows.map((r) => (
+              <tr key={`${r.productId}|${r.variant}`}>
                 <th scope="row" className="dayGridProduct">
-                  {p.name}
+                  {r.name}
+                  {r.variant ? <span className="dayGridVariant"> · {r.variant}</span> : null}
                 </th>
                 {dates.map((d) => {
-                  const cell = cellMap.get(`${p.id}|${d}`);
-                  const key = `${p.id}|${d}`;
+                  const key = cellKey(r.productId, r.variant, d);
+                  const cell = cellMap.get(key);
+                  const label = `${r.name}${r.variant ? ` ${r.variant}` : ''} on ${d}`;
                   return (
                     <td key={d}>
                       <input
@@ -201,9 +224,9 @@ export function KitchenDayGrid({
                         disabled={savingKey === key}
                         onChange={(e) => {
                           const v = Math.max(0, Number(e.target.value) || 0);
-                          void save(p.id, d, v);
+                          void save(r.productId, r.variant, d, v);
                         }}
-                        aria-label={`${p.name} on ${d}`}
+                        aria-label={label}
                       />
                       {cell && cell.reservedQty > 0 && (
                         <span className="dayGridReserved">
@@ -233,12 +256,13 @@ export function KitchenDayGrid({
             </p>
           )}
           <ul className="dayGridReconcileList">
-            {(grid?.products ?? []).map((p) => {
-              const cell = cellMap.get(`${p.id}|${today}`);
-              const key = `${p.id}|${today}`;
+            {rows.map((r) => {
+              const key = cellKey(r.productId, r.variant, today);
+              const cell = cellMap.get(key);
+              const name = `${r.name}${r.variant ? ` · ${r.variant}` : ''}`;
               return (
-                <li key={p.id} className="dayGridReconcileRow">
-                  <span className="dayGridReconcileName">{p.name}</span>
+                <li key={key} className="dayGridReconcileRow">
+                  <span className="dayGridReconcileName">{name}</span>
                   <span className="dayGridReconcileExpected">
                     Expect {cell?.qty ?? 0}
                   </span>
@@ -254,9 +278,9 @@ export function KitchenDayGrid({
                       const raw = e.target.value.trim();
                       if (raw === '') return;
                       const v = Math.max(0, Number(raw) || 0);
-                      void reconcile(p.id, today, v);
+                      void reconcile(r.productId, r.variant, today, v);
                     }}
-                    aria-label={`Physical count of ${p.name} today`}
+                    aria-label={`Physical count of ${name} today`}
                   />
                   {cell?.varianceQty != null && (
                     <span

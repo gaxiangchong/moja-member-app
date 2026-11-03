@@ -1226,8 +1226,47 @@ export async function cancelMyOrder(
 
 export type ShopAvailability = {
   businessDate: string;
-  products: { id: string; sellableQty: number | null }[];
+  products: {
+    id: string;
+    sellableQty: number | null;
+    /** Left per size ("6 inch", "Slice"); a size missing here was not counted. */
+    variants?: Record<string, number>;
+  }[];
 };
+
+/** Whether a cart can be collected in store today, from the kitchen's count. */
+export type InStoreTodayQuote = {
+  available: boolean;
+  /** Why not, for the checkout to show. */
+  reason: string | null;
+  today: string;
+  /** "3:40 PM" when it can be ordered. */
+  readyFrom: string | null;
+};
+
+/** Display only — placing the order checks the stock again and holds it. */
+export async function fetchInStoreToday(
+  lines: { productId: string; variantLabel?: string | null; qty: number }[],
+): Promise<InStoreTodayQuote> {
+  const res = await fetch(`${base}/shop/in-store-today`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      lines: lines.map((l) => ({
+        productId: l.productId,
+        variantLabel: l.variantLabel ?? null,
+        qty: l.qty,
+      })),
+    }),
+  });
+  const data = await parseJson<InStoreTodayQuote & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : 'Failed to check in-store stock',
+    );
+  }
+  return data;
+}
 
 /** Sellable quantity per product for one collection day. */
 export type PickupSlotOffer = {

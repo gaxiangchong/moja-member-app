@@ -5,6 +5,7 @@ import {
   DefaultValuePipe,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -62,6 +63,7 @@ import {
   PreviewShopCatalogSalesplaySyncDto,
   SyncShopCatalogFromSalesplayDto,
 } from './dto/sync-shop-catalog-from-salesplay.dto';
+import { CheckSalesplayCodesDto } from './dto/check-salesplay-codes.dto';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import type { SalesplaySyncOptions } from '../shop-catalog/salesplay-catalog-sync';
 import { HomeAdsService } from '../home-ads/home-ads.service';
@@ -541,6 +543,17 @@ export class AdminController {
   @RequirePermissions(P.VOUCHER_READ)
   listShopCatalogSalesplayCodes() {
     return this.shopCatalog.listKnownSalesplayCodes();
+  }
+
+  /**
+   * Checks SalesPlay codes against the uploaded SalesPlay product list and
+   * till receipts, and flags a code already used by another product.
+   */
+  @Post('shop-catalog/salesplay-codes/check')
+  @HttpCode(200)
+  @RequirePermissions(P.VOUCHER_READ)
+  checkShopCatalogSalesplayCodes(@Body() dto: CheckSalesplayCodesDto) {
+    return this.shopCatalog.checkSalesplayCodes(dto.codes);
   }
 
   @Post('shop-catalog/products')

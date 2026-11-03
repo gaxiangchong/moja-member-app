@@ -53,7 +53,23 @@ export type ShopPickupRules = {
   preorderDays: number;
   /** Product categories (e.g. "whole_cakes") that need the pre-order notice. */
   preorderCategories: string[];
+  /** "In-store today": collect today from what the kitchen has on the shelf. */
+  inStore: InStoreRules;
   slots: PickupSlotConfig[];
+};
+
+export type InStoreRules = {
+  /** Offer "In-store today" at checkout at all. */
+  enabled: boolean;
+  /**
+   * Categories sold from today's kitchen count. Each of their sizes needs a
+   * count with enough left; other items in the cart are not stock-checked.
+   */
+  categories: string[];
+  /** Minutes from paying to "ready for collection". */
+  prepMinutes: number;
+  /** Stop taking in-store orders this many minutes before closing. */
+  cutoffMinutes: number;
 };
 
 export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
@@ -67,6 +83,12 @@ export const DEFAULT_PICKUP_RULES: ShopPickupRules = {
   maxAdvanceDays: 30,
   preorderDays: 2,
   preorderCategories: ['whole_cakes'],
+  inStore: {
+    enabled: true,
+    categories: ['whole_cakes'],
+    prepMinutes: 30,
+    cutoffMinutes: 30,
+  },
   slots: [
     {
       start: '11:00',
@@ -217,6 +239,7 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
       : DEFAULT_PICKUP_RULES.maxAdvanceDays;
   const preorderDays = normalizePreorderDays(raw.preorderDays, maxAdvanceDays);
   const preorderCategories = normalizeCategories(raw.preorderCategories);
+  const inStore = normalizeInStore(raw.inStore);
   if (!Array.isArray(raw.slots) || raw.slots.length === 0) {
     throw new PickupRulesError('Add at least one pickup slot.');
   }
@@ -238,7 +261,61 @@ export function normalizePickupRules(input: unknown): ShopPickupRules {
     maxAdvanceDays,
     preorderDays,
     preorderCategories,
+    inStore,
     slots,
+  };
+}
+
+export type InStoreNow = {
+  /** In-store orders can be placed right now (before checking stock). */
+  open: boolean;
+  reason: string | null;
+  /** yyyy-mm-dd in the shop timezone; the day whose stock is used. */
+  today: string;
+  /** When an order placed now is ready, HH:mm; null when closed. */
+  readyAt: string | null;
+};
+
+/**
+ * Whether "In-store today" is open right now: switched on, the shop is open,
+ * and it is not yet `cutoffMinutes` before closing. Stock is checked
+ * separately, per size, against the kitchen's count for `today`.
+ */
+export function evaluateInStoreNow(
+  rules: ShopPickupRules,
+  now: Date,
+): InStoreNow {
+  const parts = zonedParts(now, rules.timeZone);
+  const closed = (reason: string): InStoreNow => ({
+    open: false,
+    reason,
+    today: parts.ymd,
+    readyAt: null,
+  });
+  if (!rules.inStore.enabled) {
+    return closed('In-store orders are not available right now.');
+  }
+  const store = evaluateStoreNow(rules, now);
+  if (!store.open) return closed(store.reason ?? 'The store is closed.');
+  const hours = hoursForWeekday(rules, parts.weekday) ?? {
+    open: rules.openTime,
+    close: rules.closeTime,
+  };
+  const lastOrder = minutesOf(hours.close) - rules.inStore.cutoffMinutes;
+  if (parts.minutes >= lastOrder) {
+    return closed(
+      `In-store orders close at ${formatClock(clockOf(Math.max(0, lastOrder)))}. Pre-order for another day instead.`,
+    );
+  }
+  const ready = Math.min(
+    parts.minutes + rules.inStore.prepMinutes,
+    minutesOf(hours.close),
+  );
+  return {
+    open: true,
+    reason: null,
+    today: parts.ymd,
+    readyAt: clockOf(ready),
   };
 }
 
@@ -638,6 +715,49 @@ function normalizeCategories(input: unknown): string[] {
     out.add(text);
   }
   return [...out].sort();
+}
+
+function normalizeInStore(input: unknown): InStoreRules {
+  const defaults = DEFAULT_PICKUP_RULES.inStore;
+  if (input == null)
+    return { ...defaults, categories: [...defaults.categories] };
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new PickupRulesError('In-store settings must be an object.');
+  }
+  const raw = input as Partial<Record<keyof InStoreRules, unknown>>;
+  const minutes = (value: unknown, fallback: number, label: string): number => {
+    if (value == null || String(value as string).trim() === '') return fallback;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 240) {
+      throw new PickupRulesError(
+        `${label} must be a whole number of minutes from 0 to 240.`,
+      );
+    }
+    return n;
+  };
+  return {
+    enabled: raw.enabled == null ? defaults.enabled : Boolean(raw.enabled),
+    categories:
+      raw.categories == null
+        ? [...defaults.categories]
+        : normalizeCategories(raw.categories),
+    prepMinutes: minutes(
+      raw.prepMinutes,
+      defaults.prepMinutes,
+      'In-store preparation time',
+    ),
+    cutoffMinutes: minutes(
+      raw.cutoffMinutes,
+      defaults.cutoffMinutes,
+      'In-store cut-off',
+    ),
+  };
+}
+
+function clockOf(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60) % 24;
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 /** 2026-11-02 -> "Mon 2 Nov". */

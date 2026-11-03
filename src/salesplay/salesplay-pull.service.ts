@@ -41,6 +41,18 @@ export type PosSyncHealth = {
   /** Null when the scheduled reconcile is switched off. */
   nextPullDueAt: string | null;
   pullInProgress: boolean;
+  /** The most recently received till receipt, however it arrived. */
+  lastReceipt: {
+    receiptNumber: string | null;
+    netCents: number;
+    /** When SalesPlay says it was sold, if known. */
+    soldAt: string | null;
+    /** When the member app received it. */
+    receivedAt: string;
+    source: string;
+    /** Linked to a member (points awarded). */
+    matchedMember: boolean;
+  } | null;
 };
 
 /**
@@ -352,6 +364,7 @@ export class SalesplayPullService {
       unmatchedReceiptsToday,
       onlineSettlementReceiptsToday,
       totalReceipts,
+      lastReceipt,
     ] = await Promise.all([
       this.prisma.posReceipt.count({
         where: { businessDate: { gte: todayStart } },
@@ -373,6 +386,18 @@ export class SalesplayPullService {
         },
       }),
       this.prisma.posReceipt.count(),
+      this.prisma.posReceipt.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          receiptNumber: true,
+          salesplayReceiptId: true,
+          netCents: true,
+          soldAt: true,
+          createdAt: true,
+          source: true,
+          customerId: true,
+        },
+      }),
     ]);
 
     return {
@@ -391,6 +416,17 @@ export class SalesplayPullService {
       unmatchedReceiptsToday,
       onlineSettlementReceiptsToday,
       totalReceipts,
+      lastReceipt: lastReceipt
+        ? {
+            receiptNumber:
+              lastReceipt.receiptNumber ?? lastReceipt.salesplayReceiptId,
+            netCents: lastReceipt.netCents,
+            soldAt: lastReceipt.soldAt?.toISOString() ?? null,
+            receivedAt: lastReceipt.createdAt.toISOString(),
+            source: lastReceipt.source,
+            matchedMember: lastReceipt.customerId !== null,
+          }
+        : null,
     };
   }
 }

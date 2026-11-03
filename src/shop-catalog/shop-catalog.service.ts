@@ -889,6 +889,8 @@ export class ShopCatalogService implements OnModuleInit {
       category: ShopCatalogProduct['category'];
       availableQty: number | null;
       soldOut: boolean;
+      /** Size labels ("6 inch", "8 inch", "Slice"); the kitchen counts each. */
+      variants: string[];
     }[]
   > {
     const rows = await this.prisma.shopProduct.findMany({
@@ -901,6 +903,7 @@ export class ShopCatalogService implements OnModuleInit {
       category: p.category,
       availableQty: p.availableQty ?? null,
       soldOut: isProductSoldOut(p),
+      variants: (p.variants ?? []).map((v) => v.label.trim()).filter(Boolean),
     }));
   }
 
@@ -1573,6 +1576,105 @@ export class ShopCatalogService implements OnModuleInit {
       }
     }
     return index;
+  }
+
+  /**
+   * Checks SalesPlay product codes typed in the admin: is each one in the
+   * SalesPlay product list (the Back Office export uploaded on the sync
+   * screen), has it been sold at the till, and is another catalog product or
+   * size already using it. `inProductList` is null when no product list has
+   * been uploaded yet.
+   */
+  async checkSalesplayCodes(codes: string[]): Promise<{
+    productListUploadedAt: string | null;
+    results: {
+      code: string;
+      inProductList: boolean | null;
+      productListName: string | null;
+      productListEnabled: boolean | null;
+      tillSales: number;
+      tillName: string | null;
+      usedBy: {
+        productId: string;
+        name: string;
+        variantLabel: string | null;
+      }[];
+    }[];
+  }> {
+    const wanted = [
+      ...new Set(codes.map((c) => c.trim()).filter(Boolean)),
+    ].slice(0, 100);
+
+    const stored = await this.readStoredSalesplayCsv();
+    const listByCode = new Map<string, { name: string; enabled: boolean }>();
+    if (stored) {
+      for (const row of this.parseSalesplayCsv(stored.csv).rows) {
+        listByCode.set(row.code.trim().toLowerCase(), {
+          name: row.name,
+          enabled: row.enabled,
+        });
+      }
+    }
+
+    const sold =
+      wanted.length === 0
+        ? []
+        : await this.prisma.posReceiptLine.groupBy({
+            by: ['productCode'],
+            where: { productCode: { in: wanted } },
+            _count: { _all: true },
+            _max: { name: true },
+          });
+    const soldByCode = new Map(
+      sold.map((r) => [
+        (r.productCode ?? '').toLowerCase(),
+        { count: r._count._all, name: r._max.name ?? null },
+      ]),
+    );
+
+    // Every place a code is mapped, so a code typed twice is caught.
+    const usedBy = new Map<
+      string,
+      { productId: string; name: string; variantLabel: string | null }[]
+    >();
+    const addUse = (
+      code: string | null | undefined,
+      use: { productId: string; name: string; variantLabel: string | null },
+    ) => {
+      const key = code?.trim().toLowerCase();
+      if (!key) return;
+      usedBy.set(key, [...(usedBy.get(key) ?? []), use]);
+    };
+    for (const p of await this.loadAll()) {
+      addUse(p.salesplayProductCode, {
+        productId: p.id,
+        name: p.name,
+        variantLabel: null,
+      });
+      for (const [label, code] of Object.entries(
+        p.salesplayVariantCodes ?? {},
+      )) {
+        addUse(code, { productId: p.id, name: p.name, variantLabel: label });
+      }
+    }
+
+    return {
+      productListUploadedAt: stored?.uploadedAt ?? null,
+      results: wanted.map((code) => {
+        const key = code.toLowerCase();
+        const listed = listByCode.get(key);
+        const till = soldByCode.get(key);
+        return {
+          code,
+          inProductList: stored ? Boolean(listed) : null,
+          productListName: listed?.name ?? null,
+          productListEnabled: listed ? listed.enabled : null,
+          tillSales: till?.count ?? 0,
+          tillName: till?.name ?? null,
+          usedBy: usedBy.get(key) ?? [],
+        };
+      }),
+    };
   }
 
   /**

@@ -34,6 +34,8 @@ import {
   createXenditCardTokenSession,
   createShopOrderCheckout,
   fetchDeliveryInfo,
+  fetchInStoreToday,
+  type InStoreTodayQuote,
   fetchPaymentsTestMode,
   shippingFeeFor,
   type DeliveryInfo,
@@ -350,6 +352,12 @@ export function ShopFlow({
   ];
   const hasCake = unshippableNames.length > 0;
   const [pickupBy, setPickupBy] = useState<PickupBy>('self');
+  /** Pickup only: pre-order for a day, or collect today from the shelf. */
+  const [orderTiming, setOrderTiming] = useState<'preorder' | 'instore'>('preorder');
+  /** Whether this cart can be collected in store today (kitchen's count). */
+  const [inStoreQuote, setInStoreQuote] = useState<InStoreTodayQuote | null>(null);
+  /** Shown when in-store was chosen and then sold out underneath the member. */
+  const [inStoreNotice, setInStoreNotice] = useState<string | null>(null);
 
   const wholeCakeCount = productLines
     .filter((l) => products.find((p) => p.id === l.productId)?.category === 'whole_cakes')
@@ -415,8 +423,10 @@ export function ShopFlow({
   const subtotal = getSubtotalCents();
   const discount = getDiscountCents();
   const isShipping = fulfillmentMethod === 'shipping';
-  // A pickup goes out on a chosen day and time slot; a parcel is just posted.
-  const isScheduled = fulfillmentMethod === 'pickup';
+  // A pickup is either pre-ordered for a chosen day and time slot, or
+  // collected today from what the kitchen has on the shelf. A parcel is posted.
+  const isInStore = fulfillmentMethod === 'pickup' && orderTiming === 'instore';
+  const isScheduled = fulfillmentMethod === 'pickup' && !isInStore;
   const byCourier = isScheduled && pickupBy === 'courier';
   // Whole cakes collected far enough ahead: the same rule the server applies.
   const earlyDiscount = isScheduled
@@ -486,6 +496,44 @@ export function ShopFlow({
     const chosen = pickupDay.slots.find((slot) => slot.start === pickupTime);
     if (!chosen?.available) setPickupTime(null);
   }, [pickupDay, pickupTime, pickupDate, isScheduled, setPickupTime]);
+
+  // In-store today depends on the kitchen's count, which till sales and other
+  // orders keep pulling down: check when the cart changes and every minute.
+  const inStoreKey = productLines
+    .map((l) => `${l.productId}|${l.variantLabel ?? ''}|${l.qty}`)
+    .join(',');
+  useEffect(() => {
+    if (screen !== 'checkout' || fulfillmentMethod !== 'pickup' || !inStoreKey) {
+      setInStoreQuote(null);
+      return;
+    }
+    let alive = true;
+    const lines = inStoreKey.split(',').map((part) => {
+      const [productId, variantLabel, qty] = part.split('|');
+      return { productId, variantLabel: variantLabel || null, qty: Number(qty) };
+    });
+    const check = () =>
+      void fetchInStoreToday(lines)
+        .then((quote) => {
+          if (alive) setInStoreQuote(quote);
+        })
+        .catch(() => {
+          if (alive) setInStoreQuote(null);
+        });
+    check();
+    const timer = window.setInterval(check, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [screen, fulfillmentMethod, inStoreKey]);
+
+  // Sold out (or closed) while in-store was chosen: fall back to pre-order.
+  useEffect(() => {
+    if (orderTiming !== 'instore' || !inStoreQuote || inStoreQuote.available) return;
+    setOrderTiming('preorder');
+    setInStoreNotice(inStoreQuote.reason);
+  }, [orderTiming, inStoreQuote]);
 
   // Availability is per collection day, so re-check whenever the member picks
   // a different date or changes the cart.
@@ -990,14 +1038,20 @@ export function ShopFlow({
       pickupDate,
       pickupTime,
       delivery,
+      inStoreToday: isInStore,
     };
     const { valid, errors } = validateCheckout(draft);
     if (!valid) {
       setCheckoutErrors(errors);
       return;
     }
+    if (isInStore && inStoreQuote && !inStoreQuote.available) {
+      setCheckoutErrors([inStoreQuote.reason ?? 'In-store collection is not available right now.']);
+      return;
+    }
     if (
       draft.fulfillmentMethod === 'pickup' &&
+      !isInStore &&
       pickupDay &&
       draft.pickupDate === pickupDay.date
     ) {
@@ -1042,13 +1096,20 @@ export function ShopFlow({
       }
     }
     setCheckoutErrors(null);
-    const lines = fulfillmentSummaryLines(
-      draft.fulfillmentMethod,
-      draft.pickupDate,
-      draft.pickupTime,
-      draft.delivery,
-      pickupBy,
-    );
+    // The server writes the in-store summary itself; this copy is for the
+    // demo screen and the order history shown before it refreshes.
+    const lines = isInStore
+      ? [
+          'In store · prepare now',
+          inStoreQuote?.readyFrom ? `Collect today from ${inStoreQuote.readyFrom}` : 'Collect today',
+        ]
+      : fulfillmentSummaryLines(
+          draft.fulfillmentMethod,
+          draft.pickupDate,
+          draft.pickupTime,
+          draft.delivery,
+          pickupBy,
+        );
     const linePayload = checkoutCart.map((l) => ({
       productId: l.productId,
       name: l.name,
@@ -1081,8 +1142,14 @@ export function ShopFlow({
           discountCents: discount + earlyDiscount,
           fulfillmentSummary: lines,
           fulfilmentType:
-            draft.fulfillmentMethod === 'shipping' ? 'DELIVERY' : 'PICKUP',
-          ...(draft.fulfillmentMethod === 'shipping'
+            draft.fulfillmentMethod === 'shipping'
+              ? 'DELIVERY'
+              : isInStore
+                ? 'IN_STORE'
+                : 'PICKUP',
+          ...(isInStore
+            ? {}
+            : draft.fulfillmentMethod === 'shipping'
             ? {
                 deliveryMethod: 'SHIPPING' as const,
                 delivery: {
@@ -1514,6 +1581,56 @@ export function ShopFlow({
             ) : !canShip ? (
               <p className="caption" style={{ margin: '6px 0 0' }}>
                 Kindly show the QR code to our staff upon pickup.
+              </p>
+            ) : null}
+            {fulfillmentMethod === 'pickup' ? (
+              <div className="orderTimingRow" role="radiogroup" aria-label="When to collect">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!isInStore}
+                  className={`chip shopFulfillmentChip shopFulfillOption${!isInStore ? ' active' : ''}`}
+                  onClick={() => {
+                    setOrderTiming('preorder');
+                    setInStoreNotice(null);
+                  }}
+                >
+                  <strong>Pre-order</strong>
+                  <small>Choose a pickup date and time</small>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={isInStore}
+                  disabled={!inStoreQuote?.available}
+                  className={`chip shopFulfillmentChip shopFulfillOption${isInStore ? ' active' : ''}`}
+                  onClick={() => {
+                    setOrderTiming('instore');
+                    setInStoreNotice(null);
+                  }}
+                >
+                  <strong>In-store today</strong>
+                  <small>
+                    {inStoreQuote == null
+                      ? 'Checking today’s stock…'
+                      : inStoreQuote.available
+                        ? `Ready from ${inStoreQuote.readyFrom ?? 'soon'}`
+                        : 'Not available now'}
+                  </small>
+                </button>
+              </div>
+            ) : null}
+            {fulfillmentMethod === 'pickup' && inStoreNotice ? (
+              <p className="pickupAvailShort">{inStoreNotice}</p>
+            ) : fulfillmentMethod === 'pickup' && !isInStore && inStoreQuote && !inStoreQuote.available && inStoreQuote.reason ? (
+              <p className="caption" style={{ margin: '6px 0 0' }}>
+                In-store today: {inStoreQuote.reason}
+              </p>
+            ) : null}
+            {isInStore && inStoreQuote?.available ? (
+              <p className="caption" style={{ margin: '6px 0 0' }}>
+                From what&apos;s on our shelf today. Collect at the shop from{' '}
+                {inStoreQuote.readyFrom ?? 'soon'} — we&apos;ll have it ready.
               </p>
             ) : null}
             {isScheduled ? (
@@ -2236,6 +2353,22 @@ function ProductDetailScreen({
   const selectedVariant = variants?.find((v) => v.id === variantId);
   const unitCents = selectedVariant?.priceCents ?? product.basePriceCents;
   const variantLabel = selectedVariant?.label;
+  // What the kitchen has on the shelf today, per size (null = not counted).
+  const [todayLeft, setTodayLeft] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetchShopAvailability()
+      .then((res) => {
+        if (alive) setTodayLeft(res.products.find((p) => p.id === product.id)?.variants ?? {});
+      })
+      .catch(() => {
+        if (alive) setTodayLeft(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [product.id]);
+  const leftToday = variantLabel && todayLeft ? todayLeft[variantLabel] : undefined;
   const soldOut = isShopProductSoldOut(product);
   const maxQty =
     product.availableQty != null ? Math.max(1, product.availableQty) : 99;
@@ -2316,6 +2449,13 @@ function ProductDetailScreen({
                   </button>
                 ))}
               </div>
+              {leftToday !== undefined ? (
+                <p className={leftToday > 0 ? 'shopTodayStock' : 'shopTodayStock is-out'}>
+                  {leftToday > 0
+                    ? `Available in store today · ${leftToday} left`
+                    : `${variantLabel} sold out in store today — pre-order for another day`}
+                </p>
+              ) : null}
             </div>
           ) : null}
           {!soldOut ? (

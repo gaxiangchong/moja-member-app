@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  checkSalesplayCodes,
   clearShopCatalogProductImage,
   createShopCatalogProduct,
   deleteShopCatalogProduct,
   fetchSalesplayCodeSuggestions,
+  type SalesplayCodeCheck,
   fetchShopCatalogProducts,
   resolveApiAssetUrl,
   SHOP_CATALOG_CATEGORIES,
@@ -13,7 +15,64 @@ import {
   type ShopCatalogProduct,
   type ShopCatalogProductInput,
 } from '../api';
+import { SalesplayStatusCard } from './SalesplayStatusCard';
 import { SalesplaySync } from './SalesplaySync';
+
+type CodeVerdict = { tone: 'ok' | 'warn' | 'bad'; text: string };
+
+/**
+ * What a code check means for one code box. `self` is the product (and size)
+ * being edited, so it is not reported as a clash with itself.
+ */
+function codeVerdict(
+  check: SalesplayCodeCheck | undefined,
+  self: { productId: string; variantLabel: string | null },
+  listUploadedAt: string | null,
+): CodeVerdict | null {
+  if (!check) return null;
+  const others = check.usedBy.filter(
+    (u) => !(u.productId === self.productId && (u.variantLabel ?? null) === self.variantLabel),
+  );
+  if (others.length > 0) {
+    const o = others[0];
+    return { tone: 'bad', text: `Already used by ${o.name}${o.variantLabel ? ` · ${o.variantLabel}` : ''}.` };
+  }
+  const sold = check.tillSales > 0 ? ` Sold at the till ${check.tillSales}×.` : '';
+  if (check.inProductList === true) {
+    return check.productListEnabled === false
+      ? { tone: 'warn', text: `In SalesPlay as “${check.productListName}”, but disabled there.${sold}` }
+      : { tone: 'ok', text: `SalesPlay: ${check.productListName}.${sold}` };
+  }
+  if (check.inProductList === false) {
+    const when = listUploadedAt ? ` (uploaded ${new Date(listUploadedAt).toLocaleDateString()})` : '';
+    return check.tillSales > 0
+      ? { tone: 'warn', text: `Not in the SalesPlay product list${when}, but sold at the till ${check.tillSales}× as “${check.tillName}”. Upload a newer product list to confirm.` }
+      : { tone: 'bad', text: `Not found in the SalesPlay product list${when} and never sold at the till. Check for a typo.` };
+  }
+  // No product list uploaded: till receipts are the only evidence.
+  return check.tillSales > 0
+    ? { tone: 'ok', text: `Sold at the till ${check.tillSales}× as “${check.tillName}”.` }
+    : { tone: 'warn', text: 'Not seen on any till receipt yet. Upload the SalesPlay product list (Sync with SalesPlay) to check it.' };
+}
+
+/** The "!" shown beside a missing or doubtful code. */
+function CodeAlert({ tone, title }: { tone: 'warn' | 'bad'; title: string }) {
+  return (
+    <span className={tone === 'bad' ? 'codeAlert codeAlert--danger' : 'codeAlert'} title={title} aria-label={title} role="img">
+      !
+    </span>
+  );
+}
+
+function CodeCheckLine({ verdict }: { verdict: CodeVerdict | null }) {
+  if (!verdict) return null;
+  return (
+    <p className={`codeCheck codeCheck--${verdict.tone}`}>
+      {verdict.tone === 'ok' ? <span aria-hidden>✓</span> : <CodeAlert tone={verdict.tone} title={verdict.text} />}
+      <span>{verdict.text}</span>
+    </p>
+  );
+}
 
 const CATEGORY_LABELS: Record<ShopCatalogCategory, string> = {
   whole_cakes: 'Whole cakes',
@@ -181,6 +240,11 @@ export function SalesCatalog() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Results of "Check codes with SalesPlay", keyed by lower-case code. */
+  const [codeChecks, setCodeChecks] = useState<Record<string, SalesplayCodeCheck>>({});
+  const [codeListUploadedAt, setCodeListUploadedAt] = useState<string | null>(null);
+  const [checkingCodes, setCheckingCodes] = useState(false);
+  const [codeCheckError, setCodeCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before the fetch; no data-fetching lib in this repo yet
@@ -238,16 +302,52 @@ export function SalesCatalog() {
     setImageError(null);
     setSavedAt(null);
     setEditorOpen(true);
+    setCodeChecks({});
+    setCodeCheckError(null);
   }
 
   function openEdit(p: ShopCatalogProduct) {
+    const next = formFromProduct(p);
     setEditingProduct(p);
-    setForm(formFromProduct(p));
+    setForm(next);
     setFormError(null);
     setImageError(null);
     setSavedAt(null);
     setEditorOpen(true);
+    setCodeChecks({});
+    void runCodeCheck(next);
   }
+
+  /** Every code typed in the editor: the product's own, then each size's. */
+  function formCodes(f: EditorForm): string[] {
+    return [f.salesplayCode, ...f.variants.map((v) => v.salesplayCode)].map((c) => c.trim()).filter(Boolean);
+  }
+
+  /** Looks the editor's codes up in the SalesPlay product list and till receipts. */
+  async function runCodeCheck(f: EditorForm = form) {
+    const codes = formCodes(f);
+    setCodeCheckError(null);
+    if (codes.length === 0) {
+      setCodeChecks({});
+      return;
+    }
+    setCheckingCodes(true);
+    try {
+      const res = await checkSalesplayCodes(codes);
+      setCodeChecks(Object.fromEntries(res.results.map((r) => [r.code.toLowerCase(), r])));
+      setCodeListUploadedAt(res.productListUploadedAt);
+    } catch (err) {
+      setCodeCheckError(err instanceof Error ? err.message : 'Could not check the codes');
+    } finally {
+      setCheckingCodes(false);
+    }
+  }
+
+  const editingId = editingProduct?.id ?? form.id.trim();
+  const verdictFor = (code: string, variantLabel: string | null): CodeVerdict | null =>
+    code.trim()
+      ? codeVerdict(codeChecks[code.trim().toLowerCase()], { productId: editingId, variantLabel }, codeListUploadedAt)
+      : null;
 
   function closeEditor() {
     setEditorOpen(false);
@@ -425,6 +525,7 @@ export function SalesCatalog() {
     return (
       <div className="viewStack">
         {switcher}
+        <SalesplayStatusCard />
         <SalesplaySync products={products ?? []} onCatalogChanged={reloadProducts} />
       </div>
     );
@@ -433,6 +534,7 @@ export function SalesCatalog() {
   return (
     <div className="viewStack">
       {switcher}
+      <SalesplayStatusCard />
       {missingCodeCount > 0 ? (
         <p className="viewMuted" style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: 8, margin: 0 }}>
           <strong>{missingCodeCount} live product{missingCodeCount === 1 ? ' has' : 's have'} no SalesPlay code.</strong>{' '}
@@ -528,11 +630,21 @@ export function SalesCatalog() {
                       const shown = st.codes.slice(0, 2).join(', ');
                       return (
                         <>
-                          {st.codes.length ? <code title={st.codes.join(', ')}>{shown}{st.codes.length > 2 ? ` +${st.codes.length - 2}` : ''}</code> : null}
+                          {st.missing > 0 ? (
+                            <CodeAlert
+                              tone="warn"
+                              title="Missing SalesPlay code — till sales can't be matched to this product, so they won't come off kitchen stock or show in reports"
+                            />
+                          ) : null}
+                          {st.codes.length ? (
+                            <code title={st.codes.join(', ')} style={{ marginLeft: st.missing > 0 ? 6 : 0 }}>
+                              {shown}{st.codes.length > 2 ? ` +${st.codes.length - 2}` : ''}
+                            </code>
+                          ) : null}
                           {st.missing > 0 ? (
                             <span
                               className="badge badge--warning"
-                              style={{ marginLeft: st.codes.length ? 6 : 0 }}
+                              style={{ marginLeft: 6 }}
                               title="No SalesPlay product code — in-store sales cannot be matched to this product in reports"
                             >
                               {st.codes.length && st.total > 1 ? `${st.missing} of ${st.total} sizes: no code` : 'No POS code'}
@@ -686,13 +798,31 @@ export function SalesCatalog() {
                     />
                   </label>
                   <label className="filterField">
-                    SalesPlay product code
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      SalesPlay product code
+                      {!form.salesplayCode.trim() && form.variants.length === 0 ? (
+                        <CodeAlert tone="warn" title="Missing SalesPlay code" />
+                      ) : null}
+                    </span>
                     <input
                       type="text" list="salesplayCodeList" maxLength={64} placeholder="Code of the matching product in the POS"
                       value={form.salesplayCode}
                       onChange={(e) => setForm((f) => ({ ...f, salesplayCode: e.target.value }))}
                     />
+                    <CodeCheckLine verdict={verdictFor(form.salesplayCode, null)} />
                   </label>
+                </div>
+                <div className="drawerRowActions" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="toolbarButton"
+                    disabled={checkingCodes || formCodes(form).length === 0}
+                    onClick={() => void runCodeCheck()}
+                    title="Look up each code in the SalesPlay product list and on till receipts"
+                  >
+                    {checkingCodes ? 'Checking…' : 'Check codes with SalesPlay'}
+                  </button>
+                  {codeCheckError ? <span className="viewError">{codeCheckError}</span> : null}
                 </div>
                 <p className="viewMuted" style={{ marginBottom: 0 }}>
                   Links this product to its POS product, so online orders pushed to SalesPlay carry the POS code and
@@ -775,29 +905,43 @@ export function SalesCatalog() {
                 </div>
 
                 <div className="variantList">
-                  {form.variants.map((v, i) => (
-                    <div className="variantRow" key={i}>
-                      <input
-                        type="text" placeholder="Size / label" value={v.label}
-                        onChange={(e) => updateVariant(i, { label: e.target.value })}
-                      />
-                      <input
-                        type="number" min={0} step="0.01" placeholder="RM" value={v.priceRm}
-                        onChange={(e) => updateVariant(i, { priceRm: e.target.value })}
-                      />
-                      <input
-                        type="text" list="salesplayCodeList" placeholder="POS code" maxLength={64} value={v.salesplayCode}
-                        onChange={(e) => updateVariant(i, { salesplayCode: e.target.value })}
-                        aria-label="SalesPlay code for this size"
-                      />
-                      <Toggle checked={v.available} onChange={(val) => updateVariant(i, { available: val })} label="Available" />
-                      <button type="button" className="variantRemove" onClick={() => removeVariant(i)} aria-label="Remove variant">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6 6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
+                  {form.variants.map((v, i) => {
+                    const verdict = verdictFor(v.salesplayCode, v.label.trim() || null);
+                    const missing = !v.salesplayCode.trim() && !form.salesplayCode.trim();
+                    return (
+                      <div key={i}>
+                        <div className="variantRow">
+                          <input
+                            type="text" placeholder="Size / label" value={v.label}
+                            onChange={(e) => updateVariant(i, { label: e.target.value })}
+                          />
+                          <input
+                            type="number" min={0} step="0.01" placeholder="RM" value={v.priceRm}
+                            onChange={(e) => updateVariant(i, { priceRm: e.target.value })}
+                          />
+                          <span className="variantCodeField">
+                            <input
+                              type="text" list="salesplayCodeList" placeholder="POS code" maxLength={64} value={v.salesplayCode}
+                              onChange={(e) => updateVariant(i, { salesplayCode: e.target.value })}
+                              aria-label="SalesPlay code for this size"
+                            />
+                            {missing ? (
+                              <CodeAlert tone="warn" title={`Missing SalesPlay code for ${v.label || 'this size'}`} />
+                            ) : verdict && verdict.tone !== 'ok' ? (
+                              <CodeAlert tone={verdict.tone} title={verdict.text} />
+                            ) : null}
+                          </span>
+                          <Toggle checked={v.available} onChange={(val) => updateVariant(i, { available: val })} label="Available" />
+                          <button type="button" className="variantRemove" onClick={() => removeVariant(i)} aria-label="Remove variant">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M18 6 6 18M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        <CodeCheckLine verdict={verdict} />
+                      </div>
+                    );
+                  })}
                   <button type="button" className="toolbarButton" onClick={addVariant}>+ Add size / variant</button>
                 </div>
               </section>

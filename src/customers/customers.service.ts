@@ -47,10 +47,12 @@ import type { SubmitMemberOrderDto } from './dto/submit-member-order.dto';
 import { purchasePoints, tierForPoints } from '../loyalty/member-tier';
 import { visibleOrdersWhere } from '../orders/member-orders-settings';
 import { MemberOrdersSettingsService } from '../orders/member-orders-settings.service';
+import { InStoreService } from '../orders/in-store.service';
 import { PickupRulesService } from '../orders/pickup-rules.service';
 import {
   parseBusinessDate,
   ProductStockService,
+  type StockLine,
   todayBusinessDate,
 } from '../orders/product-stock.service';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
@@ -170,6 +172,7 @@ export class CustomersService {
     private readonly campaignAutomation: CampaignAutomationService,
     private readonly productStock: ProductStockService,
     private readonly pickupRules: PickupRulesService,
+    private readonly inStore: InStoreService,
     private readonly orderNotices: OrderNotificationService,
     private readonly memberOrdersSettings: MemberOrdersSettingsService,
     private readonly deliverySettings: DeliverySettingsService,
@@ -1104,7 +1107,7 @@ export class CustomersService {
         id: true,
         status: true,
         scheduledDate: true,
-        lines: { select: { productId: true, qty: true } },
+        lines: { select: { productId: true, variantLabel: true, qty: true } },
       },
     });
     if (!order) {
@@ -1196,7 +1199,7 @@ export class CustomersService {
       select: {
         scheduledDate: true,
         placedAt: true,
-        lines: { select: { productId: true, qty: true } },
+        lines: { select: { productId: true, variantLabel: true, qty: true } },
       },
     });
     if (!order) return;
@@ -1415,6 +1418,13 @@ export class CustomersService {
     const categories = scheduled
       ? await this.orderLineCategories(dto.lines)
       : [];
+    // In-store today sells only what the kitchen counted on today's shelf:
+    // a cake size with no count is refused instead of treated as unlimited.
+    const inStore = fulfilmentType === 'IN_STORE';
+    const requireTracked = inStore
+      ? await this.inStore.countedLinePredicate(dto.lines)
+      : undefined;
+    if (inStore) dto.fulfillmentSummary = await this.inStore.summaryLines();
 
     const order = await this.prisma.$transaction(async (tx) => {
       await this.pickupRules.assertCanPlace(
@@ -1475,19 +1485,30 @@ export class CustomersService {
       // cake and one of them gets charged for something we cannot bake.
       // Abandoned checkouts are released by `releaseExpiredOrderReservations`.
       const failed = await this.productStock.reserveForOrderLines(
-        created.lines.map((l) => ({ productId: l.productId, qty: l.qty })),
+        created.lines.map((l) => ({
+          productId: l.productId,
+          variantLabel: l.variantLabel,
+          qty: l.qty,
+        })),
         businessDate,
         tx,
+        { requireTracked },
       );
       if (failed.length > 0) {
         const names = created.lines
           .filter((l) => failed.includes(l.productId))
-          .map((l) => l.name);
+          .map((l) =>
+            l.variantLabel ? `${l.name} (${l.variantLabel})` : l.name,
+          );
         throw new BadRequestException({
           code: 'CAKE_OUT_OF_STOCK',
-          message: `${names.join(', ')} ${
-            names.length === 1 ? 'is' : 'are'
-          } no longer available for ${businessDate}. Please pick another day or adjust your cart.`,
+          message: inStore
+            ? `${names.join(', ')} ${
+                names.length === 1 ? 'is' : 'are'
+              } no longer available in store today. Pre-order for another day or adjust your cart.`
+            : `${names.join(', ')} ${
+                names.length === 1 ? 'is' : 'are'
+              } no longer available for ${businessDate}. Please pick another day or adjust your cart.`,
         });
       }
       return created;
@@ -1511,7 +1532,7 @@ export class CustomersService {
     let finalizedDeliveryFeeCents = 0;
     /** Set when this was a referred member's first paid order (see below). */
     let referrerOfFirstOrderId: string | undefined;
-    let finalizedLines: { productId: string; qty: number }[] = [];
+    let finalizedLines: StockLine[] = [];
     await this.prisma.$transaction(async (tx) => {
       const order = await tx.customerOrder.findFirst({
         where: { id: orderId },
@@ -1532,6 +1553,7 @@ export class CustomersService {
       finalizedDeliveryFeeCents = order.deliveryFeeCents;
       finalizedLines = order.lines.map((l) => ({
         productId: l.productId,
+        variantLabel: l.variantLabel,
         qty: l.qty,
       }));
       await tx.customerOrder.update({

@@ -90,6 +90,10 @@ export function PickupRules() {
   const [maxAdvanceDays, setMaxAdvanceDays] = useState('30');
   const [preorderDays, setPreorderDays] = useState('2');
   const [preorderCategories, setPreorderCategories] = useState<string[]>([]);
+  const [inStoreEnabled, setInStoreEnabled] = useState(true);
+  const [inStoreCategories, setInStoreCategories] = useState<string[]>([]);
+  const [inStorePrep, setInStorePrep] = useState('30');
+  const [inStoreCutoff, setInStoreCutoff] = useState('30');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -131,6 +135,10 @@ export function PickupRules() {
     setMaxAdvanceDays(String(rules.maxAdvanceDays));
     setPreorderDays(String(rules.preorderDays ?? 0));
     setPreorderCategories(rules.preorderCategories ?? []);
+    setInStoreEnabled(rules.inStore?.enabled ?? true);
+    setInStoreCategories(rules.inStore?.categories ?? []);
+    setInStorePrep(String(rules.inStore?.prepMinutes ?? 30));
+    setInStoreCutoff(String(rules.inStore?.cutoffMinutes ?? 30));
     setSlots(rules.slots.map(slotToForm));
   }
 
@@ -231,6 +239,12 @@ export function PickupRules() {
         maxAdvanceDays: Number(maxAdvanceDays),
         preorderDays: Number(preorderDays),
         preorderCategories,
+        inStore: {
+          enabled: inStoreEnabled,
+          categories: inStoreCategories,
+          prepMinutes: Number(inStorePrep),
+          cutoffMinutes: Number(inStoreCutoff),
+        },
         slots: slots.map((slot) => ({
           start: slot.start,
           endTime: slot.endTime.trim() || null,
@@ -333,6 +347,72 @@ export function PickupRules() {
               </label>
             ))}
           </div>
+        </div>
+
+        <h3 className="drawerSectionTitle" style={{ marginTop: 16 }}>In-store today</h3>
+        <p className="dataTableMuted" style={{ marginTop: 0 }}>
+          Lets customers order for collection today from what is on the shelf, with no pre-order notice. For the
+          ticked categories, each size (6 inch, 8 inch, Slice) can only be ordered when the kitchen has counted it
+          today on the ops Kitchen screen and some are left after till sales and other orders. Other items in the
+          cart are not stock-checked.
+        </p>
+        <div className="drawerRowActions" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label style={{ paddingBottom: 6 }}>
+            <input
+              type="checkbox"
+              checked={inStoreEnabled}
+              onChange={(e) => {
+                setInStoreEnabled(e.target.checked);
+                setSavedAt(null);
+              }}
+            />{' '}
+            Offer in-store today
+          </label>
+          <label className="filterField" style={{ maxWidth: 180 }}>
+            Ready after (minutes)
+            <input
+              className="toolbarInput"
+              type="number"
+              min={0}
+              max={240}
+              value={inStorePrep}
+              onChange={(e) => {
+                setInStorePrep(e.target.value);
+                setSavedAt(null);
+              }}
+            />
+          </label>
+          <label className="filterField" style={{ maxWidth: 220 }}>
+            Stop orders before closing (minutes)
+            <input
+              className="toolbarInput"
+              type="number"
+              min={0}
+              max={240}
+              value={inStoreCutoff}
+              onChange={(e) => {
+                setInStoreCutoff(e.target.value);
+                setSavedAt(null);
+              }}
+            />
+          </label>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+          {SHOP_CATALOG_CATEGORIES.map((category) => (
+            <label key={category}>
+              <input
+                type="checkbox"
+                checked={inStoreCategories.includes(category)}
+                onChange={(e) => {
+                  setInStoreCategories((cur) =>
+                    e.target.checked ? [...cur, category].sort() : cur.filter((c) => c !== category),
+                  );
+                  setSavedAt(null);
+                }}
+              />{' '}
+              {CATEGORY_LABELS[category] ?? category}
+            </label>
+          ))}
         </div>
 
         <h3 className="drawerSectionTitle" style={{ marginTop: 16 }}>Opening hours</h3>

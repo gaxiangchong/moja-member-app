@@ -1376,3 +1376,79 @@ select {
   width: auto;
   min-width: 110px;
 }
+
+/* ---- SalesPlay sync status card ---- */
+.salesplayStatusGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 20px;
+  margin: 4px 0 0;
+}
+
+.salesplayStatusGrid dt {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #64748b);
+  margin-bottom: 2px;
+}
+
+.salesplayStatusGrid dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ---- SalesPlay code: "!" when missing or not found ---- */
+.codeAlert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--warning-tint);
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  flex: none;
+}
+
+.codeAlert--danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.codeCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.codeCheck--ok {
+  color: var(--success, #15803d);
+}
+
+.codeCheck--warn {
+  color: var(--warning);
+}
+
+.codeCheck--bad {
+  color: var(--danger);
+}
+
+/* A size's POS code box with its "!" beside it, in one grid cell. */
+.variantCodeField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.variantCodeField input {
+  flex: 1;
+  min-width: 0;
+}

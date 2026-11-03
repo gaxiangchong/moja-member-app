@@ -1354,6 +1354,82 @@ body {
   color: #b45309;
 }
 
+.dayGridVariant {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ---- Kitchen: today's stock per size ---- */
+.todayStockList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.todayStockCard {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.todayStockName {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.todayStockName span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.todayStockRow {
+  display: grid;
+  grid-template-columns: 64px auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.todayStockSize {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.todayStockStepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.todayStockStepper input {
+  width: 56px;
+  padding: 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.todayStockStatus {
+  font-size: 12px;
+  color: #15803d;
+  text-align: right;
+}
+
+.todayStockStatus.is-out {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.todayStockStatus.is-unset {
+  color: var(--muted);
+}
+
 /* ---- Counter redemptions ---- */
 .memberScanBtn {
   margin-top: 10px;

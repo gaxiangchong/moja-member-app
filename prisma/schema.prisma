@@ -671,6 +671,8 @@ model CustomerOrder {
 model ProductStockDay {
   id           String   @id @default(uuid()) @db.Uuid
   productId    String   @map("product_id") @db.VarChar(160)
+  /// Catalog variant label ("6 inch", "8 inch", "Slice"); "" = whole product.
+  variant      String   @default("") @db.VarChar(80)
   /// Business date in Asia/Kuala_Lumpur, matching how POS books its days.
   businessDate DateTime @map("business_date") @db.Date
   qty          Int      @default(0)
@@ -682,7 +684,7 @@ model ProductStockDay {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  @@unique([productId, businessDate])
+  @@unique([productId, variant, businessDate])
   @@index([businessDate])
   @@map("product_stock_days")
 }

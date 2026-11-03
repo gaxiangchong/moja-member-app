@@ -5,6 +5,7 @@ import {
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -29,6 +30,12 @@ export class SetStockDayDto {
   @IsString()
   productId!: string;
 
+  /** Size label ("6 inch", "Slice"); omit or "" for a product without sizes. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  variant?: string;
+
   @IsString()
   @Matches(YMD, { message: 'businessDate must be yyyy-mm-dd' })
   businessDate!: string;
@@ -40,10 +47,15 @@ export class SetStockDayDto {
   qty!: number;
 }
 
-/** Kitchen's end-of-day physical recount for one product on one day. */
+/** Kitchen's end-of-day physical recount for one product size on one day. */
 export class ReconcileStockDayDto {
   @IsString()
   productId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  variant?: string;
 
   @IsString()
   @Matches(YMD, { message: 'businessDate must be yyyy-mm-dd' })

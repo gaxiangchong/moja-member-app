@@ -1,5 +1,6 @@
 import {
   DEFAULT_PICKUP_RULES,
+  evaluateInStoreNow,
   evaluatePickupDay,
   evaluateStoreNow,
   hoursForWeekday,
@@ -405,6 +406,55 @@ describe('pre-order notice for made-to-order categories', () => {
     ).toThrow(PickupRulesError);
     expect(() =>
       normalizePickupRules({ ...DEFAULT_PICKUP_RULES, preorderDays: 1.5 }),
+    ).toThrow(PickupRulesError);
+  });
+});
+
+describe('in-store today window', () => {
+  // Monday 2 Nov 2026 in Kuala Lumpur; default hours 10:00–21:00.
+  const at = (hhmm: string) =>
+    zonedWallToUtc('2026-11-02', hhmm, 'Asia/Kuala_Lumpur');
+
+  it('is open during the day, ready after the prep time', () => {
+    const window = evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('15:10'));
+    expect(window).toMatchObject({
+      open: true,
+      today: '2026-11-02',
+      readyAt: '15:40',
+    });
+  });
+
+  it('closes the cut-off before closing time', () => {
+    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:29')).open).toBe(
+      true,
+    );
+    const late = evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:30'));
+    expect(late.open).toBe(false);
+    expect(late.reason).toContain('8:30 PM');
+  });
+
+  it('is closed before opening and when switched off', () => {
+    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('09:00')).open).toBe(
+      false,
+    );
+    const off: ShopPickupRules = {
+      ...DEFAULT_PICKUP_RULES,
+      inStore: { ...DEFAULT_PICKUP_RULES.inStore, enabled: false },
+    };
+    expect(evaluateInStoreNow(off, at('15:00')).open).toBe(false);
+  });
+
+  it('fills in defaults and validates minutes', () => {
+    const old: Partial<ShopPickupRules> = { ...DEFAULT_PICKUP_RULES };
+    delete old.inStore;
+    expect(normalizePickupRules(old).inStore).toEqual(
+      DEFAULT_PICKUP_RULES.inStore,
+    );
+    expect(() =>
+      normalizePickupRules({
+        ...DEFAULT_PICKUP_RULES,
+        inStore: { ...DEFAULT_PICKUP_RULES.inStore, prepMinutes: -5 },
+      }),
     ).toThrow(PickupRulesError);
   });
 });

@@ -260,7 +260,7 @@ export class OpsQueueService {
     if (next === ORDER_STATUS.CANCELLED) {
       const lines = await this.prisma.customerOrderLine.findMany({
         where: { orderId: id },
-        select: { productId: true, qty: true },
+        select: { productId: true, variantLabel: true, qty: true },
       });
       const day =
         existing.scheduledDate?.toISOString().slice(0, 10) ??

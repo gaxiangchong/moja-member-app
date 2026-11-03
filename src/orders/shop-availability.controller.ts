@@ -1,12 +1,24 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ShopCatalogService } from '../shop-catalog/shop-catalog.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { InStoreQuoteDto } from './dto/in-store-quote.dto';
 import { DeliverySettingsService } from './delivery-settings.service';
 import { EarlyOrderDiscountService } from './early-order-discount.service';
+import { InStoreService } from './in-store.service';
 import { PickupRulesService } from './pickup-rules.service';
 import {
   ProductStockService,
+  stockKey,
+  stockVariant,
   todayBusinessDate,
 } from './product-stock.service';
 
@@ -27,12 +39,14 @@ export class ShopAvailabilityController {
     private readonly pickupRules: PickupRulesService,
     private readonly deliverySettings: DeliverySettingsService,
     private readonly earlyOrderDiscount: EarlyOrderDiscountService,
+    private readonly inStore: InStoreService,
   ) {}
 
   /**
    * Sellable quantity per product for one collection day. `null` means the
-   * product is not stock-tracked (unlimited). Drives the availability shown
-   * at checkout once a pickup date is chosen.
+   * product is not stock-tracked (unlimited). `variants` gives the same per
+   * size; a size missing there was not counted by the kitchen. Drives the
+   * availability shown at checkout and "Available today" on product pages.
    */
   @Get('catalog/availability')
   async availability(@Query() query: AvailabilityQueryDto) {
@@ -44,11 +58,31 @@ export class ShopAvailabilityController {
     );
     return {
       businessDate: date,
-      products: products.map((p) => ({
-        id: p.id,
-        sellableQty: map.get(p.id) ?? null,
-      })),
+      products: products.map((p) => {
+        const variants: Record<string, number> = {};
+        for (const v of p.variants ?? []) {
+          const left = map.get(stockKey(p.id, stockVariant(v.label)));
+          if (left != null) variants[v.label] = left;
+        }
+        return {
+          id: p.id,
+          sellableQty: map.get(stockKey(p.id, '')) ?? null,
+          variants,
+        };
+      }),
     };
+  }
+
+  /**
+   * Can this cart be collected in store today? Checks the shop is open and
+   * before the in-store cut-off, and that every cake size has enough left on
+   * today's kitchen count (after till sales and other online orders). Display
+   * only: placing the order checks again and holds the stock.
+   */
+  @Post('in-store-today')
+  @HttpCode(200)
+  inStoreToday(@Body() body: InStoreQuoteDto) {
+    return this.inStore.quote(body.lines);
   }
 
   /**
