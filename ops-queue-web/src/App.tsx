@@ -465,9 +465,6 @@ function Ticket({
         ) : (
           <>
             <span className="tBig">{slot.time ? clock12(slot.time) : '—'}</span>
-            {lane === 'upcoming' && slot.date ? (
-              <span className="tSmall">{dayLabel(slot.date)}</span>
-            ) : null}
           </>
         )}
       </div>
@@ -526,6 +523,41 @@ function Ticket({
   );
 }
 
+/**
+ * Later pickups grouped by day, with a bake list per day: how many of each
+ * product and size, adding up every order for that day (add-ons left out).
+ */
+function upcomingByDay(orders: QueueOrderSummary[]): {
+  date: string;
+  orders: QueueOrderSummary[];
+  bake: { name: string; qty: number }[];
+}[] {
+  const days = new Map<string, QueueOrderSummary[]>();
+  for (const o of orders) {
+    const date = pickupCalendarDay(o.fulfillmentSummary) ?? o.placedAt.slice(0, 10);
+    days.set(date, [...(days.get(date) ?? []), o]);
+  }
+  return [...days.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => {
+      const tally = new Map<string, number>();
+      for (const o of list) {
+        for (const l of o.lines) {
+          if (l.productId.startsWith('addon-')) continue;
+          const name = l.variantLabel ? `${l.name} ${l.variantLabel}` : l.name;
+          tally.set(name, (tally.get(name) ?? 0) + l.qty);
+        }
+      }
+      return {
+        date,
+        orders: list,
+        bake: [...tally.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, qty]) => ({ name, qty })),
+      };
+    });
+}
+
 /** "2026-11-05" -> "Thu 5 Nov". */
 function dayLabel(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -568,7 +600,7 @@ export function App() {
   /** Shop day whose collected orders are listed (yyyy-mm-dd). */
   const [collectedDay, setCollectedDay] = useState(() => shopCalendarYmd());
   /** Which folded list is open under the lanes. */
-  const [openFold, setOpenFold] = useState<'upcoming' | 'parcels' | 'collected' | null>(null);
+  const [openFold, setOpenFold] = useState<'parcels' | 'collected' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   /** Ticks every 30s so waiting times and late flags stay current. */
   const [now, setNow] = useState(() => Date.now());
@@ -952,13 +984,39 @@ export function App() {
         </section>
       </div>
 
+      {/* Always open: these are cakes to bake and get ready for later days. */}
+      <section className="upcoming" aria-labelledby="lane-upcoming">
+        <h2 id="lane-upcoming">
+          Coming up <small>{lanes.upcoming.length} {lanes.upcoming.length === 1 ? 'order' : 'orders'} to prepare</small>
+        </h2>
+        {lanes.upcoming.length === 0 ? (
+          <p className="laneEmpty">No pickups booked for later days yet.</p>
+        ) : (
+          upcomingByDay(lanes.upcoming).map((day) => (
+            <div key={day.date} className="upcomingDay">
+              <div className="upcomingDayHead">
+                <h3>{dayLabel(day.date)}</h3>
+                <p className="bakeList">
+                  To bake:{' '}
+                  {day.bake.map((b, i) => (
+                    <span key={b.name}>
+                      {i > 0 ? ', ' : ''}
+                      <strong>{b.qty}×</strong> {b.name}
+                    </span>
+                  ))}
+                </p>
+              </div>
+              <div className="tickets">
+                {day.orders.map((o) => (
+                  <Ticket key={o.id} lane="upcoming" {...ticketProps(o)} />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
       <div className="folds">
-        <FoldButton
-          label="Coming up"
-          count={lanes.upcoming.length}
-          open={openFold === 'upcoming'}
-          onToggle={() => setOpenFold((f) => (f === 'upcoming' ? null : 'upcoming'))}
-        />
         <FoldButton
           label="Parcels to post"
           count={lanes.parcels.length}
@@ -973,19 +1031,6 @@ export function App() {
         />
       </div>
 
-      {openFold === 'upcoming' ? (
-        <section className="foldPanel" aria-label="Coming up">
-          {lanes.upcoming.length === 0 ? (
-            <p className="laneEmpty">No pickups booked for later days.</p>
-          ) : (
-            <div className="tickets">
-              {lanes.upcoming.map((o) => (
-                <Ticket key={o.id} lane="upcoming" {...ticketProps(o)} />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
       {openFold === 'parcels' ? (
         <section className="foldPanel" aria-label="Parcels to post">
           {lanes.parcels.length === 0 ? (

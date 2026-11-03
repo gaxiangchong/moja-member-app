@@ -157,7 +157,7 @@ export function KitchenTodayStock({
                 {columns.map((v) => {
                   if (!sizes.includes(v)) {
                     return (
-                      <td key={v || 'each'} className="stockNa">
+                      <td key={v || 'each'} className="stockNa" data-label={v || 'Each'}>
                         —
                       </td>
                     );
@@ -168,7 +168,7 @@ export function KitchenTodayStock({
                   const isEditing = editing?.key === key;
                   if (isEditing) {
                     return (
-                      <td key={v || 'each'}>
+                      <td key={v || 'each'} data-label={v || 'Each'}>
                         <input
                           className="stockEdit"
                           type="number"
@@ -189,7 +189,7 @@ export function KitchenTodayStock({
                   }
                   if (!cell?.explicit) {
                     return (
-                      <td key={v || 'each'}>
+                      <td key={v || 'each'} data-label={v || 'Each'}>
                         <button
                           type="button"
                           className="stockUnset"
@@ -202,7 +202,7 @@ export function KitchenTodayStock({
                   }
                   const left = cell.sellableQty;
                   return (
-                    <td key={v || 'each'}>
+                    <td key={v || 'each'} data-label={v || 'Each'}>
                       <div className="stockCell">
                         <button
                           type="button"

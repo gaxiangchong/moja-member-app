@@ -441,7 +441,7 @@ span.qStatus {
 /* ---- Order queue: folded lists ---- */
 .folds {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   padding: 0 24px;
 }
@@ -1947,22 +1947,230 @@ span.qStatus {
   color: #8a5a10;
 }
 
+/* Phones: each cake becomes a card, each size a row (label left, count right). */
 @media (max-width: 760px) {
   .kitchenPage {
     padding: 12px 12px 24px;
   }
 
+  .kitchenHead h1 {
+    font-size: 20px;
+  }
+
   .kitchenTabs {
+    width: 100%;
     margin-left: 0;
   }
 
-  .stockTable .stockSizeHead {
-    width: auto;
+  .kitchenTab {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 14px;
   }
 
+  .kitchenToday {
+    overflow-x: visible;
+  }
+
+  .stockTable,
+  .stockTable tbody,
+  .stockTable tr,
+  .stockTable th,
+  .stockTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .stockTable thead {
+    display: none;
+  }
+
+  .stockTable tr {
+    margin-bottom: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .stockTable td,
+  .stockTable .stockCake,
+  .stockTable tr > :last-child {
+    border: none;
+    border-radius: 0;
+  }
+
+  .stockTable .stockCake {
+    min-width: 0;
+    padding: 12px 14px 4px;
+    font-size: 17px;
+  }
+
+  .stockTable td {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--surface2);
+  }
+
+  .stockTable td::before {
+    content: attr(data-label);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* A size this cake doesn't come in: nothing to show on a phone. */
+  .stockTable td.stockNa {
+    display: none;
+  }
+
+  .stockCell {
+    grid-template-columns: 44px 1fr 44px;
+  }
+
+  .stockStep {
+    height: 44px;
+  }
+
+  .stockSell {
+    font-size: 26px;
+  }
+
+  .stockUnset {
+    padding: 12px 8px;
+  }
+
+  /* Next 7 days: sideways scroll with the cake column pinned. */
+  .weekTable {
+    font-size: 15px;
+  }
+
+  .weekTable thead th:first-child,
+  .weekSizeRow th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg);
+  }
+
+  .weekTable .weekCakeHead {
+    min-width: 96px;
+  }
+
+  .weekCakeRow th {
+    position: sticky;
+    left: 0;
+    background: var(--bg);
+  }
+
+  .weekSizeRow th {
+    padding-left: 10px;
+    min-width: 96px;
+  }
+
+  .weekInput {
+    width: 52px;
+    padding: 10px 0;
+  }
+
+  /* End-of-day count: one block per cake size. */
+  .countTable,
+  .countTable tbody,
+  .countTable tr {
+    display: block;
+    width: 100%;
+  }
+
+  .countTable thead {
+    display: none;
+  }
+
+  .countTable tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .countTable th,
+  .countTable td {
+    padding: 0;
+    border: none;
+  }
+
+  .countTable tbody th {
+    flex-basis: 100%;
+    font-weight: 600;
+  }
+
+  .countTable td::before {
+    content: attr(data-label);
+    margin-right: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
 }
 
 .stockHeld {
   display: block;
   color: #8a5a10;
+}
+
+/* ---- Order queue: coming up (always open, grouped by day) ---- */
+.upcoming {
+  margin: 4px 24px 20px;
+}
+
+.upcoming h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.upcoming h2 small {
+  margin-left: 6px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.upcomingDay {
+  margin-bottom: 16px;
+}
+
+.upcomingDayHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.upcomingDayHead h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bakeList {
+  margin: 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.bakeList strong {
+  color: var(--text);
+}
+
+@media (max-width: 960px) {
+  .upcoming {
+    margin-inline: 16px;
+  }
 }

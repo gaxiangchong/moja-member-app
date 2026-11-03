@@ -183,8 +183,8 @@ export function KitchenDayGrid({
                 return (
                   <tr key={key}>
                     <th scope="row">{name}</th>
-                    <td>{cell?.explicit ? cell.qty : '—'}</td>
-                    <td>
+                    <td data-label="Should be left">{cell?.explicit ? cell.qty : '—'}</td>
+                    <td data-label="Counted">
                       <input
                         type="number"
                         min={0}
@@ -201,7 +201,7 @@ export function KitchenDayGrid({
                         aria-label={`Counted ${name} left today`}
                       />
                     </td>
-                    <td>
+                    <td data-label="Difference">
                       {cell?.varianceQty != null ? (
                         <span
                           className={
