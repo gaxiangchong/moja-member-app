@@ -26,6 +26,15 @@ import {
   checkoutIssuedVouchers,
   findIssuedVoucherByCode,
 } from './lib/memberRewardsCheckout';
+import {
+  classifyProduct,
+  formatEarliestDate,
+  noticeLabel,
+  productInTab,
+  sizesReadyLabel,
+  todayStockFor,
+  type AvailabilityTab,
+} from './lib/availability';
 import { useOrderHistoryStore } from './store/useOrderHistoryStore';
 import { lineDeliveryClass, useShopStore } from './store/useShopStore';
 import { AddressPicker } from '../address/AddressPicker';
@@ -44,7 +53,10 @@ import {
   type SavedAddress,
   fetchMyAddresses,
   fetchPickupSlots,
+  fetchAvailabilityRules,
+  type AvailabilityRules,
   fetchShopAvailability,
+  type ShopAvailability,
   fetchShopCatalogProducts,
   fetchLoyaltyEarn,
   type LoyaltyEarn,
@@ -213,6 +225,11 @@ export function ShopFlow({
   const [screen, setScreen] = useState<Screen>(initialScreen ?? 'browse');
   const [productId, setProductId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ShopFilter | 'all'>('all');
+  /** Which side of the shop is showing. In-store leads, as the shop asked. */
+  const [availTab, setAvailTab] = useState<AvailabilityTab>('today');
+  const [availRules, setAvailRules] = useState<AvailabilityRules | null>(null);
+  /** Today's kitchen count per product and size, for the stock badges. */
+  const [shopStock, setShopStock] = useState<ShopAvailability | null>(null);
   const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
   const checkoutErrorsRef = useRef<HTMLDivElement>(null);
@@ -535,6 +552,18 @@ export function ShopFlow({
     setInStoreNotice(inStoreQuote.reason);
   }, [orderTiming, inStoreQuote]);
 
+  /**
+   * Shopping the "In store today" tab means collecting today, so checkout opens
+   * on that choice instead of asking a second time. Only on the way in: once
+   * checkout is on screen the member's own pick stands, and the effect above
+   * still moves them off it if the stock goes while they are deciding.
+   */
+  useEffect(() => {
+    if (screen !== 'checkout') return;
+    setOrderTiming(availTab === 'today' ? 'instore' : 'preorder');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
+
   // Availability is per collection day, so re-check whenever the member picks
   // a different date or changes the cart.
   useEffect(() => {
@@ -703,6 +732,28 @@ export function ShopFlow({
     };
   }, []);
 
+  /**
+   * The availability split and today's kitchen count. Both are needed before a
+   * product can be placed in a tab, and both move through the day — the count
+   * as the till sells, the rules at the in-store cut-off — so they are
+   * re-read whenever the member comes back to browsing.
+   */
+  useEffect(() => {
+    if (screen !== 'browse') return;
+    let alive = true;
+    void Promise.allSettled([fetchAvailabilityRules(), fetchShopAvailability()])
+      .then(([rules, stock]) => {
+        if (!alive) return;
+        // A failure here must not empty the shop: `classifyProduct` falls back
+        // to showing everything when the rules are null.
+        if (rules.status === 'fulfilled') setAvailRules(rules.value);
+        if (stock.status === 'fulfilled') setShopStock(stock.value);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [screen]);
+
   useEffect(() => {
     if (screen !== 'checkout') return;
     let alive = true;
@@ -731,14 +782,62 @@ export function ShopFlow({
     };
   }, [screen]);
 
+  /** Where each product sits relative to today's shelf, by product id. */
+  const availabilityById = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof classifyProduct>>();
+    for (const p of products) {
+      m.set(p.id, classifyProduct(p, availRules, todayStockFor(shopStock, p.id)));
+    }
+    return m;
+  }, [products, availRules, shopStock]);
+
+  /**
+   * The tab counts. Deliberately NOT narrowed by the flavour chips or the
+   * search box: the number on a tab answers "is there anything over there",
+   * which a filter the member has already set would make meaningless.
+   */
+  const tabCounts = useMemo(() => {
+    let today = 0;
+    let preorder = 0;
+    for (const p of products) {
+      const a = availabilityById.get(p.id);
+      if (!a) continue;
+      if (productInTab(a, 'today')) today += 1;
+      if (productInTab(a, 'preorder')) preorder += 1;
+    }
+    return { today, preorder };
+  }, [products, availabilityById]);
+
+  /**
+   * The today tab is showing, but not one of the kitchen's cakes is on it —
+   * they are all sold out, uncounted, or past the in-store cut-off.
+   *
+   * This is the case that actually happens. The tab itself is never empty,
+   * because cookies and drinks are always on the counter, so without a word
+   * here the member just sees a shop with no cakes in it and no reason why.
+   */
+  const noCakesToday = useMemo(() => {
+    if (availTab !== 'today' || !availRules) return false;
+    let anyTracked = false;
+    for (const p of products) {
+      const a = availabilityById.get(p.id);
+      if (!a?.stockTracked && !a?.needsPreorder) continue;
+      anyTracked = true;
+      if (a && productInTab(a, 'today')) return false;
+    }
+    return anyTracked;
+  }, [availTab, availRules, products, availabilityById]);
+
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
+      const a = availabilityById.get(p.id);
+      if (a && !productInTab(a, availTab)) return false;
       if (filter !== 'all' && p.shopFilter !== filter) return false;
       if (!q) return true;
       return `${p.name} ${p.shortDescription}`.toLowerCase().includes(q);
     });
-  }, [filter, query, products]);
+  }, [filter, query, products, availTab, availabilityById]);
 
   const product = productId
     ? products.find((p) => p.id === productId)
@@ -1327,8 +1426,55 @@ export function ShopFlow({
               ) : null}
             </button>
           </header>
-          <section className="pmCard shopSearchCard">
-            <div className="chips shopCategoryChips">
+          <div
+            className="shopAvailTabs"
+            role="tablist"
+            aria-label="When you can get it"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={availTab === 'today'}
+              className={
+                availTab === 'today' ? 'shopAvailTab is-on' : 'shopAvailTab'
+              }
+              onClick={() => setAvailTab('today')}
+            >
+              <span className="shopAvailTabName">
+                In store today
+                {tabCounts.today > 0 ? ` \u00b7 ${tabCounts.today}` : ''}
+              </span>
+              <span className="shopAvailTabNote">
+                {availRules == null
+                  ? 'Checking the shelf\u2026'
+                  : availRules.inStore.readyFrom
+                    ? `Ready from ${availRules.inStore.readyFrom}`
+                    : 'Closed for today'}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={availTab === 'preorder'}
+              className={
+                availTab === 'preorder' ? 'shopAvailTab is-on' : 'shopAvailTab'
+              }
+              onClick={() => setAvailTab('preorder')}
+            >
+              <span className="shopAvailTabName">
+                Pre-order
+                {tabCounts.preorder > 0 ? ` \u00b7 ${tabCounts.preorder}` : ''}
+              </span>
+              <span className="shopAvailTabNote">
+                {availRules == null
+                  ? '\u00a0'
+                  : `From ${formatEarliestDate(availRules.preorder.earliestDate)}`}
+              </span>
+            </button>
+          </div>
+          {/* Nothing to filter means dead controls holding a row. */}
+          {filteredProducts.length > 0 || query.trim() ? (
+            <div className="shopFilterRow">
               <button
                 type="button"
                 className={filter === 'all' ? 'chip active' : 'chip'}
@@ -1358,7 +1504,27 @@ export function ShopFlow({
                 </button>
               ) : null}
             </div>
-          </section>
+          ) : null}
+          {noCakesToday && filteredProducts.length > 0 ? (
+            <div className="shopNoCakesNote">
+              <div>
+                <strong>
+                  {availRules?.inStore.openNow
+                    ? 'Today\u2019s cakes are all gone'
+                    : 'No cakes on the shelf right now'}
+                </strong>
+                <p>
+                  {availRules?.inStore.reason ??
+                    'The kitchen bakes again tomorrow morning.'}
+                </p>
+              </div>
+              {tabCounts.preorder > 0 ? (
+                <button type="button" onClick={() => setAvailTab('preorder')}>
+                  Pre-order {tabCounts.preorder}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="productsGrid">
             {catalogLoading ? (
               <section className="pmCard">
@@ -1372,6 +1538,39 @@ export function ShopFlow({
             ) : null}
             {filteredProducts.map((p) => {
               const soldOut = isShopProductSoldOut(p);
+              const avail = availabilityById.get(p.id);
+              /*
+               * One badge, never two, and only when it says something the tab
+               * does not already say.
+               *
+               * On the today tab every card is in store, so the badge carries
+               * what the member cannot otherwise know: how many are left. A
+               * counter item has no count and needs no badge.
+               *
+               * On the pre-order tab it marks the overlap — something also on
+               * the shelf right now. There the notice is deliberately left off:
+               * if you can collect it today, how much notice it normally needs
+               * is beside the point, and two badges read as a contradiction.
+               */
+              const badge =
+                soldOut || !avail
+                  ? null
+                  : availTab === 'today'
+                    ? avail.stockTracked && (avail.totalLeftToday ?? 0) > 0
+                      ? { text: 'Ready today', kind: 'today' as const }
+                      : null
+                    : avail.inStoreToday
+                      ? { text: 'In store today', kind: 'today' as const }
+                      : avail.needsPreorder
+                        ? {
+                            text: noticeLabel(availRules?.preorder.days ?? 0),
+                            kind: 'notice' as const,
+                          }
+                        : null;
+              const stockLine =
+                avail && avail.inStoreToday && avail.stockTracked
+                  ? sizesReadyLabel(avail.leftBySize)
+                  : '';
               return (
                 <button
                   key={p.id}
@@ -1395,12 +1594,26 @@ export function ShopFlow({
                     {soldOut ? (
                       <span className="shopSoldOutBadge">Sold out</span>
                     ) : null}
+                    {badge && badge.text ? (
+                      <span
+                        className={
+                          badge.kind === 'today'
+                            ? 'shopAvailBadge shopAvailBadge--today'
+                            : 'shopAvailBadge shopAvailBadge--notice'
+                        }
+                      >
+                        {badge.text}
+                      </span>
+                    ) : null}
                     {p.shippable === true ? <ShippingBadge shippable /> : null}
                   </div>
                   <div className="productBody">
                     <div className="productText">
                       <strong>{p.name}</strong>
                       <ClampedDescription text={p.shortDescription} />
+                      {stockLine ? (
+                        <p className="shopCardStock">{stockLine}</p>
+                      ) : null}
                     </div>
                     <div className="productFoot">
                       <PointsPill
@@ -1419,10 +1632,57 @@ export function ShopFlow({
                 </button>
               );
             })}
-            {!filteredProducts.length ? (
-              <section className="pmCard">
-                <p className="caption">No products match your filters.</p>
-              </section>
+            {!filteredProducts.length && !catalogLoading ? (
+              availTab === 'today' &&
+              filter === 'all' &&
+              !query.trim() &&
+              tabCounts.preorder > 0 ? (
+                // The default tab empties at the cut-off, on a closed day, and
+                // whenever the kitchen sells out. Say which, and offer the way on.
+                <section className="pmCard shopAvailEmpty">
+                  <span className="shopAvailEmptyIcon" aria-hidden="true">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3 2" />
+                    </svg>
+                  </span>
+                  <h3 className="shopAvailEmptyTitle">
+                    {availRules?.inStore.openNow
+                      ? 'Today\u2019s cakes are all gone'
+                      : 'Nothing on the shelf right now'}
+                  </h3>
+                  <p className="caption">
+                    {availRules?.inStore.reason ??
+                      'The kitchen bakes again tomorrow morning.'}
+                  </p>
+                  <button
+                    type="button"
+                    className="shopAvailEmptyCta"
+                    onClick={() => setAvailTab('preorder')}
+                  >
+                    See {tabCounts.preorder} cakes to pre-order
+                  </button>
+                  {availRules ? (
+                    <p className="caption shopAvailEmptyFoot">
+                      Available from{' '}
+                      {formatEarliestDate(availRules.preorder.earliestDate)}
+                    </p>
+                  ) : null}
+                </section>
+              ) : (
+                <section className="pmCard">
+                  <p className="caption">No products match your filters.</p>
+                </section>
+              )
             ) : null}
           </div>
         </>
@@ -2452,8 +2712,8 @@ function ProductDetailScreen({
               {leftToday !== undefined ? (
                 <p className={leftToday > 0 ? 'shopTodayStock' : 'shopTodayStock is-out'}>
                   {leftToday > 0
-                    ? `Available in store today · ${leftToday} left`
-                    : `${variantLabel} sold out in store today — pre-order for another day`}
+                    ? 'Available in store today'
+                    : `${variantLabel} is not on the shelf today — pre-order it for another day`}
                 </p>
               ) : null}
             </div>
