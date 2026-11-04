@@ -42,6 +42,13 @@ import type {
 import { dataDir } from '../config/data-dir';
 import { OPEN_ORDER_STATUSES } from '../orders/order-status';
 import { isShopFilter, resolveShopFilter, type ShopFilter } from './shop-filter';
+import {
+  canonicalVariantLabel,
+  dedupeVariantLabels,
+  duplicateVariantLabelMessage,
+  findDuplicateVariantLabel,
+  tidyVariantLabel,
+} from './variant-label';
 
 export type ShopCatalogProductImage = {
   src: string;
@@ -682,9 +689,25 @@ export class ShopCatalogService implements OnModuleInit {
   ): ShopCatalogProductVariant[] {
     const out: ShopCatalogProductVariant[] = [];
     const usedIds = new Set<string>();
+    /** canonical size → the label already kept for it. */
+    const seenLabels = new Map<string, string>();
     for (const v of raw) {
-      const label = String(v?.label ?? '').trim();
+      const label = tidyVariantLabel(v?.label);
       if (!label) continue;
+      // Same size twice: keep the first and drop the rest. The interactive
+      // admin paths refuse this outright (`assertVariantLabelsUnique`); here it
+      // is the last line of defence for an import or a row written before that
+      // check existed, because a repeated label would draw a second kitchen
+      // column over the one stock count both of them key to.
+      const canonical = canonicalVariantLabel(label);
+      const alreadyKept = seenLabels.get(canonical);
+      if (alreadyKept !== undefined) {
+        this.logger.warn(
+          `Product ${productId}: dropped duplicate size "${label}" (already have "${alreadyKept}").`,
+        );
+        continue;
+      }
+      seenLabels.set(canonical, label);
       const priceCents = Number.isFinite(Number(v?.priceCents))
         ? Math.max(0, Math.round(Number(v?.priceCents)))
         : 0;
@@ -708,6 +731,24 @@ export class ShopCatalogService implements OnModuleInit {
       out.push({ id, label, priceCents, available, priceDisplay });
     }
     return out;
+  }
+
+  /**
+   * Refuses a product whose sizes repeat, before `normalizeVariants` quietly
+   * drops the extra. Only the interactive admin paths call this: an import must
+   * not abort a whole run over one bad row, so there the duplicate is dropped
+   * and logged instead.
+   */
+  private assertVariantLabelsUnique(
+    raw: Partial<ShopCatalogProductVariant>[] | undefined,
+  ): void {
+    if (raw == null) return;
+    const clash = findDuplicateVariantLabel(raw.map((v) => v?.label));
+    if (clash) {
+      throw new BadRequestException(
+        duplicateVariantLabelMessage(clash[0], clash[1]),
+      );
+    }
   }
 
   private normalizeProduct(
@@ -849,6 +890,7 @@ export class ShopCatalogService implements OnModuleInit {
       for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
       withId = { ...input, id };
     }
+    this.assertVariantLabelsUnique(withId.variants);
     const next = this.normalizeProduct(withId);
     if (all.some((p) => p.id === next.id)) {
       throw new BadRequestException(
@@ -864,6 +906,7 @@ export class ShopCatalogService implements OnModuleInit {
     input: ShopCatalogProductInput,
   ): Promise<ShopCatalogProduct> {
     const before = await this.requireOne(id);
+    this.assertVariantLabelsUnique(input.variants);
     const next = this.normalizeProduct(input, before);
     this.assertSalesplayCodesFree(next, await this.loadAll(), before);
     const changed = detectChangedFields(before, next);
@@ -903,7 +946,10 @@ export class ShopCatalogService implements OnModuleInit {
       category: p.category,
       availableQty: p.availableQty ?? null,
       soldOut: isProductSoldOut(p),
-      variants: (p.variants ?? []).map((v) => v.label.trim()).filter(Boolean),
+      // One label per size, whatever is stored: the grid turns each of these
+      // into a column (today) or a row (the week), and the stock behind them is
+      // keyed on the label, so a repeat would split one count across two.
+      variants: dedupeVariantLabels((p.variants ?? []).map((v) => v.label)),
     }));
   }
 

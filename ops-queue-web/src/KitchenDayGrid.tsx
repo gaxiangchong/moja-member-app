@@ -6,6 +6,11 @@ import {
   setStockDayQty,
   type StockDayGrid as Grid,
 } from './api';
+import {
+  canonicalVariantLabel,
+  sizesOf,
+  tidyVariantLabel,
+} from './variantLabel';
 
 const DAYS = 7;
 
@@ -25,15 +30,34 @@ function dayLabel(ymd: string): { dow: string; date: string } {
 /** One row of the grid: a product, or one size of it. */
 export type StockRow = { productId: string; name: string; variant: string };
 
-/** Every size of every product, in grid order. A product without sizes is one row. */
+/**
+ * Every size of every product, in grid order. A product without sizes is one
+ * row. A size the product repeats is one row: each row is an editable cell
+ * keyed on (product, size, day), so two rows for one size would be two inputs
+ * writing the same count — and duplicate React keys besides.
+ */
 export function stockRows(grid: Grid | null): StockRow[] {
   return (grid?.products ?? []).flatMap((p) =>
-    (p.variants.length > 0 ? p.variants : ['']).map((variant) => ({
+    dedupeSizes(sizesOf(p)).map((variant) => ({
       productId: p.id,
       name: p.name,
       variant,
     })),
   );
+}
+
+/** The first spelling of each distinct size, in the order given. */
+export function dedupeSizes(sizes: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of sizes) {
+    const label = raw === '' ? '' : tidyVariantLabel(raw);
+    const key = canonicalVariantLabel(label);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
 }
 
 export function cellKey(productId: string, variant: string, date: string): string {
@@ -258,7 +282,7 @@ export function KitchenDayGrid({
           </thead>
           <tbody>
             {(grid?.products ?? []).map((p) => {
-              const sizes = p.variants.length > 0 ? p.variants : [''];
+              const sizes = dedupeSizes(sizesOf(p));
               return (
                 <Fragment key={p.id}>
                   {sizes.length > 1 || sizes[0] !== '' ? (
