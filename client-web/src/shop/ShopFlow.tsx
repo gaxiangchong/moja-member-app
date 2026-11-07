@@ -192,8 +192,8 @@ export function ShopFlow({
   memberRewards,
   initialScreen,
   onInitialScreenApplied,
-  initialQuery,
-  onInitialQueryApplied,
+  initialFilter,
+  onInitialFilterApplied,
   isAuthenticated,
   onRequireAuth,
   authResumeSignal,
@@ -206,9 +206,9 @@ export function ShopFlow({
   memberRewards?: MemberRewardsPayload | null;
   initialScreen?: Screen | null;
   onInitialScreenApplied?: () => void;
-  /** Pre-fills the catalog search box — set by the Home tab's search bar. */
-  initialQuery?: string | null;
-  onInitialQueryApplied?: () => void;
+  /** Opens the catalog on one filter — set by the Home tab's quick filters. */
+  initialFilter?: ShopFilter | null;
+  onInitialFilterApplied?: () => void;
   /** Browsing and cart-building never require login — only reaching checkout does. */
   isAuthenticated: boolean;
   /** Opens the app's sign-in overlay; called instead of entering checkout when signed out. */
@@ -231,7 +231,6 @@ export function ShopFlow({
   const [availRules, setAvailRules] = useState<AvailabilityRules | null>(null);
   /** Today's kitchen count per product and size, for the stock badges. */
   const [shopStock, setShopStock] = useState<ShopAvailability | null>(null);
-  const [query, setQuery] = useState('');
   const [checkoutErrors, setCheckoutErrors] = useState<string[] | null>(null);
   const checkoutErrorsRef = useRef<HTMLDivElement>(null);
   // Errors sit beside the Pay button; bring them on screen however they were raised.
@@ -710,10 +709,10 @@ export function ShopFlow({
   }, [initialScreen, isAuthenticated, onInitialScreenApplied, onRequireAuth]);
 
   useEffect(() => {
-    if (!initialQuery) return;
-    setQuery(initialQuery);
-    onInitialQueryApplied?.();
-  }, [initialQuery, onInitialQueryApplied]);
+    if (!initialFilter) return;
+    setFilter(initialFilter);
+    onInitialFilterApplied?.();
+  }, [initialFilter, onInitialFilterApplied]);
 
   // After a checkout-triggered sign-in succeeds, move the now-authenticated
   // guest straight into checkout instead of leaving them back on Cart.
@@ -809,9 +808,9 @@ export function ShopFlow({
   }, [products, availRules, shopStock]);
 
   /**
-   * The tab counts. Deliberately NOT narrowed by the flavour chips or the
-   * search box: the number on a tab answers "is there anything over there",
-   * which a filter the member has already set would make meaningless.
+   * The tab counts. Deliberately NOT narrowed by the flavour chips: the
+   * number on a tab answers "is there anything over there", which a filter
+   * the member has already set would make meaningless.
    */
   const tabCounts = useMemo(() => {
     let today = 0;
@@ -846,15 +845,22 @@ export function ShopFlow({
   }, [availTab, availRules, products, availabilityById]);
 
   const filteredProducts = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return products.filter((p) => {
       const a = availabilityById.get(p.id);
       if (a && !productInTab(a, availTab)) return false;
-      if (filter !== 'all' && p.shopFilter !== filter) return false;
-      if (!q) return true;
-      return `${p.name} ${p.shortDescription}`.toLowerCase().includes(q);
+      return filter === 'all' || p.shopFilter === filter;
     });
-  }, [filter, query, products, availTab, availabilityById]);
+  }, [filter, products, availTab, availabilityById]);
+
+  /** The other tab, and how much of the current filter is waiting on it. */
+  const otherTab: AvailabilityTab = availTab === 'today' ? 'preorder' : 'today';
+  const filteredInOtherTab = useMemo(() => {
+    return products.filter((p) => {
+      const a = availabilityById.get(p.id);
+      if (!a || !productInTab(a, otherTab)) return false;
+      return filter === 'all' || p.shopFilter === filter;
+    }).length;
+  }, [filter, products, otherTab, availabilityById]);
 
   const product = productId
     ? products.find((p) => p.id === productId)
@@ -1489,8 +1495,8 @@ export function ShopFlow({
               </span>
             </button>
           </div>
-          {/* Nothing to filter means dead controls holding a row. */}
-          {filteredProducts.length > 0 || query.trim() ? (
+          {/* Stays up when a filter comes back empty, or the member is stuck on it. */}
+          {filter !== 'all' || tabCounts[availTab] > 0 ? (
             <div className="shopFilterRow">
               <button
                 type="button"
@@ -1509,17 +1515,6 @@ export function ShopFlow({
                   {SHOP_FILTER_LABELS[f]}
                 </button>
               ))}
-              {query.trim() ? (
-                // A search started from the Home tab — show it so it can be cleared.
-                <button
-                  type="button"
-                  className="chip active"
-                  onClick={() => setQuery('')}
-                  aria-label={`Clear search ${query.trim()}`}
-                >
-                  “{query.trim()}” ✕
-                </button>
-              ) : null}
             </div>
           ) : null}
           {noCakesToday && filteredProducts.length > 0 ? (
@@ -1652,7 +1647,6 @@ export function ShopFlow({
             {!filteredProducts.length && !catalogLoading ? (
               availTab === 'today' &&
               filter === 'all' &&
-              !query.trim() &&
               tabCounts.preorder > 0 ? (
                 // The default tab empties at the cut-off, on a closed day, and
                 // whenever the kitchen sells out. Say which, and offer the way on.
@@ -1696,8 +1690,34 @@ export function ShopFlow({
                   ) : null}
                 </section>
               ) : (
-                <section className="pmCard">
-                  <p className="caption">No products match your filters.</p>
+                <section className="pmCard shopAvailEmpty">
+                  <h3 className="shopAvailEmptyTitle">
+                    {filter === 'all'
+                      ? 'Nothing'
+                      : `No ${SHOP_FILTER_LABELS[filter].toLowerCase()}`}{' '}
+                    {availTab === 'today' ? 'in store today' : 'to pre-order'}
+                  </h3>
+                  {filteredInOtherTab > 0 ? (
+                    <button
+                      type="button"
+                      className="shopAvailEmptyCta"
+                      onClick={() => setAvailTab(otherTab)}
+                    >
+                      {otherTab === 'today'
+                        ? `See ${filteredInOtherTab} in store today`
+                        : `See ${filteredInOtherTab} to pre-order`}
+                    </button>
+                  ) : filter !== 'all' ? (
+                    <button
+                      type="button"
+                      className="shopAvailEmptyCta"
+                      onClick={() => setFilter('all')}
+                    >
+                      Show everything
+                    </button>
+                  ) : (
+                    <p className="caption">Please check back soon.</p>
+                  )}
                 </section>
               )
             ) : null}

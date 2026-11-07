@@ -55,6 +55,7 @@ import {
   pointsTierProgress,
 } from './lib/pointsTier';
 import { ShopFlow } from './shop/ShopFlow';
+import { SHOP_FILTER_LABELS, type ShopFilter } from './shop/types';
 import { useShopStore } from './shop/store/useShopStore';
 
 const PENDING_REFERRAL_KEY = 'moja_pending_referral';
@@ -305,34 +306,17 @@ function SignInPrompt({
   );
 }
 
-// Home tab search bar — jumps straight into the Shop tab's catalog with the
-// typed query pre-filled, so browsing doesn't require detouring through the
-// bottom nav first.
-function HomeSearchBar({ onSearch }: { onSearch: (query: string) => void }) {
-  const [value, setValue] = useState('');
+// Home tab quick filters — jump straight into the Shop tab's catalog on one
+// category, so browsing doesn't require detouring through the bottom nav first.
+function HomeQuickFilters({ onPick }: { onPick: (filter: ShopFilter) => void }) {
   return (
-    <form
-      className="homeSearchBar"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const q = value.trim();
-        if (q) onSearch(q);
-      }}
-    >
-      <svg className="homeSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle cx="11" cy="11" r="7" />
-        <path d="M21 21l-4.3-4.3" />
-      </svg>
-      <input
-        type="text"
-        inputMode="search"
-        placeholder="Search cakes & drinks"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="homeSearchInput"
-        aria-label="Search products"
-      />
-    </form>
+    <div className="shopFilterRow homeQuickFilters">
+      {(Object.keys(SHOP_FILTER_LABELS) as ShopFilter[]).map((f) => (
+        <button key={f} type="button" className="chip" onClick={() => onPick(f)}>
+          {SHOP_FILTER_LABELS[f]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -759,7 +743,7 @@ function App() {
   const [topUp, setTopUp] = useState<{ result: TopUpResult | null } | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
   const cartItemCount = useShopStore((st) => st.cart.reduce((n, l) => n + l.qty, 0));
-  const [shopInitialQuery, setShopInitialQuery] = useState<string | null>(null);
+  const [shopInitialFilter, setShopInitialFilter] = useState<ShopFilter | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
   // Redeeming a reward for a code: confirm → spend points → show the new code.
   const [redeemTarget, setRedeemTarget] = useState<{ id: string; title: string; points: number } | null>(null);
@@ -1929,9 +1913,9 @@ function App() {
                   )}
                 </header>
 
-                <HomeSearchBar
-                  onSearch={(q) => {
-                    setShopInitialQuery(q);
+                <HomeQuickFilters
+                  onPick={(f) => {
+                    setShopInitialFilter(f);
                     setShopInitialScreen('browse');
                     setTab('shop');
                   }}
@@ -2294,8 +2278,8 @@ function App() {
                 memberRewards={rewardsData}
                 initialScreen={shopInitialScreen}
                 onInitialScreenApplied={() => setShopInitialScreen(null)}
-                initialQuery={shopInitialQuery}
-                onInitialQueryApplied={() => setShopInitialQuery(null)}
+                initialFilter={shopInitialFilter}
+                onInitialFilterApplied={() => setShopInitialFilter(null)}
                 isAuthenticated={Boolean(profile)}
                 onRequireAuth={() => openAuthOverlay('checkout')}
                 authResumeSignal={authResumeSignal}

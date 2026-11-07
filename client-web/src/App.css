@@ -696,32 +696,10 @@
   font-size: 13px;
 }
 
-/* --- Home tab: search bar, quick actions, membership banner ------------ */
+/* --- Home tab: quick filters, quick actions, membership banner --------- */
 
-.homeSearchBar {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.homeSearchIcon {
-  position: absolute;
-  left: 15px;
-  width: 18px;
-  height: 18px;
-  color: #94a3b8;
-  pointer-events: none;
-}
-
-.homeSearchInput {
-  width: 100%;
-  border: 1px solid #d7e3fb;
-  border-radius: 14px;
-  padding: 13px 14px 13px 42px;
-  font-size: 14px;
-  font-family: inherit;
-  background: #fff;
-  color: #1a1a1a;
+.homeQuickFilters {
+  margin-top: 0;
 }
 
 .quickActionsRow {
@@ -2708,14 +2686,6 @@ code {
   place-items: center;
 }
 
-.shopSearchCard .searchInput {
-  margin-bottom: 10px;
-}
-
-.shopCategoryChips {
-  margin-top: 4px;
-}
-
 .shopProductHit {
   text-align: left;
   cursor: pointer;
@@ -2756,11 +2726,6 @@ code {
 .shopCashbackIcon {
   color: #c98a1b;
   flex-shrink: 0;
-}
-
-/* The chips row is now the whole card (no search box above it). */
-.shopSearchCard .shopCategoryChips {
-  margin-top: 0;
 }
 
 .shopSoldOutBadge {
