@@ -230,10 +230,20 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         'The selected audience has no recipients with an email address.',
       );
     }
-    const campaign = await this.prisma.emailCampaign.update({
-      where: { id },
+    // Atomic status guard: never overwrite SENDING/SENT/FAILED back to
+    // SCHEDULED. A check-then-update race with the dispatcher would reopen
+    // the campaign and start a second runCampaign against the same PENDING
+    // recipients (duplicate emails + duplicate wallet vouchers).
+    const claimed = await this.prisma.emailCampaign.updateMany({
+      where: { id, status: { in: EDITABLE_STATUSES } },
       data: { status: EmailCampaignStatus.SCHEDULED, scheduledAt },
     });
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        'Campaign can no longer be scheduled (it may already be sending).',
+      );
+    }
+    const campaign = await this.requireCampaign(id);
     // Fire the dispatcher soon after "send now" instead of waiting a tick.
     if (scheduledAt.getTime() <= Date.now()) {
       setTimeout(() => void this.dispatchDueCampaigns().catch(() => {}), 100);
@@ -248,10 +258,18 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         'Only scheduled campaigns can be cancelled. Campaigns already sending will finish the current run.',
       );
     }
-    const campaign = await this.prisma.emailCampaign.update({
-      where: { id },
+    // Atomic status guard so a cancel that raced the dispatcher cannot flip
+    // SENDING/SENT back to CANCELLED (or reopen a finished campaign).
+    const claimed = await this.prisma.emailCampaign.updateMany({
+      where: { id, status: EmailCampaignStatus.SCHEDULED },
       data: { status: EmailCampaignStatus.CANCELLED, scheduledAt: null },
     });
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        'Only scheduled campaigns can be cancelled. Campaigns already sending will finish the current run.',
+      );
+    }
+    const campaign = await this.requireCampaign(id);
     return { campaign: this.toDetail(campaign) };
   }
 
@@ -587,8 +605,11 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
 
       for (const recipient of batch) {
         if (!recipient.email) {
-          await this.prisma.emailCampaignRecipient.update({
-            where: { id: recipient.id },
+          await this.prisma.emailCampaignRecipient.updateMany({
+            where: {
+              id: recipient.id,
+              status: EmailRecipientStatus.PENDING,
+            },
             data: {
               status: EmailRecipientStatus.SKIPPED,
               error: 'No email address',
@@ -596,6 +617,24 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
           });
           continue;
         }
+        // Claim PENDING → SENT before side effects so a parallel runCampaign
+        // (e.g. multi-instance race) cannot double-email or double-issue.
+        // Prefer at-most-once delivery over resume-after-crash for marketing.
+        const claimedRecipient = await this.prisma.emailCampaignRecipient.updateMany(
+          {
+            where: {
+              id: recipient.id,
+              status: EmailRecipientStatus.PENDING,
+            },
+            data: {
+              status: EmailRecipientStatus.SENT,
+              sentAt: new Date(),
+              error: null,
+            },
+          },
+        );
+        if (claimedRecipient.count === 0) continue;
+
         // Put the voucher in the member's wallet before the email goes out
         // so the message never references a gift that doesn't exist yet.
         let voucherInfo: RenderVoucherInfo | null = null;
@@ -630,17 +669,15 @@ export class MailerService implements OnModuleInit, OnModuleDestroy {
         });
         if (ok) {
           sent += 1;
-          await this.prisma.emailCampaignRecipient.update({
-            where: { id: recipient.id },
-            data: { status: EmailRecipientStatus.SENT, sentAt: new Date() },
-          });
         } else {
           failed += 1;
+          // Roll the optimistic SENT claim back to FAILED so ops can see it.
           await this.prisma.emailCampaignRecipient.update({
             where: { id: recipient.id },
             data: {
               status: EmailRecipientStatus.FAILED,
               error: 'Send failed (see server logs)',
+              sentAt: null,
             },
           });
         }
