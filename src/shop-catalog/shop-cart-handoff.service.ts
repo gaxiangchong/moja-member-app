@@ -8,6 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import type {
+  ShopCatalogProduct,
+  ShopCatalogProductVariant,
+} from './shop-catalog.service';
+import { ShopCatalogService } from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
@@ -38,6 +43,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly catalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -82,16 +88,15 @@ export class ShopCartHandoffService {
   }
 
   private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
+    const products = this.catalog.listPublicProducts();
     const lines: CartHandoffLine[] = [];
     for (const raw of dto.lines) {
       const productId = raw.productId.trim();
-      const name = raw.name.trim();
       const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs a productId',
         });
       }
       if (qty < 1 || qty > 99) {
@@ -100,22 +105,79 @@ export class ShopCartHandoffService {
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
+      const { product, variant } = this.resolveCatalogSelection(
+        products,
+        productId,
+        raw.variantLabel,
+      );
+      const unitPriceCents = Math.floor(
+        variant?.priceCents ?? product.basePriceCents,
+      );
+      if (!Number.isFinite(unitPriceCents) || unitPriceCents < 0) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
+          message: 'Catalog price for this item is invalid',
         });
       }
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? null,
+        imageUrl: product.imageUrl?.trim() || product.images?.[0]?.src || null,
       });
     }
     return lines;
+  }
+
+  private resolveCatalogSelection(
+    products: ShopCatalogProduct[],
+    rawProductId: string,
+    rawVariantLabel?: string | null,
+  ): { product: ShopCatalogProduct; variant?: ShopCatalogProductVariant } {
+    let product = products.find((p) => p.id === rawProductId);
+    let variant: ShopCatalogProductVariant | undefined;
+
+    if (!product) {
+      for (const candidate of products) {
+        const found = candidate.variants?.find((v) => v.id === rawProductId);
+        if (found) {
+          product = candidate;
+          variant = found;
+          break;
+        }
+      }
+    }
+
+    if (!product || product.soldOut) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_UNKNOWN_PRODUCT',
+        message: 'Cart handoff contains an unavailable product',
+      });
+    }
+
+    const requestedVariant = rawVariantLabel?.trim();
+    if (!variant && requestedVariant && product.variants?.length) {
+      variant = product.variants.find(
+        (v) => v.id === requestedVariant || v.label.trim() === requestedVariant,
+      );
+      if (!variant) {
+        throw new BadRequestException({
+          code: 'CART_HANDOFF_INVALID_VARIANT',
+          message: 'Cart handoff contains an unavailable product variant',
+        });
+      }
+    }
+
+    if (variant?.available === false) {
+      throw new BadRequestException({
+        code: 'CART_HANDOFF_INVALID_VARIANT',
+        message: 'Cart handoff contains an unavailable product variant',
+      });
+    }
+
+    return { product, variant };
   }
 
   private normalizeFulfillment(
