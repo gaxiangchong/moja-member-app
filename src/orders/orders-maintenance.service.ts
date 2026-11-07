@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WalletService } from '../wallet/wallet.service';
 import { ORDER_STATUS } from './order-status';
 import { ProductStockService } from './product-stock.service';
 
@@ -27,6 +28,7 @@ export class OrdersMaintenanceService {
     private readonly productStock: ProductStockService,
     private readonly config: ConfigService,
     private readonly loyalty: LoyaltyService,
+    private readonly wallet: WalletService,
   ) {}
 
   /** Generous enough for a slow bank/e-wallet redirect, short enough to matter. */
@@ -88,6 +90,20 @@ export class OrdersMaintenanceService {
         .catch((err) =>
           this.logger.error(
             `Reward points refund failed for expired order ${order.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+
+      // Credits can already have left the wallet if the process died after
+      // the debit and before the order was placed. Cancelling that row without
+      // returning them loses the member's money, and the order is no longer
+      // pending so nothing else will retry the placement.
+      await this.wallet
+        .refundOrderCredits(order.id, 'Payment not completed')
+        .catch((err) =>
+          this.logger.error(
+            `Credit refund failed for expired order ${order.id}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           ),
