@@ -10,6 +10,7 @@ import {
   type AdminIdentity,
 } from './api';
 import { DEFAULT_VIEW, groupIdForView, IMPLEMENTED_VIEWS, MENU } from './menu';
+import { OPEN_MEMBER_EVENT } from './memberNav';
 import { DashboardOverview } from './views/DashboardOverview';
 import { CustomersList } from './views/CustomersList';
 import { CustomerOrders } from './views/CustomerOrders';
@@ -254,6 +255,16 @@ function App() {
     if (groupId) {
       setExpandedGroups((prev) => (prev.has(groupId) ? prev : new Set(prev).add(groupId)));
     }
+  }, []);
+
+  // "View member" from an order: go to All customers, which opens the profile.
+  useEffect(() => {
+    const onOpen = () => {
+      setActiveView('customers-list');
+      setExpandedGroups((prev) => (prev.has('customers') ? prev : new Set(prev).add('customers')));
+    };
+    window.addEventListener(OPEN_MEMBER_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_MEMBER_EVENT, onOpen);
   }, []);
 
   const navMatches = useMemo(() => {

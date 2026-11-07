@@ -63,7 +63,18 @@ import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscrip
 import type { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
-import type { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
+import type {
+  AdminListOrdersQueryDto,
+  AdminOrdersSummaryQueryDto,
+} from './dto/admin-list-orders-query.dto';
+import {
+  kindWhere,
+  orderKind,
+  searchWhere,
+  TAB_STATUSES,
+  type OrderKind,
+  type OrderTab,
+} from './commerce-orders.util';
 import type { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
 import type { AdminReverseLoyaltyEntryDto } from './dto/admin-reverse-loyalty-entry.dto';
 import type { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
@@ -3401,11 +3412,235 @@ export class AdminService {
     return `···${p.slice(-4)}`;
   }
 
+  /** Search, order type, member and product filters shared by list and summary. */
+  private commerceOrderFilters(query: {
+    search?: string;
+    kind?: OrderKind;
+    customerId?: string;
+  }): Prisma.CustomerOrderWhereInput[] {
+    const parts: Prisma.CustomerOrderWhereInput[] = [];
+    const search = query.search ? searchWhere(query.search) : null;
+    if (search) parts.push(search);
+    if (query.kind) parts.push(kindWhere(query.kind));
+    if (query.customerId) parts.push({ customerId: query.customerId });
+    return parts;
+  }
+
+  /** placedAt range from yyyy-mm-dd dates (inclusive), in UTC days. */
+  private placedRange(
+    from?: string,
+    to?: string,
+  ): Prisma.CustomerOrderWhereInput | null {
+    if (!from && !to) return null;
+    const start = from ? new Date(`${from.slice(0, 10)}T00:00:00.000Z`) : null;
+    const end = to ? new Date(`${to.slice(0, 10)}T00:00:00.000Z`) : null;
+    if (end) end.setUTCDate(end.getUTCDate() + 1);
+    return {
+      placedAt: {
+        ...(start ? { gte: start } : {}),
+        ...(end ? { lt: end } : {}),
+      },
+    };
+  }
+
+  /**
+   * The Orders screen's totals strip and tab counts for a period: paid
+   * revenue (and the same length of time before it, for the comparison),
+   * paid orders, average order, and how many are still to make or collect.
+   */
+  async commerceOrdersSummary(query: AdminOrdersSummaryQueryDto) {
+    const filters = this.commerceOrderFilters(query);
+    const range = this.placedRange(query.from, query.to);
+    const where: Prisma.CustomerOrderWhereInput = {
+      AND: [...filters, ...(range ? [range] : [])],
+    };
+
+    const byStatus = await this.prisma.customerOrder.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      _sum: { totalCents: true },
+    });
+    const count = (statuses: string[]) =>
+      byStatus
+        .filter((r) => statuses.includes(r.status))
+        .reduce((n, r) => n + r._count._all, 0);
+    // Revenue: paid and not refunded.
+    const revenueStatuses: string[] = [
+      ORDER_STATUS.PLACED,
+      ORDER_STATUS.PREPARING,
+      ORDER_STATUS.READY,
+      ORDER_STATUS.COMPLETED,
+    ];
+    const paidCents = byStatus
+      .filter((r) => revenueStatuses.includes(r.status))
+      .reduce((n, r) => n + (r._sum.totalCents ?? 0), 0);
+    const paidOrders = count(revenueStatuses);
+
+    // The same number of days just before `from`, for "+18% on last week".
+    let previousPaidCents: number | null = null;
+    if (query.from && query.to) {
+      const start = new Date(`${query.from.slice(0, 10)}T00:00:00.000Z`);
+      const end = new Date(`${query.to.slice(0, 10)}T00:00:00.000Z`);
+      const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+      const prevStart = new Date(start);
+      prevStart.setUTCDate(prevStart.getUTCDate() - days);
+      const prev = await this.prisma.customerOrder.aggregate({
+        where: {
+          AND: [
+            ...filters,
+            { status: { in: revenueStatuses } },
+            { placedAt: { gte: prevStart, lt: start } },
+          ],
+        },
+        _sum: { totalCents: true },
+      });
+      previousPaidCents = prev._sum.totalCents ?? 0;
+    }
+
+    const tabs = Object.fromEntries([
+      ['all', byStatus.reduce((n, r) => n + r._count._all, 0)],
+      ...Object.entries(TAB_STATUSES).map(([tab, statuses]) => [
+        tab,
+        count(statuses),
+      ]),
+    ]) as Record<OrderTab, number>;
+
+    return {
+      paidCents,
+      paidOrders,
+      averageCents: paidOrders > 0 ? Math.round(paidCents / paidOrders) : 0,
+      openOrders: count(OPEN_ORDER_STATUSES),
+      previousPaidCents,
+      tabs,
+    };
+  }
+
+  /**
+   * One order for the admin side panel: what was bought, how it is being
+   * fulfilled, each step's time, how it was paid, points earned, and whether
+   * it reached SalesPlay.
+   */
+  async getCommerceOrder(id: string) {
+    const o = await this.prisma.customerOrder.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: { id: true, phoneE164: true, displayName: true, email: true },
+        },
+        lines: { orderBy: { id: 'asc' } },
+      },
+    });
+    if (!o) {
+      throw new NotFoundException({
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    }
+    const [payment, points] = await Promise.all([
+      this.prisma.paymentIntent.findFirst({
+        where: {
+          purpose: 'shop_order',
+          metadata: { path: ['orderId'], equals: o.id },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { channelCode: true, status: true, updatedAt: true },
+      }),
+      this.prisma.loyaltyLedgerEntry.aggregate({
+        where: {
+          customerId: o.customerId,
+          referenceType: 'customer_order',
+          referenceId: o.id,
+          deltaPoints: { gt: 0 },
+        },
+        _sum: { deltaPoints: true },
+      }),
+    ]);
+    return {
+      ...this.commerceOrderRow(o),
+      customerEmail: o.customer.email,
+      subtotalCents: o.lines.reduce((n, l) => n + l.unitPriceCents * l.qty, 0),
+      deliveryFeeCents: o.deliveryFeeCents,
+      earlyOrderDiscountCents: o.earlyOrderDiscountCents,
+      paidWithCreditsCents: o.paidWithCreditsCents,
+      rewardTitle: o.rewardTitle,
+      rewardPointsSpent: o.rewardPointsSpent,
+      cancelReason: o.cancelReason,
+      delivery: o.deliveryAddress
+        ? {
+            address: o.deliveryAddress,
+            contactName: o.deliveryContactName,
+            contactPhone: o.deliveryContactPhone,
+            arrangement: o.deliveryArrangement,
+          }
+        : null,
+      payment: payment
+        ? {
+            channel: o.paidWithCreditsCents >= o.totalCents ? 'CREDITS' : payment.channelCode,
+            status: payment.status,
+            at: payment.updatedAt.toISOString(),
+          }
+        : o.paidWithCreditsCents > 0
+          ? { channel: 'CREDITS', status: 'SUCCEEDED', at: null }
+          : null,
+      pointsEarned: points._sum.deltaPoints ?? 0,
+      salesplay: o.salesplaySystemUniqueId
+        ? {
+            id: o.salesplaySystemUniqueId,
+            at: o.salesplaySyncedAt?.toISOString() ?? null,
+          }
+        : null,
+    };
+  }
+
+  /** One order as the admin list shows it. */
+  private commerceOrderRow(
+    o: Prisma.CustomerOrderGetPayload<{
+      include: {
+        customer: { select: { id: true; phoneE164: true; displayName: true } };
+        lines: true;
+      };
+    }>,
+  ) {
+    return {
+      id: o.id,
+      orderNumber: o.orderNumber,
+      placedAt: o.placedAt.toISOString(),
+      preparingAt: o.preparingAt?.toISOString() ?? null,
+      readyAt: o.readyAt?.toISOString() ?? null,
+      completedAt: o.completedAt?.toISOString() ?? null,
+      cancelledAt: o.cancelledAt?.toISOString() ?? null,
+      totalCents: o.totalCents,
+      status: o.status,
+      kind: orderKind(o),
+      scheduledDate: o.scheduledDate?.toISOString().slice(0, 10) ?? null,
+      scheduledSlot: o.scheduledSlot,
+      fulfillmentSummary: this.fulfillmentSummaryStrings(o.fulfillmentSummary),
+      customerId: o.customer.id,
+      customerDisplayName: o.customer.displayName,
+      customerPhone: o.customer.phoneE164,
+      customerPhoneMasked: this.maskOrderPhone(o.customer.phoneE164),
+      lineCount: o.lines.length,
+      lines: o.lines.map((l) => ({
+        id: l.id,
+        productId: l.productId,
+        name: l.name,
+        variantLabel: l.variantLabel,
+        unitPriceCents: l.unitPriceCents,
+        qty: l.qty,
+      })),
+    };
+  }
+
   async listCommerceOrders(query: AdminListOrdersQueryDto) {
     const take = Math.min(Math.max(query.limit ?? 100, 1), 200);
     const where: Prisma.CustomerOrderWhereInput = {};
+    const extra = this.commerceOrderFilters(query);
+    if (extra.length > 0) where.AND = extra;
     const st = query.status ?? 'all';
-    if (st === 'placed') where.status = { in: OPEN_ORDER_STATUSES };
+    if (query.tab && query.tab !== 'all') {
+      where.status = { in: TAB_STATUSES[query.tab] };
+    } else if (st === 'placed') where.status = { in: OPEN_ORDER_STATUSES };
     else if (st === 'completed') where.status = ORDER_STATUS.COMPLETED;
 
     const parseDayStart = (iso: string) =>
@@ -3426,6 +3661,7 @@ export class AdminService {
     if (from || toEx) {
       if (query.dateField === 'completed' && st === 'completed') {
         where.AND = [
+          ...extra,
           { status: ORDER_STATUS.COMPLETED },
           {
             OR: [
@@ -3481,39 +3717,25 @@ export class AdminService {
     else if (sort === 'completed_desc') orderBy = { completedAt: 'desc' };
     else if (sort === 'completed_asc') orderBy = { completedAt: 'asc' };
 
-    const rows = await this.prisma.customerOrder.findMany({
-      where,
-      orderBy,
-      take,
-      include: {
-        customer: { select: { id: true, phoneE164: true, displayName: true } },
-        lines: { orderBy: { id: 'asc' } },
-      },
-    });
+    const [rows, total] = await Promise.all([
+      this.prisma.customerOrder.findMany({
+        where,
+        orderBy,
+        take,
+        include: {
+          customer: {
+            select: { id: true, phoneE164: true, displayName: true },
+          },
+          lines: { orderBy: { id: 'asc' } },
+        },
+      }),
+      this.prisma.customerOrder.count({ where }),
+    ]);
 
     return {
-      orders: rows.map((o) => ({
-        id: o.id,
-        orderNumber: o.orderNumber,
-        placedAt: o.placedAt.toISOString(),
-        completedAt: o.completedAt?.toISOString() ?? null,
-        totalCents: o.totalCents,
-        status: o.status,
-        fulfillmentSummary: this.fulfillmentSummaryStrings(
-          o.fulfillmentSummary,
-        ),
-        customerDisplayName: o.customer.displayName,
-        customerPhoneMasked: this.maskOrderPhone(o.customer.phoneE164),
-        lineCount: o.lines.length,
-        lines: o.lines.map((l) => ({
-          id: l.id,
-          productId: l.productId,
-          name: l.name,
-          variantLabel: l.variantLabel,
-          unitPriceCents: l.unitPriceCents,
-          qty: l.qty,
-        })),
-      })),
+      orders: rows.map((o) => this.commerceOrderRow(o)),
+      /** Matching orders in all, not just the ones returned. */
+      total,
     };
   }
 

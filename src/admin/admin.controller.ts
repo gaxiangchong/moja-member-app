@@ -8,6 +8,7 @@ import {
   HttpCode,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -30,7 +31,10 @@ import { CustomerPurchaseHistoryService } from './customer-purchase-history.serv
 import { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
-import { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
+import {
+  AdminListOrdersQueryDto,
+  AdminOrdersSummaryQueryDto,
+} from './dto/admin-list-orders-query.dto';
 import { AdminLoyaltyAdjustmentDto } from './dto/admin-loyalty-adjustment.dto';
 import { AdminReverseLoyaltyEntryDto } from './dto/admin-reverse-loyalty-entry.dto';
 import { AdminUpdateCustomerDto } from './dto/admin-update-customer.dto';
@@ -121,6 +125,20 @@ export class AdminController {
   @RequirePermissions(P.CUSTOMER_READ)
   listCommerceOrders(@Query() query: AdminListOrdersQueryDto) {
     return this.admin.listCommerceOrders(query);
+  }
+
+  /** Totals strip and tab counts for the admin Orders screen. */
+  @Get('commerce/orders/summary')
+  @RequirePermissions(P.CUSTOMER_READ)
+  commerceOrdersSummary(@Query() query: AdminOrdersSummaryQueryDto) {
+    return this.admin.commerceOrdersSummary(query);
+  }
+
+  /** One order for the admin side panel. */
+  @Get('commerce/orders/:id')
+  @RequirePermissions(P.CUSTOMER_READ)
+  getCommerceOrder(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.getCommerceOrder(id);
   }
 
   @Get('customers')

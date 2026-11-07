@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
-  font-family: 'Inter', 'Segoe UI', system-ui, Arial, sans-serif;
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 * {
@@ -147,7 +148,7 @@ select {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), #6d7dff);
+  background: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -727,7 +728,7 @@ select {
 .hbarFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), #7b8bff);
+  background: var(--accent);
 }
 
 .hbarValue {
@@ -750,11 +751,9 @@ select {
 
 .dataTable th {
   text-align: left;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -1451,4 +1450,575 @@ select {
 .variantCodeField input {
   flex: 1;
   min-width: 0;
+}
+
+/* ---- Orders ---- */
+.ordersView {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ordersHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ordersCustom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.ordersCustom input {
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: #efece6;
+}
+
+.segmentedItem {
+  font: inherit;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.segmentedItem--on {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.1);
+}
+
+/* Totals for the period: one strip, divided, not four cards. */
+.statStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.statStrip > div {
+  padding: 14px 18px;
+  min-width: 0;
+}
+
+.statStrip > div + div {
+  border-left: 1px solid var(--border);
+}
+
+.statStrip b {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.statStrip span {
+  color: var(--text-secondary);
+}
+
+.statStrip em {
+  display: block;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.statUp {
+  color: var(--success);
+}
+
+.statDown {
+  color: var(--danger);
+}
+
+.tabRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabItem {
+  font: inherit;
+  font-weight: 500;
+  padding: 10px 0;
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tabItem b {
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tabItem--on {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.tabItem--warn b {
+  color: var(--danger);
+}
+
+.ordersTablePanel {
+  padding: 0;
+}
+
+.ordersTable td {
+  vertical-align: top;
+}
+
+.ordersTable td strong {
+  display: block;
+  font-weight: 600;
+}
+
+.cellSub {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ordersItems {
+  white-space: normal !important;
+  max-width: 340px;
+}
+
+.dataTable tr.rowSelected td {
+  background: var(--accent-tint);
+}
+
+.dataTable tr.rowSelected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.tableFoot {
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.orderPill {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.orderPill--new {
+  background: #ecebe6;
+  color: var(--text-primary);
+}
+
+.orderPill--prep {
+  background: var(--warning-tint);
+  color: #8a5a10;
+}
+
+.orderPill--ready {
+  background: var(--success-tint);
+  color: #3d6630;
+}
+
+.orderPill--done {
+  padding-left: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.orderPill--done::before {
+  content: '✓ ';
+}
+
+.orderPill--pay {
+  background: none;
+  border: 1px dashed #e2c48e;
+  color: #8a5a10;
+}
+
+.orderPill--bad {
+  background: var(--danger-tint);
+  color: #8e2b1d;
+}
+
+/* ---- Side panel (an order, a member) ---- */
+.sidePanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  width: min(460px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 40px rgba(31, 35, 40, 0.12);
+}
+
+.sidePanelHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px 12px;
+}
+
+.sidePanelHead h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.sidePanelHead p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+
+.sidePanelHead p strong {
+  color: var(--text-primary);
+}
+
+.sidePanelClose {
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.sidePanelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidePanelActions a.toolbarButton {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidePanelBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 28px;
+  display: grid;
+  gap: 22px;
+  align-content: start;
+}
+
+.sidePanelBody h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.linkButton {
+  font: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.panelNote {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-tint);
+  color: #8a5a10;
+}
+
+.panelNote--bad {
+  background: var(--danger-tint);
+  color: #8e2b1d;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline li {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 14px 26px;
+}
+
+.timeline li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-card);
+  box-sizing: border-box;
+}
+
+.timeline li::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 17px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+.timeline li:last-child::after {
+  display: none;
+}
+
+.timeline li.timelineDone::before {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.timeline li.timelineNow::before {
+  border-color: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-tint);
+}
+
+.timeline small {
+  color: var(--text-secondary);
+}
+
+.panelList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.panelList li {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+}
+
+.panelList li + li {
+  border-top: 1px solid var(--border);
+}
+
+.panelList small {
+  display: block;
+  color: var(--text-secondary);
+}
+
+.panelListTotal {
+  font-weight: 600;
+}
+
+.panelKv {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.panelKv dt {
+  color: var(--text-secondary);
+}
+
+.panelKv dd {
+  margin: 0;
+}
+
+.panelText {
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .statStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statStrip > div:nth-child(3) {
+    border-left: none;
+  }
+
+  .statStrip > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ---- All customers ---- */
+.segmentedCount {
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chipButton {
+  font: inherit;
+  padding: 7px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chipButton--set {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.filterPanel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+
+.membersTable td {
+  vertical-align: middle;
+}
+
+.membersTable td strong {
+  display: block;
+  font-weight: 600;
+}
+
+.nameless {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.cellSubInline {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.buyDot {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+
+.buyDot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.buyDot--active {
+  color: var(--success);
+}
+
+.buyDot--lapsed {
+  color: var(--warning);
+}
+
+.buyDot--never {
+  color: var(--text-muted);
+}
+
+.tierName {
+  font-weight: 600;
+}
+
+.tierName--gold {
+  color: #a0700f;
+}
+
+.tierName--platinum {
+  color: #4a5563;
+}
+
+.tierName--silver {
+  color: #6b7280;
+}
+
+.tierName--member {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.voucherChips {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.voucherChip {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: #b7b2a8;
+}
+
+.voucherChip--available {
+  background: var(--success-tint);
+  border-color: #c9ddbe;
+  color: #3d6630;
+}
+
+.voucherChip--used {
+  background: #f0ede7;
+  color: var(--text-secondary);
+}
+
+.voucherChip--expired {
+  color: #c9b9b5;
+  text-decoration: line-through;
+}
+
+.statStrip--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.statStrip--3 b {
+  font-size: 18px;
 }

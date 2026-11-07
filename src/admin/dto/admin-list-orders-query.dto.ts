@@ -5,14 +5,43 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
+import {
+  ORDER_KINDS,
+  ORDER_TABS,
+  type OrderKind,
+  type OrderTab,
+} from '../commerce-orders.util';
 
 export class AdminListOrdersQueryDto {
   @IsOptional()
   @IsIn(['placed', 'completed', 'all'])
   status?: 'placed' | 'completed' | 'all';
+
+  /** Status tab on the Orders screen; wins over `status` when set. */
+  @IsOptional()
+  @IsIn(ORDER_TABS)
+  tab?: OrderTab;
+
+  /** How the order leaves the shop. */
+  @IsOptional()
+  @IsIn(ORDER_KINDS)
+  kind?: OrderKind;
+
+  /** Order number, customer name or phone, or product name. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
+  /** Only this member's orders (the member profile panel). */
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
 
   /** Inclusive start (ISO date or datetime). Applies to `dateField`. */
   @IsOptional()
@@ -61,4 +90,24 @@ export class AdminListOrdersQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+}
+
+/** Period for the Orders screen's totals strip and tab counts. */
+export class AdminOrdersSummaryQueryDto {
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @IsIn(ORDER_KINDS)
+  kind?: OrderKind;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
 }

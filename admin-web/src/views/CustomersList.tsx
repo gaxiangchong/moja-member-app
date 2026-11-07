@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createCampaign,
   downloadCustomersCsv,
   fetchActivitySummary,
   fetchCampaigns,
   fetchCustomerIds,
+  fetchCommerceOrders,
+  fetchCustomerDetail,
   fetchCustomers,
   issueCampaignToCustomers,
   type ActivitySummary,
+  type AdminCustomer,
+  type AdminCustomerDetail,
+  type AdminOrder,
   type AwardState,
   type CampaignSummary,
   type CustomerActivity,
@@ -15,6 +20,7 @@ import {
   type CustomerSortBy,
   type CustomersPage,
 } from '../api';
+import { formatPhone, OPEN_MEMBER_EVENT, takePendingMember } from '../memberNav';
 import { MemberLoginPinDrawer } from './MemberLoginPinDrawer';
 import { MemberVouchersDrawer } from './MemberVouchersDrawer';
 
@@ -45,40 +51,6 @@ const ACTIVITY_LABEL: Record<CustomerActivity, string> = {
   lapsed: 'Lapsed',
   never: 'Never bought',
 };
-
-const ACTIVITY_TONE: Record<CustomerActivity, 'success' | 'warning' | 'neutral'> = {
-  active: 'success',
-  lapsed: 'warning',
-  never: 'neutral',
-};
-
-/** One of the automatic vouchers (welcome / birthday) for one member. */
-function AwardBadge({ state }: { state: AwardState | undefined }) {
-  switch (state) {
-    case 'available':
-      return <span className="badge badge--success">Unused</span>;
-    case 'used':
-      return <span className="badge badge--neutral">Used</span>;
-    case 'expired':
-      return <span className="badge badge--danger">Expired</span>;
-    default:
-      return <span className="dataTableMuted">—</span>;
-  }
-}
-
-function ReferralAward({ referral }: { referral: { earned: number; used: number; available: number } | undefined }) {
-  if (!referral || referral.earned === 0) return <span className="dataTableMuted">—</span>;
-  return (
-    <span>
-      {referral.earned} earned
-      <span className="dataTableMuted">
-        {' · '}
-        {referral.used} used
-        {referral.available > 0 ? ` · ${referral.available} unused` : ''}
-      </span>
-    </span>
-  );
-}
 
 /**
  * Push a campaign's voucher to every member matching the grid's current
@@ -286,31 +258,6 @@ function formatRm(cents: number): string {
   return `RM ${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
-const TIER_LABEL: Record<string, string> = {
-  silver: 'Silver · 1×',
-  gold: 'Gold · 1.5×',
-  platinum: 'Platinum · 2×',
-};
-
-function tierLabel(tier: string | null): string {
-  if (!tier) return '—';
-  return TIER_LABEL[tier.toLowerCase()] ?? tier;
-}
-
-function statusBadgeTone(status: string): 'success' | 'danger' | 'neutral' {
-  const s = status.toUpperCase();
-  if (s === 'ACTIVE') return 'success';
-  if (s === 'SUSPENDED') return 'danger';
-  return 'neutral';
-}
-
 /** RM in the input, cents on the wire. */
 function rmToCents(rm: string): string {
   const n = Number(rm);
@@ -353,6 +300,15 @@ export function CustomersList() {
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<ActivitySummary | null>(null);
   const [pushOpen, setPushOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  /** The member whose profile panel is open; an order's "View member" can open it. */
+  const [profileId, setProfileId] = useState<string | null>(() => takePendingMember());
+
+  useEffect(() => {
+    const onOpen = (e: Event) => setProfileId((e as CustomEvent<string>).detail ?? takePendingMember());
+    window.addEventListener(OPEN_MEMBER_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_MEMBER_EVENT, onOpen);
+  }, []);
   const firstRender = useRef(true);
 
   // Debounce the draft into `applied`, and reset to page 1 whenever the
@@ -445,6 +401,12 @@ export function CustomersList() {
     return sort.dir === 'asc' ? ' ▲' : ' ▼';
   };
 
+  const ariaSort = (key: string): 'ascending' | 'descending' | 'none' => {
+    const by = SORTABLE[key];
+    if (!by || sort.by !== by) return 'none';
+    return sort.dir === 'asc' ? 'ascending' : 'descending';
+  };
+
   const clearAll = () => {
     setDraft(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
@@ -473,41 +435,43 @@ export function CustomersList() {
   return (
     <div className="viewStack">
       <div className="gridToolbar">
-        <span className="viewMuted">Buying:</span>
-        {(
-          [
-            ['', 'All', summary ? summary.total : null],
-            ['active', 'Active', summary?.active ?? null],
-            ['lapsed', 'Lapsed', summary?.lapsed ?? null],
-            ['never', 'Never bought', summary?.never ?? null],
-          ] as const
-        ).map(([value, label, count]) => (
-          <button
-            key={value || 'all'}
-            type="button"
-            className={`toolbarButton${(draft.activity ?? '') === value ? ' toolbarButton--primary' : ''}`}
-            onClick={() => set({ activity: value })}
-            title={
-              value === 'active'
-                ? `Bought within the last ${activeDaysApplied} days`
-                : value === 'lapsed'
-                  ? `Bought before, but not in the last ${activeDaysApplied} days`
-                  : value === 'never'
-                    ? 'Signed up but has never made a purchase'
-                    : 'Every activated member'
-            }
-          >
-            {label}
-            {count !== null ? ` · ${count.toLocaleString()}` : ''}
-          </button>
-        ))}
+        <div className="segmented" role="group" aria-label="Buying">
+          {(
+            [
+              ['', 'All', summary ? summary.total : null],
+              ['active', 'Buying', summary?.active ?? null],
+              ['lapsed', 'Lapsed', summary?.lapsed ?? null],
+              ['never', 'Never bought', summary?.never ?? null],
+            ] as const
+          ).map(([value, label, count]) => (
+            <button
+              key={value || 'all'}
+              type="button"
+              className={(draft.activity ?? '') === value ? 'segmentedItem segmentedItem--on' : 'segmentedItem'}
+              aria-pressed={(draft.activity ?? '') === value}
+              onClick={() => set({ activity: value })}
+              title={
+                value === 'active'
+                  ? `Bought within the last ${activeDaysApplied} days`
+                  : value === 'lapsed'
+                    ? `Bought before, but not in the last ${activeDaysApplied} days`
+                    : value === 'never'
+                      ? 'Signed up but has never made a purchase'
+                      : 'Every member'
+              }
+            >
+              {label}
+              {count !== null ? <b className="segmentedCount">{count.toLocaleString()}</b> : null}
+            </button>
+          ))}
+        </div>
         <label className="viewMuted" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          active = bought within
+          Buying means within
           <select
             className="gridFilterInput"
             value={draft.activeDays ?? DEFAULT_ACTIVE_DAYS}
             onChange={(e) => set({ activeDays: e.target.value })}
-            aria-label="Active means bought within this many days"
+            aria-label="Buying means bought within this many days"
           >
             {ACTIVE_DAYS_CHOICES.map((d) => (
               <option key={d} value={d}>
@@ -516,56 +480,10 @@ export function CustomersList() {
             ))}
           </select>
         </label>
-      </div>
-      <div className="gridToolbar">
-        <input
-          type="search"
-          className="toolbarInput gridToolbarSearch"
-          placeholder="Search name, phone or email…"
-          value={draft.search ?? ''}
-          onChange={(e) => set({ search: e.target.value })}
-        />
-        <select
-          className="gridFilterInput"
-          value={draft.tag ?? ''}
-          onChange={(e) => set({ tag: e.target.value })}
-          aria-label="Interest tag"
-        >
-          <option value="">Any interest</option>
-          <option value="cake">Cake</option>
-          <option value="bento">Bento</option>
-        </select>
-        <select
-          className="gridFilterInput"
-          value={draft.signupSource ?? ''}
-          onChange={(e) => set({ signupSource: e.target.value })}
-          aria-label="Signup source"
-        >
-          <option value="">Any source</option>
-          <option value="otp">App signup</option>
-          <option value="counter">Counter</option>
-        </select>
-        <select
-          className="gridFilterInput"
-          value={draft.marketingConsent ?? ''}
-          onChange={(e) => set({ marketingConsent: e.target.value })}
-          aria-label="Marketing consent"
-        >
-          <option value="">Any consent</option>
-          <option value="true">Opted in</option>
-          <option value="false">Not opted in</option>
-        </select>
-        <select
-          className="gridFilterInput"
-          value={draft.hasActiveVoucher ?? ''}
-          onChange={(e) => set({ hasActiveVoucher: e.target.value })}
-          aria-label="Active voucher"
-        >
-          <option value="">Any voucher</option>
-          <option value="true">Has active voucher</option>
-          <option value="false">No active voucher</option>
-        </select>
         <span className="gridToolbarSpacer" />
+        <button type="button" className="toolbarButton" onClick={onExport} disabled={exporting}>
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
         <button
           type="button"
           className="toolbarButton toolbarButton--primary"
@@ -575,375 +493,236 @@ export function CustomersList() {
         >
           Send voucher to {data ? data.total.toLocaleString() : '…'}
         </button>
-        {activeFilterCount > 0 ? (
-          <button type="button" className="toolbarButton" onClick={clearAll}>
-            Clear {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}
-          </button>
-        ) : null}
+      </div>
+
+      <div className="gridToolbar">
+        <input
+          type="search"
+          className="toolbarInput gridToolbarSearch"
+          placeholder="Name, phone or email"
+          value={draft.search ?? ''}
+          onChange={(e) => set({ search: e.target.value })}
+          aria-label="Search members"
+        />
         <button
           type="button"
-          className="toolbarButton"
-          onClick={onExport}
-          disabled={exporting}
+          className={filtersOpen || activeFilterCount > 0 ? 'chipButton chipButton--set' : 'chipButton'}
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((o) => !o)}
         >
-          {exporting ? 'Exporting…' : 'Export CSV'}
+          {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : '+ Filter'}
         </button>
+        {activeFilterCount > 0 ? (
+          <button type="button" className="linkButton" onClick={clearAll}>
+            Clear filters
+          </button>
+        ) : null}
       </div>
+
+      {filtersOpen ? (
+        <section className="panel filterPanel" aria-label="Filters">
+          <label className="filterField">
+            Tier
+            <select value={draft.memberTier ?? ''} onChange={(e) => set({ memberTier: e.target.value })}>
+              <option value="">Any tier</option>
+              <option value="member">Member</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+              <option value="platinum">Platinum</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Points
+            <span className="gridFilterPair">
+              <input type="number" min={0} placeholder="Min" value={draft.minPoints ?? ''} onChange={(e) => set({ minPoints: e.target.value })} aria-label="Minimum points" />
+              <input type="number" min={0} placeholder="Max" value={draft.maxPoints ?? ''} onChange={(e) => set({ maxPoints: e.target.value })} aria-label="Maximum points" />
+            </span>
+          </label>
+          <label className="filterField">
+            Spent (RM)
+            <span className="gridFilterPair">
+              <input type="number" min={0} step="0.01" placeholder="Min" value={centsToRm(draft.minSpentCents)} onChange={(e) => set({ minSpentCents: rmToCents(e.target.value) })} aria-label="Minimum spent" />
+              <input type="number" min={0} step="0.01" placeholder="Max" value={centsToRm(draft.maxSpentCents)} onChange={(e) => set({ maxSpentCents: rmToCents(e.target.value) })} aria-label="Maximum spent" />
+            </span>
+          </label>
+          <label className="filterField">
+            Joined
+            <span className="gridFilterPair">
+              <input type="date" value={draft.joinedFrom ?? ''} onChange={(e) => set({ joinedFrom: e.target.value })} aria-label="Joined from" />
+              <input type="date" value={draft.joinedTo ?? ''} onChange={(e) => set({ joinedTo: e.target.value })} aria-label="Joined to" />
+            </span>
+          </label>
+          <label className="filterField">
+            Last signed in
+            <span className="gridFilterPair">
+              <input type="date" value={draft.lastLoginFrom ?? ''} disabled={neverLoggedIn} onChange={(e) => set({ lastLoginFrom: e.target.value })} aria-label="Last signed in from" />
+              <input type="date" value={draft.lastLoginTo ?? ''} disabled={neverLoggedIn} onChange={(e) => set({ lastLoginTo: e.target.value })} aria-label="Last signed in to" />
+            </span>
+            <span className="gridFilterCheck">
+              <input
+                type="checkbox"
+                checked={neverLoggedIn}
+                onChange={(e) =>
+                  set({
+                    neverLoggedIn: e.target.checked ? 'true' : '',
+                    ...(e.target.checked ? { lastLoginFrom: '', lastLoginTo: '' } : {}),
+                  })
+                }
+              />
+              Never signed in
+            </span>
+          </label>
+          <label className="filterField">
+            Signed up
+            <select value={draft.signupSource ?? ''} onChange={(e) => set({ signupSource: e.target.value })}>
+              <option value="">Anywhere</option>
+              <option value="otp">In the app</option>
+              <option value="counter">At the counter</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Interest
+            <select value={draft.tag ?? ''} onChange={(e) => set({ tag: e.target.value })}>
+              <option value="">Any interest</option>
+              <option value="cake">Cake</option>
+              <option value="bento">Bento</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Marketing
+            <select value={draft.marketingConsent ?? ''} onChange={(e) => set({ marketingConsent: e.target.value })}>
+              <option value="">Any</option>
+              <option value="true">Opted in</option>
+              <option value="false">Not opted in</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Email
+            <select value={draft.hasEmail ?? ''} onChange={(e) => set({ hasEmail: e.target.value })}>
+              <option value="">Any</option>
+              <option value="true">On file</option>
+              <option value="false">Missing</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Account
+            <select value={draft.status ?? ''} onChange={(e) => set({ status: e.target.value })}>
+              <option value="">Any</option>
+              <option value="ACTIVE">Active</option>
+              <option value="DRAFT">Not activated</option>
+              <option value="SUSPENDED">Suspended</option>
+            </select>
+          </label>
+          <label className="filterField">
+            Any voucher
+            <select value={draft.hasActiveVoucher ?? ''} onChange={(e) => set({ hasActiveVoucher: e.target.value })}>
+              <option value="">Any</option>
+              <option value="true">Has an unused voucher</option>
+              <option value="false">No unused voucher</option>
+            </select>
+          </label>
+          {(
+            [
+              ['welcomeVoucher', 'Welcome voucher'],
+              ['birthdayVoucher', 'Birthday voucher'],
+              ['referralVoucher', 'Referral voucher'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="filterField">
+              {label}
+              <select value={draft[key] ?? ''} onChange={(e) => set({ [key]: e.target.value })}>
+                {AWARD_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </section>
+      ) : null}
 
       {error ? <p className="viewError">{error}</p> : null}
 
       {pushOpen ? <VoucherPushPanel filters={applied} onClose={() => setPushOpen(false)} /> : null}
 
-      <section className="panel">
-        <div className="gridScroll">
-          <table className="dataTable dataGrid">
-            <thead>
+      <section className="panel ordersTablePanel">
+        <table className="dataTable membersTable">
+          <thead>
+            <tr>
+              <th className="gridSortable" onClick={() => toggleSort('name')} aria-sort={ariaSort('name')}>
+                Member{sortMark('name')}
+              </th>
+              <th>Buying</th>
+              <th>Tier</th>
+              <th className="gridSortable gridNumeric" onClick={() => toggleSort('points')} aria-sort={ariaSort('points')}>
+                Points{sortMark('points')}
+              </th>
+              <th className="gridSortable gridNumeric" onClick={() => toggleSort('spend')} aria-sort={ariaSort('spend')}>
+                Spent{sortMark('spend')}
+              </th>
+              <th title="Welcome · Birthday · Referral">Vouchers</th>
+              <th className="gridSortable" onClick={() => toggleSort('joined')} aria-sort={ariaSort('joined')}>
+                Joined{sortMark('joined')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && !data ? (
               <tr>
-                <th
-                  className="gridSortable"
-                  onClick={() => toggleSort('name')}
-                  aria-sort={
-                    sort.by === 'name'
-                      ? sort.dir === 'asc'
-                        ? 'ascending'
-                        : 'descending'
-                      : 'none'
-                  }
-                >
-                  Name{sortMark('name')}
-                </th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Buying</th>
-                <th>Last purchase</th>
-                <th>Tier</th>
-                <th
-                  className="gridSortable"
-                  onClick={() => toggleSort('points')}
-                >
-                  Points{sortMark('points')}
-                </th>
-                <th
-                  className="gridSortable"
-                  onClick={() => toggleSort('spend')}
-                >
-                  Lifetime spend{sortMark('spend')}
-                </th>
-                <th
-                  className="gridSortable"
-                  onClick={() => toggleSort('joined')}
-                >
-                  Joined{sortMark('joined')}
-                </th>
-                <th
-                  className="gridSortable"
-                  onClick={() => toggleSort('lastLogin')}
-                >
-                  Last login{sortMark('lastLogin')}
-                </th>
-                <th>Welcome voucher</th>
-                <th>Birthday voucher</th>
-                <th>Referral vouchers</th>
+                <td colSpan={7} className="dataTableEmpty">
+                  Loading…
+                </td>
               </tr>
-              {/* Filter row — one control per column. */}
-              <tr className="gridFilterRow">
-                <th>
-                  <input
-                    className="gridFilterInput"
-                    placeholder="Contains…"
-                    value={draft.name ?? ''}
-                    onChange={(e) => set({ name: e.target.value })}
-                    aria-label="Filter by name"
-                  />
-                </th>
-                <th>
-                  <input
-                    className="gridFilterInput"
-                    placeholder="Contains…"
-                    value={draft.phone ?? ''}
-                    onChange={(e) => set({ phone: e.target.value })}
-                    aria-label="Filter by phone"
-                  />
-                </th>
-                <th>
-                  <div className="gridFilterStack">
-                    <input
-                      className="gridFilterInput"
-                      placeholder="Contains…"
-                      value={draft.email ?? ''}
-                      onChange={(e) => set({ email: e.target.value })}
-                      aria-label="Filter by email"
-                    />
-                    <select
-                      className="gridFilterInput"
-                      value={draft.hasEmail ?? ''}
-                      onChange={(e) => set({ hasEmail: e.target.value })}
-                      aria-label="Has email on file"
-                    >
-                      <option value="">Any</option>
-                      <option value="true">On file</option>
-                      <option value="false">Missing</option>
-                    </select>
-                  </div>
-                </th>
-                <th>
-                  <select
-                    className="gridFilterInput"
-                    value={draft.status ?? ''}
-                    onChange={(e) => set({ status: e.target.value })}
-                    aria-label="Filter by status"
-                  >
-                    <option value="">Any</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="SUSPENDED">Suspended</option>
-                  </select>
-                </th>
-                <th>
-                  <select
-                    className="gridFilterInput"
-                    value={draft.activity ?? ''}
-                    onChange={(e) => set({ activity: e.target.value })}
-                    aria-label="Filter by buying activity"
-                  >
-                    <option value="">Any</option>
-                    <option value="active">Active</option>
-                    <option value="lapsed">Lapsed</option>
-                    <option value="never">Never bought</option>
-                  </select>
-                </th>
-                <th></th>
-                <th>
-                  <input
-                    className="gridFilterInput"
-                    placeholder="e.g. gold"
-                    value={draft.memberTier ?? ''}
-                    onChange={(e) => set({ memberTier: e.target.value })}
-                    aria-label="Filter by tier"
-                  />
-                </th>
-                <th>
-                  <div className="gridFilterPair">
-                    <input
-                      className="gridFilterInput"
-                      type="number"
-                      min={0}
-                      placeholder="Min"
-                      value={draft.minPoints ?? ''}
-                      onChange={(e) => set({ minPoints: e.target.value })}
-                      aria-label="Minimum points"
-                    />
-                    <input
-                      className="gridFilterInput"
-                      type="number"
-                      min={0}
-                      placeholder="Max"
-                      value={draft.maxPoints ?? ''}
-                      onChange={(e) => set({ maxPoints: e.target.value })}
-                      aria-label="Maximum points"
-                    />
-                  </div>
-                </th>
-                <th>
-                  <div className="gridFilterPair">
-                    <input
-                      className="gridFilterInput"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="Min RM"
-                      value={centsToRm(draft.minSpentCents)}
-                      onChange={(e) =>
-                        set({ minSpentCents: rmToCents(e.target.value) })
-                      }
-                      aria-label="Minimum lifetime spend"
-                    />
-                    <input
-                      className="gridFilterInput"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="Max RM"
-                      value={centsToRm(draft.maxSpentCents)}
-                      onChange={(e) =>
-                        set({ maxSpentCents: rmToCents(e.target.value) })
-                      }
-                      aria-label="Maximum lifetime spend"
-                    />
-                  </div>
-                </th>
-                <th>
-                  <div className="gridFilterPair">
-                    <input
-                      className="gridFilterInput"
-                      type="date"
-                      value={draft.joinedFrom ?? ''}
-                      onChange={(e) => set({ joinedFrom: e.target.value })}
-                      aria-label="Joined from"
-                    />
-                    <input
-                      className="gridFilterInput"
-                      type="date"
-                      value={draft.joinedTo ?? ''}
-                      onChange={(e) => set({ joinedTo: e.target.value })}
-                      aria-label="Joined to"
-                    />
-                  </div>
-                </th>
-                <th>
-                  <div className="gridFilterStack">
-                    <div className="gridFilterPair">
-                      <input
-                        className="gridFilterInput"
-                        type="date"
-                        value={draft.lastLoginFrom ?? ''}
-                        onChange={(e) => set({ lastLoginFrom: e.target.value })}
-                        disabled={neverLoggedIn}
-                        aria-label="Last login from"
-                      />
-                      <input
-                        className="gridFilterInput"
-                        type="date"
-                        value={draft.lastLoginTo ?? ''}
-                        onChange={(e) => set({ lastLoginTo: e.target.value })}
-                        disabled={neverLoggedIn}
-                        aria-label="Last login to"
-                      />
-                    </div>
-                    <label className="gridFilterCheck">
-                      <input
-                        type="checkbox"
-                        checked={neverLoggedIn}
-                        onChange={(e) =>
-                          set({
-                            neverLoggedIn: e.target.checked ? 'true' : '',
-                            ...(e.target.checked
-                              ? { lastLoginFrom: '', lastLoginTo: '' }
-                              : {}),
-                          })
-                        }
-                      />
-                      Never signed in
-                    </label>
-                  </div>
-                </th>
-                {(
-                  [
-                    ['welcomeVoucher', 'Welcome voucher'],
-                    ['birthdayVoucher', 'Birthday voucher'],
-                    ['referralVoucher', 'Referral vouchers'],
-                  ] as const
-                ).map(([key, label]) => (
-                  <th key={key}>
-                    <select
-                      className="gridFilterInput"
-                      value={draft[key] ?? ''}
-                      onChange={(e) => set({ [key]: e.target.value })}
-                      aria-label={`Filter by ${label.toLowerCase()}`}
-                    >
-                      {AWARD_FILTER_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </th>
-                ))}
+            ) : null}
+            {data?.items.map((c) => (
+              <tr
+                key={c.id}
+                className={`dataTableRowClickable${profileId === c.id ? ' rowSelected' : ''}`}
+                tabIndex={0}
+                onClick={() => setProfileId(c.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setProfileId(c.id);
+                }}
+              >
+                <td>
+                  <strong className={c.displayName ? undefined : 'nameless'}>{c.displayName || 'No name yet'}</strong>
+                  <span className="cellSub">{formatPhone(c.phoneE164)}</span>
+                </td>
+                <td>
+                  <span className={`buyDot buyDot--${c.activity}`}>
+                    {c.lastPurchaseAt ? sinceLabel(c.lastPurchaseAt) : ACTIVITY_LABEL[c.activity]}
+                  </span>
+                </td>
+                <td>
+                  <TierLabel tier={c.memberTier} />
+                </td>
+                <td className="gridNumeric">{c.pointsBalance.toLocaleString()}</td>
+                <td className="gridNumeric">{c.lifetimeSpentCents > 0 ? formatRm(c.lifetimeSpentCents) : '—'}</td>
+                <td>
+                  <VoucherChips awards={c.awards} />
+                </td>
+                <td>{shortDate(c.createdAt)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {loading && !data ? (
-                <tr>
-                  <td colSpan={14} className="dataTableEmpty">
-                    Loading…
-                  </td>
-                </tr>
-              ) : null}
-              {data?.items.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    {c.displayName || '—'}
-                    <div>
-                      <button
-                        type="button"
-                        className="toolbarButton"
-                        style={{ marginTop: 4, padding: '2px 8px', fontSize: 12 }}
-                        onClick={() => setVoucherMemberId(c.id)}
-                      >
-                        Vouchers
-                      </button>
-                      <button
-                        type="button"
-                        className="toolbarButton"
-                        style={{ marginTop: 4, marginLeft: 6, padding: '2px 8px', fontSize: 12 }}
-                        onClick={() => setPinMemberId(c.id)}
-                      >
-                        Login PIN
-                      </button>
-                    </div>
-                  </td>
-                  <td className="gridNumeric">{c.phoneE164}</td>
-                  <td>{c.email || '—'}</td>
-                  <td>
-                    <span
-                      className={`badge badge--${statusBadgeTone(c.status)}`}
-                    >
-                      {c.status.toLowerCase()}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge badge--${ACTIVITY_TONE[c.activity] ?? 'neutral'}`}>
-                      {ACTIVITY_LABEL[c.activity] ?? '—'}
-                    </span>
-                  </td>
-                  <td>{c.lastPurchaseAt ? formatDate(c.lastPurchaseAt) : '—'}</td>
-                  <td>{tierLabel(c.memberTier)}</td>
-                  <td className="gridNumeric">
-                    {c.pointsBalance.toLocaleString()}
-                  </td>
-                  <td className="gridNumeric">
-                    {formatRm(c.lifetimeSpentCents)}
-                  </td>
-                  <td>{formatDate(c.createdAt)}</td>
-                  <td>{c.lastLoginAt ? formatDate(c.lastLoginAt) : 'Never'}</td>
-                  <td>
-                    <AwardBadge state={c.awards?.welcome} />
-                  </td>
-                  <td>
-                    <AwardBadge state={c.awards?.birthday} />
-                  </td>
-                  <td>
-                    <ReferralAward referral={c.awards?.referral} />
-                  </td>
-                </tr>
-              ))}
-              {data && data.items.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={14} className="dataTableEmpty">
-                    No customers match these filters.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+            ))}
+            {data && data.items.length === 0 && !loading ? (
+              <tr>
+                <td colSpan={7} className="dataTableEmpty">
+                  No members match these filters.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
 
         <div className="pager">
-          <button
-            type="button"
-            className="toolbarButton"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
+          <button type="button" className="toolbarButton" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             Previous
           </button>
           <span className="pagerLabel">
             {data ? (
               <>
-                Page {data.page} of {totalPages} · {data.total.toLocaleString()}{' '}
-                match
-                {data.total === 1 ? '' : 'es'}
+                Page {data.page} of {totalPages} · {data.total.toLocaleString()} member{data.total === 1 ? '' : 's'}
                 {loading ? ' · refreshing…' : ''}
               </>
             ) : (
@@ -965,22 +744,289 @@ export function CustomersList() {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="toolbarButton"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
+          <button type="button" className="toolbarButton" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
             Next
           </button>
         </div>
       </section>
-      {pinMemberId ? (
-        <MemberLoginPinDrawer customerId={pinMemberId} onClose={() => setPinMemberId(null)} />
+
+      {profileId ? (
+        <MemberProfilePanel
+          customerId={profileId}
+          row={data?.items.find((c) => c.id === profileId) ?? null}
+          onClose={() => setProfileId(null)}
+          onVouchers={() => {
+            setVoucherMemberId(profileId);
+            setProfileId(null);
+          }}
+          onLoginPin={() => {
+            setPinMemberId(profileId);
+            setProfileId(null);
+          }}
+        />
       ) : null}
+      {pinMemberId ? <MemberLoginPinDrawer customerId={pinMemberId} onClose={() => setPinMemberId(null)} /> : null}
       {voucherMemberId ? (
         <MemberVouchersDrawer customerId={voucherMemberId} onClose={() => setVoucherMemberId(null)} />
       ) : null}
     </div>
   );
 }
+
+const TIER_MULTIPLIER: Record<string, string> = { silver: '1×', gold: '1.5×', platinum: '2×' };
+
+function TierLabel({ tier }: { tier: string | null }) {
+  const t = (tier ?? 'member').toLowerCase();
+  const name = t.charAt(0).toUpperCase() + t.slice(1);
+  return (
+    <span className={`tierName tierName--${t}`}>
+      {name}
+      {TIER_MULTIPLIER[t] ? <span className="cellSubInline"> {TIER_MULTIPLIER[t]}</span> : null}
+    </span>
+  );
+}
+
+const AWARD_TITLE: Record<AwardState, string> = {
+  none: 'not given',
+  available: 'unused',
+  used: 'used',
+  expired: 'expired',
+};
+
+/** W · B · R squares: welcome, birthday, referral vouchers at a glance. */
+function VoucherChips({ awards }: { awards: AdminCustomer['awards'] }) {
+  const referral: AwardState = !awards?.referral.earned
+    ? 'none'
+    : awards.referral.available > 0
+      ? 'available'
+      : 'used';
+  const chips: [string, string, AwardState][] = [
+    ['W', 'Welcome', awards?.welcome ?? 'none'],
+    ['B', 'Birthday', awards?.birthday ?? 'none'],
+    ['R', 'Referral', referral],
+  ];
+  return (
+    <span className="voucherChips">
+      {chips.map(([letter, name, state]) => (
+        <span key={letter} className={`voucherChip voucherChip--${state}`} title={`${name} voucher: ${AWARD_TITLE[state]}`}>
+          {letter}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** "Today", "Yesterday", "12 days ago", or a date after a year. */
+function sinceLabel(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 365) return `${days} days ago`;
+  return shortDate(iso);
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) });
+}
+
+const LEDGER_REASON: Record<string, string> = {
+  shop_order_purchase: 'Online order',
+  pos_purchase: 'In-store purchase',
+  reward_redeemed: 'Reward redeemed',
+  admin_adjustment: 'Adjusted by staff',
+};
+
+/** A member at a glance: totals, recent orders, vouchers, points, and what staff can do. */
+function MemberProfilePanel({
+  customerId,
+  row,
+  onClose,
+  onVouchers,
+  onLoginPin,
+}: {
+  customerId: string;
+  row: AdminCustomer | null;
+  onClose: () => void;
+  onVouchers: () => void;
+  onLoginPin: () => void;
+}) {
+  const [detail, setDetail] = useState<AdminCustomerDetail | null>(null);
+  const [orders, setOrders] = useState<{ orders: AdminOrder[]; total?: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before loading another member
+    setDetail(null);
+    setOrders(null);
+    setError(null);
+    Promise.all([
+      fetchCustomerDetail(customerId),
+      fetchCommerceOrders({ customerId, sort: 'placed_desc', limit: 5 }),
+    ])
+      .then(([d, o]) => {
+        if (cancelled) return;
+        setDetail(d);
+        setOrders(o);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load this member');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const name = row?.displayName ?? detail?.displayName ?? null;
+  const phone = row?.phoneE164 ?? detail?.phoneE164 ?? '';
+  const email = row?.email ?? detail?.email ?? null;
+  const tier = row?.memberTier ?? detail?.memberTier ?? null;
+  const joined = row?.createdAt ?? detail?.createdAt;
+  const points = row?.pointsBalance ?? detail?.wallet?.pointsCached ?? 0;
+  const spent = row?.lifetimeSpentCents ?? detail?.storedWallet?.lifetimeSpentCents ?? 0;
+  const waDigits = phone.replace(/\D/g, '');
+
+  return (
+    <aside className="sidePanel" role="dialog" aria-modal="false" aria-labelledby="member-panel-title">
+      <header className="sidePanelHead">
+        <div>
+          <h2 id="member-panel-title" className={name ? undefined : 'nameless'}>
+            {name || 'No name yet'}
+          </h2>
+          <p>
+            {phone ? formatPhone(phone) : ''}
+            {email ? ` · ${email}` : ''}
+          </p>
+          <p>
+            <TierLabel tier={tier} /> member{joined ? ` · joined ${shortDate(joined)}` : ''}
+          </p>
+        </div>
+        <button type="button" className="sidePanelClose" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+      </header>
+      <div className="sidePanelActions">
+        <button type="button" className="toolbarButton toolbarButton--primary" onClick={onVouchers}>
+          Vouchers
+        </button>
+        <button type="button" className="toolbarButton" onClick={onLoginPin}>
+          Login PIN
+        </button>
+        {waDigits ? (
+          <a className="toolbarButton" href={`https://wa.me/${waDigits}`} target="_blank" rel="noreferrer">
+            WhatsApp
+          </a>
+        ) : null}
+      </div>
+      <div className="sidePanelBody">
+        {error ? <p className="viewError">{error}</p> : null}
+        <section className="statStrip statStrip--3">
+          <div>
+            <b>{spent > 0 ? formatRm(spent) : 'RM 0'}</b>
+            <span>spent in total</span>
+          </div>
+          <div>
+            <b>{points.toLocaleString()}</b>
+            <span>points</span>
+          </div>
+          <div>
+            <b>{orders ? (orders.total ?? orders.orders.length) : '…'}</b>
+            <span>online orders</span>
+          </div>
+        </section>
+
+        <section>
+          <h3>Recent orders</h3>
+          {orders && orders.orders.length === 0 ? <p className="viewMuted">No online orders yet.</p> : null}
+          {orders && orders.orders.length > 0 ? (
+            <ul className="panelList">
+              {orders.orders.map((o) => (
+                <li key={o.id}>
+                  <b>#{o.orderNumber}</b>
+                  <span>
+                    {o.lines
+                      .filter((l) => !l.productId.startsWith('addon-'))
+                      .map((l) => `${l.name}${l.variantLabel ? ` ${l.variantLabel}` : ''}`)
+                      .join(', ')}
+                    <small>
+                      {shortDate(o.placedAt)} · {formatRm(o.totalCents)}
+                    </small>
+                  </span>
+                  <span className="cellSub">{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        {row?.awards ? (
+          <section>
+            <h3>Vouchers</h3>
+            <dl className="panelKv">
+              <dt>Welcome</dt>
+              <dd>{AWARD_SENTENCE[row.awards.welcome]}</dd>
+              <dt>Birthday</dt>
+              <dd>
+                {AWARD_SENTENCE[row.awards.birthday]}
+                {row.birthdayDaysUntil != null ? ` · birthday in ${row.birthdayDaysUntil} days` : ''}
+              </dd>
+              <dt>Referral</dt>
+              <dd>
+                {row.awards.referral.earned === 0
+                  ? 'None yet'
+                  : `${row.awards.referral.earned} earned · ${row.awards.referral.available} unused`}
+              </dd>
+            </dl>
+          </section>
+        ) : null}
+
+        {detail && detail.ledgerEntries.length > 0 ? (
+          <section>
+            <h3>Points history</h3>
+            <dl className="panelKv">
+              {detail.ledgerEntries.slice(0, 6).map((e) => (
+                <Fragment key={e.id}>
+                  <dt>{shortDate(e.createdAt)}</dt>
+                  <dd>
+                    <span className={e.deltaPoints >= 0 ? 'statUp' : 'statDown'}>
+                      {e.deltaPoints >= 0 ? '+' : ''}
+                      {e.deltaPoints.toLocaleString()}
+                    </span>{' '}
+                    {LEDGER_REASON[e.reason] ?? e.reason.replace(/_/g, ' ')}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+const AWARD_SENTENCE: Record<AwardState, string> = {
+  none: 'Not given',
+  available: 'Unused',
+  used: 'Used',
+  expired: 'Expired',
+};
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  pending_payment: 'Awaiting payment',
+  placed: 'New',
+  preparing: 'Preparing',
+  ready: 'Ready',
+  completed: 'Collected',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+};

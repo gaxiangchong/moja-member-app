@@ -446,21 +446,101 @@ export type AdminOrderLine = {
   qty: number;
 };
 
+/** How the order leaves the shop. */
+export type OrderKind = 'in_store' | 'pickup' | 'delivery' | 'parcel';
+
+/** Status tabs on the Orders screen. */
+export type OrderTab = 'all' | 'to_make' | 'ready' | 'collected' | 'awaiting_payment' | 'cancelled';
+
 export type AdminOrder = {
   id: string;
   orderNumber: string;
   placedAt: string;
+  preparingAt?: string | null;
+  readyAt?: string | null;
   completedAt: string | null;
+  cancelledAt?: string | null;
   totalCents: number;
   status: string;
+  kind?: OrderKind;
+  /** yyyy-mm-dd pickup or delivery day; null for in-store and parcels. */
+  scheduledDate?: string | null;
+  /** HH:mm slot start. */
+  scheduledSlot?: string | null;
   fulfillmentSummary: string[];
+  customerId?: string;
   customerDisplayName: string | null;
+  customerPhone?: string;
   customerPhoneMasked: string;
   lineCount: number;
   lines: AdminOrderLine[];
 };
 
+/** One order with everything the side panel shows. */
+export type AdminOrderDetail = AdminOrder & {
+  customerEmail: string | null;
+  subtotalCents: number;
+  deliveryFeeCents: number;
+  earlyOrderDiscountCents: number;
+  paidWithCreditsCents: number;
+  rewardTitle: string | null;
+  rewardPointsSpent: number;
+  cancelReason: string | null;
+  delivery: { address: string; contactName: string | null; contactPhone: string | null; arrangement: string | null } | null;
+  payment: { channel: string; status: string; at: string | null } | null;
+  pointsEarned: number;
+  salesplay: { id: string; at: string | null } | null;
+};
+
+export type OrdersSummary = {
+  paidCents: number;
+  paidOrders: number;
+  averageCents: number;
+  openOrders: number;
+  /** Paid revenue for the same number of days just before; null without a range. */
+  previousPaidCents: number | null;
+  tabs: Record<OrderTab, number>;
+};
+
+export async function fetchOrdersSummary(params: {
+  from?: string;
+  to?: string;
+  kind?: OrderKind;
+  search?: string;
+}): Promise<OrdersSummary> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.kind) qs.set('kind', params.kind);
+  if (params.search?.trim()) qs.set('search', params.search.trim());
+  const res = await authorizedFetch(`/admin/commerce/orders/summary?${qs.toString()}`);
+  return parseCatalogResponse<OrdersSummary>(res);
+}
+
+export async function fetchCommerceOrder(id: string): Promise<AdminOrderDetail> {
+  const res = await authorizedFetch(`/admin/commerce/orders/${encodeURIComponent(id)}`);
+  return parseCatalogResponse<AdminOrderDetail>(res);
+}
+
+/** Moves an order on (same endpoint and rules as the ops queue). */
+export async function setOrderStatus(
+  id: string,
+  status: 'preparing' | 'ready' | 'completed' | 'cancelled',
+  reason?: string,
+): Promise<void> {
+  const res = await authorizedFetch(`/ops/queue/orders/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, ...(reason ? { reason } : {}) }),
+  });
+  await parseCatalogResponse<unknown>(res);
+}
+
 export type CommerceOrdersQuery = {
+  tab?: OrderTab;
+  kind?: OrderKind;
+  search?: string;
+  customerId?: string;
   status?: 'placed' | 'completed' | 'all';
   dateField?: 'placed' | 'completed';
   from?: string;
@@ -479,8 +559,12 @@ export type CommerceOrdersQuery = {
 
 export async function fetchCommerceOrders(
   params: CommerceOrdersQuery,
-): Promise<{ orders: AdminOrder[] }> {
+): Promise<{ orders: AdminOrder[]; total?: number }> {
   const qs = new URLSearchParams();
+  if (params.tab) qs.set('tab', params.tab);
+  if (params.kind) qs.set('kind', params.kind);
+  if (params.search?.trim()) qs.set('search', params.search.trim());
+  if (params.customerId) qs.set('customerId', params.customerId);
   if (params.status) qs.set('status', params.status);
   if (params.dateField) qs.set('dateField', params.dateField);
   if (params.from) qs.set('from', params.from);
@@ -491,7 +575,7 @@ export async function fetchCommerceOrders(
   if (params.limit) qs.set('limit', String(params.limit));
   const query = qs.toString();
   const res = await authorizedFetch(`/admin/commerce/orders${query ? `?${query}` : ''}`);
-  const data = await parseJson<{ orders: AdminOrder[] } & { message?: string | string[] }>(
+  const data = await parseJson<{ orders: AdminOrder[]; total?: number } & { message?: string | string[] }>(
     res,
   );
   if (!res.ok) throw new Error(extractMessage(data, res));
@@ -1001,6 +1085,12 @@ export type AdminCustomerDetail = {
   displayName: string | null;
   wallet: { pointsCached: number } | null;
   ledgerEntries: LoyaltyLedgerEntry[];
+  email?: string | null;
+  memberTier?: string | null;
+  signupSource?: string | null;
+  createdAt?: string;
+  lastLoginAt?: string | null;
+  storedWallet?: { lifetimeSpentCents: number } | null;
 };
 
 export async function fetchCustomerDetail(id: string): Promise<AdminCustomerDetail> {

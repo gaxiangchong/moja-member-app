@@ -52,7 +52,6 @@ export const MENU: MenuGroup[] = [
       { id: 'sales-member-orders', label: 'Orders page' },
       { id: 'sales-channels', label: 'Sales channels' },
       { id: 'sales-operations', label: 'Operations' },
-      { id: 'sales-orders', label: 'Orders' },
     ],
   },
   {
