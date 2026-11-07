@@ -77,6 +77,16 @@ describe('InStoreService.quote', () => {
     );
   });
 
+  it('refuses a whole cake when only slices are on the shelf', async () => {
+    const { svc } = makeService({ 'strawberry-shortcake|Slice': 8 });
+    expect((await svc.quote([cake('Slice')], NOW)).available).toBe(true);
+    const quote = await svc.quote([cake('6 inch')], NOW);
+    expect(quote.available).toBe(false);
+    expect(quote.reason).toContain("isn't on the shelf");
+    const late = zonedWallToUtc('2026-11-02', '22:00', 'Asia/Kuala_Lumpur');
+    expect((await svc.quote([cake('8 inch')], late)).available).toBe(false);
+  });
+
   it('sells from the shelf after the cut-off, for the next open day', async () => {
     const { svc } = makeService({ 'strawberry-shortcake|6 inch': 5 });
     const late = zonedWallToUtc('2026-11-02', '20:45', 'Asia/Kuala_Lumpur');

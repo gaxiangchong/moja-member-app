@@ -31,6 +31,8 @@ import {
   formatEarliestDate,
   noticeLabel,
   productInTab,
+  shelfPriceCents,
+  wholeCakeOnShelf,
   sizesReadyLabel,
   todayStockFor,
   type AvailabilityTab,
@@ -1559,6 +1561,7 @@ export function ShopFlow({
                * the shelf right now. There the notice is deliberately left off:
                * if you can collect it today, how much notice it normally needs
                * is beside the point, and two badges read as a contradiction.
+               * Slices alone don't count: the whole cake still needs the notice.
                */
               const badge =
                 soldOut || !avail
@@ -1567,7 +1570,8 @@ export function ShopFlow({
                     ? avail.stockTracked && (avail.totalLeftToday ?? 0) > 0
                       ? { text: readyBadge, kind: 'today' as const }
                       : null
-                    : avail.inStoreToday
+                    : avail.inStoreToday &&
+                        (!avail.stockTracked || wholeCakeOnShelf(avail.leftBySize))
                       ? { text: readyBadge, kind: 'today' as const }
                       : avail.needsPreorder
                         ? {
@@ -1579,6 +1583,14 @@ export function ShopFlow({
                 avail && avail.inStoreToday && avail.stockTracked
                   ? sizesReadyLabel(avail.leftBySize)
                   : '';
+              // In store, "from" is what can be bought off the shelf: RM 12 for
+              // a slice, not RM 149 for a cake that isn't there.
+              const fromCents =
+                (availTab === 'today' && avail?.stockTracked
+                  ? shelfPriceCents(p.variants, avail.leftBySize)
+                  : null) ??
+                p.variants?.[0]?.priceCents ??
+                p.basePriceCents;
               return (
                 <button
                   key={p.id}
@@ -1624,15 +1636,11 @@ export function ShopFlow({
                       ) : null}
                     </div>
                     <div className="productFoot">
-                      <PointsPill
-                        cashback={cashbackOf(p.variants?.[0]?.priceCents ?? p.basePriceCents)}
-                      />
+                      <PointsPill cashback={cashbackOf(fromCents)} />
                       <div className="productPrice">
                         <span className="shopFromLabel">from</span>
                         <span className="productPriceValue">
-                          {formatRm(
-                            p.variants?.[0]?.priceCents ?? p.basePriceCents,
-                          )}
+                          {formatRm(fromCents)}
                         </span>
                       </div>
                     </div>
@@ -1734,6 +1742,11 @@ export function ShopFlow({
           unshippableNames={unshippableNames}
           cartHasShippable={checkoutCart.some((l) => classOfLine(l) === 'NATIONWIDE')}
           cashbackOf={cashbackOf}
+          stockTracked={availabilityById.get(product.id)?.stockTracked ?? false}
+          fromShelf={availTab === 'today'}
+          preorderFrom={
+            availRules ? formatEarliestDate(availRules.preorder.earliestDate) : null
+          }
         />
       )}
 
@@ -2616,6 +2629,9 @@ function ProductDetailScreen({
   unshippableNames,
   cartHasShippable,
   cashbackOf,
+  stockTracked,
+  fromShelf,
+  preorderFrom,
 }: {
   product: Product;
   onBack: () => void;
@@ -2631,6 +2647,12 @@ function ProductDetailScreen({
   cartHasShippable: boolean;
   /** Points / cashback a spend earns for this member (null: rate unknown). */
   cashbackOf: (amountSen: number) => Cashback | null;
+  /** Sold from the kitchen's count, so a size missing from it is pre-order only. */
+  stockTracked: boolean;
+  /** Opened from the "In store today" tab: start on a size that is on the shelf. */
+  fromShelf: boolean;
+  /** Earliest pre-order date in words, e.g. "Mon 9 Nov". */
+  preorderFrom: string | null;
 }) {
   const cartHasCake = unshippableNames.length > 0;
   const shippingOn = deliveryInfo?.shippingEnabled !== false;
@@ -2664,7 +2686,16 @@ function ProductDetailScreen({
       alive = false;
     };
   }, [product.id]);
-  const leftToday = variantLabel && todayLeft ? todayLeft[variantLabel] : undefined;
+  // Sent here for what's on the shelf: don't open on a size that isn't.
+  useEffect(() => {
+    if (!fromShelf || !stockTracked || !todayLeft) return;
+    const onShelf = variants?.find((v) => (todayLeft[v.label] ?? 0) > 0);
+    if (onShelf) setVariantId(onShelf.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayLeft]);
+  // A size the kitchen has not counted is not on the shelf either.
+  const leftToday =
+    stockTracked && variantLabel && todayLeft ? (todayLeft[variantLabel] ?? 0) : undefined;
   const soldOut = isShopProductSoldOut(product);
   const maxQty =
     product.availableQty != null ? Math.max(1, product.availableQty) : 99;
@@ -2749,7 +2780,7 @@ function ProductDetailScreen({
                 <p className={leftToday > 0 ? 'shopTodayStock' : 'shopTodayStock is-out'}>
                   {leftToday > 0
                     ? 'Available from the shelf'
-                    : `${variantLabel} is not on the shelf — pre-order it for another day`}
+                    : `${variantLabel} is pre-order only right now${preorderFrom ? `, from ${preorderFrom}` : ''}`}
                 </p>
               ) : null}
             </div>

@@ -136,6 +136,27 @@ export function productInTab(
   return true;
 }
 
+/** A whole cake is on the shelf, not just slices of one. */
+export function wholeCakeOnShelf(leftBySize: TodayStock): boolean {
+  return Object.entries(leftBySize).some(
+    ([label, n]) => n > 0 && !/slice/i.test(label),
+  );
+}
+
+/**
+ * The lowest price among the sizes on the shelf, or null when none of the
+ * product's sizes are there.
+ */
+export function shelfPriceCents(
+  variants: { label: string; priceCents: number }[] | undefined,
+  leftBySize: TodayStock,
+): number | null {
+  const prices = (variants ?? [])
+    .filter((v) => (leftBySize[v.label] ?? 0) > 0)
+    .map((v) => v.priceCents);
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
 /**
  * Which sizes are on the shelf: `6 inch and 8 inch`, or `8 inch` alone.
  *
