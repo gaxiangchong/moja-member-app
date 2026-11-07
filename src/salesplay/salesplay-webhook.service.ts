@@ -161,6 +161,12 @@ export class SalesplayWebhookService {
    * pull sync (source distinguishes them).
    *
    * Returns true when the receipt was newly ingested.
+   *
+   * Loyalty is idempotent and re-attempted on later deliveries of the same
+   * receipt: create and award are not atomic, the per-receipt batch catch
+   * swallows award failures, and the webhook controller still returns 2xx so
+   * SalesPlay may never retry. Pull/reconcile (and any later duplicate) must
+   * backfill a missing earn rather than treat "already ingested" as done.
    */
   async ingestReceipt(
     raw: unknown,
@@ -177,11 +183,17 @@ export class SalesplayWebhookService {
 
     const existing = await this.prisma.posReceipt.findUnique({
       where: { salesplayReceiptId: parsed.salesplayReceiptId },
-      select: { id: true },
+      select: { id: true, customerId: true, originOnlineOrderId: true },
     });
     if (existing) {
       this.logger.debug(
-        `SalesPlay receipt ${parsed.salesplayReceiptId} already ingested; skipping.`,
+        `SalesPlay receipt ${parsed.salesplayReceiptId} already ingested; ensuring loyalty.`,
+      );
+      await this.maybeAwardLoyalty(
+        parsed,
+        existing.id,
+        existing.customerId,
+        existing.originOnlineOrderId,
       );
       return false;
     }
@@ -223,14 +235,26 @@ export class SalesplayWebhookService {
       receiptId = created.id;
     } catch (err) {
       // A concurrent delivery of the same receipt won the unique constraint —
-      // treat as already ingested (the winner handles loyalty).
+      // look up the winner and backfill loyalty if the winner's award failed.
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002'
       ) {
         this.logger.debug(
-          `SalesPlay receipt ${parsed.salesplayReceiptId} ingested concurrently; skipping.`,
+          `SalesPlay receipt ${parsed.salesplayReceiptId} ingested concurrently; ensuring loyalty.`,
         );
+        const winner = await this.prisma.posReceipt.findUnique({
+          where: { salesplayReceiptId: parsed.salesplayReceiptId },
+          select: { id: true, customerId: true, originOnlineOrderId: true },
+        });
+        if (winner) {
+          await this.maybeAwardLoyalty(
+            parsed,
+            winner.id,
+            winner.customerId,
+            winner.originOnlineOrderId,
+          );
+        }
         return false;
       }
       throw err;
@@ -252,6 +276,12 @@ export class SalesplayWebhookService {
 
     await this.maybeAwardLoyalty(parsed, receiptId, customerId, originOnlineOrderId);
     return true;
+  }
+
+  /** Points earned (or clawed) for a spend amount, matching online checkout. */
+  private pointsForSpendCents(cents: number): number {
+    const amountRm = Math.floor(Math.abs(cents) / 100);
+    return Math.floor(amountRm * this.pointsPerUnit());
   }
 
   private async maybeAwardLoyalty(
@@ -282,12 +312,22 @@ export class SalesplayWebhookService {
     }
     if (parsed.netCents <= 0) return;
 
-    // Floor RM (major unit) before applying the rate — same formula as online
-    // checkout (`CustomersService.finalizeShopOrderAfterPayment`) so both
-    // channels award identical points for the same spend at any earn rate.
-    const amountRm = Math.floor(parsed.netCents / 100);
-    const points = Math.floor(amountRm * this.pointsPerUnit());
+    const points = this.pointsForSpendCents(parsed.netCents);
     if (points <= 0) return;
+
+    // Idempotent: a prior successful award (or a concurrent race that already
+    // wrote the earn) must not double-credit on backfill.
+    const alreadyAwarded = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
+        customerId,
+        referenceType: 'pos_receipt',
+        referenceId: receiptId,
+        reason: 'salesplay_purchase',
+        deltaPoints: { gt: 0 },
+      },
+      select: { id: true },
+    });
+    if (alreadyAwarded) return;
 
     await this.loyalty.appendLedgerEntry({
       customerId,
@@ -316,7 +356,11 @@ export class SalesplayWebhookService {
     );
   }
 
-  /** Persists a credit note (idempotent). Returns true when newly ingested. */
+  /**
+   * Persists a credit note (idempotent) and claws back loyalty earned on the
+   * original sale. Refunds must not leave redeemable points for returned spend.
+   * Returns true when newly ingested.
+   */
   async ingestCreditNote(
     raw: unknown,
     source: 'WEBHOOK' | 'PULL',
@@ -329,14 +373,22 @@ export class SalesplayWebhookService {
 
     const existing = await this.prisma.posCreditNote.findUnique({
       where: { salesplayCreditNoteId: parsed.salesplayCreditNoteId },
-      select: { id: true },
+      select: { id: true, customerId: true },
     });
-    if (existing) return false;
+    if (existing) {
+      await this.maybeClawBackForCreditNote(
+        parsed,
+        existing.id,
+        existing.customerId,
+      );
+      return false;
+    }
 
     const customerId = await this.matchCustomerId(parsed.customerHints);
 
+    let creditNoteId: string;
     try {
-      await this.prisma.posCreditNote.create({
+      const created = await this.prisma.posCreditNote.create({
         data: {
           salesplayCreditNoteId: parsed.salesplayCreditNoteId,
           salesplayReceiptId: parsed.salesplayReceiptId,
@@ -347,12 +399,25 @@ export class SalesplayWebhookService {
           source,
           rawPayload: raw as Prisma.InputJsonValue,
         },
+        select: { id: true },
       });
+      creditNoteId = created.id;
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002'
       ) {
+        const winner = await this.prisma.posCreditNote.findUnique({
+          where: { salesplayCreditNoteId: parsed.salesplayCreditNoteId },
+          select: { id: true, customerId: true },
+        });
+        if (winner) {
+          await this.maybeClawBackForCreditNote(
+            parsed,
+            winner.id,
+            winner.customerId,
+          );
+        }
         return false;
       }
       throw err;
@@ -363,7 +428,110 @@ export class SalesplayWebhookService {
         parsed.amountCents / 100
       ).toFixed(2)}).`,
     );
+
+    await this.maybeClawBackForCreditNote(parsed, creditNoteId, customerId);
     return true;
+  }
+
+  /**
+   * Reverse loyalty for an in-store refund. Idempotent per credit note so
+   * retries / pull reconcile do not double-claw. Caps at remaining net points
+   * still attributed to the original receipt (partial refunds + voids).
+   */
+  private async maybeClawBackForCreditNote(
+    parsed: ParsedCreditNote,
+    creditNoteId: string,
+    creditNoteCustomerId: string | null,
+  ): Promise<void> {
+    if (parsed.amountCents === 0) return;
+
+    const already = await this.prisma.loyaltyLedgerEntry.findFirst({
+      where: {
+        referenceType: 'pos_credit_note',
+        referenceId: creditNoteId,
+        reason: 'salesplay_refund',
+        deltaPoints: { lt: 0 },
+      },
+      select: { id: true },
+    });
+    if (already) return;
+
+    let receipt: {
+      id: string;
+      customerId: string | null;
+      originOnlineOrderId: string | null;
+      netCents: number;
+    } | null = null;
+    if (parsed.salesplayReceiptId) {
+      receipt = await this.prisma.posReceipt.findUnique({
+        where: { salesplayReceiptId: parsed.salesplayReceiptId },
+        select: {
+          id: true,
+          customerId: true,
+          originOnlineOrderId: true,
+          netCents: true,
+        },
+      });
+    }
+
+    // Online-order settlements never earn POS points; nothing to reverse.
+    if (receipt?.originOnlineOrderId) return;
+
+    const customerId = receipt?.customerId ?? creditNoteCustomerId;
+    if (!customerId) return;
+
+    let points = this.pointsForSpendCents(parsed.amountCents);
+    if (points <= 0) return;
+
+    if (receipt) {
+      const entries = await this.prisma.loyaltyLedgerEntry.findMany({
+        where: {
+          customerId,
+          referenceType: 'pos_receipt',
+          referenceId: receipt.id,
+        },
+        select: { deltaPoints: true },
+      });
+      const remaining = entries.reduce((sum, e) => sum + e.deltaPoints, 0);
+      if (remaining <= 0) return;
+      points = Math.min(points, remaining);
+    }
+
+    try {
+      await this.loyalty.appendLedgerEntry({
+        customerId,
+        deltaPoints: -points,
+        reason: 'salesplay_refund',
+        referenceType: 'pos_credit_note',
+        referenceId: creditNoteId,
+      });
+    } catch (err) {
+      // Points already spent — keep the credit note; ops can reconcile.
+      this.logger.warn(
+        `Could not claw back ${points} pts for credit note ${parsed.salesplayCreditNoteId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
+
+    await this.audit.log({
+      actorType: 'system',
+      action: 'loyalty.salesplay_refund',
+      entityType: 'customer',
+      entityId: customerId,
+      metadata: {
+        creditNoteId,
+        salesplayCreditNoteId: parsed.salesplayCreditNoteId,
+        salesplayReceiptId: parsed.salesplayReceiptId ?? undefined,
+        amountCents: parsed.amountCents,
+        points,
+      },
+    });
+
+    this.logger.log(
+      `Clawed back ${points} pts from ${customerId} for SalesPlay credit note ${parsed.salesplayCreditNoteId}.`,
+    );
   }
 
   /**
