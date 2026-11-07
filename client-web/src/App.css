@@ -696,11 +696,7 @@
   font-size: 13px;
 }
 
-/* --- Home tab: quick filters, quick actions, membership banner --------- */
-
-.homeQuickFilters {
-  margin-top: 0;
-}
+/* --- Home tab: quick actions, membership banner ------------------------ */
 
 .quickActionsRow {
   display: flex;

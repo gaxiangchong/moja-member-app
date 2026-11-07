@@ -55,7 +55,6 @@ import {
   pointsTierProgress,
 } from './lib/pointsTier';
 import { ShopFlow } from './shop/ShopFlow';
-import { SHOP_FILTER_LABELS, type ShopFilter } from './shop/types';
 import { useShopStore } from './shop/store/useShopStore';
 
 const PENDING_REFERRAL_KEY = 'moja_pending_referral';
@@ -303,20 +302,6 @@ function SignInPrompt({
         Sign in
       </button>
     </Card>
-  );
-}
-
-// Home tab quick filters — jump straight into the Shop tab's catalog on one
-// category, so browsing doesn't require detouring through the bottom nav first.
-function HomeQuickFilters({ onPick }: { onPick: (filter: ShopFilter) => void }) {
-  return (
-    <div className="shopFilterRow homeQuickFilters">
-      {(Object.keys(SHOP_FILTER_LABELS) as ShopFilter[]).map((f) => (
-        <button key={f} type="button" className="chip" onClick={() => onPick(f)}>
-          {SHOP_FILTER_LABELS[f]}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -743,7 +728,6 @@ function App() {
   const [topUp, setTopUp] = useState<{ result: TopUpResult | null } | null>(null);
   const [shopInitialScreen, setShopInitialScreen] = useState<ShopScreen | null>(null);
   const cartItemCount = useShopStore((st) => st.cart.reduce((n, l) => n + l.qty, 0));
-  const [shopInitialFilter, setShopInitialFilter] = useState<ShopFilter | null>(null);
   const [redeemCheckoutNoticeOpen, setRedeemCheckoutNoticeOpen] = useState(false);
   // Redeeming a reward for a code: confirm → spend points → show the new code.
   const [redeemTarget, setRedeemTarget] = useState<{ id: string; title: string; points: number } | null>(null);
@@ -1913,14 +1897,6 @@ function App() {
                   )}
                 </header>
 
-                <HomeQuickFilters
-                  onPick={(f) => {
-                    setShopInitialFilter(f);
-                    setShopInitialScreen('browse');
-                    setTab('shop');
-                  }}
-                />
-
                 {profile ? (
                   <div className="homeSummaryRow homeStatRow">
                     <button
@@ -2278,8 +2254,6 @@ function App() {
                 memberRewards={rewardsData}
                 initialScreen={shopInitialScreen}
                 onInitialScreenApplied={() => setShopInitialScreen(null)}
-                initialFilter={shopInitialFilter}
-                onInitialFilterApplied={() => setShopInitialFilter(null)}
                 isAuthenticated={Boolean(profile)}
                 onRequireAuth={() => openAuthOverlay('checkout')}
                 authResumeSignal={authResumeSignal}

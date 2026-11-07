@@ -192,8 +192,6 @@ export function ShopFlow({
   memberRewards,
   initialScreen,
   onInitialScreenApplied,
-  initialFilter,
-  onInitialFilterApplied,
   isAuthenticated,
   onRequireAuth,
   authResumeSignal,
@@ -206,9 +204,6 @@ export function ShopFlow({
   memberRewards?: MemberRewardsPayload | null;
   initialScreen?: Screen | null;
   onInitialScreenApplied?: () => void;
-  /** Opens the catalog on one filter — set by the Home tab's quick filters. */
-  initialFilter?: ShopFilter | null;
-  onInitialFilterApplied?: () => void;
   /** Browsing and cart-building never require login — only reaching checkout does. */
   isAuthenticated: boolean;
   /** Opens the app's sign-in overlay; called instead of entering checkout when signed out. */
@@ -707,12 +702,6 @@ export function ShopFlow({
     setScreen(initialScreen);
     onInitialScreenApplied?.();
   }, [initialScreen, isAuthenticated, onInitialScreenApplied, onRequireAuth]);
-
-  useEffect(() => {
-    if (!initialFilter) return;
-    setFilter(initialFilter);
-    onInitialFilterApplied?.();
-  }, [initialFilter, onInitialFilterApplied]);
 
   // After a checkout-triggered sign-in succeeds, move the now-authenticated
   // guest straight into checkout instead of leaving them back on Cart.
