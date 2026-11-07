@@ -174,7 +174,18 @@ export class BentoSettingsService implements OnModuleInit {
   }
 
   async setSettings(input: unknown): Promise<BentoSettings> {
-    const next = this.normalize(input);
+    const raw = (input ?? {}) as Partial<BentoSettings>;
+    // PUT /admin/bento-settings is used by the capacity/closed-days form, which
+    // does not always send operationsEndDate. Treat omit as "keep the current
+    // shutdown date" so a routine settings save cannot reopen operations.
+    // Explicit null still clears it.
+    const next = this.normalize({
+      ...raw,
+      operationsEndDate:
+        raw.operationsEndDate === undefined
+          ? this.cache.operationsEndDate
+          : raw.operationsEndDate,
+    });
     await this.persist(next);
     // Update the local cache immediately so the writing instance reflects the
     // change without waiting for the next TTL refresh.
