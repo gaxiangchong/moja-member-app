@@ -155,3 +155,31 @@ describe('BentoVoucherService.reserve', () => {
     expect(prisma.bentoDiscountRedemption.create).not.toHaveBeenCalled();
   });
 });
+
+describe('BentoVoucherService.releaseUnattachedReservations', () => {
+  it('releases every RESERVED redemption that never got a payment intent', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    const releaseRedemption = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      bentoDiscountRedemption: { findMany },
+    };
+    const service = new BentoVoucherService(prisma as unknown as PrismaService);
+    jest
+      .spyOn(service, 'releaseRedemption')
+      .mockImplementation(releaseRedemption);
+
+    await service.releaseUnattachedReservations('customer-1');
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        customerId: 'customer-1',
+        status: 'RESERVED',
+        paymentIntentId: null,
+      },
+      select: { id: true },
+    });
+    expect(releaseRedemption).toHaveBeenCalledTimes(2);
+    expect(releaseRedemption).toHaveBeenNthCalledWith(1, 'r1');
+    expect(releaseRedemption).toHaveBeenNthCalledWith(2, 'r2');
+  });
+});

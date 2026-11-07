@@ -228,6 +228,21 @@ export class BentoVoucherService {
     });
   }
 
+  /**
+   * Release RESERVED redemptions that never got a payment intent (crash between
+   * reserve and intent creation). Used when clearing abandoned checkout rows so
+   * a retry can reclaim the promo slot. Idempotent.
+   */
+  async releaseUnattachedReservations(customerId: string): Promise<void> {
+    const dangling = await this.prisma.bentoDiscountRedemption.findMany({
+      where: { customerId, status: 'RESERVED', paymentIntentId: null },
+      select: { id: true },
+    });
+    for (const row of dangling) {
+      await this.releaseRedemption(row.id);
+    }
+  }
+
   private toBadRequest(
     reason: VoucherValidationFailure,
     minSpendCents?: number,
