@@ -8,6 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { CreateCartHandoffDto } from './dto/create-cart-handoff.dto';
+import type {
+  ShopCatalogProduct,
+  ShopCatalogProductVariant,
+} from './shop-catalog.service';
+import { ShopCatalogService } from './shop-catalog.service';
 
 export type CartHandoffLine = {
   productId: string;
@@ -38,6 +43,7 @@ export class ShopCartHandoffService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly shopCatalog: ShopCatalogService,
   ) {}
 
   private handoffSecret(): string {
@@ -81,38 +87,125 @@ export class ShopCartHandoffService {
     return 'http://localhost:5193';
   }
 
+  private sameCatalogValue(a: string | null | undefined, b: string): boolean {
+    return (
+      String(a ?? '')
+        .trim()
+        .toLowerCase() === b.trim().toLowerCase()
+    );
+  }
+
+  private findCatalogProduct(productId: string): {
+    product: ShopCatalogProduct;
+    requestedVariant?: ShopCatalogProductVariant;
+  } {
+    for (const product of this.shopCatalog.listPublicProducts()) {
+      if (product.id === productId) return { product };
+      const requestedVariant = product.variants?.find((variant) =>
+        this.sameCatalogValue(variant.id, productId),
+      );
+      if (requestedVariant) return { product, requestedVariant };
+    }
+    throw new BadRequestException({
+      code: 'CART_HANDOFF_UNKNOWN_PRODUCT',
+      message: 'Cart contains a product that is no longer available',
+    });
+  }
+
+  private selectVariant(
+    product: ShopCatalogProduct,
+    requestedProductId: string,
+    requestedVariant: ShopCatalogProductVariant | undefined,
+    variantLabel: string | null,
+  ): ShopCatalogProductVariant | undefined {
+    const variants = product.variants ?? [];
+    if (variants.length === 0) return undefined;
+
+    const availableVariants = variants.filter((v) => v.available !== false);
+    const explicitVariant =
+      requestedVariant ??
+      (variantLabel
+        ? variants.find(
+            (v) =>
+              this.sameCatalogValue(v.id, variantLabel) ||
+              this.sameCatalogValue(v.label, variantLabel),
+          )
+        : undefined);
+    if (explicitVariant) {
+      if (explicitVariant.available === false) {
+        throw new BadRequestException({
+          code: 'CART_HANDOFF_UNAVAILABLE_PRODUCT',
+          message:
+            'Cart contains a product variant that is no longer available',
+        });
+      }
+      return explicitVariant;
+    }
+
+    const requestedById = availableVariants.find(
+      (v) =>
+        this.sameCatalogValue(v.id, requestedProductId) ||
+        this.sameCatalogValue(v.label, requestedProductId),
+    );
+    if (requestedById) return requestedById;
+
+    return availableVariants.find(
+      (v) => v.priceCents === product.basePriceCents,
+    );
+  }
+
+  private canonicalImage(product: ShopCatalogProduct): string | null {
+    return product.images?.[0]?.src?.trim() || product.imageUrl?.trim() || null;
+  }
+
   private normalizeLines(dto: CreateCartHandoffDto): CartHandoffLine[] {
     const lines: CartHandoffLine[] = [];
     for (const raw of dto.lines) {
       const productId = raw.productId.trim();
-      const name = raw.name.trim();
-      const qty = Math.floor(raw.qty);
-      const unitPriceCents = Math.floor(raw.unitPriceCents);
-      if (!productId || !name) {
+      const qty = Math.floor(Number(raw.qty));
+      if (!productId) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_LINE',
-          message: 'Each cart line needs productId and name',
+          message: 'Each cart line needs a productId',
         });
       }
-      if (qty < 1 || qty > 99) {
+      if (!Number.isFinite(qty) || qty < 1 || qty > 99) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_QTY',
           message: 'Line quantity must be between 1 and 99',
         });
       }
-      if (unitPriceCents < 0) {
+
+      const variantLabel = raw.variantLabel?.trim() || null;
+      const { product, requestedVariant } = this.findCatalogProduct(productId);
+      if (product.soldOut === true) {
+        throw new BadRequestException({
+          code: 'CART_HANDOFF_UNAVAILABLE_PRODUCT',
+          message: 'Cart contains a product that is no longer available',
+        });
+      }
+      const variant = this.selectVariant(
+        product,
+        productId,
+        requestedVariant,
+        variantLabel,
+      );
+      const unitPriceCents = Math.floor(
+        Number(variant?.priceCents ?? product.basePriceCents),
+      );
+      if (!Number.isFinite(unitPriceCents) || unitPriceCents < 0) {
         throw new BadRequestException({
           code: 'CART_HANDOFF_INVALID_PRICE',
-          message: 'Line unit price cannot be negative',
+          message: 'Catalog price is not valid for checkout',
         });
       }
       lines.push({
-        productId,
-        name,
+        productId: product.id,
+        name: product.name,
         qty,
         unitPriceCents,
-        variantLabel: raw.variantLabel?.trim() || null,
-        imageUrl: raw.imageUrl?.trim() || null,
+        variantLabel: variant?.label ?? null,
+        imageUrl: this.canonicalImage(product),
       });
     }
     return lines;
