@@ -348,6 +348,8 @@ export class CustomersService {
         await this.ensureKitchenPickupCode(existing.id);
         return this.findByIdOrThrow(existing.id);
       }
+      // Fully initialized (e.g. walk-in): do not fall through to create.
+      return existing;
     }
 
     let referredById: string | null = null;
@@ -357,21 +359,39 @@ export class CustomersService {
 
     const referralCode = await this.generateUniqueReferralCode();
 
-    const customer = await this.prisma.customer.create({
-      data: {
-        phoneE164,
-        status: CustomerStatus.DRAFT,
-        ...(normalizedEmail ? { email: normalizedEmail } : {}),
-        ...(initialInterestTag ? { tags: [initialInterestTag] } : {}),
-        referralCode,
-        referredByCustomerId: referredById,
-      },
-    });
-    await this.loyalty.ensureWallet(customer.id);
-    await this.wallet.ensureWallet(customer.id);
-    await this.ensureKitchenPickupCode(customer.id);
-    this.syncToSalesplay(customer);
-    return customer;
+    try {
+      const customer = await this.prisma.customer.create({
+        data: {
+          phoneE164,
+          status: CustomerStatus.DRAFT,
+          ...(normalizedEmail ? { email: normalizedEmail } : {}),
+          ...(initialInterestTag ? { tags: [initialInterestTag] } : {}),
+          referralCode,
+          referredByCustomerId: referredById,
+        },
+      });
+      await this.loyalty.ensureWallet(customer.id);
+      await this.wallet.ensureWallet(customer.id);
+      await this.ensureKitchenPickupCode(customer.id);
+      this.syncToSalesplay(customer);
+      return customer;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const raced = await this.findByPhoneE164(phoneE164);
+        if (raced) {
+          await this.loyalty.ensureWallet(raced.id);
+          await this.wallet.ensureWallet(raced.id);
+          if (!raced.kitchenPickupCode) {
+            await this.ensureKitchenPickupCode(raced.id);
+          }
+          return this.findByIdOrThrow(raced.id);
+        }
+      }
+      throw err;
+    }
   }
 
   /**
