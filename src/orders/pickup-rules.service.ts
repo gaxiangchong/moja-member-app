@@ -4,17 +4,45 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ORDER_STATUS } from './order-status';
 import { parseBusinessDate } from './product-stock.service';
 import {
+  addDaysYmd,
   DEFAULT_PICKUP_RULES,
   evaluatePickupDay,
   evaluateInStoreNow,
+  formatClock,
   needsPreorder,
   normalizePickupRules,
   PickupRulesError,
+  zonedParts,
   type PickupDayQuote,
   type ShopPickupRules,
 } from './pickup-rules';
 
 const SETTINGS_KEY = 'shop_pickup_rules';
+
+/**
+ * The two sides of the shop page's availability split, as the member app reads
+ * them. Everything here comes from the admin's Pickup Rules, so changing the
+ * notice from 2 days to 3 changes the badges with no deploy.
+ */
+export type ShopAvailabilityRules = {
+  /** yyyy-mm-dd in the shop timezone. */
+  today: string;
+  timeZone: string;
+  preorder: {
+    days: number;
+    categories: string[];
+    earliestDate: string;
+  };
+  inStore: {
+    enabled: boolean;
+    categories: string[];
+    openNow: boolean;
+    /** Why in-store is shut, for the empty state. Null while it is open. */
+    reason: string | null;
+    /** "3:40 PM" while open, else null. */
+    readyFrom: string | null;
+  };
+};
 
 type PlaceInput = {
   fulfilmentType: 'IN_STORE' | 'PICKUP' | 'DELIVERY';
@@ -73,6 +101,39 @@ export class PickupRulesService {
       update: { value: next as unknown as Prisma.InputJsonValue },
     });
     return next;
+  }
+
+  /**
+   * What the shop page needs to split the catalog into "in store today" and
+   * "pre-order": which categories fall on each side, whether in-store is open
+   * right now, and the earliest date a pre-order can be collected.
+   *
+   * Public and cartless — the member app calls it once per visit, before
+   * anything is in the basket. The counts and badges it draws are display only;
+   * placing the order re-checks hours, notice and stock.
+   */
+  async availabilityRules(now = new Date()): Promise<ShopAvailabilityRules> {
+    const rules = await this.getRules();
+    const inStoreNow = evaluateInStoreNow(rules, now);
+    const today = zonedParts(now, rules.timeZone).ymd;
+    return {
+      today,
+      timeZone: rules.timeZone,
+      preorder: {
+        days: rules.preorderDays,
+        categories: [...rules.preorderCategories],
+        // The same floor `assertCanPlace` enforces, so the badge cannot promise
+        // a date the checkout would then refuse.
+        earliestDate: addDaysYmd(today, rules.preorderDays),
+      },
+      inStore: {
+        enabled: rules.inStore.enabled,
+        categories: [...rules.inStore.categories],
+        openNow: inStoreNow.open,
+        reason: inStoreNow.reason,
+        readyFrom: inStoreNow.readyAt ? formatClock(inStoreNow.readyAt) : null,
+      },
+    };
   }
 
   /** `categories`: the product categories in the cart, for the pre-order notice. */

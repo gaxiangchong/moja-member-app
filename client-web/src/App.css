@@ -4140,3 +4140,203 @@ code {
 .pickupField input[type="date"] {
   min-height: 46px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Shop availability tabs: "In store today" / "Pre-order".
+ *
+ * A segmented control, deliberately NOT another pill row — the flavour chips
+ * below it filter within whichever side is showing, and two identical-looking
+ * rows would not read as "mode, then filter". It sits straight on the page
+ * ground rather than inside a pmCard: a white card around navigation reads as
+ * content and costs a row of padding the products want.
+ * ------------------------------------------------------------------------- */
+.shopAvailTabs {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #e6ecf8;
+  border-radius: 12px;
+}
+
+.shopAvailTab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.shopAvailTab.is-on {
+  background: #00348d;
+  box-shadow: 0 1px 3px rgba(0, 52, 141, 0.3);
+}
+
+.shopAvailTabName {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #27416e;
+}
+
+.shopAvailTab.is-on .shopAvailTabName {
+  color: #fff;
+}
+
+/* The second line carries the fact that would otherwise need its own
+ * paragraph: the ready time, or the earliest bookable date. On the inactive
+ * tab it doubles as a preview of what switching would give. */
+.shopAvailTabNote {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #5a7099;
+}
+
+.shopAvailTab.is-on .shopAvailTabNote {
+  color: #bcd2f5;
+}
+
+/* One badge per card, never two: see the comment where `badge` is built. */
+.shopAvailBadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.shopAvailBadge--today {
+  background: #15803d;
+}
+
+/* Brown, not amber: it must differ from the green in lightness as well as hue
+ * so the two are still tellable apart without relying on colour. */
+.shopAvailBadge--notice {
+  background: #7a4f12;
+}
+
+/* A sold-out card already carries the dark badge; never stack ours on it. */
+.shopProductHit--soldOut .shopAvailBadge {
+  display: none;
+}
+
+.shopCardStock {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #15803d;
+}
+
+/* The default tab empties at the cut-off, on a closed day, and when the
+ * kitchen sells out — so it explains which, and offers the way on. */
+.shopAvailEmpty {
+  text-align: center;
+}
+
+.shopAvailEmptyIcon {
+  display: inline-flex;
+  width: 46px;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef2fb;
+  color: #5f77a5;
+}
+
+.shopAvailEmptyTitle {
+  margin: 11px 0 6px;
+  font-size: 16px;
+  line-height: 1.3;
+  color: #142a52;
+}
+
+.shopAvailEmptyCta {
+  display: block;
+  width: 100%;
+  margin-top: 15px;
+}
+
+.shopAvailEmptyFoot {
+  margin-top: 10px;
+}
+
+/*
+ * The flavour chips under the availability tabs. One scrolling row, never
+ * wrapping: at 375px five chips wrap to two rows, and the second row is pure
+ * chrome pushed in front of the products. The last chip clipping at the edge
+ * is the scroll affordance.
+ *
+ * No card around them — these are navigation, and a white panel with padding
+ * and a shadow reads as content.
+ */
+.shopFilterRow {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Full-bleed scroll, but the first and last chip still line up with the
+   * page gutter. */
+  margin: 8px -16px 0;
+  padding: 0 16px 2px;
+}
+
+.shopFilterRow::-webkit-scrollbar {
+  display: none;
+}
+
+.shopFilterRow .chip {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  white-space: nowrap;
+}
+
+/*
+ * "No cakes on the shelf right now", shown above the counter items.
+ *
+ * Not a full empty state: the today tab is never actually empty, because
+ * cookies and drinks are always on the counter. Without this the member sees
+ * a shop with no cakes in it and no reason why.
+ */
+.shopNoCakesNote {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #c3d4f2;
+  border-radius: 14px;
+  background: #f5f9ff;
+}
+
+.shopNoCakesNote strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #142a52;
+}
+
+.shopNoCakesNote p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #41598a;
+}
+
+.shopNoCakesNote button {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 10px;
+}

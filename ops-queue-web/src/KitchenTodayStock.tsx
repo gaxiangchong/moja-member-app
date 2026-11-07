@@ -6,26 +6,44 @@ import {
   type StockDayGrid as Grid,
 } from './api';
 import { cellKey } from './KitchenDayGrid';
+import {
+  canonicalVariantLabel,
+  ownLabelFor,
+  sizesOf,
+  tidyVariantLabel,
+} from './variantLabel';
 
 /** How often the screen re-reads stock, so till sales show up on their own. */
 const REFRESH_MS = 30_000;
 
 /** Size columns in a sensible order; anything else follows in catalog order. */
-const SIZE_ORDER = ['6 inch', '8 inch', 'Slice'];
+const SIZE_ORDER = ['6 inch', '8 inch', 'slice'];
 
-/** The columns: every size any cake has, plus "Each" for cakes without sizes. */
+/**
+ * The columns: every size any cake has, plus "Each" for cakes without sizes.
+ *
+ * One column per *size*, not per spelling. Two cakes saved as "6 inch" and
+ * "6  Inch" are the same size, and HTML collapses the double space, so without
+ * this they drew two columns that painted identically — with the stock under
+ * one of them and "—" under the other.
+ */
 export function sizeColumns(grid: Grid | null): string[] {
-  const seen: string[] = [];
+  const seen = new Set<string>();
+  const columns: string[] = [];
   for (const p of grid?.products ?? []) {
-    for (const v of p.variants.length > 0 ? p.variants : ['']) {
-      if (!seen.includes(v)) seen.push(v);
+    for (const raw of sizesOf(p)) {
+      const label = tidyVariantLabel(raw);
+      const key = canonicalVariantLabel(label);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      columns.push(label);
     }
   }
   const rank = (v: string) => {
-    const i = SIZE_ORDER.indexOf(v);
+    const i = SIZE_ORDER.indexOf(canonicalVariantLabel(v));
     return i === -1 ? SIZE_ORDER.length + (v === '' ? 1 : 0) : i;
   };
-  return [...seen].sort((a, b) => rank(a) - rank(b));
+  return columns.sort((a, b) => rank(a) - rank(b));
 }
 
 /**
@@ -148,16 +166,18 @@ export function KitchenTodayStock({
         </thead>
         <tbody>
           {(grid?.products ?? []).map((p) => {
-            const sizes = p.variants.length > 0 ? p.variants : [''];
             return (
               <tr key={p.id}>
                 <th scope="row" className="stockCake">
                   {p.name}
                 </th>
-                {columns.map((v) => {
-                  if (!sizes.includes(v)) {
+                {columns.map((column) => {
+                  // The column is one size; this product may spell it its own
+                  // way, and its stock is keyed under that spelling.
+                  const v = ownLabelFor(p, column);
+                  if (v === null) {
                     return (
-                      <td key={v || 'each'} className="stockNa" data-label={v || 'Each'}>
+                      <td key={column || 'each'} className="stockNa" data-label={column || 'Each'}>
                         —
                       </td>
                     );
@@ -168,7 +188,7 @@ export function KitchenTodayStock({
                   const isEditing = editing?.key === key;
                   if (isEditing) {
                     return (
-                      <td key={v || 'each'} data-label={v || 'Each'}>
+                      <td key={column || 'each'} data-label={column || 'Each'}>
                         <input
                           className="stockEdit"
                           type="number"
@@ -189,7 +209,7 @@ export function KitchenTodayStock({
                   }
                   if (!cell?.explicit) {
                     return (
-                      <td key={v || 'each'} data-label={v || 'Each'}>
+                      <td key={column || 'each'} data-label={column || 'Each'}>
                         <button
                           type="button"
                           className="stockUnset"
@@ -202,7 +222,7 @@ export function KitchenTodayStock({
                   }
                   const left = cell.sellableQty;
                   return (
-                    <td key={v || 'each'} data-label={v || 'Each'}>
+                    <td key={column || 'each'} data-label={column || 'Each'}>
                       <div className="stockCell">
                         <button
                           type="button"

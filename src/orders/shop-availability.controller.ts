@@ -105,6 +105,17 @@ export class ShopAvailabilityController {
   }
 
   /**
+   * How the shop page splits the catalog: which categories are sold from
+   * today's shelf, which need days of notice, whether in-store is open right
+   * now, and the earliest pre-order date. Public and cartless — the member app
+   * reads it once to draw the availability tabs and their badges.
+   */
+  @Get('availability-rules')
+  availabilityRules() {
+    return this.pickupRules.availabilityRules();
+  }
+
+  /**
    * Which pickup windows are still open for a day: lead time, pre-order
    * notice for the cart's `categories`, cut-off, capacity, store hours, and
    * closed days. `date` defaults to today.

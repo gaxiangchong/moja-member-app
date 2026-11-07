@@ -1234,6 +1234,31 @@ export type ShopAvailability = {
   }[];
 };
 
+/**
+ * The two sides of the shop's availability split, from the admin's Pickup
+ * Rules. Mirrors `ShopAvailabilityRules` on the server.
+ */
+export type AvailabilityRules = {
+  /** yyyy-mm-dd in the shop timezone. */
+  today: string;
+  timeZone: string;
+  preorder: {
+    days: number;
+    categories: string[];
+    /** Earliest date a pre-order can be collected, yyyy-mm-dd. */
+    earliestDate: string;
+  };
+  inStore: {
+    enabled: boolean;
+    categories: string[];
+    openNow: boolean;
+    /** Why in-store is shut, for the empty state. Null while open. */
+    reason: string | null;
+    /** "3:40 PM" while open, else null. */
+    readyFrom: string | null;
+  };
+};
+
 /** Whether a cart can be collected in store today, from the kitchen's count. */
 export type InStoreTodayQuote = {
   available: boolean;
@@ -1405,6 +1430,24 @@ export async function fetchShopAvailability(date?: string): Promise<ShopAvailabi
   if (!res.ok) {
     throw new Error(
       typeof data.message === 'string' ? data.message : 'Failed to load availability',
+    );
+  }
+  return data;
+}
+
+/**
+ * How the shop splits into "in store today" and "pre-order": the admin's own
+ * categories, notice and in-store hours. Display only — placing an order
+ * re-checks all of it.
+ */
+export async function fetchAvailabilityRules(): Promise<AvailabilityRules> {
+  const res = await fetch(`${base}/shop/availability-rules`);
+  const data = await parseJson<AvailabilityRules & { message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === 'string'
+        ? data.message
+        : 'Failed to load availability rules',
     );
   }
   return data;
