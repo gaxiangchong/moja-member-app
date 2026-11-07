@@ -1,5 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { ORDER_STATUS, type OrderStatus } from '../orders/order-status';
+import {
+  addDaysYmd,
+  SHOP_TIME_ZONE,
+  zonedWallToUtc,
+} from '../orders/pickup-rules';
 
 /** The status tabs on the admin Orders screen. */
 export const ORDER_TABS = [
@@ -22,7 +27,12 @@ export const TAB_STATUSES: Record<Exclude<OrderTab, 'all'>, OrderStatus[]> = {
 };
 
 /** How the order leaves the shop, as the admin filters it. */
-export const ORDER_KINDS = ['in_store', 'pickup', 'delivery', 'parcel'] as const;
+export const ORDER_KINDS = [
+  'in_store',
+  'pickup',
+  'delivery',
+  'parcel',
+] as const;
 export type OrderKind = (typeof ORDER_KINDS)[number];
 
 export function kindWhere(kind: OrderKind): Prisma.CustomerOrderWhereInput {
@@ -55,7 +65,9 @@ export function orderKind(o: {
  * One search box for order number, customer (name or phone) and product.
  * A number also matches the order number exactly.
  */
-export function searchWhere(raw: string): Prisma.CustomerOrderWhereInput | null {
+export function searchWhere(
+  raw: string,
+): Prisma.CustomerOrderWhereInput | null {
   const q = raw.trim().replace(/^#/, '');
   if (!q) return null;
   const or: Prisma.CustomerOrderWhereInput[] = [
@@ -68,7 +80,33 @@ export function searchWhere(raw: string): Prisma.CustomerOrderWhereInput | null 
   }
   if (digits.length >= 4) {
     // Phones are stored as +60…; match the tail so "0123456789" finds them.
-    or.push({ customer: { phoneE164: { contains: digits.replace(/^0/, '') } } });
+    or.push({
+      customer: { phoneE164: { contains: digits.replace(/^0/, '') } },
+    });
   }
   return { OR: or };
+}
+
+/**
+ * Instants for yyyy-mm-dd shop days (both inclusive): an order placed at 7am
+ * in Kuala Lumpur belongs to that day, though it is the day before in UTC.
+ */
+export function shopDayRange(
+  from?: string,
+  to?: string,
+): { gte?: Date; lt?: Date } {
+  return {
+    ...(from
+      ? { gte: zonedWallToUtc(from.slice(0, 10), '00:00', SHOP_TIME_ZONE) }
+      : {}),
+    ...(to
+      ? {
+          lt: zonedWallToUtc(
+            addDaysYmd(to.slice(0, 10), 1),
+            '00:00',
+            SHOP_TIME_ZONE,
+          ),
+        }
+      : {}),
+  };
 }

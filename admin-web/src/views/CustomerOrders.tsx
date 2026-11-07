@@ -127,7 +127,12 @@ function itemsLabel(o: AdminOrder): string {
 }
 
 function downloadCsv(rows: AdminOrder[]): void {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  // A leading ' stops Excel running a customer's name as a formula.
+  const esc = (v: string | number) => {
+    const text = String(v);
+    const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   const lines = [
     ['Order', 'Placed', 'Status', 'Type', 'Pickup', 'Customer', 'Phone', 'Items', 'Total (RM)'],
     ...rows.map((o) => [
@@ -181,7 +186,7 @@ export function CustomerOrders() {
     setError(null);
     const filters = { ...range, kind: kind || undefined, search: search || undefined };
     Promise.all([
-      fetchCommerceOrders({ ...filters, tab, sort: 'placed_desc', limit: 200 }),
+      fetchCommerceOrders({ ...filters, tab, dayZone: 'shop', sort: 'placed_desc', limit: 200 }),
       fetchOrdersSummary(filters),
     ])
       .then(([list, sum]) => {
@@ -205,6 +210,11 @@ export function CustomerOrders() {
     summary && summary.previousPaidCents != null && summary.previousPaidCents > 0
       ? Math.round(((summary.paidCents - summary.previousPaidCents) / summary.previousPaidCents) * 100)
       : null;
+
+  const comparedDays =
+    range.from && range.to
+      ? Math.round((Date.parse(range.to) - Date.parse(range.from)) / 86_400_000) + 1
+      : 0;
 
   return (
     <div className="ordersView">
@@ -244,7 +254,7 @@ export function CustomerOrders() {
               {change != null ? (
                 <em className={change >= 0 ? 'statUp' : 'statDown'}>
                   {change >= 0 ? '+' : ''}
-                  {change}% on the period before
+                  {change}% on the {comparedDays === 1 ? 'day' : `${comparedDays} days`} before
                 </em>
               ) : null}
             </span>
@@ -422,7 +432,10 @@ function OrderPanel({ id, onClose, onChanged }: { id: string; onClose: () => voi
   const move = async (status: 'preparing' | 'ready' | 'completed' | 'cancelled') => {
     let reason: string | undefined;
     if (status === 'cancelled') {
-      const r = window.prompt('Why is this order cancelled? The member sees this.');
+      const online = order && order.paidWithCreditsCents < order.totalCents && order.status !== 'pending_payment';
+      const r = window.prompt(
+        `${online ? 'Card and online payments are NOT refunded automatically: refund it in Xendit afterwards. Credits and reward points go back on their own.\n\n' : ''}Why is this order cancelled? The member sees this.`,
+      );
       if (r === null) return;
       reason = r.trim() || undefined;
     }
@@ -453,7 +466,7 @@ function OrderPanel({ id, onClose, onChanged }: { id: string; onClose: () => voi
 
   const steps = o
     ? [
-        { label: o.payment ? `Paid by ${channelLabel(o.payment.channel)}` : 'Placed', at: o.placedAt, done: o.status !== 'pending_payment' },
+        { label: o.payment ? `Paid by ${channelLabel(o.payment.channel)}` : 'Placed', at: o.payment?.at ?? o.placedAt, done: o.status !== 'pending_payment' },
         { label: 'Preparing', at: o.preparingAt, done: Boolean(o.preparingAt) },
         { label: o.kind === 'parcel' ? 'Packed' : 'Ready', at: o.readyAt, done: Boolean(o.readyAt) },
         { label: o.kind === 'parcel' ? 'Posted' : 'Collected', at: o.completedAt, done: Boolean(o.completedAt) },

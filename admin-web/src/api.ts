@@ -503,12 +503,14 @@ export type OrdersSummary = {
 };
 
 export async function fetchOrdersSummary(params: {
+  customerId?: string;
   from?: string;
   to?: string;
   kind?: OrderKind;
   search?: string;
 }): Promise<OrdersSummary> {
   const qs = new URLSearchParams();
+  if (params.customerId) qs.set('customerId', params.customerId);
   if (params.from) qs.set('from', params.from);
   if (params.to) qs.set('to', params.to);
   if (params.kind) qs.set('kind', params.kind);
@@ -541,6 +543,8 @@ export type CommerceOrdersQuery = {
   kind?: OrderKind;
   search?: string;
   customerId?: string;
+  /** `shop`: from/to are Kuala Lumpur days, not UTC days. */
+  dayZone?: 'shop';
   status?: 'placed' | 'completed' | 'all';
   dateField?: 'placed' | 'completed';
   from?: string;
@@ -565,6 +569,7 @@ export async function fetchCommerceOrders(
   if (params.kind) qs.set('kind', params.kind);
   if (params.search?.trim()) qs.set('search', params.search.trim());
   if (params.customerId) qs.set('customerId', params.customerId);
+  if (params.dayZone) qs.set('dayZone', params.dayZone);
   if (params.status) qs.set('status', params.status);
   if (params.dateField) qs.set('dateField', params.dateField);
   if (params.from) qs.set('from', params.from);

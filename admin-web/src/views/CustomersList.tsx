@@ -7,6 +7,7 @@ import {
   fetchCustomerIds,
   fetchCommerceOrders,
   fetchCustomerDetail,
+  fetchOrdersSummary,
   fetchCustomers,
   issueCampaignToCustomers,
   type ActivitySummary,
@@ -384,6 +385,15 @@ export function CustomersList() {
     [applied],
   );
 
+  /** Filters set in the panel; search and the segments show for themselves. */
+  const panelFilterCount = useMemo(
+    () =>
+      Object.entries(applied).filter(
+        ([k, v]) => !NON_FILTER_KEYS.has(k) && k !== 'search' && k !== 'activity' && v && String(v).trim(),
+      ).length,
+    [applied],
+  );
+
   const toggleSort = (key: string) => {
     const by = SORTABLE[key];
     if (!by) return;
@@ -457,7 +467,7 @@ export function CustomersList() {
                     ? `Bought before, but not in the last ${activeDaysApplied} days`
                     : value === 'never'
                       ? 'Signed up but has never made a purchase'
-                      : 'Every member'
+                      : 'Every activated member'
               }
             >
               {label}
@@ -506,11 +516,11 @@ export function CustomersList() {
         />
         <button
           type="button"
-          className={filtersOpen || activeFilterCount > 0 ? 'chipButton chipButton--set' : 'chipButton'}
+          className={filtersOpen || panelFilterCount > 0 ? 'chipButton chipButton--set' : 'chipButton'}
           aria-expanded={filtersOpen}
           onClick={() => setFiltersOpen((o) => !o)}
         >
-          {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : '+ Filter'}
+          {panelFilterCount > 0 ? `Filters · ${panelFilterCount}` : '+ Filter'}
         </button>
         {activeFilterCount > 0 ? (
           <button type="button" className="linkButton" onClick={clearAll}>
@@ -525,7 +535,6 @@ export function CustomersList() {
             Tier
             <select value={draft.memberTier ?? ''} onChange={(e) => set({ memberTier: e.target.value })}>
               <option value="">Any tier</option>
-              <option value="member">Member</option>
               <option value="silver">Silver</option>
               <option value="gold">Gold</option>
               <option value="platinum">Platinum</option>
@@ -833,15 +842,23 @@ function shortDate(iso: string): string {
 
 const LEDGER_REASON: Record<string, string> = {
   shop_order_purchase: 'Online order',
-  pos_purchase: 'In-store purchase',
-  reward_redeemed: 'Reward redeemed',
-  admin_adjustment: 'Adjusted by staff',
+  salesplay_purchase: 'In-store purchase',
+  birthday_reward: 'Birthday reward',
+  referral_reward: 'Referral reward',
 };
+
+/** Reasons are codes, some with an id on the end, or text staff typed. */
+function ledgerReason(reason: string): string {
+  if (LEDGER_REASON[reason]) return LEDGER_REASON[reason];
+  if (reason.startsWith('checkout_redeem_')) return 'Reward used at checkout';
+  if (reason.startsWith('redeem_')) return 'Reward redeemed';
+  return reason.includes('_') && !reason.includes(' ') ? reason.replace(/_/g, ' ') : reason;
+}
 
 /** A member at a glance: totals, recent orders, vouchers, points, and what staff can do. */
 function MemberProfilePanel({
   customerId,
-  row,
+  row: listRow,
   onClose,
   onVouchers,
   onLoginPin,
@@ -853,23 +870,34 @@ function MemberProfilePanel({
   onLoginPin: () => void;
 }) {
   const [detail, setDetail] = useState<AdminCustomerDetail | null>(null);
-  const [orders, setOrders] = useState<{ orders: AdminOrder[]; total?: number } | null>(null);
+  const [orders, setOrders] = useState<AdminOrder[] | null>(null);
+  const [paidOrders, setPaidOrders] = useState<number | null>(null);
+  const [foundRow, setFoundRow] = useState<AdminCustomer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const row = listRow ?? foundRow;
 
   useEffect(() => {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before loading another member
     setDetail(null);
     setOrders(null);
+    setPaidOrders(null);
+    setFoundRow(null);
     setError(null);
     Promise.all([
       fetchCustomerDetail(customerId),
       fetchCommerceOrders({ customerId, sort: 'placed_desc', limit: 5 }),
+      fetchOrdersSummary({ customerId }),
     ])
-      .then(([d, o]) => {
+      .then(async ([d, o, sum]) => {
         if (cancelled) return;
         setDetail(d);
-        setOrders(o);
+        setOrders(o.orders);
+        setPaidOrders(sum.paidOrders);
+        if (!listRow) {
+          const found = await fetchCustomers({ page: 1, pageSize: 5, filters: { search: d.phoneE164 } });
+          if (!cancelled) setFoundRow(found.items.find((c) => c.id === customerId) ?? null);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load this member');
@@ -877,6 +905,8 @@ function MemberProfilePanel({
     return () => {
       cancelled = true;
     };
+    // listRow only decides whether to look the member up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
   useEffect(() => {
@@ -890,7 +920,8 @@ function MemberProfilePanel({
   const name = row?.displayName ?? detail?.displayName ?? null;
   const phone = row?.phoneE164 ?? detail?.phoneE164 ?? '';
   const email = row?.email ?? detail?.email ?? null;
-  const tier = row?.memberTier ?? detail?.memberTier ?? null;
+  // The stored column can be stale; the list works the tier out from points.
+  const tier = row?.memberTier ?? null;
   const joined = row?.createdAt ?? detail?.createdAt;
   const points = row?.pointsBalance ?? detail?.wallet?.pointsCached ?? 0;
   const spent = row?.lifetimeSpentCents ?? detail?.storedWallet?.lifetimeSpentCents ?? 0;
@@ -908,7 +939,14 @@ function MemberProfilePanel({
             {email ? ` · ${email}` : ''}
           </p>
           <p>
-            <TierLabel tier={tier} /> member{joined ? ` · joined ${shortDate(joined)}` : ''}
+            {tier ? (
+              <>
+                <TierLabel tier={tier} /> member
+              </>
+            ) : (
+              'Member'
+            )}
+            {joined ? ` · joined ${shortDate(joined)}` : ''}
           </p>
         </div>
         <button type="button" className="sidePanelClose" onClick={onClose} aria-label="Close">
@@ -940,17 +978,17 @@ function MemberProfilePanel({
             <span>points</span>
           </div>
           <div>
-            <b>{orders ? (orders.total ?? orders.orders.length) : '…'}</b>
-            <span>online orders</span>
+            <b>{paidOrders ?? '…'}</b>
+            <span>paid online orders</span>
           </div>
         </section>
 
         <section>
           <h3>Recent orders</h3>
-          {orders && orders.orders.length === 0 ? <p className="viewMuted">No online orders yet.</p> : null}
-          {orders && orders.orders.length > 0 ? (
+          {orders && orders.length === 0 ? <p className="viewMuted">No online orders yet.</p> : null}
+          {orders && orders.length > 0 ? (
             <ul className="panelList">
-              {orders.orders.map((o) => (
+              {orders.map((o) => (
                 <li key={o.id}>
                   <b>#{o.orderNumber}</b>
                   <span>
@@ -1002,7 +1040,7 @@ function MemberProfilePanel({
                       {e.deltaPoints >= 0 ? '+' : ''}
                       {e.deltaPoints.toLocaleString()}
                     </span>{' '}
-                    {LEDGER_REASON[e.reason] ?? e.reason.replace(/_/g, ' ')}
+                    {ledgerReason(e.reason)}
                   </dd>
                 </Fragment>
               ))}

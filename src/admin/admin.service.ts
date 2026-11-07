@@ -63,6 +63,7 @@ import type { ActivateBentoSubscriptionDto } from './dto/activate-bento-subscrip
 import type { AdminBackfillLoyaltyDto } from './dto/admin-backfill-loyalty.dto';
 import type { AdminListAuditQueryDto } from './dto/admin-list-audit-query.dto';
 import type { AdminListCustomersQueryDto } from './dto/admin-list-customers-query.dto';
+import { addDaysYmd } from '../orders/pickup-rules';
 import type {
   AdminListOrdersQueryDto,
   AdminOrdersSummaryQueryDto,
@@ -71,6 +72,7 @@ import {
   kindWhere,
   orderKind,
   searchWhere,
+  shopDayRange,
   TAB_STATUSES,
   type OrderKind,
   type OrderTab,
@@ -3426,21 +3428,13 @@ export class AdminService {
     return parts;
   }
 
-  /** placedAt range from yyyy-mm-dd dates (inclusive), in UTC days. */
+  /** placedAt range from yyyy-mm-dd shop days (inclusive). */
   private placedRange(
     from?: string,
     to?: string,
   ): Prisma.CustomerOrderWhereInput | null {
     if (!from && !to) return null;
-    const start = from ? new Date(`${from.slice(0, 10)}T00:00:00.000Z`) : null;
-    const end = to ? new Date(`${to.slice(0, 10)}T00:00:00.000Z`) : null;
-    if (end) end.setUTCDate(end.getUTCDate() + 1);
-    return {
-      placedAt: {
-        ...(start ? { gte: start } : {}),
-        ...(end ? { lt: end } : {}),
-      },
-    };
+    return { placedAt: shopDayRange(from, to) };
   }
 
   /**
@@ -3480,17 +3474,22 @@ export class AdminService {
     // The same number of days just before `from`, for "+18% on last week".
     let previousPaidCents: number | null = null;
     if (query.from && query.to) {
-      const start = new Date(`${query.from.slice(0, 10)}T00:00:00.000Z`);
-      const end = new Date(`${query.to.slice(0, 10)}T00:00:00.000Z`);
-      const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
-      const prevStart = new Date(start);
-      prevStart.setUTCDate(prevStart.getUTCDate() - days);
+      const from = query.from.slice(0, 10);
+      const days =
+        Math.round(
+          (Date.parse(query.to.slice(0, 10)) - Date.parse(from)) / 86_400_000,
+        ) + 1;
       const prev = await this.prisma.customerOrder.aggregate({
         where: {
           AND: [
             ...filters,
             { status: { in: revenueStatuses } },
-            { placedAt: { gte: prevStart, lt: start } },
+            {
+              placedAt: {
+                gte: shopDayRange(addDaysYmd(from, -days)).gte,
+                lt: shopDayRange(from).gte,
+              },
+            },
           ],
         },
         _sum: { totalCents: true },
@@ -3537,13 +3536,14 @@ export class AdminService {
         message: 'Order not found',
       });
     }
-    const [payment, points] = await Promise.all([
-      this.prisma.paymentIntent.findFirst({
+    const [attempts, points] = await Promise.all([
+      this.prisma.paymentIntent.findMany({
         where: {
           purpose: 'shop_order',
           metadata: { path: ['orderId'], equals: o.id },
         },
         orderBy: { createdAt: 'desc' },
+        take: 10,
         select: { channelCode: true, status: true, updatedAt: true },
       }),
       this.prisma.loyaltyLedgerEntry.aggregate({
@@ -3556,6 +3556,9 @@ export class AdminService {
         _sum: { deltaPoints: true },
       }),
     ]);
+    // A member may retry with another method: show the one that went through.
+    const payment =
+      attempts.find((a) => /SUCCEEDED|PAID/i.test(a.status)) ?? attempts[0];
     return {
       ...this.commerceOrderRow(o),
       customerEmail: o.customer.email,
@@ -3576,7 +3579,10 @@ export class AdminService {
         : null,
       payment: payment
         ? {
-            channel: o.paidWithCreditsCents >= o.totalCents ? 'CREDITS' : payment.channelCode,
+            channel:
+              o.paidWithCreditsCents >= o.totalCents
+                ? 'CREDITS'
+                : payment.channelCode,
             status: payment.status,
             at: payment.updatedAt.toISOString(),
           }
@@ -3643,6 +3649,11 @@ export class AdminService {
     } else if (st === 'placed') where.status = { in: OPEN_ORDER_STATUSES };
     else if (st === 'completed') where.status = ORDER_STATUS.COMPLETED;
 
+    if (query.dayZone === 'shop') {
+      const range = this.placedRange(query.from, query.to);
+      if (range) where.AND = [...extra, range];
+    }
+
     const parseDayStart = (iso: string) =>
       iso.length >= 10
         ? new Date(`${iso.slice(0, 10)}T00:00:00.000Z`)
@@ -3655,8 +3666,11 @@ export class AdminService {
       return d;
     };
 
-    const from = query.from ? parseDayStart(query.from) : undefined;
-    const toEx = query.to ? parseDayExclusiveEnd(query.to) : undefined;
+    const legacyDays = query.dayZone !== 'shop';
+    const from =
+      legacyDays && query.from ? parseDayStart(query.from) : undefined;
+    const toEx =
+      legacyDays && query.to ? parseDayExclusiveEnd(query.to) : undefined;
 
     if (from || toEx) {
       if (query.dateField === 'completed' && st === 'completed') {

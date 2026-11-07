@@ -53,6 +53,11 @@ export class AdminListOrdersQueryDto {
   @IsDateString()
   to?: string;
 
+  /** `shop`: from/to are Kuala Lumpur days. Unset keeps UTC days (legacy dashboard). */
+  @IsOptional()
+  @IsIn(['shop'])
+  dayZone?: 'shop';
+
   /** Which timestamp the range filters on (default placed). */
   @IsOptional()
   @IsIn(['placed', 'completed'])
@@ -94,6 +99,11 @@ export class AdminListOrdersQueryDto {
 
 /** Period for the Orders screen's totals strip and tab counts. */
 export class AdminOrdersSummaryQueryDto {
+  /** Only this member's orders. */
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
   @IsOptional()
   @IsDateString()
   from?: string;
