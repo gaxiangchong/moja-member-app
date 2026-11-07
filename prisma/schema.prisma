@@ -15,6 +15,7 @@ enum CustomerStatus {
 
 enum VoucherStatus {
   ISSUED
+  LOCKED
   REDEEMED
   EXPIRED
   VOID
