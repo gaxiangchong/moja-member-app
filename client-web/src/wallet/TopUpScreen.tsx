@@ -189,7 +189,7 @@ export function TopUpScreen({
 
             {options && !options.enabled ? (
               <p className="topUpUnavailable">
-                Top-ups aren’t open yet. Please check back soon.
+                Top-ups aren’t available right now. Credits you already have still work at checkout.
               </p>
             ) : null}
 

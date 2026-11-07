@@ -58,6 +58,7 @@ import {
   fetchShopAvailability,
   type ShopAvailability,
   fetchShopCatalogProducts,
+  fetchTopUpOptions,
   fetchLoyaltyEarn,
   type LoyaltyEarn,
   type PickupSlotDay,
@@ -468,6 +469,22 @@ export function ShopFlow({
       ? deliveryInfo.freeShippingOverCents - goodsTotal
       : null;
   const creditsCoverTotal = total > 0 && creditsBalanceCents >= total;
+  // Only suggest topping up while the shop allows it.
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  useEffect(() => {
+    if (screen !== 'checkout' || !isAuthenticated) return;
+    let alive = true;
+    void fetchTopUpOptions()
+      .then((o) => {
+        if (alive) setTopUpOpen(o.enabled);
+      })
+      .catch(() => {
+        if (alive) setTopUpOpen(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [screen, isAuthenticated]);
   useEffect(() => {
     if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
       setPaymentMethodMode('channel');
@@ -1168,7 +1185,7 @@ export function ShopFlow({
     }
     if (paymentMethodMode === 'credits' && !creditsCoverTotal) {
       setCheckoutErrors([
-        `You have ${formatRm(creditsBalanceCents)} in credits but this order is ${formatRm(total)}. Top up, or pay another way.`,
+        `You have ${formatRm(creditsBalanceCents)} in credits but this order is ${formatRm(total)}. ${topUpOpen ? 'Top up, or pay another way.' : 'Please pay another way.'}`,
       ]);
       return;
     }
@@ -2251,7 +2268,7 @@ export function ShopFlow({
                   </label>
                   {!creditsCoverTotal && total > 0 ? (
                     <p className="caption" style={{ margin: '0 0 4px 26px' }}>
-                      Not enough credits, top up now.
+                      {topUpOpen ? 'Not enough credits, top up now.' : 'Not enough credits for this order.'}
                     </p>
                   ) : null}
                 </>

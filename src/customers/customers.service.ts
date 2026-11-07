@@ -1799,28 +1799,4 @@ export class CustomersService {
     );
     return referrerId;
   }
-
-  async topUpMyWallet(
-    customerId: string,
-    dto: { amountCents: number; channel: 'online' | 'cashier' },
-  ) {
-    if (dto.channel === 'online') {
-      throw new BadRequestException({
-        code: 'WALLET_TOPUP_ONLINE_REQUIRES_XENDIT',
-        message:
-          'Online top-up uses Xendit. Sign in and call POST /payments/xendit/wallet-topup, then complete payment in the redirect flow.',
-      });
-    }
-    const entry = await this.wallet.appendTransaction({
-      customerId,
-      type: 'TOPUP',
-      amountCents: dto.amountCents,
-      reason: `customer_topup_${dto.channel}`,
-      createdByType: 'customer',
-      createdBy: customerId,
-      metadata: { channel: dto.channel },
-    });
-    const summary = await this.wallet.getSummary(customerId);
-    return { entry, summary };
-  }
 }
