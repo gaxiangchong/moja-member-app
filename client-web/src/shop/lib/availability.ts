@@ -6,10 +6,11 @@
  * hardcoded, so changing the notice from 2 days to 3, or turning in-store off,
  * changes what the shop shows with no deploy.
  *
- * The two sides are NOT a partition. `whole_cakes` sits in both category lists
- * by default, so a cake the kitchen baked today can be collected today *and*
- * booked for next week: it appears under both tabs. Everything priced here is
- * display only — placing the order re-checks hours, notice and stock.
+ * The two sides are NOT a partition. Pre-order holds the whole catalog, so
+ * anything on the shelf today can also be booked for a later day. The in-store
+ * side keeps selling after closing time, for collection on the next open day.
+ * Everything priced here is display only — placing the order re-checks hours,
+ * notice and stock.
  */
 
 export type AvailabilityTab = 'today' | 'preorder';
@@ -24,6 +25,7 @@ export type AvailabilityRules = {
     openNow: boolean;
     reason: string | null;
     readyFrom: string | null;
+    collectOn: string | null;
   };
 };
 
@@ -38,7 +40,7 @@ type ClassifiableProduct = {
 
 /** How a product sits relative to today's shelf. */
 export type ProductAvailability = {
-  /** Collectable today: in an in-store category with stock, or a counter item. */
+  /** On the shelf now: in-store is on, and it has stock or is a counter item. */
   inStoreToday: boolean;
   /** Needs days of notice when booked ahead. */
   needsPreorder: boolean;
@@ -69,9 +71,9 @@ export function todayStockFor(
  * Where one product belongs. `stock` is its counted sizes for today.
  *
  * A product in neither category list — cookies, drinks — is always on the
- * counter, so it counts as in-store and is never a pre-order. A product in an
- * in-store category is only in-store while the shop is open for it AND a size
- * has stock left.
+ * counter and needs no notice. A product in an in-store category is only
+ * in-store while a size has stock left. `openNow` is false only when in-store
+ * is switched off, not when the shop shuts for the night.
  */
 export function classifyProduct(
   product: ClassifiableProduct,
@@ -102,12 +104,14 @@ export function classifyProduct(
     rules.inStore.categories.includes(product.category);
   const stockTracked = isInStoreCategory;
 
-  const inStoreToday = isInStoreCategory
-    ? // Sold from today's count: needs the shop open for it and a size left.
-      rules.inStore.openNow && (totalLeftToday ?? 0) > 0
-    : // Not counted at all. A counter item (cookies, drinks) is always there; a
-      // made-to-order line never is.
-      !isPreorderCategory;
+  const inStoreToday =
+    rules.inStore.openNow &&
+    (isInStoreCategory
+      ? // Sold from today's count: needs a size left.
+        (totalLeftToday ?? 0) > 0
+      : // Not counted at all. A counter item (cookies, drinks) is always
+        // there; a made-to-order line never is.
+        !isPreorderCategory);
 
   return {
     inStoreToday,
@@ -119,19 +123,17 @@ export function classifyProduct(
 }
 
 /**
- * Whether a product shows under `tab`. A product may show under both: a cake
- * the kitchen baked today is collectable now and bookable for later.
+ * Whether a product shows under `tab`. A product may show under both: what is
+ * on the shelf today is collectable now and bookable for later.
  */
 export function productInTab(
   availability: ProductAvailability,
   tab: AvailabilityTab,
 ): boolean {
   if (tab === 'today') return availability.inStoreToday;
-  // Pre-order holds anything bookable for a later date. That is every line the
-  // kitchen makes — whether or not it needs notice, and whether or not one
-  // happens to be on the shelf right now. Only counter items (cookies, drinks)
-  // stay out: those are bought on the day.
-  return availability.needsPreorder || availability.stockTracked;
+  // Pre-order holds everything: the whole catalog is bookable for a later date,
+  // so the shop can still take an order after in-store closes for the day.
+  return true;
 }
 
 /**

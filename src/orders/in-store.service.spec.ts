@@ -73,15 +73,36 @@ describe('InStoreService.quote', () => {
     const quote = await svc.quote([cake('6 inch', 2), cake('6 inch', 1)], NOW);
     expect(quote.available).toBe(false);
     expect(quote.reason).toBe(
-      'Only 2 Strawberry Shortcake (6 inch) left in store today.',
+      'Only 2 Strawberry Shortcake (6 inch) left on the shelf.',
     );
   });
 
-  it('is not available after the in-store cut-off', async () => {
+  it('sells from the shelf after the cut-off, for the next open day', async () => {
     const { svc } = makeService({ 'strawberry-shortcake|6 inch': 5 });
     const late = zonedWallToUtc('2026-11-02', '20:45', 'Asia/Kuala_Lumpur');
     const quote = await svc.quote([cake('6 inch')], late);
-    expect(quote.available).toBe(false);
-    expect(quote.reason).toContain('close at 8:30 PM');
+    expect(quote).toMatchObject({
+      available: true,
+      reason: null,
+      readyFrom: '10:00 AM',
+      collectOn: 'Tue 3 Nov',
+    });
+    expect(await svc.collection(late)).toEqual({
+      scheduledDate: '2026-11-03',
+      summaryLines: [
+        'Self pickup',
+        'Date: 2026-11-03',
+        'Time: 10:00',
+        'From shelf stock',
+      ],
+    });
+  });
+
+  it('keeps same-day orders on the prepare-now lane', async () => {
+    const { svc } = makeService({});
+    expect(await svc.collection(NOW)).toEqual({
+      scheduledDate: null,
+      summaryLines: ['In store · prepare now', 'Collect today from 3:40 PM'],
+    });
   });
 });

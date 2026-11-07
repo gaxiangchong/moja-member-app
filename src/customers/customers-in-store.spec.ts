@@ -39,12 +39,10 @@ function makeService(failed: string[] = []) {
   svc.productStock = { reserveForOrderLines };
   svc.inStore = {
     countedLinePredicate: jest.fn().mockResolvedValue(isCounted),
-    summaryLines: jest
-      .fn()
-      .mockResolvedValue([
-        'In store · prepare now',
-        'Collect today from 3:40 PM',
-      ]),
+    collection: jest.fn().mockResolvedValue({
+      scheduledDate: null,
+      summaryLines: ['In store · prepare now', 'Collect today from 3:40 PM'],
+    }),
   };
   svc.prisma = {
     shopProduct: { findMany: jest.fn().mockResolvedValue([]) },
@@ -104,7 +102,7 @@ describe('createPendingMemberOrder: in-store today', () => {
       response: {
         code: 'CAKE_OUT_OF_STOCK',
         message:
-          'Strawberry Shortcake (6 inch) is no longer available in store today. Pre-order for another day or adjust your cart.',
+          'Strawberry Shortcake (6 inch) is no longer on the shelf. Pre-order for another day or adjust your cart.',
       },
     });
   });

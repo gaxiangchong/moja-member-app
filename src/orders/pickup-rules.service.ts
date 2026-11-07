@@ -9,6 +9,7 @@ import {
   evaluatePickupDay,
   evaluateInStoreNow,
   formatClock,
+  formatYmd,
   needsPreorder,
   normalizePickupRules,
   PickupRulesError,
@@ -41,6 +42,8 @@ export type ShopAvailabilityRules = {
     reason: string | null;
     /** "3:40 PM" while open, else null. */
     readyFrom: string | null;
+    /** "Sun 8 Nov" when an order placed now is collected on a later day. */
+    collectOn: string | null;
   };
 };
 
@@ -132,6 +135,10 @@ export class PickupRulesService {
         openNow: inStoreNow.open,
         reason: inStoreNow.reason,
         readyFrom: inStoreNow.readyAt ? formatClock(inStoreNow.readyAt) : null,
+        collectOn:
+          inStoreNow.collectDate && inStoreNow.collectDate !== today
+            ? formatYmd(inStoreNow.collectDate)
+            : null,
       },
     };
   }
@@ -165,8 +172,8 @@ export class PickupRulesService {
     const now = input.now ?? new Date();
     const rules = await this.getRules();
     if (input.fulfilmentType === 'IN_STORE') {
-      // Collected today from the shelf: no slot and no pre-order notice. Stock
-      // per size is checked when it is reserved.
+      // Collected from the shelf: no slot and no pre-order notice. Stock per
+      // size is checked when it is reserved.
       const window = evaluateInStoreNow(rules, now);
       if (!window.open) {
         throw new BadRequestException({

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { evaluateInStoreNow, formatClock } from './pickup-rules';
+import { evaluateInStoreNow, formatClock, formatYmd } from './pickup-rules';
 import { PickupRulesService } from './pickup-rules.service';
 import {
   ProductStockService,
@@ -28,14 +28,17 @@ export type InStoreQuote = {
   today: string;
   /** "3:40 PM" when it can be ordered. */
   readyFrom: string | null;
+  /** "Sun 8 Nov" when it is collected on a later day, else null. */
+  collectOn: string | null;
   /** Only the lines that are sold from today's kitchen count. */
   lines: InStoreLineCheck[];
 };
 
 /**
- * "In-store today": collect today from the cakes the kitchen has on the
- * shelf. A size can only be ordered when the kitchen counted it for today and
- * enough are left after till sales (SalesPlay) and other online orders.
+ * "In-store today": buy from the cakes the kitchen has on the shelf, collected
+ * today or, once the shop has shut, on the next open day. A size can only be
+ * ordered when the kitchen has a count for it and enough are left after till
+ * sales (SalesPlay) and other online orders.
  */
 @Injectable()
 export class InStoreService {
@@ -70,17 +73,35 @@ export class InStoreService {
   }
 
   /**
-   * What staff and the member see on an in-store order. The first line is
-   * what the ops queue looks for to flag the order as "prepare now".
+   * When an order placed now is collected, and what staff and the member see
+   * on it. Same-day orders lead with the line the ops queue looks for to flag
+   * "prepare now". A later collection reads like a pickup, so the queue files
+   * it under that day: `scheduledDate` is set for those only.
    */
-  async summaryLines(now = new Date()): Promise<string[]> {
+  async collection(
+    now = new Date(),
+  ): Promise<{ scheduledDate: string | null; summaryLines: string[] }> {
     const window = evaluateInStoreNow(await this.pickupRules.getRules(), now);
-    return [
-      IN_STORE_SUMMARY_HEAD,
-      window.readyAt
-        ? `Collect today from ${formatClock(window.readyAt)}`
-        : 'Collect today',
-    ];
+    if (window.collectDate && window.collectDate !== window.today) {
+      return {
+        scheduledDate: window.collectDate,
+        summaryLines: [
+          'Self pickup',
+          `Date: ${window.collectDate}`,
+          `Time: ${window.readyAt}`,
+          'From shelf stock',
+        ],
+      };
+    }
+    return {
+      scheduledDate: null,
+      summaryLines: [
+        IN_STORE_SUMMARY_HEAD,
+        window.readyAt
+          ? `Collect today from ${formatClock(window.readyAt)}`
+          : 'Collect today',
+      ],
+    };
   }
 
   /** Can this cart be ordered for in-store collection right now? */
@@ -133,6 +154,12 @@ export class InStoreService {
       today: window.today,
       readyFrom:
         reason === null && window.readyAt ? formatClock(window.readyAt) : null,
+      collectOn:
+        reason === null &&
+        window.collectDate &&
+        window.collectDate !== window.today
+          ? formatYmd(window.collectDate)
+          : null,
       lines: checks,
     };
   }
@@ -144,8 +171,8 @@ export class InStoreService {
     });
     const name = `${product?.name ?? line.productId}${line.variantLabel ? ` (${line.variantLabel})` : ''}`;
     if (line.left === null || line.left === 0) {
-      return `${name} isn't available in store today. Pre-order it for another day.`;
+      return `${name} isn't on the shelf right now. Pre-order it for another day.`;
     }
-    return `Only ${line.left} ${name} left in store today.`;
+    return `Only ${line.left} ${name} left on the shelf.`;
   }
 }

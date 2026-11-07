@@ -53,9 +53,9 @@ import {
   parseBusinessDate,
   ProductStockService,
   type StockLine,
+  orderStockDay,
   todayBusinessDate,
 } from '../orders/product-stock.service';
-import { shopCalendarYmd } from '../bento/bento-shop-date.util';
 import {
   isMemberCancellable,
   NON_REVENUE_ORDER_STATUSES,
@@ -1106,7 +1106,9 @@ export class CustomersService {
       select: {
         id: true,
         status: true,
+        fulfilmentType: true,
         scheduledDate: true,
+        placedAt: true,
         lines: { select: { productId: true, variantLabel: true, qty: true } },
       },
     });
@@ -1141,10 +1143,8 @@ export class CustomersService {
       });
     }
 
-    const day =
-      order.scheduledDate?.toISOString().slice(0, 10) ?? todayBusinessDate();
     await this.productStock
-      .releaseForOrderLines(order.lines, day)
+      .releaseForOrderLines(order.lines, orderStockDay(order))
       .catch((err) =>
         this.logger.error(
           `Stock release failed for cancelled order ${orderId}: ${
@@ -1197,6 +1197,7 @@ export class CustomersService {
     const order = await this.prisma.customerOrder.findUnique({
       where: { id: orderId },
       select: {
+        fulfilmentType: true,
         scheduledDate: true,
         placedAt: true,
         lines: { select: { productId: true, variantLabel: true, qty: true } },
@@ -1212,10 +1213,10 @@ export class CustomersService {
       },
     });
     if (cancelled.count === 0) return;
-    const day =
-      order.scheduledDate?.toISOString().slice(0, 10) ??
-      shopCalendarYmd(order.placedAt);
-    await this.productStock.releaseForOrderLines(order.lines, day);
+    await this.productStock.releaseForOrderLines(
+      order.lines,
+      orderStockDay(order),
+    );
     // A reward taken for an order that never happened goes back.
     await this.loyalty.refundRewardForOrder(orderId);
   }
@@ -1408,8 +1409,8 @@ export class CustomersService {
     const scheduled =
       !shipping &&
       (fulfilmentType === 'PICKUP' || fulfilmentType === 'DELIVERY');
-    // In-store "prepare now" orders come out of today's tray; a scheduled
-    // pickup consumes the count for its own day.
+    // In-store orders come out of today's tray, even when collected on a later
+    // day; a scheduled pickup consumes the count for its own day.
     const businessDate =
       fulfilmentType === 'IN_STORE' || shipping
         ? todayBusinessDate()
@@ -1418,13 +1419,17 @@ export class CustomersService {
     const categories = scheduled
       ? await this.orderLineCategories(dto.lines)
       : [];
-    // In-store today sells only what the kitchen counted on today's shelf:
-    // a cake size with no count is refused instead of treated as unlimited.
+    // In-store sells only what the kitchen counted on the shelf: a cake size
+    // with no count is refused instead of treated as unlimited.
     const inStore = fulfilmentType === 'IN_STORE';
     const requireTracked = inStore
       ? await this.inStore.countedLinePredicate(dto.lines)
       : undefined;
-    if (inStore) dto.fulfillmentSummary = await this.inStore.summaryLines();
+    const inStoreCollection = inStore ? await this.inStore.collection() : null;
+    if (inStoreCollection) {
+      dto.fulfillmentSummary = inStoreCollection.summaryLines;
+      dto.scheduledDate = inStoreCollection.scheduledDate ?? undefined;
+    }
 
     const order = await this.prisma.$transaction(async (tx) => {
       await this.pickupRules.assertCanPlace(
@@ -1458,7 +1463,7 @@ export class CustomersService {
               }
             : {}),
           scheduledDate:
-            fulfilmentType === 'IN_STORE' || shipping || !dto.scheduledDate
+            shipping || !dto.scheduledDate
               ? null
               : parseBusinessDate(dto.scheduledDate),
           scheduledSlot: shipping ? null : (dto.scheduledSlot ?? null),
@@ -1505,7 +1510,7 @@ export class CustomersService {
           message: inStore
             ? `${names.join(', ')} ${
                 names.length === 1 ? 'is' : 'are'
-              } no longer available in store today. Pre-order for another day or adjust your cart.`
+              } no longer on the shelf. Pre-order for another day or adjust your cart.`
             : `${names.join(', ')} ${
                 names.length === 1 ? 'is' : 'are'
               } no longer available for ${businessDate}. Please pick another day or adjust your cart.`,
@@ -1566,8 +1571,7 @@ export class CustomersService {
       // webhook retry can never apply it twice.
       await this.productStock.consumeForOrderLines(
         finalizedLines,
-        order.scheduledDate?.toISOString().slice(0, 10) ??
-          shopCalendarYmd(order.placedAt),
+        orderStockDay(order),
         tx,
       );
       await tx.storedWallet.upsert({

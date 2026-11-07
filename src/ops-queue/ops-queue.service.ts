@@ -27,7 +27,7 @@ import {
 } from '../orders/order-status';
 import {
   ProductStockService,
-  todayBusinessDate,
+  orderStockDay,
 } from '../orders/product-stock.service';
 
 function fulfillmentLines(raw: Prisma.JsonValue | null): string[] {
@@ -215,7 +215,13 @@ export class OpsQueueService {
   ) {
     const existing = await this.prisma.customerOrder.findUnique({
       where: { id },
-      select: { id: true, status: true, scheduledDate: true },
+      select: {
+        id: true,
+        status: true,
+        fulfilmentType: true,
+        scheduledDate: true,
+        placedAt: true,
+      },
     });
     if (!existing) {
       throw new NotFoundException({
@@ -262,11 +268,8 @@ export class OpsQueueService {
         where: { orderId: id },
         select: { productId: true, variantLabel: true, qty: true },
       });
-      const day =
-        existing.scheduledDate?.toISOString().slice(0, 10) ??
-        todayBusinessDate();
       await this.productStock
-        .releaseForOrderLines(lines, day)
+        .releaseForOrderLines(lines, orderStockDay(existing))
         .catch((err) =>
           this.logger.error(
             `Stock release failed for cancelled order ${id}: ${

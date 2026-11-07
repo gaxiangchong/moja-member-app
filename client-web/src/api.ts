@@ -1256,6 +1256,8 @@ export type AvailabilityRules = {
     reason: string | null;
     /** "3:40 PM" while open, else null. */
     readyFrom: string | null;
+    /** "Sun 8 Nov" when an order placed now is collected on a later day. */
+    collectOn: string | null;
   };
 };
 
@@ -1267,6 +1269,8 @@ export type InStoreTodayQuote = {
   today: string;
   /** "3:40 PM" when it can be ordered. */
   readyFrom: string | null;
+  /** "Sun 8 Nov" when it is collected on a later day, else null. */
+  collectOn: string | null;
 };
 
 /** Display only — placing the order checks the stock again and holds it. */

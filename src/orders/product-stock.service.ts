@@ -47,6 +47,21 @@ export function todayBusinessDate(): string {
   return shopCalendarYmd();
 }
 
+/**
+ * The stock day an order holds its stock on. In-store orders come off the shelf
+ * on the day they are placed, even when collected on a later day; everything
+ * else uses its own collection day.
+ */
+export function orderStockDay(order: {
+  fulfilmentType: string;
+  scheduledDate: Date | null;
+  placedAt: Date;
+}): string {
+  return order.fulfilmentType === 'IN_STORE' || !order.scheduledDate
+    ? shopCalendarYmd(order.placedAt)
+    : order.scheduledDate.toISOString().slice(0, 10);
+}
+
 /** The stock row a line counts against: its size, or "" for the whole product. */
 export function stockVariant(label?: string | null): string {
   return (label ?? '').trim();
@@ -87,17 +102,56 @@ function toDayStock(
  * `null` means not stock-tracked, which ordinary orders treat as unlimited and
  * in-store-today orders treat as unavailable.
  *
+ * Cakes keep for days, so what is left on the shelf carries into the next day
+ * until it is sold or the kitchen changes the count: see {@link carryShelfForward}.
+ *
  * All mutations are single atomic statements so concurrent checkouts and
  * kitchen edits cannot lose an update.
  */
 @Injectable()
 export class ProductStockService {
   private readonly logger = new Logger(ProductStockService.name);
+  /** The last day carried over by this process, so it runs once a day. */
+  private carriedTo: string | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly shopCatalog: ShopCatalogService,
   ) {}
+
+  /**
+   * Starts today's rows from what was left on the shelf: each size's most
+   * recent earlier day, minus anything held on it. Runs on the first read of
+   * the day rather than on a timer, so a day the API slept through (or the shop
+   * was shut) still carries. A size the kitchen already set today is left alone,
+   * and so is one that sold out.
+   */
+  private async carryShelfForward(businessDate: string): Promise<void> {
+    const today = todayBusinessDate();
+    if (businessDate !== today || this.carriedTo === today) return;
+    const date = parseBusinessDate(today);
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO product_stock_days (id, product_id, variant, business_date, qty, reserved_qty, created_at, updated_at)
+        SELECT gen_random_uuid(), last.product_id, last.variant, ${date}::date, last.qty - last.reserved_qty, 0, NOW(), NOW()
+        FROM (
+          SELECT DISTINCT ON (product_id, variant) product_id, variant, qty, reserved_qty
+          FROM product_stock_days
+          WHERE business_date < ${date}::date
+          ORDER BY product_id, variant, business_date DESC
+        ) last
+        WHERE last.qty > last.reserved_qty
+        ON CONFLICT (product_id, variant, business_date) DO NOTHING
+      `;
+      this.carriedTo = today;
+    } catch (err) {
+      this.logger.error(
+        `Could not carry the shelf into ${today}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   /** The count to use when a day has no row for this size yet. */
   private async fallbackQty(
@@ -117,6 +171,7 @@ export class ProductStockService {
     businessDate: string,
     variant = '',
   ): Promise<number | null> {
+    await this.carryShelfForward(businessDate);
     const row = await this.prisma.productStockDay.findUnique({
       where: {
         productId_variant_businessDate: {
@@ -144,6 +199,7 @@ export class ProductStockService {
     const out = new Map<string, number | null>();
     if (ids.length === 0) return out;
 
+    await this.carryShelfForward(businessDate);
     const rows = await this.prisma.productStockDay.findMany({
       where: {
         productId: { in: ids },
@@ -174,6 +230,7 @@ export class ProductStockService {
     fromDate: string,
     days: number,
   ): Promise<DayStock[]> {
+    await this.carryShelfForward(todayBusinessDate());
     const dates: string[] = [];
     const start = parseBusinessDate(fromDate);
     for (let i = 0; i < Math.max(1, Math.min(days, 31)); i++) {
@@ -289,6 +346,7 @@ export class ProductStockService {
     tx: Tx = this.prisma,
     opts: { requireTracked?: (line: StockLine) => boolean } = {},
   ): Promise<string[]> {
+    await this.carryShelfForward(businessDate);
     const date = parseBusinessDate(businessDate);
     const failed: string[] = [];
 
@@ -392,6 +450,7 @@ export class ProductStockService {
     businessDate: string,
     tx: Tx = this.prisma,
   ): Promise<void> {
+    await this.carryShelfForward(businessDate);
     const date = parseBusinessDate(businessDate);
     for (const line of lines) {
       const qty = Math.max(0, Math.round(line.qty));

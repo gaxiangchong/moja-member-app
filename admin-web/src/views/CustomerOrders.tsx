@@ -104,7 +104,7 @@ function clock12(hhmm: string): string {
 /** When the order is due: "Wed 4 Nov, 11:00 AM", "Today, from 3:40 PM", or the parcel promise. */
 function pickupLabel(o: AdminOrder): string {
   if (o.kind === 'parcel') return 'Post within 2–5 days';
-  if (o.kind === 'in_store') {
+  if (o.kind === 'in_store' && !o.scheduledDate) {
     const from = o.fulfillmentSummary.find((l) => /^collect today from/i.test(l));
     const day = shopYmd(new Date(o.placedAt)) === shopYmd() ? 'Today' : new Date(o.placedAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
     return from ? `${day}, ${from.replace(/^collect today /i, '')}` : day;

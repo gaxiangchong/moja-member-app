@@ -424,19 +424,48 @@ describe('in-store today window', () => {
     });
   });
 
-  it('closes the cut-off before closing time', () => {
-    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:29')).open).toBe(
-      true,
-    );
-    const late = evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:30'));
-    expect(late.open).toBe(false);
-    expect(late.reason).toContain('8:30 PM');
+  it('moves to the next open day from the cut-off', () => {
+    expect(
+      evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:29')).collectDate,
+    ).toBe('2026-11-02');
+    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('20:30'))).toMatchObject({
+      open: true,
+      today: '2026-11-02',
+      collectDate: '2026-11-03',
+      readyAt: '10:00',
+    });
   });
 
-  it('is closed before opening and when switched off', () => {
-    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('09:00')).open).toBe(
-      false,
+  it('skips closed weekdays and closed dates', () => {
+    // Monday night, closed on Tuesdays and on Wednesday the 4th.
+    const rules: ShopPickupRules = {
+      ...DEFAULT_PICKUP_RULES,
+      closedWeekdays: [2],
+      closedDates: ['2026-11-04'],
+    };
+    expect(evaluateInStoreNow(rules, at('22:00')).collectDate).toBe(
+      '2026-11-05',
     );
+  });
+
+  it('takes orders on a closed day for the next open day', () => {
+    const rules: ShopPickupRules = {
+      ...DEFAULT_PICKUP_RULES,
+      closedWeekdays: [1],
+    };
+    expect(evaluateInStoreNow(rules, at('15:00'))).toMatchObject({
+      open: true,
+      collectDate: '2026-11-03',
+      readyAt: '10:00',
+    });
+  });
+
+  it('is ready at opening before the shop opens, and off when switched off', () => {
+    expect(evaluateInStoreNow(DEFAULT_PICKUP_RULES, at('09:00'))).toMatchObject({
+      open: true,
+      collectDate: '2026-11-02',
+      readyAt: '10:00',
+    });
     const off: ShopPickupRules = {
       ...DEFAULT_PICKUP_RULES,
       inStore: { ...DEFAULT_PICKUP_RULES.inStore, enabled: false },

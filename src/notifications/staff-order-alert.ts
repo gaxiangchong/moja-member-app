@@ -30,7 +30,12 @@ export function buildStaffOrderAlert(
 ): StaffOrderAlert {
   const total = `RM ${(input.totalCents / 100).toFixed(2)}`;
   const who = input.customerName?.trim() || 'Member';
-  const kind = KIND_LABEL[input.fulfilmentType];
+  // An in-store order placed after hours is collected on a later day.
+  const later = input.fulfillmentSummary.some((l) => /^date:/i.test(l));
+  const kind =
+    input.fulfilmentType === 'IN_STORE' && later
+      ? 'In store'
+      : KIND_LABEL[input.fulfilmentType];
   const subject = `New order #${input.orderNumber} · ${kind} · ${total}`;
 
   const items = input.lines.map(

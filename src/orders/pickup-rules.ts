@@ -68,7 +68,7 @@ export type InStoreRules = {
   categories: string[];
   /** Minutes from paying to "ready for collection". */
   prepMinutes: number;
-  /** Stop taking in-store orders this many minutes before closing. */
+  /** This many minutes before closing, orders move to the next open day. */
   cutoffMinutes: number;
 };
 
@@ -272,14 +272,19 @@ export type InStoreNow = {
   reason: string | null;
   /** yyyy-mm-dd in the shop timezone; the day whose stock is used. */
   today: string;
-  /** When an order placed now is ready, HH:mm; null when closed. */
+  /** The day an order placed now is collected, yyyy-mm-dd; null when closed. */
+  collectDate: string | null;
+  /** When an order placed now is ready on `collectDate`, HH:mm; null when closed. */
   readyAt: string | null;
 };
 
 /**
- * Whether "In-store today" is open right now: switched on, the shop is open,
- * and it is not yet `cutoffMinutes` before closing. Stock is checked
- * separately, per size, against the kitchen's count for `today`.
+ * Whether "In-store today" is taking orders, and when one placed now is
+ * collected. Cakes keep for days, so it does not shut with the shop: inside
+ * opening hours (up to `cutoffMinutes` before closing) the order is ready
+ * today; otherwise it is ready at opening on the next day the shop is open.
+ * Stock is checked separately, per size, against the kitchen's count for
+ * `today`.
  */
 export function evaluateInStoreNow(
   rules: ShopPickupRules,
@@ -290,33 +295,46 @@ export function evaluateInStoreNow(
     open: false,
     reason,
     today: parts.ymd,
+    collectDate: null,
     readyAt: null,
   });
   if (!rules.inStore.enabled) {
     return closed('In-store orders are not available right now.');
   }
-  const store = evaluateStoreNow(rules, now);
-  if (!store.open) return closed(store.reason ?? 'The store is closed.');
-  const hours = hoursForWeekday(rules, parts.weekday) ?? {
-    open: rules.openTime,
-    close: rules.closeTime,
-  };
-  const lastOrder = minutesOf(hours.close) - rules.inStore.cutoffMinutes;
-  if (parts.minutes >= lastOrder) {
-    return closed(
-      `In-store orders close at ${formatClock(clockOf(Math.max(0, lastOrder)))}. Pre-order for another day instead.`,
-    );
-  }
-  const ready = Math.min(
-    parts.minutes + rules.inStore.prepMinutes,
-    minutesOf(hours.close),
-  );
-  return {
+  const open = (collectDate: string, readyAt: string): InStoreNow => ({
     open: true,
     reason: null,
     today: parts.ymd,
-    readyAt: clockOf(ready),
-  };
+    collectDate,
+    readyAt,
+  });
+
+  const hours = hoursOnDate(rules, parts.ymd);
+  if (hours) {
+    const lastOrder = minutesOf(hours.close) - rules.inStore.cutoffMinutes;
+    if (parts.minutes < lastOrder) {
+      const ready = Math.max(
+        parts.minutes + rules.inStore.prepMinutes,
+        minutesOf(hours.open),
+      );
+      return open(parts.ymd, clockOf(Math.min(ready, minutesOf(hours.close))));
+    }
+  }
+  for (let ahead = 1; ahead <= rules.maxAdvanceDays; ahead++) {
+    const date = addDaysYmd(parts.ymd, ahead);
+    const next = hoursOnDate(rules, date);
+    if (next) return open(date, next.open);
+  }
+  return closed('The store is closed.');
+}
+
+/** Opening hours on one date, or null when the shop is shut that day. */
+function hoursOnDate(
+  rules: ShopPickupRules,
+  ymd: string,
+): { open: string; close: string } | null {
+  if (rules.closedDates.includes(ymd)) return null;
+  return hoursForWeekday(rules, weekdayOfYmd(ymd));
 }
 
 /** Whether a cart with these product categories needs the pre-order notice. */

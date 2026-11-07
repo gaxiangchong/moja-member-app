@@ -564,8 +564,8 @@ export function ShopFlow({
   }, [orderTiming, inStoreQuote]);
 
   /**
-   * Shopping the "In store today" tab means collecting today, so checkout opens
-   * on that choice instead of asking a second time. Only on the way in: once
+   * Shopping the "In store today" tab means buying from the shelf, so checkout
+   * opens on that choice instead of asking a second time. Only on the way in: once
    * checkout is on screen the member's own pick stands, and the effect above
    * still moves them off it if the stock goes while they are deciding.
    */
@@ -1210,10 +1210,12 @@ export function ShopFlow({
     // The server writes the in-store summary itself; this copy is for the
     // demo screen and the order history shown before it refreshes.
     const lines = isInStore
-      ? [
-          'In store · prepare now',
-          inStoreQuote?.readyFrom ? `Collect today from ${inStoreQuote.readyFrom}` : 'Collect today',
-        ]
+      ? inStoreQuote?.collectOn
+        ? ['Self pickup', `Collect ${inStoreQuote.collectOn} from ${inStoreQuote.readyFrom ?? 'opening'}`]
+        : [
+            'In store · prepare now',
+            inStoreQuote?.readyFrom ? `Collect today from ${inStoreQuote.readyFrom}` : 'Collect today',
+          ]
       : fulfillmentSummaryLines(
           draft.fulfillmentMethod,
           draft.pickupDate,
@@ -1459,9 +1461,11 @@ export function ShopFlow({
               <span className="shopAvailTabNote">
                 {availRules == null
                   ? 'Checking the shelf\u2026'
-                  : availRules.inStore.readyFrom
-                    ? `Ready from ${availRules.inStore.readyFrom}`
-                    : 'Closed for today'}
+                  : availRules.inStore.collectOn
+                    ? `Collect ${availRules.inStore.collectOn}`
+                    : availRules.inStore.readyFrom
+                      ? `Ready from ${availRules.inStore.readyFrom}`
+                      : 'Not available'}
               </span>
             </button>
             <button
@@ -1540,6 +1544,9 @@ export function ShopFlow({
             {filteredProducts.map((p) => {
               const soldOut = isShopProductSoldOut(p);
               const avail = availabilityById.get(p.id);
+              const readyBadge = availRules?.inStore.collectOn
+                ? `Ready ${availRules.inStore.collectOn}`
+                : 'Ready today';
               /*
                * One badge, never two, and only when it says something the tab
                * does not already say.
@@ -1558,10 +1565,10 @@ export function ShopFlow({
                   ? null
                   : availTab === 'today'
                     ? avail.stockTracked && (avail.totalLeftToday ?? 0) > 0
-                      ? { text: 'Ready today', kind: 'today' as const }
+                      ? { text: readyBadge, kind: 'today' as const }
                       : null
                     : avail.inStoreToday
-                      ? { text: 'In store today', kind: 'today' as const }
+                      ? { text: readyBadge, kind: 'today' as const }
                       : avail.needsPreorder
                         ? {
                             text: noticeLabel(availRules?.preorder.days ?? 0),
@@ -1669,7 +1676,7 @@ export function ShopFlow({
                     className="shopAvailEmptyCta"
                     onClick={() => setAvailTab('preorder')}
                   >
-                    See {tabCounts.preorder} cakes to pre-order
+                    See {tabCounts.preorder} items to pre-order
                   </button>
                   {availRules ? (
                     <p className="caption shopAvailEmptyFoot">
@@ -1895,12 +1902,14 @@ export function ShopFlow({
                     setInStoreNotice(null);
                   }}
                 >
-                  <strong>In-store today</strong>
+                  <strong>{inStoreQuote?.collectOn ? 'From the shelf' : 'In-store today'}</strong>
                   <small>
                     {inStoreQuote == null
                       ? 'Checking today’s stock…'
                       : inStoreQuote.available
-                        ? `Ready from ${inStoreQuote.readyFrom ?? 'soon'}`
+                        ? inStoreQuote.collectOn
+                          ? `Collect ${inStoreQuote.collectOn}`
+                          : `Ready from ${inStoreQuote.readyFrom ?? 'soon'}`
                         : 'Not available now'}
                   </small>
                 </button>
@@ -1915,8 +1924,9 @@ export function ShopFlow({
             ) : null}
             {isInStore && inStoreQuote?.available ? (
               <p className="caption" style={{ margin: '6px 0 0' }}>
-                From what&apos;s on our shelf today. Collect at the shop from{' '}
-                {inStoreQuote.readyFrom ?? 'soon'} — we&apos;ll have it ready.
+                {inStoreQuote.collectOn
+                  ? `We're closed now. Collect at the shop on ${inStoreQuote.collectOn} from ${inStoreQuote.readyFrom ?? 'opening'} — we'll keep it for you.`
+                  : `From what's on our shelf today. Collect at the shop from ${inStoreQuote.readyFrom ?? 'soon'} — we'll have it ready.`}
               </p>
             ) : null}
             {isScheduled ? (
@@ -2738,8 +2748,8 @@ function ProductDetailScreen({
               {leftToday !== undefined ? (
                 <p className={leftToday > 0 ? 'shopTodayStock' : 'shopTodayStock is-out'}>
                   {leftToday > 0
-                    ? 'Available in store today'
-                    : `${variantLabel} is not on the shelf today — pre-order it for another day`}
+                    ? 'Available from the shelf'
+                    : `${variantLabel} is not on the shelf — pre-order it for another day`}
                 </p>
               ) : null}
             </div>

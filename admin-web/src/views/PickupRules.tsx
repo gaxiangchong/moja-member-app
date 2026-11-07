@@ -383,7 +383,7 @@ export function PickupRules() {
             />
           </label>
           <label className="filterField" style={{ maxWidth: 220 }}>
-            Stop orders before closing (minutes)
+            Move orders to next open day before closing (minutes)
             <input
               className="toolbarInput"
               type="number"
