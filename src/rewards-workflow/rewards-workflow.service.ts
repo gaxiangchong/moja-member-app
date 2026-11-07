@@ -224,6 +224,26 @@ export class RewardsWorkflowService {
   async validateAndLockVoucher(input: VoucherValidationInput) {
     const now = Date.now();
     return this.prisma.$transaction(async (tx) => {
+      if (input.idempotencyKey) {
+        const prior = await tx.voucherRedemption.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          include: { voucher: true },
+        });
+        if (
+          prior &&
+          prior.customerId === input.customerId &&
+          prior.status === VoucherRedemptionStatus.LOCKED &&
+          prior.voucher.lockToken
+        ) {
+          return {
+            lockToken: prior.voucher.lockToken,
+            voucherId: prior.voucherId,
+            redemptionId: prior.id,
+            lockExpiresAt: prior.voucher.lockExpiresAt,
+          };
+        }
+      }
+
       const voucher = await tx.voucher.findFirst({
         where: {
           id: input.voucherId,

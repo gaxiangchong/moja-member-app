@@ -174,6 +174,12 @@ export function ShopFlow({
     resolve: (token: string) => void;
     reject: (err: Error) => void;
   } | null>(null);
+  // Synchronous guard — React state alone cannot block a second click that
+  // fires before the re-render from setPlacingOrder(true).
+  const placingOrderRef = useRef(false);
+  // Stable across retries of the same Pay attempt so the server can collapse
+  // duplicate checkout/Xendit requests onto one PaymentIntent.
+  const checkoutIdempotencyKeyRef = useRef<string | null>(null);
 
   const cart = useShopStore((s) => s.cart);
   const addToCart = useShopStore((s) => s.addToCart);
@@ -194,6 +200,22 @@ export function ShopFlow({
   const getTotalCents = useShopStore((s) => s.getTotalCents);
   const getCartItemCount = useShopStore((s) => s.getCartItemCount);
   const resetAfterOrder = useShopStore((s) => s.resetAfterOrder);
+
+  // New checkout attempt after the cart or pay method changes — do not resume
+  // a prior PaymentIntent that was for a different total/channel.
+  useEffect(() => {
+    checkoutIdempotencyKeyRef.current = null;
+  }, [
+    cart,
+    appliedVoucher,
+    appliedReward,
+    selectedChannelCode,
+    paymentMethodMode,
+    cardPaymentTokenId,
+    fulfillmentMethod,
+    pickupDate,
+    pickupTime,
+  ]);
 
   const itemCount = getCartItemCount();
   const subtotal = getSubtotalCents();
@@ -523,6 +545,7 @@ export function ShopFlow({
   };
 
   const handlePlaceOrder = async () => {
+    if (placingOrderRef.current) return;
     const draft = {
       cart,
       fulfillmentMethod,
@@ -568,7 +591,11 @@ export function ShopFlow({
       qty: l.qty,
       variantLabel: l.variantLabel ?? null,
     }));
+    placingOrderRef.current = true;
     setPlacingOrder(true);
+    if (!checkoutIdempotencyKeyRef.current) {
+      checkoutIdempotencyKeyRef.current = crypto.randomUUID();
+    }
     try {
       // For card payments, generate a payment token as part of this single
       // click if we don't have one yet. Previously this required a separate
@@ -584,7 +611,7 @@ export function ShopFlow({
           : { channelCode: selectedChannelCode.trim() }),
         ...(appliedVoucher ? { voucherId: appliedVoucher.id } : {}),
         ...(appliedReward ? { rewardDefinitionId: appliedReward.id } : {}),
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: checkoutIdempotencyKeyRef.current,
         order: {
           totalCents: total,
           discountCents: discount,
@@ -594,6 +621,7 @@ export function ShopFlow({
       });
 
       if ('demoMode' in result && result.demoMode) {
+        checkoutIdempotencyKeyRef.current = null;
         setDemoCheckout({
           orderId: result.orderId,
           orderNumber: result.orderNumber,
@@ -606,6 +634,7 @@ export function ShopFlow({
       }
 
       if ('zeroPaid' in result && result.zeroPaid) {
+        checkoutIdempotencyKeyRef.current = null;
         const o = result.order;
         useOrderHistoryStore.getState().addOrder({
           id: o.id,
@@ -651,6 +680,7 @@ export function ShopFlow({
     } catch (err) {
       setCheckoutErrors([err instanceof Error ? err.message : 'Checkout could not start.']);
     } finally {
+      placingOrderRef.current = false;
       setPlacingOrder(false);
     }
   };
