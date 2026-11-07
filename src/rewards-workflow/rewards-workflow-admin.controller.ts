@@ -185,10 +185,13 @@ export class RewardsWorkflowAdminController {
   @Get('user-wallet/:customerId')
   @RequirePermissions(P.CUSTOMER_READ)
   async getUserWallet(@Param('customerId') customerId: string) {
-    const [wallet, points, walletTxns, vouchers] =
+    const [wallet, loyaltyWallet, loyaltyPoints, walletTxns, vouchers] =
       await this.prisma.$transaction([
         this.prisma.userWalletBalance.findUnique({ where: { customerId } }),
-        this.prisma.rewardsPointsLedger.findMany({
+        this.prisma.loyaltyWallet.findUnique({ where: { customerId } }),
+        // Spendable points live on the loyalty ledger (SalesPlay / shop /
+        // admin backfill), not on the unused user_wallet_balance.points_balance.
+        this.prisma.loyaltyLedgerEntry.findMany({
           where: { customerId },
           orderBy: [{ createdAt: 'desc' }],
           take: 100,
@@ -203,7 +206,15 @@ export class RewardsWorkflowAdminController {
           orderBy: [{ updatedAt: 'desc' }],
         }),
       ]);
-    return { wallet, points, walletTxns, vouchers };
+    const pointsBalance = loyaltyWallet?.pointsCached ?? 0;
+    return {
+      wallet: wallet
+        ? { ...wallet, pointsBalance }
+        : { customerId, pointsBalance, walletBalance: 0 },
+      points: loyaltyPoints,
+      walletTxns,
+      vouchers,
+    };
   }
 
   /**
