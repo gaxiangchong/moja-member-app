@@ -73,6 +73,12 @@ export class LoyaltyService {
       reason: string;
       referenceType?: string | null;
       referenceId?: string | null;
+      /**
+       * Overrides how this entry changes lifetime earnings. A cancelled
+       * purchase passes a negative number so the tier falls with the points.
+       * Omit it for the normal rule (positive, non-refund entries count).
+       */
+      lifetimeEarnedDelta?: number;
     },
   ): Promise<{ balanceAfter: number; lifetimeEarnedAfter: number }> {
     await this.ensureWalletInTx(tx, params.customerId);
@@ -103,16 +109,22 @@ export class LoyaltyService {
 
     // Only genuinely earned points count towards the tier: a returned reward
     // (refund_...) is the member's own points coming back, not new earnings.
+    // A cancelled purchase passes lifetimeEarnedDelta < 0 so the tier falls too.
     const earned =
-      params.deltaPoints > 0 && !params.reason.startsWith('refund_')
-        ? params.deltaPoints
-        : 0;
-    const lifetimeEarnedAfter = (wallet.lifetimeEarnedPoints ?? 0) + earned;
+      params.lifetimeEarnedDelta !== undefined
+        ? params.lifetimeEarnedDelta
+        : params.deltaPoints > 0 && !params.reason.startsWith('refund_')
+          ? params.deltaPoints
+          : 0;
+    const lifetimeEarnedAfter = Math.max(
+      0,
+      (wallet.lifetimeEarnedPoints ?? 0) + earned,
+    );
     await tx.loyaltyWallet.update({
       where: { customerId: params.customerId },
       data: {
         pointsCached: balanceAfter,
-        ...(earned > 0 ? { lifetimeEarnedPoints: lifetimeEarnedAfter } : {}),
+        ...(earned !== 0 ? { lifetimeEarnedPoints: lifetimeEarnedAfter } : {}),
       },
     });
 
@@ -207,6 +219,77 @@ export class LoyaltyService {
       });
       return order.rewardPointsSpent;
     });
+  }
+
+  /**
+   * Takes back the purchase points an order earned, and the lifetime total
+   * those points added, when the order is cancelled or refunded.
+   *
+   * Paying with wallet credits returns the money on cancel. Without this, a
+   * member can place that order, earn points (and a higher tier), spend the
+   * points, and cancel to get the credits back — then repeat.
+   *
+   * Refuses when those points are no longer in the wallet, so the cancel does
+   * not go through until the redemption that spent them is undone. Safe to
+   * call more than once: a second call finds the clawback and does nothing.
+   * Returns how many points were taken back (0 when the order earned none).
+   */
+  async clawbackOrderPurchasePoints(
+    orderId: string,
+    txClient?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const run = (tx: Prisma.TransactionClient) =>
+      this.clawbackOrderPurchasePointsInTx(tx, orderId);
+    if (txClient) return run(txClient);
+    return this.prisma.$transaction(run);
+  }
+
+  private async clawbackOrderPurchasePointsInTx(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ): Promise<number> {
+    const earned = await tx.loyaltyLedgerEntry.findFirst({
+      where: {
+        referenceType: 'customer_order',
+        referenceId: orderId,
+        reason: 'shop_order_purchase',
+        deltaPoints: { gt: 0 },
+      },
+    });
+    if (!earned || earned.deltaPoints <= 0) return 0;
+
+    // Hold the wallet before the idempotency check so two cancels cannot both
+    // pass it and take the points twice.
+    await tx.$queryRaw`SELECT id FROM loyalty_wallets WHERE customer_id = ${earned.customerId}::uuid FOR UPDATE`;
+    const already = await tx.loyaltyLedgerEntry.findFirst({
+      where: {
+        referenceType: 'customer_order',
+        referenceId: orderId,
+        reason: 'clawback_shop_order_purchase',
+      },
+    });
+    if (already) return 0;
+
+    const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
+      where: { customerId: earned.customerId },
+    });
+    if (wallet.pointsCached < earned.deltaPoints) {
+      throw new BadRequestException({
+        code: 'ORDER_POINTS_ALREADY_SPENT',
+        message:
+          'The points from this order have already been used. Undo that redemption before cancelling, or contact us.',
+      });
+    }
+
+    await this.appendInTx(tx, {
+      customerId: earned.customerId,
+      deltaPoints: -earned.deltaPoints,
+      reason: 'clawback_shop_order_purchase',
+      referenceType: 'customer_order',
+      referenceId: orderId,
+      lifetimeEarnedDelta: -earned.deltaPoints,
+    });
+    return earned.deltaPoints;
   }
 
   private async ensureWalletInTx(
